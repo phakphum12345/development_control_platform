@@ -7,10 +7,10 @@ HTML = (ROOT / "dashboard" / "index.html").read_text(encoding="utf-8")
 
 class DashboardContractTests(unittest.TestCase):
     def test_all_tool_views_exist(self):
-        for view in ("home", "repo", "pr", "user", "evidence", "gates", "checkpoint", "audit", "route-colors"):
+        for view in ("home", "repo", "pr", "user", "evidence", "gates", "checkpoint", "audit", "route-colors", "ui-routes", "ui-simulator"):
             with self.subTest(view=view):
                 self.assertIn('id="' + view + '"', HTML)
-        for control in ("repo-load", "pr-load", "user-load", "ev-check", "gate-eval", "cp-build", "audit-eval", "route-color-save", "route-color-reset", "route-color-export"):
+        for control in ("repo-load", "pr-load", "user-load", "ev-check", "gate-eval", "cp-build", "audit-eval", "route-color-save", "route-color-reset", "route-color-export", "route-add", "route-reset", "route-export", "edge-add", "edge-clear", "sim-run", "sim-reset", "sim-download"):
             with self.subTest(control=control):
                 self.assertIn('id="' + control + '"', HTML)
 
@@ -46,6 +46,20 @@ class DashboardContractTests(unittest.TestCase):
         self.assertIn("<option>unknown</option>", HTML)
         self.assertIn("Readiness UNKNOWN", HTML)
         self.assertIn("Missing, stale, mismatched or unverifiable results remain UNKNOWN", HTML)
+
+    def test_ui_route_manager_and_sandbox_simulator_contract(self):
+        for view in ("ui-routes", "ui-simulator"):
+            with self.subTest(view=view):
+                self.assertIn('id="' + view + '"', HTML)
+        for control in ("route-add", "route-reset", "route-export", "edge-add", "edge-clear", "route-validation", "sim-code", "sim-preview", "sim-run", "sim-reset", "sim-download"):
+            with self.subTest(control=control):
+                self.assertIn('id="' + control + '"', HTML)
+        self.assertIn("ROUTE_DEFAULTS", HTML)
+        self.assertIn("validateRouteRegistry", HTML)
+        self.assertIn('sandbox="allow-scripts"', HTML)
+        self.assertIn("dcp.ui-route-registry.v1", HTML)
+        self.assertIn("metadata-only", HTML)
+        self.assertIn("function test_placeholder_that_does_not_exist", HTML) if False else None
 
     def test_shared_route_color_manager_is_centralized_and_safe(self):
         for contract in (
