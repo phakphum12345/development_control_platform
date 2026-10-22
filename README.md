@@ -14,12 +14,14 @@ Open dashboard/index.html in a modern browser. Current tools:
 - **Checkpoint Builder** — create a Markdown handoff note and copy or download it.
 - **Audit & Safety Checklist** — export a local safety checklist as JSON.
 - **Shared Route Color Manager** — one centralized palette for READ, ANALYZE, WRITE/MODIFY, TEST, AUDIT, BLOCKED and UNKNOWN plus PASS/FAIL/PENDING/UNKNOWN status colors. Customize, preview, save in the current browser, reset, or export JSON; colors are presentation only and never prove gate status.
+- **UI Route Manager** — a browser-local registry of actual Dashboard view IDs, with a visual connection builder, basic duplicate/missing-target/parent validation, and JSON export. Registry and visual connections use the same local data model.
+- **UI Simulator** — a split code-editor/live-preview page for HTML/CSS/JavaScript prototypes. Preview runs in a sandboxed iframe and can be downloaded as an HTML file; it does not modify production routing or deploy the preview.
 
 The dashboard calls the unauthenticated public GitHub REST API directly from the browser. Network errors, inaccessible resources, and rate limits are shown as errors. This is not private-repository integration and uses no credentials.
 
 ## Security limitations
 
-This static dashboard does **not** implement server-side authentication, GitHub App/OAuth installation, private repository access, organization tenant isolation, role-based authorization, durable audit logs, evidence freshness enforcement, or Git write actions. It cannot create branches or PRs, approve reviews, merge, push, or deploy. Browser controls are not an authorization boundary.
+This static dashboard does **not** implement server-side authentication, GitHub App/OAuth installation, private repository access, organization tenant isolation, role-based authorization, durable audit logs, evidence freshness enforcement, production route integration, or Git write actions. UI Route Manager access labels are planning metadata only; browser-local registry edits do not alter the actual router. The UI Simulator runs user-authored preview code inside a sandboxed iframe and is not a production deployment tool. It cannot create branches or PRs, approve reviews, merge, push, or deploy. Browser controls are not an authorization boundary.
 
 The evidence validator checks structure only. A structurally valid record is not proof that a gate actually passed. Independently verify the source, freshness, run result, and exact full commit SHA. Missing, stale, mismatched, or unverifiable evidence is unknown. Do not merge while a required gate is failing, pending, or unknown.
 
