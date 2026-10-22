@@ -7,10 +7,10 @@ HTML = (ROOT / "dashboard" / "index.html").read_text(encoding="utf-8")
 
 class DashboardContractTests(unittest.TestCase):
     def test_all_tool_views_exist(self):
-        for view in ("home", "repo", "pr", "user", "evidence", "gates", "checkpoint", "audit"):
+        for view in ("home", "repo", "pr", "user", "evidence", "gates", "checkpoint", "audit", "route-colors"):
             with self.subTest(view=view):
                 self.assertIn('id="' + view + '"', HTML)
-        for control in ("repo-load", "pr-load", "user-load", "ev-check", "gate-eval", "cp-build", "audit-eval"):
+        for control in ("repo-load", "pr-load", "user-load", "ev-check", "gate-eval", "cp-build", "audit-eval", "route-color-save", "route-color-reset", "route-color-export"):
             with self.subTest(control=control):
                 self.assertIn('id="' + control + '"', HTML)
 
@@ -46,6 +46,28 @@ class DashboardContractTests(unittest.TestCase):
         self.assertIn("<option>unknown</option>", HTML)
         self.assertIn("Readiness UNKNOWN", HTML)
         self.assertIn("Missing, stale, mismatched or unverifiable results remain UNKNOWN", HTML)
+
+    def test_shared_route_color_manager_is_centralized_and_safe(self):
+        for contract in (
+            "ROUTE_COLOR_DEFAULTS",
+            "ROUTE_COLOR_LABELS",
+            "dcp.route-colors.v1",
+            "function normalizeRouteColors(candidate)",
+            "function applyRouteColors(candidate)",
+            "function initRouteColorManager()",
+            "validHexColor",
+            "localStorage.setItem",
+            "localStorage.removeItem",
+            "route-color-preview",
+            "UNKNOWN",
+            "not evidence",
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, HTML)
+        self.assertIn('data-tab="route-colors"', HTML)
+        self.assertIn('type="color"', HTML)
+        self.assertIn("route_unknown", HTML)
+        self.assertIn("status_unknown", HTML)
 
 
 if __name__ == "__main__":
