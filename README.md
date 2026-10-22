@@ -40,11 +40,17 @@ The evidence validator checks structure only. A structurally valid record is not
 
 ## Validation
 
-Run the dashboard contract tests using Python 3.12 or newer:
+Run the static dashboard contract tests using Python 3.12 or newer:
 
     python -m unittest discover -s tests -v
 
-These static contract tests do not replace browser automation, authenticated integration tests, or a production security review.
+Run the real-browser smoke tests with Node.js and Playwright Chromium:
+
+    npm install --no-save --no-package-lock playwright
+    npx playwright install --with-deps chromium
+    node tests/browser_smoke.mjs
+
+The CI workflow runs both static contract tests and browser smoke tests. Browser coverage exercises route-color persistence, route registry add/edit/delete, connection editing, the sandboxed simulator, and registry-route preview. These checks do not replace authenticated integration tests or a production security review.
 
 ## Repository components
 
@@ -53,4 +59,5 @@ These static contract tests do not replace browser automation, authenticated int
 - checkpoints/TEMPLATE.md — resumable checkpoint template.
 - dashboard/index.html — interactive read-only toolkit.
 - tests/test_dashboard_contract.py — static dashboard contract tests.
-- .github/workflows/validate-control-plane.yml — registry/schema checks, dashboard contract tests, credential-pattern scanning, and optional self-hosted Windows smoke tests.
+- tests/browser_smoke.mjs — Playwright browser smoke tests.
+- .github/workflows/validate-control-plane.yml — JavaScript syntax, static and browser tests, registry/schema checks, credential-pattern scanning, and optional self-hosted Windows smoke tests.
