@@ -84,7 +84,7 @@ class DashboardContractTests(unittest.TestCase):
             "Parent cycle detected:",
             "Duplicate connection:",
             "Connection leads to disabled route:",
-            "warnings,errors",
+            "errors,warnings",
         ):
             with self.subTest(contract=contract):
                 self.assertIn(contract, HTML)
