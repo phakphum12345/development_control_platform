@@ -42,6 +42,9 @@ jobs:
           node --check dashboard-inline.js
           python -c "from pathlib import Path; Path('dashboard-inline.js').unlink()"
 
+      - name: Validate dashboard contract
+        run: python -m unittest discover -s tests -v
+
       - name: Validate registry YAML and JSON Schema
         run: |
           python - <<'PY'

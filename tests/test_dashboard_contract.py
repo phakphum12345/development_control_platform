@@ -44,7 +44,7 @@ class DashboardContractTests(unittest.TestCase):
 
     def test_unknown_is_default_for_gate_results(self):
         self.assertIn("<option>unknown</option>", HTML)
-        self.assertIn('status:"unknown"', HTML)
+        self.assertIn("Readiness UNKNOWN", HTML)
         self.assertIn("Missing, stale, mismatched or unverifiable results remain UNKNOWN", HTML)
 
 
