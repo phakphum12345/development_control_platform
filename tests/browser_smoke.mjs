@@ -44,7 +44,7 @@ try {
   await page.locator('[data-route-edit="browser-test"]').click();
   await page.locator("#route-label").fill("Edited browser test route");
   await page.locator("#route-add").click();
-  assert.equal(await page.getByText("Edited browser test route").count(), 1);
+  assert.equal(await page.locator("#route-registry-table").getByText("Edited browser test route").count(), 1);
   await page.locator('[data-route-delete="browser-test"]').click();
   assert.equal(await page.locator('[data-route-edit="browser-test"]').count(), 0);
 
