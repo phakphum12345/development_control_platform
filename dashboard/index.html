@@ -87,7 +87,7 @@ let routeEdges=[{from:"home",to:"repo"},{from:"home",to:"pr"},{from:"home",to:"g
 const screenExists=id=>Boolean($(id));
 function safeRouteId(v){return /^[a-z][a-z0-9-]{0,39}$/.test(String(v||""))}
 function routeStore(){try{localStorage.setItem(ROUTE_REGISTRY_KEY,JSON.stringify(routeRegistry));localStorage.setItem(ROUTE_EDGES_KEY,JSON.stringify(routeEdges));return true}catch(_){return false}}
-function routeOptions(selectId,includeBlank){const el=$(selectId);if(!el)return;const old=el.value;el.innerHTML=(includeBlank?'<option value="">— None —</option>':"")+routeRegistry.map(r=>'<option value="'+esc(r.id)+'">'+esc(r.label)+' ('+esc(r.id)+')</option>').join("");if(routeRegistry.some(r=>r.id===old))el.value=old}
+function routeOptions(selectId,includeBlank){const el=$(selectId);if(!el)return;const old=el.value;const options=selectId==="route-target"?Array.from(document.querySelectorAll(".view")).map(v=>({id:v.id,label:(document.querySelector('[data-tab="'+v.id+'"]')||{}).textContent||v.id})):routeRegistry;el.innerHTML=(includeBlank?'<option value="">— None —</option>':"")+options.map(r=>'<option value="'+esc(r.id)+'">'+esc(r.label)+' ('+esc(r.id)+')</option>').join("");if(options.some(r=>r.id===old))el.value=old}
 let routeEditingId=null;
 function cancelRouteEdit(){routeEditingId=null;$("route-add").textContent="Add route";$("route-cancel-edit").hidden=true;$("route-id").disabled=false;$("route-id").value="";$("route-label").value="";$("route-parent").value="";$("route-access").value="public";$("route-enabled").value="true"}
 function beginRouteEdit(id){
@@ -139,7 +139,7 @@ $("route-add").onclick=()=>{
  routeRegistry.push(r);routeStore();$("route-id").value="";$("route-label").value="";renderRouteManager();msg("route-registry-message","Route added to browser-local registry. No application route was changed.")
 };
 $("route-cancel-edit").onclick=cancelRouteEdit;
-$("route-reset").onclick=()=>{routeRegistry=ROUTE_DEFAULTS.map(x=>({...x}));routeEdges=[{from:"home",to:"repo"},{from:"home",to:"pr"},{from:"home",to:"gates"},{from:"home",to:"audit"}];routeStore();renderRouteManager();msg("route-registry-message","Default registry restored in this browser.")};
+$("route-reset").onclick=()=>{cancelRouteEdit();routeRegistry=ROUTE_DEFAULTS.map(x=>({...x}));routeEdges=[{from:"home",to:"repo"},{from:"home",to:"pr"},{from:"home",to:"gates"},{from:"home",to:"audit"}];routeStore();renderRouteManager();msg("route-registry-message","Default registry restored in this browser.")};
 $("route-export").onclick=()=>download("dcp-ui-route-registry.json",JSON.stringify({routes:routeRegistry,connections:routeEdges,scope:"dashboard-metadata-only"},null,2),"application/json");
 $("edge-add").onclick=()=>{const from=$("edge-from").value,to=$("edge-to").value;if(!from||!to||from===to){msg("route-registry-message","Choose two different screens to connect.");return}if(routeEdges.some(e=>e.from===from&&e.to===to)){msg("route-registry-message","Connection already exists.");return}routeEdges.push({from,to});routeStore();renderRouteVisual();validateRouteRegistry();msg("route-registry-message","Connection added to browser-local visual model.")};
 $("edge-clear").onclick=()=>{routeEdges=[];routeStore();renderRouteVisual();validateRouteRegistry();msg("route-registry-message","Connections cleared locally.")};
