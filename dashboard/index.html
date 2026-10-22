@@ -118,12 +118,15 @@ function renderRouteVisual(){
  $("route-edge-list").querySelectorAll("[data-edge-delete]").forEach(b=>b.onclick=()=>{routeEdges.splice(Number(b.dataset.edgeDelete),1);routeStore();renderRouteVisual();validateRouteRegistry()});
 }
 function validateRouteRegistry(){
- const errors=[],ids=routeRegistry.map(r=>r.id),known=new Set(ids);
+ const errors=[],warnings=[],ids=routeRegistry.map(r=>r.id),known=new Set(ids),parentById=new Map(routeRegistry.map(r=>[r.id,r.parent||""]));
  if(new Set(ids).size!==ids.length)errors.push("Duplicate route IDs found.");
- routeRegistry.forEach(r=>{if(!safeRouteId(r.id))errors.push("Invalid route ID: "+r.id);if(!r.label.trim())errors.push("Empty label: "+r.id);if(!screenExists(r.target))errors.push("Missing target screen for "+r.id+": "+r.target);if(r.parent&&!known.has(r.parent))errors.push("Missing parent route for "+r.id+": "+r.parent);if(r.parent===r.id)errors.push("Route cannot be its own parent: "+r.id)});
- routeEdges.forEach(e=>{if(!known.has(e.from)||!known.has(e.to))errors.push("Connection points to a missing route: "+e.from+" → "+e.to);if(e.from===e.to)errors.push("Self connection: "+e.from)});
- const result={valid:errors.length===0,route_count:routeRegistry.length,connection_count:routeEdges.length,errors,note:"Metadata-only validation. It does not prove production navigation or access enforcement."};
- msg("route-validation",(result.valid?"PASS — no basic registry errors detected.":"FAIL — "+errors.length+" registry issue(s).")+"\n"+JSON.stringify(result,null,2));return result;
+ routeRegistry.forEach(r=>{if(!safeRouteId(r.id))errors.push("Invalid route ID: "+r.id);if(!String(r.label||"").trim())errors.push("Empty label: "+r.id);if(!screenExists(r.target))errors.push("Missing target screen for "+r.id+": "+r.target);if(r.parent&&!known.has(r.parent))errors.push("Missing parent route for "+r.id+": "+r.parent);if(r.parent===r.id)errors.push("Route cannot be its own parent: "+r.id)});
+ const reportedCycles=new Set();
+ routeRegistry.forEach(r=>{const path=[],positions=new Map();let current=r.id;while(current&&parentById.has(current)){if(positions.has(current)){const cycle=path.slice(positions.get(current)).sort().join("|");if(!reportedCycles.has(cycle)){reportedCycles.add(cycle);errors.push("Parent cycle detected: "+path.slice(positions.get(current)).concat(current).join(" → "))}break}positions.set(current,path.length);path.push(current);current=parentById.get(current)}});
+ const seenEdges=new Set();
+ routeEdges.forEach(e=>{const key=e.from+"→"+e.to;if(!known.has(e.from)||!known.has(e.to))errors.push("Connection points to a missing route: "+e.from+" → "+e.to);if(e.from===e.to)errors.push("Self connection: "+e.from);if(seenEdges.has(key))errors.push("Duplicate connection: "+key);seenEdges.add(key);const destination=routeRegistry.find(r=>r.id===e.to);if(destination&&destination.enabled===false)warnings.push("Connection leads to disabled route: "+e.to)});
+ const result={valid:errors.length===0,route_count:routeRegistry.length,connection_count:routeEdges.length,errors,warnings,note:"Metadata-only validation. It does not prove production navigation or access enforcement."};
+ msg("route-validation",(result.valid?"PASS — no registry errors detected.":"FAIL — "+errors.length+" registry issue(s).")+"\n"+JSON.stringify(result,null,2));return result;
 }
 function renderRouteManager(){renderRouteRegistry()}
 $("route-add").onclick=()=>{
