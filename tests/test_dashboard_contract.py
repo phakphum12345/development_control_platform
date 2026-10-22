@@ -59,7 +59,6 @@ class DashboardContractTests(unittest.TestCase):
         self.assertIn('sandbox="allow-scripts"', HTML)
         self.assertIn("dcp.ui-route-registry.v1", HTML)
         self.assertIn("metadata-only", HTML)
-        self.assertIn("function test_placeholder_that_does_not_exist", HTML) if False else None
 
     def test_shared_route_color_manager_is_centralized_and_safe(self):
         for contract in (
