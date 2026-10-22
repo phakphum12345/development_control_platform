@@ -60,7 +60,7 @@ class DashboardContractTests(unittest.TestCase):
             "localStorage.removeItem",
             "route-color-preview",
             "UNKNOWN",
-            "not evidence",
+            "never prove gate status",
         ):
             with self.subTest(contract=contract):
                 self.assertIn(contract, HTML)
