@@ -121,7 +121,7 @@ $("edge-clear").onclick=()=>{routeEdges=[];routeStore();renderRouteVisual();vali
 function initRouteManager(){try{const r=JSON.parse(localStorage.getItem(ROUTE_REGISTRY_KEY)||"null");if(Array.isArray(r)&&r.every(x=>x&&typeof x.id==="string"&&typeof x.label==="string"&&typeof x.target==="string"))routeRegistry=r.map(x=>({id:x.id,label:x.label,parent:x.parent||"",target:x.target,access:x.access||"public",enabled:x.enabled!==false}));const e=JSON.parse(localStorage.getItem(ROUTE_EDGES_KEY)||"null");if(Array.isArray(e)&&e.every(x=>x&&typeof x.from==="string"&&typeof x.to==="string"))routeEdges=e}catch(_){routeRegistry=ROUTE_DEFAULTS.map(x=>({...x}));routeEdges=[]}renderRouteManager()}
 
 // UI Simulator: editable HTML runs only inside a sandboxed iframe.
-const SIM_SAMPLE='<!doctype html>
+const SIM_SAMPLE=String.raw`<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -144,7 +144,7 @@ small{color:#64748b}
 <p id="demo" aria-live="polite">Preview only — not connected to the app router.</p>
 </main>
 </body>
-</html>';
+</html>`;
 function runSimulator(){const code=$("sim-code").value;$("sim-preview").srcdoc=code;$("sim-status").textContent="Preview refreshed";msg("sim-status","Preview refreshed")}
 $("sim-run").onclick=runSimulator;
 $("sim-reset").onclick=()=>{$("sim-code").value=SIM_SAMPLE;runSimulator();msg("sim-status","Sample restored")};
