@@ -45,6 +45,15 @@ jobs:
       - name: Validate dashboard contract
         run: python -m unittest discover -s tests -v
 
+      - name: Install Playwright for browser smoke tests
+        run: npm install --no-save --no-package-lock playwright
+
+      - name: Install Chromium browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Test dashboard in a real browser
+        run: node tests/browser_smoke.mjs
+
       - name: Validate registry YAML and JSON Schema
         run: |
           python - <<'PY'
