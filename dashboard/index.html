@@ -1,142 +1,51 @@
 <!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light">
-<title>Development Control Platform</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>Development Control Platform</title>
 <style>
-:root {
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  color: #172033;
-  background: #f5f7fb;
-  --read: #2563eb;
-  --analyze: #7c3aed;
-  --write: #b45309;
-  --test: #15803d;
-  --audit: #0f766e;
-  --block: #b91c1c;
-  --unknown: #64748b;
-}
-* { box-sizing: border-box; }
-body { margin: 0; }
-.wrap { max-width: 1000px; margin: auto; padding: 28px 18px 60px; }
-header { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; flex-wrap:wrap; }
-h1 { margin:0; font-size:clamp(1.5rem,3vw,2.2rem); }
-h2 { margin-top:0; }
-p { line-height:1.6; color:#596579; }
-.card { background:#fff; border:1px solid #e0e6ef; border-radius:16px; padding:20px; margin-top:20px; }
-.pill { display:inline-block; border:1px solid #d7deea; border-radius:999px; padding:6px 10px; font-size:.82rem; background:#fff; }
-.banner { padding:14px 16px; border-left:4px solid var(--unknown); background:#eef2f7; border-radius:8px; line-height:1.6; margin-top:20px; }
-.navigation { display:grid; grid-template-columns:repeat(auto-fit,minmax(145px,1fr)); gap:12px; margin-top:16px; }
-.route { display:block; min-height:112px; padding:14px; border:1px solid #d7deea; border-top:5px solid var(--route); border-radius:12px; background:#fff; color:#172033; text-decoration:none; }
-.route strong { display:block; margin-bottom:7px; }
-.route span { color:#596579; font-size:.9rem; line-height:1.45; }
-.route:focus-visible, a:focus-visible { outline:3px solid #111827; outline-offset:3px; }
-.read { --route:var(--read); }
-.analyze { --route:var(--analyze); }
-.write { --route:var(--write); }
-.test { --route:var(--test); }
-.audit { --route:var(--audit); }
-.block { --route:var(--block); }
-.unknown { --route:var(--unknown); }
-.notice { padding:12px; border-radius:8px; background:#fff7ed; border-left:4px solid var(--write); line-height:1.6; }
-.state { display:inline-block; padding:4px 9px; border-radius:999px; font-size:.82rem; font-weight:700; }
-.state-unknown { color:#334155; background:#e2e8f0; }
-.state-block { color:#991b1b; background:#fee2e2; }
-.state-pass { color:#166534; background:#dcfce7; }
-.muted { color:#667085; }
-ul, ol { line-height:1.8; }
-@media (prefers-reduced-motion: reduce) { * { scroll-behavior:auto !important; } }
-</style>
-</head>
-<body>
-<main class="wrap" data-control-plane-nav="static">
-<header>
-  <div>
-    <h1>Development Control Platform</h1>
-    <p>Color-coded navigation for safe project review and evidence tracking.</p>
-  </div>
-  <span class="pill">STATIC PREVIEW · INTEGRATIONS DISABLED</span>
-</header>
-
-<section class="banner" role="status" aria-live="polite">
-  <strong>Read-only preview.</strong>
-  This page does not connect to repositories, fetch CI data, or modify files.
-  No project or gate is represented as passing.
-</section>
-
-<section class="card" aria-labelledby="navigation-title">
-  <h2 id="navigation-title">Development navigation</h2>
-  <p>Colors indicate the type of activity, not permission to perform it.</p>
-  <nav class="navigation" aria-label="Development workflow">
-    <a class="route read" href="#read"><strong>01 · READ</strong><span>Inspect repository, branch, commit and working tree.</span></a>
-    <a class="route analyze" href="#analyze"><strong>02 · ANALYZE</strong><span>Review diffs, requirements, gate results and SHA binding.</span></a>
-    <a class="route write" href="#write"><strong>03 · WRITE / MODIFY</strong><span>Confirm target and authorized file scope before editing.</span></a>
-    <a class="route test" href="#test"><strong>04 · TEST</strong><span>Run checks and capture evidence for the exact commit.</span></a>
-    <a class="route audit" href="#audit"><strong>05 · AUDIT</strong><span>Review permissions, evidence freshness and Git history.</span></a>
-    <a class="route block" href="#block"><strong>STOP · BLOCK</strong><span>Stop if the target, permissions or commit identity mismatch.</span></a>
-  </nav>
-</section>
-
-<section class="card" id="read">
-  <h2><span class="state" style="color:#1d4ed8;background:#dbeafe">READ</span> Confirm the target</h2>
-  <ul>
-    <li>Repository: not connected in this preview.</li>
-    <li>Branch and full commit SHA: must be verified from the actual repository.</li>
-    <li>Registered projects: <strong>0</strong>.</li>
-  </ul>
-</section>
-
-<section class="card" id="analyze">
-  <h2><span class="state" style="color:#6d28d9;background:#ede9fe">ANALYZE</span> Verify before acting</h2>
-  <ul>
-    <li>Compare staged and unstaged changes separately.</li>
-    <li>Confirm the intended repository, branch, files and approved scope.</li>
-    <li>Reject missing, stale, mismatched or unverifiable evidence.</li>
-  </ul>
-</section>
-
-<section class="card" id="write">
-  <h2><span class="state" style="color:#92400e;background:#fef3c7">WRITE</span> Explicit scope only</h2>
-  <p class="notice">This preview provides no write action. Color, navigation or project selection never grants write permission.</p>
-  <ul>
-    <li>Keep integrations disabled by default.</li>
-    <li>Require explicit approval for new write scopes.</li>
-    <li>Do not force-push or rewrite canonical history.</li>
-  </ul>
-</section>
-
-<section class="card" id="test">
-  <h2><span class="state state-unknown">UNKNOWN</span> Test evidence</h2>
-  <p>No live test results are loaded. A green indicator must only be used after a real check passes against the exact intended commit SHA.</p>
-</section>
-
-<section class="card" id="audit">
-  <h2>AUDIT</h2>
-  <ul>
-    <li>Review the full diff and file inventory.</li>
-    <li>Verify the source, freshness and commit identity of evidence.</li>
-    <li>Confirm all required gates pass before any merge decision.</li>
-  </ul>
-</section>
-
-<section class="card" id="block">
-  <h2><span class="state state-block">BLOCK</span> Stop conditions</h2>
-  <ul>
-    <li>Repository or branch does not match the approved target.</li>
-    <li>Evidence SHA differs from the project commit SHA.</li>
-    <li>A required gate is missing or not passing.</li>
-    <li>Write permission or external connection has not been explicitly authorized.</li>
-  </ul>
-</section>
-
-<section class="card">
-  <h2>Product editions</h2>
-  <p><strong>Personal Edition</strong> — independent project tracking for individuals.</p>
-  <p><strong>Organization Edition</strong> — requires server-side authorization, tenant isolation, role enforcement and audit logging before production use.</p>
-  <p class="muted">These are product scopes. This static page does not implement authorization or live status.</p>
-</section>
-</main>
-</body>
-</html>
+:root{font:16px system-ui,sans-serif;color:#182235;background:#f4f7fb;--p:#fff;--l:#dce3ed;--m:#596579;--a:#3457d5;--s:#edf1f7}*{box-sizing:border-box}body{margin:0}.wrap{max-width:1350px;margin:auto;padding:22px}header,.row,.actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:space-between}h1{margin:0;font-size:2rem}h2{margin-top:0}p{line-height:1.55;color:var(--m)}button,input,select,textarea{font:inherit;padding:10px;border:1px solid var(--l);border-radius:9px;background:var(--p);color:inherit}button{cursor:pointer}button.primary{background:var(--a);color:white}.layout{display:grid;grid-template-columns:220px minmax(0,1fr);gap:16px;margin-top:18px}.nav,.panel{background:var(--p);border:1px solid var(--l);border-radius:13px;padding:14px}.nav{position:sticky;top:10px;height:max-content}.nav button{width:100%;text-align:left;margin:3px 0}.nav button.active{background:var(--s);font-weight:700}.view{display:none}.view.active{display:block}.panel{margin-bottom:14px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.field{margin-bottom:12px}label{display:block;font-weight:650;margin-bottom:5px}input,select,textarea{width:100%}.output{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--s);padding:12px;border-radius:9px;margin-top:12px}.muted{color:var(--m)}.pill{display:inline-block;border:1px solid var(--l);border-radius:99px;padding:6px 10px;font-size:.8rem}.warn{padding:12px;background:#fff4d9;border:1px solid #dfc174;border-radius:10px;line-height:1.5}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.stat{background:var(--p);border:1px solid var(--l);border-radius:10px;padding:13px}.stat strong{display:block;font-size:1.4rem}table{border-collapse:collapse;width:100%;margin-top:10px}th,td{text-align:left;border-bottom:1px solid var(--l);padding:9px;vertical-align:top}a{color:var(--a);overflow-wrap:anywhere}.check{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--l)}.check input{width:auto}.check label{font-weight:400}.small{font-size:.85rem}.empty{padding:15px;border:1px dashed var(--l);border-radius:9px;color:var(--m)}@media(max-width:800px){.layout{grid-template-columns:1fr}.nav{position:static;display:grid;grid-template-columns:repeat(2,1fr)}.stats{grid-template-columns:repeat(2,1fr)}}@media(max-width:550px){.grid{grid-template-columns:1fr}.wrap{padding:12px}.stats{grid-template-columns:repeat(2,1fr)}}@media(prefers-color-scheme:dark){:root{color:#e8edf6;background:#101521;--p:#171f2d;--l:#303b4d;--m:#a4afc0;--a:#9aafff;--s:#202b3c}.warn{background:#352d19;color:#ffdfa0}}
+</style></head><body><main class="wrap">
+<header><div><h1>Development Control Platform</h1><p>Repository inspection · PR review · evidence · gates · checkpoints · audit</p></div><span class="pill">READ-ONLY · PUBLIC API</span></header>
+<div class="warn"><b>Safety boundary:</b> This dashboard reads public GitHub API data only. No token, private repository access, push, branch creation, approval, merge or deployment is available. Registry remains opt-in and empty. Browser validation does not prove CI passed.</div>
+<div class="layout"><nav class="nav" aria-label="Tools">
+<button class="active" data-tab="home">Overview</button><button data-tab="repo">Repository Explorer</button><button data-tab="pr">Pull Request Review</button><button data-tab="user">User Explorer</button><button data-tab="evidence">SHA & Evidence</button><button data-tab="gates">Quality Gate Planner</button><button data-tab="checkpoint">Checkpoint Builder</button><button data-tab="audit">Audit & Safety</button>
+</nav><div>
+<section class="view active" id="home"><div class="stats"><div class="stat"><span class="muted small">Registered projects</span><strong>0</strong><span class="small muted">Opt-in only</span></div><div class="stat"><span class="muted small">Selected repo</span><strong id="selected">—</strong></div><div class="stat"><span class="muted small">Evidence</span><strong id="evidence-stat">UNKNOWN</strong></div><div class="stat"><span class="muted small">Write actions</span><strong>0</strong><span class="small muted">Disabled</span></div></div><div class="panel"><h2>Available tools</h2><p>Use the navigation to inspect public repositories and PRs, validate evidence structure, plan quality gates, generate a checkpoint, and export an audit checklist.</p><p><b>READ → ANALYZE → WRITE/MODIFY → TEST → AUDIT</b></p><p>Write/modify is intentionally unavailable in this release. Missing, stale, mismatched or unverifiable results remain UNKNOWN.</p></div></section>
+<section class="view" id="repo"><div class="panel"><h2>Repository Explorer</h2><p>Public repositories only. Enter owner/repository.</p><div class="grid"><div class="field"><label for="repo-name">Repository</label><input id="repo-name" placeholder="octocat/Hello-World"></div><div class="field"><label for="branch-name">Branch filter (optional)</label><input id="branch-name" placeholder="main"></div></div><div class="actions"><button class="primary" id="repo-load">Load repository</button><button id="repo-clear">Clear</button></div><div id="repo-msg" class="output">No repository loaded.</div><div id="repo-data" class="empty">Repository details appear here.</div><h3>Open pull requests</h3><div id="repo-prs" class="empty">Load a repository first.</div></div></section>
+<section class="view" id="pr"><div class="panel"><h2>Pull Request Review</h2><div class="grid"><div class="field"><label for="pr-repo">Public repository</label><input id="pr-repo" placeholder="owner/repository"></div><div class="field"><label for="pr-num">PR number</label><input id="pr-num" type="number" min="1" placeholder="123"></div></div><div class="actions"><button class="primary" id="pr-load">Inspect PR</button><button id="pr-clear">Clear</button></div><div id="pr-msg" class="output">No PR loaded.</div><div id="pr-data" class="empty">Enter repository and PR number.</div><h3>Changed files</h3><div id="pr-files" class="empty">No files loaded.</div><h3>Reviews</h3><div id="pr-reviews" class="empty">No reviews loaded.</div><h3>Checks for exact head SHA</h3><div id="pr-checks" class="empty">No checks loaded; readiness UNKNOWN.</div></div></section>
+<section class="view" id="user"><div class="panel"><h2>User Explorer</h2><p>Public profile only. This does not establish team membership, roles or repository permissions.</p><div class="field"><label for="user-name">GitHub username</label><input id="user-name" placeholder="octocat"></div><div class="actions"><button class="primary" id="user-load">Load profile</button><button id="user-clear">Clear</button></div><div id="user-msg" class="output">No user loaded.</div><div id="user-data" class="empty">Profile details appear here.</div></div></section>
+<section class="view" id="evidence"><div class="panel"><h2>SHA & Evidence Validator</h2><p>Structural validation only; it cannot independently prove an external check passed.</p>
+<div class="field"><label for="ev-repo">Repository</label><input id="ev-repo" placeholder="owner/repository"></div><div class="grid"><div class="field"><label for="ev-branch">Branch</label><input id="ev-branch" placeholder="feature/example"></div><div class="field"><label for="ev-sha">Full commit SHA (40 hex)</label><input id="ev-sha" maxlength="40" placeholder="40-character SHA"></div></div><div class="grid"><div class="field"><label for="ev-gate">Gate name</label><input id="ev-gate" placeholder="unit-tests"></div><div class="field"><label for="ev-status">Status</label><select id="ev-status"><option>unknown</option><option>pending</option><option>not_run</option><option>fail</option><option>pass</option></select></div></div><div class="grid"><div class="field"><label for="ev-time">Observed at (ISO date/time)</label><input id="ev-time" placeholder="2026-10-22T10:00:00Z"></div><div class="field"><label for="ev-url">Evidence URL (HTTPS)</label><input id="ev-url" placeholder="https://github.com/owner/repo/actions/runs/..."></div></div><div class="actions"><button class="primary" id="ev-check">Validate</button><button id="ev-copy">Copy JSON</button><button id="ev-clear">Clear</button></div><div id="ev-output" class="output">No record validated. Status UNKNOWN.</div></div></section>
+<section class="view" id="gates"><div class="panel"><h2>Quality Gate Planner</h2><div class="field"><label for="gate-sha">Target full commit SHA</label><input id="gate-sha" maxlength="40" placeholder="40-character SHA"></div><div id="gate-list"></div><div class="actions"><button class="primary" id="gate-eval">Evaluate readiness</button><button id="gate-reset">Reset</button><button id="gate-export">Export JSON</button></div><div id="gate-output" class="output">Readiness UNKNOWN — no gate results verified.</div></div></section>
+<section class="view" id="checkpoint"><div class="panel"><h2>Checkpoint Builder</h2><p>Creates a Markdown handoff note; does not write into the repository.</p><div class="grid"><div class="field"><label for="cp-repo">Repository</label><input id="cp-repo" placeholder="owner/repository"></div><div class="field"><label for="cp-branch">Branch</label><input id="cp-branch" placeholder="feature/branch"></div></div><div class="field"><label for="cp-sha">Full commit SHA</label><input id="cp-sha" maxlength="40" placeholder="40-character SHA"></div><div class="field"><label for="cp-goal">Goal</label><textarea id="cp-goal" rows="2"></textarea></div><div class="field"><label for="cp-done">Completed work</label><textarea id="cp-done" rows="3"></textarea></div><div class="field"><label for="cp-pending">Remaining work / blockers</label><textarea id="cp-pending" rows="3"></textarea></div><div class="field"><label for="cp-tests">Tests and evidence URLs</label><textarea id="cp-tests" rows="3"></textarea></div><div class="actions"><button class="primary" id="cp-build">Build checkpoint</button><button id="cp-copy">Copy Markdown</button><button id="cp-download">Download .md</button></div><textarea id="cp-output" class="output" rows="16" aria-label="Generated checkpoint"></textarea></div></section>
+<section class="view" id="audit"><div class="panel"><h2>Audit & Safety Checklist</h2><p>Local checklist only; not a persistent authoritative audit log.</p><div id="audit-list"></div><div class="actions"><button class="primary" id="audit-eval">Evaluate checklist</button><button id="audit-reset">Reset</button><button id="audit-export">Export JSON</button></div><div id="audit-output" class="output">Audit readiness UNKNOWN.</div></div><div class="panel"><h3>Not implemented here</h3><ul><li>OAuth / GitHub App and private repository access</li><li>Server-side auth, role enforcement and tenant isolation</li><li>Persistent tamper-evident audit log and evidence freshness</li><li>Push, branch/PR creation, approvals, merge or deployment</li></ul></div></section>
+</div></div><p class="muted small">Public API limits and network failures are surfaced as errors. No credentials are stored. Never merge while required gates are failing, pending or unknown.</p></main>
+<script>
+"use strict";
+const $=id=>document.getElementById(id),esc=v=>String(v==null?"":v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])),isRepo=v=>/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(v.trim())&&!v.includes(".."),isSha=v=>/^[a-f0-9]{40}$/i.test(v.trim());
+const state={repo:null,pr:null,user:null,evidence:null,gates:null,audit:null};
+function msg(id,s){$(id).textContent=s}function link(url,label){return '<a target="_blank" rel="noopener noreferrer" href="'+esc(url)+'">'+esc(label||url)+'</a>'}
+async function api(path){const r=await fetch("https://api.github.com"+path,{headers:{Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"}});if(!r.ok){let m="HTTP "+r.status;try{m=(await r.json()).message||m}catch(_){}throw Error(m+(r.status===403||r.status===429?" (rate limit/permission restriction)":""))}return r.json()}
+function table(head,rows){return rows.length?'<table><thead><tr>'+head.map(x=>'<th>'+esc(x)+'</th>').join("")+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(x=>'<td>'+x+'</td>').join("")+'</tr>').join("")+'</tbody></table>':'<div class="empty">No records returned.</div>'}
+function tab(name){document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id===name));document.querySelectorAll("[data-tab]").forEach(x=>x.classList.toggle("active",x.dataset.tab===name))}
+document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>tab(b.dataset.tab));
+$("repo-load").onclick=async()=>{let n=$("repo-name").value.trim();if(!isRepo(n)){msg("repo-msg","Enter a valid owner/repository.");return}msg("repo-msg","Loading public repository…");try{let [r,b,p]=await Promise.all([api("/repos/"+n),api("/repos/"+n+"/branches?per_page=100"),api("/repos/"+n+"/pulls?state=open&per_page=20")]);state.repo={r,b,p};$("selected").textContent=n;msg("repo-msg","Loaded public GitHub data. No permission check is implied.");$("repo-data").innerHTML='<h3>'+esc(r.full_name)+'</h3><p>'+esc(r.description||"No description")+'</p>'+link(r.html_url,"Open repository")+table(["Property","Value"],[["Default branch",esc(r.default_branch)],["Archived",esc(r.archived)],["Stars",esc(r.stargazers_count)],["Open issues",esc(r.open_issues_count)],["Pushed at",esc(r.pushed_at)],["Branches returned",esc(b.length)+(b.length===100?" (first 100)":"")]]);$("repo-prs").innerHTML=table(["PR","Title","Author","Updated"],p.map(x=>[link(x.html_url,"#"+x.number),esc(x.title),esc(x.user.login),esc(x.updated_at)]));}catch(e){state.repo=null;msg("repo-msg","Could not load: "+e.message);$("repo-data").innerHTML='<div class="empty">No verified data loaded.</div>';$("repo-prs").innerHTML=""}};
+$("repo-clear").onclick=()=>{$("repo-name").value="";$("branch-name").value="";state.repo=null;$("selected").textContent="—";msg("repo-msg","Cleared.");$("repo-data").innerHTML='<div class="empty">Repository details appear here.</div>';$("repo-prs").innerHTML=""};
+$("pr-load").onclick=async()=>{let n=$("pr-repo").value.trim(),num=$("pr-num").value.trim();if(!isRepo(n)||!/^[1-9]\d*$/.test(num)){msg("pr-msg","Enter valid owner/repository and positive PR number.");return}msg("pr-msg","Loading PR, files, reviews and checks…");try{let [p,f,r]=await Promise.all([api("/repos/"+n+"/pulls/"+num),api("/repos/"+n+"/pulls/"+num+"/files?per_page=100"),api("/repos/"+n+"/pulls/"+num+"/reviews?per_page=100")]);let c=null,ce="";try{c=await api("/repos/"+n+"/commits/"+p.head.sha+"/check-runs?per_page=100")}catch(e){ce=e.message}state.pr={p,f,r,c};msg("pr-msg","Loaded public PR. Head SHA: "+p.head.sha);$("pr-data").innerHTML='<h3>'+esc(p.title)+'</h3>'+link(p.html_url,"Open PR")+table(["Property","Value"],[["State",esc(p.state)],["Draft",esc(p.draft)],["Author",esc(p.user.login)],["Base",esc(p.base.ref)],["Head",esc(p.head.ref)],["Full head SHA",'<code>'+esc(p.head.sha)+'</code>'],["Mergeable",esc(p.mergeable===null?"unknown":p.mergeable)],["Files",esc(p.changed_files)],["Additions / deletions",esc(p.additions+" / "+p.deletions)]]);$("pr-files").innerHTML=table(["File","Status","+ / -"],f.map(x=>[link(x.blob_url,x.filename),esc(x.status),esc("+"+x.additions+" / -"+x.deletions)]));$("pr-reviews").innerHTML=table(["Reviewer","State","Submitted"],r.map(x=>[esc(x.user.login),esc(x.state),esc(x.submitted_at||"pending")]));$("pr-checks").innerHTML=c?table(["Check","Status","Conclusion","Link"],c.check_runs.map(x=>[esc(x.name),esc(x.status),esc(x.conclusion||"UNKNOWN"),x.html_url?link(x.html_url,"Open run"):"—"])):'<div class="empty">Checks unavailable: '+esc(ce)+'. Readiness UNKNOWN.</div>';if(c&&!c.check_runs.length)$("pr-checks").innerHTML='<div class="empty">No checks returned; readiness UNKNOWN.</div>'}catch(e){state.pr=null;msg("pr-msg","Could not inspect PR: "+e.message)}};
+$("pr-clear").onclick=()=>{$("pr-repo").value="";$("pr-num").value="";state.pr=null;msg("pr-msg","Cleared.");["pr-data","pr-files","pr-reviews","pr-checks"].forEach(x=>$(x).innerHTML='<div class="empty">No data loaded.</div>')};
+$("user-load").onclick=async()=>{let n=$("user-name").value.trim();if(!/^[A-Za-z0-9-]{1,39}$/.test(n)){msg("user-msg","Enter a valid GitHub username.");return}msg("user-msg","Loading profile…");try{let u=await api("/users/"+encodeURIComponent(n));state.user=u;msg("user-msg","Public profile loaded; this does not prove membership or permissions.");$("user-data").innerHTML='<h3>'+esc(u.name||u.login)+'</h3>'+link(u.html_url,"Open profile")+table(["Property","Value"],[["Username",esc(u.login)],["Bio",esc(u.bio||"—")],["Public repositories",esc(u.public_repos)],["Followers",esc(u.followers)],["Following",esc(u.following)],["Created",esc(u.created_at)]])}catch(e){state.user=null;msg("user-msg","Could not load profile: "+e.message)}};
+$("user-clear").onclick=()=>{$("user-name").value="";state.user=null;msg("user-msg","Cleared.");$("user-data").innerHTML='<div class="empty">Profile details appear here.</div>'};
+function evRecord(){return {repository:$("ev-repo").value.trim(),branch:$("ev-branch").value.trim(),commit_sha:$("ev-sha").value.trim(),gate:$("ev-gate").value.trim(),status:$("ev-status").value,observed_at:$("ev-time").value.trim(),evidence_url:$("ev-url").value.trim()}}
+function validateEv(r){let e=[];if(!isRepo(r.repository))e.push("Repository must be owner/name.");if(!r.branch)e.push("Branch required.");if(!isSha(r.commit_sha))e.push("SHA must be 40 hex characters.");if(!r.gate)e.push("Gate name required.");if(!r.observed_at||Number.isNaN(Date.parse(r.observed_at)))e.push("Valid observation timestamp required.");if(r.evidence_url){try{if(new URL(r.evidence_url).protocol!=="https:")e.push("Evidence URL must use HTTPS.")}catch(_){e.push("Evidence URL invalid.")}}if(r.status==="pass"&&!r.evidence_url)e.push("PASS requires evidence URL.");return {record:r,errors:e,structurally_valid:!e.length,readiness:r.status==="pass"&&!e.length?"UNVERIFIED_PASS":"UNKNOWN",note:"Structure validation is not external evidence verification."}}
+$("ev-check").onclick=()=>{state.evidence=validateEv(evRecord());$("evidence-stat").textContent=state.evidence.structurally_valid?state.evidence.readiness:"INVALID";msg("ev-output",(state.evidence.errors.length?"Invalid:\n- "+state.evidence.errors.join("\n- "):"Record structure valid; external result remains unverified.")+"\n\n"+JSON.stringify(state.evidence,null,2))};
+$("ev-copy").onclick=()=>copy(JSON.stringify(state.evidence||validateEv(evRecord()),null,2));$("ev-clear").onclick=()=>{["ev-repo","ev-branch","ev-sha","ev-gate","ev-time","ev-url"].forEach(x=>$(x).value="");$("ev-status").value="unknown";state.evidence=null;$("evidence-stat").textContent="UNKNOWN";msg("ev-output","Cleared. Status UNKNOWN.")};
+const gateNames=[["format","Format / style"],["tests","Unit / integration tests"],["build","Build / package"],["security","Security / secret scan"],["sha","Commit SHA binding"],["review","Independent review"]];
+$("gate-list").innerHTML=gateNames.map(([id,n])=>'<div class="check"><input type="checkbox" id="g-'+id+'" checked><label for="g-'+id+'">'+n+'</label><select data-g="'+id+'"><option>unknown</option><option>pending</option><option>not_run</option><option>fail</option><option>pass</option></select></div>').join("");
+function gateResult(){let sha=$("gate-sha").value.trim(),g=[];document.querySelectorAll("[data-g]").forEach(x=>{if($("g-"+x.dataset.g).checked)g.push({name:x.dataset.g,status:x.value,commit_sha:sha})});let errors=[];if(!isSha(sha))errors.push("Target SHA invalid.");g.forEach(x=>{if(x.status!=="pass")errors.push(x.name+" is "+x.status+", not PASS.")});return {target_commit_sha:sha,required_gates:g,ready:isSha(sha)&&g.length>0&&errors.length===0,errors,note:"Local checklist only; verify real CI source and SHA independently."}}
+$("gate-eval").onclick=()=>{state.gates=gateResult();msg("gate-output",(state.gates.ready?"All selected gates reported PASS locally; source verification still required.":"BLOCKED / UNKNOWN — required gates are not all passing.")+"\n"+state.gates.errors.join("\n")+"\n"+JSON.stringify(state.gates,null,2)};$("gate-reset").onclick=()=>{document.querySelectorAll("[data-g]").forEach(x=>x.value="unknown");state.gates=null;msg("gate-output","Readiness UNKNOWN — results reset.")};$("gate-export").onclick=()=>download("quality-gates.json",JSON.stringify(state.gates||gateResult(),null,2),"application/json");
+function checkpoint(){let v=id=>$(id).value.trim();return "# Development Checkpoint\n\n## Target\n- Repository: "+(v("cp-repo")||"Not specified")+"\n- Branch: "+(v("cp-branch")||"Not specified")+"\n- Commit SHA: "+(v("cp-sha")||"UNKNOWN")+"\n- Created: "+new Date().toISOString()+"\n\n## Goal\n"+(v("cp-goal")||"Not specified")+"\n\n## Completed\n"+(v("cp-done")||"- None recorded")+"\n\n## Remaining / blockers\n"+(v("cp-pending")||"- None recorded")+"\n\n## Tests and evidence\n"+(v("cp-tests")||"- No test evidence; UNKNOWN.")+"\n\n## Safety\n- No force-push or history rewrite.\n- Required gates must pass on the exact full SHA.\n- Missing, stale, mismatched or unverifiable evidence is UNKNOWN.\n- This checkpoint is not proof of successful tests.\n"}
+$("cp-build").onclick=()=>$("cp-output").value=checkpoint();$("cp-copy").onclick=()=>copy($("cp-output").value||checkpoint());$("cp-download").onclick=()=>download("CHECKPOINT.md",$("cp-output").value||checkpoint(),"text/markdown");
+const audits=[["a-target","Target repository, branch and full SHA verified."],["a-scope","Diff and changed-file scope reviewed."],["a-secret","No secrets or private data added."],["a-tests","Required tests and security scans have real results."],["a-evidence","Evidence is fresh and bound to the exact SHA."],["a-history","No force-push, history rewrite or direct main edit."],["a-auth","Write scope has explicit approval and server enforcement."]];
+$("audit-list").innerHTML=audits.map(([id,t])=>'<div class="check"><input type="checkbox" id="'+id+'"><label for="'+id+'">'+t+'</label></div>').join("");
+function auditResult(){let items=audits.map(([id,t])=>({item:t,checked:$(id).checked}));return {items,complete:items.every(x=>x.checked),missing:items.filter(x=>!x.checked).map(x=>x.item),note:"Browser checklist only, not a durable audit log."}}
+$("audit-eval").onclick=()=>{state.audit=auditResult();msg("audit-output",(state.audit.complete?"Checklist complete; independently verify evidence and permissions.":"NOT READY — "+state.audit.missing.length+" unchecked items.")+"\n"+state.audit.note+"\n"+JSON.stringify(state.audit,null,2)};$("audit-reset").onclick=()=>{audits.forEach(([id])=>$(id).checked=false);state.audit=null;msg("audit-output","Audit readiness UNKNOWN.")};$("audit-export").onclick=()=>download("audit-checklist.json",JSON.stringify(state.audit||auditResult(),null,2));
+async function copy(t){try{await navigator.clipboard.writeText(t);alert("Copied.")}catch(_){alert("Clipboard unavailable; select and copy manually.")}}function download(n,t,type){let u=URL.createObjectURL(new Blob([t],{type:type||"text/plain;charset=utf-8"})),a=document.createElement("a");a.href=u;a.download=n;a.click();URL.revokeObjectURL(u)}
+</script></body></html>
