@@ -55,6 +55,7 @@ $("audit-eval").onclick=()=>{state.audit=auditResult();msg("audit-output",(state
 async function copy(t){try{await navigator.clipboard.writeText(t);alert("Copied.")}catch(_){alert("Clipboard unavailable; select and copy manually.")}}function download(n,t,type){let u=URL.createObjectURL(new Blob([t],{type:type||"text/plain;charset=utf-8"})),a=document.createElement("a");a.href=u;a.download=n;a.click();URL.revokeObjectURL(u)}
 
 // Shared route color manager: centralized, validated, browser-local preferences.
+// Colors are presentation only; they never prove gate status.
 const ROUTE_COLOR_DEFAULTS=Object.freeze({route_read:"#2563eb",route_analyze:"#7c3aed",route_write:"#ea580c",route_test:"#15803d",route_audit:"#0f766e",route_block:"#dc2626",route_unknown:"#64748b",status_pass:"#15803d",status_fail:"#dc2626",status_pending:"#a16207",status_unknown:"#64748b"});
 const ROUTE_COLOR_LABELS=Object.freeze({route_read:"READ",route_analyze:"ANALYZE",route_write:"WRITE / MODIFY",route_test:"TEST",route_audit:"AUDIT",route_block:"BLOCKED",route_unknown:"UNKNOWN",status_pass:"PASS",status_fail:"FAIL",status_pending:"PENDING",status_unknown:"UNKNOWN"});
 const ROUTE_COLOR_STORAGE_KEY="dcp.route-colors.v1";
