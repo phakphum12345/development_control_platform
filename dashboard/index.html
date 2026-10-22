@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Development Control Platform</title>
+<style>
+:root {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #172033;
+  background: #f5f7fb;
+  --read: #2563eb;
+  --analyze: #7c3aed;
+  --write: #b45309;
+  --test: #15803d;
+  --audit: #0f766e;
+  --block: #b91c1c;
+  --unknown: #64748b;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+.wrap { max-width: 1000px; margin: auto; padding: 28px 18px 60px; }
+header { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; flex-wrap:wrap; }
+h1 { margin:0; font-size:clamp(1.5rem,3vw,2.2rem); }
+h2 { margin-top:0; }
+p { line-height:1.6; color:#596579; }
+.card { background:#fff; border:1px solid #e0e6ef; border-radius:16px; padding:20px; margin-top:20px; }
+.pill { display:inline-block; border:1px solid #d7deea; border-radius:999px; padding:6px 10px; font-size:.82rem; background:#fff; }
+.banner { padding:14px 16px; border-left:4px solid var(--unknown); background:#eef2f7; border-radius:8px; line-height:1.6; margin-top:20px; }
+.navigation { display:grid; grid-template-columns:repeat(auto-fit,minmax(145px,1fr)); gap:12px; margin-top:16px; }
+.route { display:block; min-height:112px; padding:14px; border:1px solid #d7deea; border-top:5px solid var(--route); border-radius:12px; background:#fff; color:#172033; text-decoration:none; }
+.route strong { display:block; margin-bottom:7px; }
+.route span { color:#596579; font-size:.9rem; line-height:1.45; }
+.route:focus-visible, a:focus-visible { outline:3px solid #111827; outline-offset:3px; }
+.read { --route:var(--read); }
+.analyze { --route:var(--analyze); }
+.write { --route:var(--write); }
+.test { --route:var(--test); }
+.audit { --route:var(--audit); }
+.block { --route:var(--block); }
+.unknown { --route:var(--unknown); }
+.notice { padding:12px; border-radius:8px; background:#fff7ed; border-left:4px solid var(--write); line-height:1.6; }
+.state { display:inline-block; padding:4px 9px; border-radius:999px; font-size:.82rem; font-weight:700; }
+.state-unknown { color:#334155; background:#e2e8f0; }
+.state-block { color:#991b1b; background:#fee2e2; }
+.state-pass { color:#166534; background:#dcfce7; }
+.muted { color:#667085; }
+ul, ol { line-height:1.8; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior:auto !important; } }
+</style>
+</head>
+<body>
+<main class="wrap" data-control-plane-nav="static">
+<header>
+  <div>
+    <h1>Development Control Platform</h1>
+    <p>Color-coded navigation for safe project review and evidence tracking.</p>
+  </div>
+  <span class="pill">STATIC PREVIEW · INTEGRATIONS DISABLED</span>
+</header>
+
+<section class="banner" role="status" aria-live="polite">
+  <strong>Read-only preview.</strong>
+  This page does not connect to repositories, fetch CI data, or modify files.
+  No project or gate is represented as passing.
+</section>
+
+<section class="card" aria-labelledby="navigation-title">
+  <h2 id="navigation-title">Development navigation</h2>
+  <p>Colors indicate the type of activity, not permission to perform it.</p>
+  <nav class="navigation" aria-label="Development workflow">
+    <a class="route read" href="#read"><strong>01 · READ</strong><span>Inspect repository, branch, commit and working tree.</span></a>
+    <a class="route analyze" href="#analyze"><strong>02 · ANALYZE</strong><span>Review diffs, requirements, gate results and SHA binding.</span></a>
+    <a class="route write" href="#write"><strong>03 · WRITE / MODIFY</strong><span>Confirm target and authorized file scope before editing.</span></a>
+    <a class="route test" href="#test"><strong>04 · TEST</strong><span>Run checks and capture evidence for the exact commit.</span></a>
+    <a class="route audit" href="#audit"><strong>05 · AUDIT</strong><span>Review permissions, evidence freshness and Git history.</span></a>
+    <a class="route block" href="#block"><strong>STOP · BLOCK</strong><span>Stop if the target, permissions or commit identity mismatch.</span></a>
+  </nav>
+</section>
+
+<section class="card" id="read">
+  <h2><span class="state" style="color:#1d4ed8;background:#dbeafe">READ</span> Confirm the target</h2>
+  <ul>
+    <li>Repository: not connected in this preview.</li>
+    <li>Branch and full commit SHA: must be verified from the actual repository.</li>
+    <li>Registered projects: <strong>0</strong>.</li>
+  </ul>
+</section>
+
+<section class="card" id="analyze">
+  <h2><span class="state" style="color:#6d28d9;background:#ede9fe">ANALYZE</span> Verify before acting</h2>
+  <ul>
+    <li>Compare staged and unstaged changes separately.</li>
+    <li>Confirm the intended repository, branch, files and approved scope.</li>
+    <li>Reject missing, stale, mismatched or unverifiable evidence.</li>
+  </ul>
+</section>
+
+<section class="card" id="write">
+  <h2><span class="state" style="color:#92400e;background:#fef3c7">WRITE</span> Explicit scope only</h2>
+  <p class="notice">This preview provides no write action. Color, navigation or project selection never grants write permission.</p>
+  <ul>
+    <li>Keep integrations disabled by default.</li>
+    <li>Require explicit approval for new write scopes.</li>
+    <li>Do not force-push or rewrite canonical history.</li>
+  </ul>
+</section>
+
+<section class="card" id="test">
+  <h2><span class="state state-unknown">UNKNOWN</span> Test evidence</h2>
+  <p>No live test results are loaded. A green indicator must only be used after a real check passes against the exact intended commit SHA.</p>
+</section>
+
+<section class="card" id="audit">
+  <h2>AUDIT</h2>
+  <ul>
+    <li>Review the full diff and file inventory.</li>
+    <li>Verify the source, freshness and commit identity of evidence.</li>
+    <li>Confirm all required gates pass before any merge decision.</li>
+  </ul>
+</section>
+
+<section class="card" id="block">
+  <h2><span class="state state-block">BLOCK</span> Stop conditions</h2>
+  <ul>
+    <li>Repository or branch does not match the approved target.</li>
+    <li>Evidence SHA differs from the project commit SHA.</li>
+    <li>A required gate is missing or not passing.</li>
+    <li>Write permission or external connection has not been explicitly authorized.</li>
+  </ul>
+</section>
+
+<section class="card">
+  <h2>Product editions</h2>
+  <p><strong>Personal Edition</strong> — independent project tracking for individuals.</p>
+  <p><strong>Organization Edition</strong> — requires server-side authorization, tenant isolation, role enforcement and audit logging before production use.</p>
+  <p class="muted">These are product scopes. This static page does not implement authorization or live status.</p>
+</section>
+</main>
+</body>
+</html>
