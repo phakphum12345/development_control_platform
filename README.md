@@ -13,6 +13,7 @@ Open dashboard/index.html in a modern browser. Current tools:
 - **Quality Gate Planner** — evaluate selected required gates with fail-closed local checklist rules.
 - **Checkpoint Builder** — create a Markdown handoff note and copy or download it.
 - **Audit & Safety Checklist** — export a local safety checklist as JSON.
+- **Shared Route Color Manager** — one centralized palette for READ, ANALYZE, WRITE/MODIFY, TEST, AUDIT, BLOCKED and UNKNOWN plus PASS/FAIL/PENDING/UNKNOWN status colors. Customize, preview, save in the current browser, reset, or export JSON; colors are presentation only and never prove gate status.
 
 The dashboard calls the unauthenticated public GitHub REST API directly from the browser. Network errors, inaccessible resources, and rate limits are shown as errors. This is not private-repository integration and uses no credentials.
 
