@@ -1,0 +1,13 @@
+version: 1
+
+# Opt-in registry. Start empty; never register personal projects implicitly.
+projects: []
+
+policy:
+  merge_requires_all_required_gates_passed: true
+  missing_gate_result: unknown
+  allow_force_push: false
+  allow_history_rewrite: false
+  require_sha_bound_evidence: true
+  require_human_approval_for_new_write_scopes: true
+  integrations_enabled_by_default: false

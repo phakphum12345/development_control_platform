@@ -1,0 +1,234 @@
+name: Validate Control Plane
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install validators
+        run: python -m pip install --disable-pip-version-check PyYAML jsonschema
+
+      - name: Validate registry YAML and JSON Schema
+        run: |
+          python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+          import yaml
+          from jsonschema import Draft202012Validator, FormatChecker
+
+          registry_path = Path("config/projects.yml")
+          schema_path = Path("schemas/project-state.schema.json")
+
+          # BaseLoader avoids YAML 1.1 coercion of the GitHub Actions key "on".
+          registry = yaml.load(
+              registry_path.read_text(encoding="utf-8"),
+              Loader=yaml.BaseLoader,
+          )
+          assert isinstance(registry, dict), "Registry must be a YAML mapping"
+          assert registry.get("version") == "1", "Unsupported registry version"
+          assert isinstance(registry.get("projects"), list), \
+              "projects must be a list"
+
+          policy = registry.get("policy")
+          assert isinstance(policy, dict), "policy must be a mapping"
+          assert policy.get("merge_requires_all_required_gates_passed") == "true"
+          assert policy.get("missing_gate_result") == "unknown"
+          assert policy.get("allow_force_push") == "false"
+          assert policy.get("allow_history_rewrite") == "false"
+          assert policy.get("require_sha_bound_evidence") == "true"
+          assert policy.get("require_human_approval_for_new_write_scopes") == "true"
+          assert policy.get("integrations_enabled_by_default") == "false"
+
+          seen_ids = set()
+          for project in registry["projects"]:
+              assert isinstance(project, dict), "Each project must be a mapping"
+              for field in (
+                  "id", "name", "repository", "default_branch",
+                  "status_source", "required_gates"
+              ):
+                  assert field in project, f"Project missing {field}"
+
+              project_id = project["id"]
+              assert project_id and project_id not in seen_ids, \
+                  "Project IDs must be nonempty and unique"
+              seen_ids.add(project_id)
+
+              assert re.fullmatch(
+                  r"[^/\s]+/[^/\s]+", project["repository"]
+              ), f"Invalid repository name for {project_id}"
+              assert project["default_branch"]
+              assert project["status_source"] in ("manual", "github")
+              assert isinstance(project["required_gates"], list)
+              assert all(project["required_gates"]), \
+                  "Required gate names must be nonempty"
+
+          schema = json.loads(schema_path.read_text(encoding="utf-8"))
+          Draft202012Validator.check_schema(schema)
+          validator = Draft202012Validator(
+              schema, format_checker=FormatChecker()
+          )
+
+          # Validate persisted project states against the opt-in registry.
+          state_dir = Path("states")
+          state_files = sorted(state_dir.glob("*.json")) if state_dir.is_dir() else []
+          project_by_id = {project["id"]: project for project in registry["projects"]}
+
+          assert len(state_files) == len(project_by_id), (
+              "Each registered project must have exactly one states/*.json file; "
+              "remove orphan states or add the missing project state."
+          )
+
+          def check_required_gate_status(required_gate_names, state):
+              gate_by_name = {gate["name"]: gate for gate in state["gates"]}
+              for gate_name in required_gate_names:
+                  gate = gate_by_name.get(gate_name)
+                  if gate is None:
+                      raise ValueError(
+                          f"Required gate '{gate_name}' is missing from project state"
+                      )
+                  if gate["status"] != "pass":
+                      raise ValueError(
+                          f"Required gate '{gate_name}' must be pass; "
+                          f"got {gate['status']!r}"
+                      )
+
+          states_by_id = {}
+          for state_path in state_files:
+              state = json.loads(state_path.read_text(encoding="utf-8"))
+              validator.validate(state)
+
+              project_id = state["project_id"]
+              assert project_id in project_by_id, (
+                  f"{state_path}: project_id is not registered: {project_id}"
+              )
+              assert project_id not in states_by_id, (
+                  f"Duplicate state for project_id: {project_id}"
+              )
+
+              project = project_by_id[project_id]
+              assert state["repository"] == project["repository"], (
+                  f"{state_path}: repository does not match registry"
+              )
+              assert state["branch"] == project["default_branch"], (
+                  f"{state_path}: branch does not match registry default_branch"
+              )
+
+              gate_names = [gate["name"] for gate in state["gates"]]
+              assert len(gate_names) == len(set(gate_names)), (
+                  f"{state_path}: duplicate gate names"
+              )
+
+              missing_gates = set(project["required_gates"]) - set(gate_names)
+              assert not missing_gates, (
+                  f"{state_path}: required gates missing; record their status as "
+                  f"'unknown': {sorted(missing_gates)}"
+              )
+
+              for gate in state["gates"]:
+                  assert gate["commit_sha"] == state["commit_sha"], (
+                      f"{state_path}: gate '{gate['name']}' SHA does not match "
+                      "project commit_sha"
+                  )
+
+              check_required_gate_status(project["required_gates"], state)
+              states_by_id[project_id] = state
+
+          assert set(states_by_id) == set(project_by_id), (
+              "Registered projects and validated project states must match exactly"
+          )
+          sha = "a" * 40
+          valid_state = {
+              "project_id": "validation-fixture",
+              "repository": "example/project",
+              "branch": "main",
+              "commit_sha": sha,
+              "observed_at": "2026-01-01T00:00:00Z",
+              "gates": [{
+                  "name": "fixture",
+                  "status": "pass",
+                  "commit_sha": sha,
+                  "observed_at": "2026-01-01T00:00:00Z",
+                  "evidence_url": "https://example.com/evidence/1"
+              }]
+          }
+          validator.validate(valid_state)
+
+          mismatch_state = json.loads(json.dumps(valid_state))
+          mismatch_state["gates"][0]["commit_sha"] = "b" * 40
+          mismatch_errors = list(validator.iter_errors(mismatch_state))
+          # JSON Schema checks SHA format; cross-field SHA equality is a
+          # semantic check and is deliberately enforced separately below.
+          assert not mismatch_errors
+
+          def check_sha_binding(state):
+              for gate in state["gates"]:
+                  if gate["commit_sha"] != state["commit_sha"]:
+                      raise ValueError("Gate evidence SHA does not match project SHA")
+
+          try:
+              check_sha_binding(mismatch_state)
+          except ValueError:
+              pass
+          else:
+              raise AssertionError(
+                  "Mismatched gate evidence SHA was accepted"
+              )
+          nonpassing_state = json.loads(json.dumps(valid_state))
+          nonpassing_state["gates"][0]["status"] = "unknown"
+          try:
+              check_required_gate_status(["fixture"], nonpassing_state)
+          except ValueError:
+              pass
+          else:
+              raise AssertionError("Required gate with unknown status was accepted")
+
+          missing_gate_state = json.loads(json.dumps(valid_state))
+          try:
+              check_required_gate_status(["missing-fixture"], missing_gate_state)
+          except ValueError as error:
+              assert "missing-fixture" in str(error), (
+                  "Missing-gate error must identify the missing gate"
+              )
+          else:
+              raise AssertionError("Missing required gate was accepted")
+
+          no_evidence_state = json.loads(json.dumps(valid_state))
+          del no_evidence_state["gates"][0]["evidence_url"]
+          assert list(validator.iter_errors(no_evidence_state)), \
+              "Passing gate without evidence URL must be rejected"
+
+          print(f"Registry structure and policy checks passed ({len(registry['projects'])} registered projects).")
+
+          print("JSON Schema meta-validation and evidence fixtures passed.")
+          PY
+
+      - name: Check for likely credential patterns
+        shell: bash
+        run: |
+          if grep -RInE \
+            '(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16})' \
+            --exclude-dir=.git \
+            --exclude-dir=.venv \
+            --exclude-dir=node_modules \
+            --exclude='*.lock' \
+            .; then
+            echo "::error::Potential credential pattern found."
+            exit 1
+          fi
