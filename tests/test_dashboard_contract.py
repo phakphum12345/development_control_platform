@@ -73,7 +73,7 @@ class DashboardContractTests(unittest.TestCase):
             'function buildRoutePreviewDocument(routeId)',
             'Route preview generated from current local registry and connections',
             'querySelectorAll(".view")',
-            'actual app navigation is unchanged',
+            'Actual app navigation is unchanged',
         ):
             with self.subTest(contract=contract):
                 self.assertIn(contract, HTML)
