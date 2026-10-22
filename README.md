@@ -14,8 +14,8 @@ Open dashboard/index.html in a modern browser. Current tools:
 - **Checkpoint Builder** — create a Markdown handoff note and copy or download it.
 - **Audit & Safety Checklist** — export a local safety checklist as JSON.
 - **Shared Route Color Manager** — one centralized palette for READ, ANALYZE, WRITE/MODIFY, TEST, AUDIT, BLOCKED and UNKNOWN plus PASS/FAIL/PENDING/UNKNOWN status colors. Customize, preview, save in the current browser, reset, or export JSON; colors are presentation only and never prove gate status.
-- **UI Route Manager** — a browser-local registry of actual Dashboard view IDs, with a visual connection builder, basic duplicate/missing-target/parent validation, and JSON export. Registry and visual connections use the same local data model.
-- **UI Simulator** — a split code-editor/live-preview page for HTML/CSS/JavaScript prototypes. Preview runs in a sandboxed iframe and can be downloaded as an HTML file; it does not modify production routing or deploy the preview.
+- **UI Route Manager** — a browser-local registry of actual Dashboard view IDs, with add/edit/delete controls, a drag-and-drop visual connection builder, duplicate/missing-target/parent validation, and JSON export. Registry and visual connections use the same local data model.
+- **UI Simulator** — a split code-editor/live-preview page for HTML/CSS/JavaScript prototypes, plus a registry-route preview that simulates navigation over the same registered connections. Both previews run in a sandboxed iframe and can be downloaded as an HTML file; neither modifies production routing or deploys the preview.
 
 The dashboard calls the unauthenticated public GitHub REST API directly from the browser. Network errors, inaccessible resources, and rate limits are shown as errors. This is not private-repository integration and uses no credentials.
 
