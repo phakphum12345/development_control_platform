@@ -60,6 +60,24 @@ class DashboardContractTests(unittest.TestCase):
         self.assertIn("dcp.ui-route-registry.v1", HTML)
         self.assertIn("metadata-only", HTML)
 
+    def test_ui_route_manager_supports_edit_drag_drop_and_registry_simulation(self):
+        for contract in (
+            'id="route-cancel-edit"',
+            'data-route-edit=',
+            'function beginRouteEdit(id)',
+            'function cancelRouteEdit()',
+            'addEventListener("dragstart"',
+            'addEventListener("drop"',
+            'id="sim-route-select"',
+            'id="sim-open-route"',
+            'function buildRoutePreviewDocument(routeId)',
+            'Route preview generated from current local registry and connections',
+            'querySelectorAll(".view")',
+            'actual app navigation is unchanged',
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, HTML)
+
     def test_shared_route_color_manager_is_centralized_and_safe(self):
         for contract in (
             "ROUTE_COLOR_DEFAULTS",
