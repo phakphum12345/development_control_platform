@@ -78,6 +78,17 @@ class DashboardContractTests(unittest.TestCase):
             with self.subTest(contract=contract):
                 self.assertIn(contract, HTML)
 
+    def test_route_validation_detects_parent_cycles_duplicate_edges_and_disabled_targets(self):
+        for contract in (
+            "const errors=[],warnings=[]",
+            "Parent cycle detected:",
+            "Duplicate connection:",
+            "Connection leads to disabled route:",
+            "warnings,errors",
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, HTML)
+
     def test_shared_route_color_manager_is_centralized_and_safe(self):
         for contract in (
             "ROUTE_COLOR_DEFAULTS",
