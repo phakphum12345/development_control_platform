@@ -91,6 +91,7 @@ try {
   assert.equal(await page.locator("#pwa-install").isVisible(), false);
   await page.locator('[data-tab="account"]').click();
   assert.equal(await page.locator("#auth-submit").isDisabled(), true);
+  await page.waitForFunction(() => document.querySelector("#auth-backend-status")?.textContent.includes("Authentication backend unavailable"));
   assert.match(await page.locator("#auth-backend-status").textContent(), /Authentication backend unavailable/);
   await page.locator("#auth-username").fill("test@example.invalid");
   await page.locator("#auth-password").fill("never-store-this");
