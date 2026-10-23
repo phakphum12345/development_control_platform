@@ -7,10 +7,10 @@ HTML = (ROOT / "dashboard" / "index.html").read_text(encoding="utf-8")
 
 class DashboardContractTests(unittest.TestCase):
     def test_all_tool_views_exist(self):
-        for view in ("home", "repo", "pr", "user", "workspace", "evidence", "gates", "checkpoint", "audit", "route-colors", "ui-routes", "ui-simulator"):
+        for view in ("home", "repo", "pr", "user", "workspace", "evidence", "gates", "checkpoint", "audit", "route-colors", "ui-routes", "ui-simulator", "dev-tools"):
             with self.subTest(view=view):
                 self.assertIn('id="' + view + '"', HTML)
-        for control in ("repo-load", "pr-load", "user-load", "ws-load", "ws-repo", "ws-branch", "ws-permission", "ws-branches", "ev-check", "gate-eval", "cp-build", "audit-eval", "route-color-save", "route-color-reset", "route-color-export", "route-add", "route-reset", "route-export", "edge-add", "edge-clear", "sim-run", "sim-reset", "sim-download"):
+        for control in ("repo-load", "pr-load", "user-load", "ws-load", "ws-repo", "ws-branch", "ws-permission", "ws-branches", "ev-check", "gate-eval", "cp-build", "audit-eval", "route-color-save", "route-color-reset", "route-color-export", "route-add", "route-reset", "route-export", "edge-add", "edge-clear", "sim-run", "sim-reset", "sim-download", "dev-tools-copy-status"):
             with self.subTest(control=control):
                 self.assertIn('id="' + control + '"', HTML)
 
@@ -110,6 +110,37 @@ class DashboardContractTests(unittest.TestCase):
         self.assertIn('type="color"', HTML)
         self.assertIn("route_unknown", HTML)
         self.assertIn("status_unknown", HTML)
+
+
+class DevEnvironmentDashboardContractTests(unittest.TestCase):
+    def test_local_tooling_view_is_honest_and_actionable(self):
+        for expected in (
+            'id="dev-tools"', 'data-tab="dev-tools"',
+            'python tools/dev_environment.py status', 'python tools/dev_environment.py devices',
+            'python tools/dev_environment.py avds',
+            'python tools/dev_environment.py launch-avd --name YOUR_AVD_NAME',
+            'A browser cannot inspect or launch processes on your computer',
+            'not automatically uploaded or treated as CI evidence', 'data-copy-command',
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, HTML)
+
+    def test_environment_helper_contract_and_safety(self):
+        helper = (ROOT / "tools" / "dev_environment.py").read_text(encoding="utf-8")
+        for expected in ("def status()", "def devices()", "def avds()", "def launch_avd(name: str)",
+                         "shell=False", '"status": "unknown"', "AVD name is not in the installed AVD list"):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, helper)
+
+    def test_vscode_tasks_are_workspace_scoped_and_do_not_install_sdks(self):
+        import json
+        tasks = json.loads((ROOT / ".vscode" / "tasks.json").read_text(encoding="utf-8"))
+        labels = {task["label"] for task in tasks["tasks"]}
+        for label in ("DCP: Check local development environment", "DCP: List Android AVDs",
+                      "DCP: Launch Android AVD", "DCP: Python contract tests",
+                      "DCP: Dashboard browser smoke tests"):
+            self.assertIn(label, labels)
+        self.assertTrue(all(task["type"] == "process" for task in tasks["tasks"]))
 
 
 if __name__ == "__main__":

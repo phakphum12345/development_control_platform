@@ -1,0 +1,10 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "ms-vscode.powershell",
+    "Dart-Code.flutter",
+    "Dart-Code.dart-code",
+    "ms-playwright.playwright"
+  ]
+}

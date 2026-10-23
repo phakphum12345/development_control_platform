@@ -1,0 +1,81 @@
+{
+  "version": "2.0.0",
+  "inputs": [
+    {
+      "id": "avdName",
+      "type": "promptString",
+      "description": "Exact AVD name from 'List Android AVDs'",
+      "default": "Pixel_API_35"
+    }
+  ],
+  "tasks": [
+    {
+      "label": "DCP: Check local development environment",
+      "type": "process",
+      "command": "python",
+      "args": [
+        "tools/dev_environment.py",
+        "status"
+      ],
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "DCP: List connected devices",
+      "type": "process",
+      "command": "python",
+      "args": [
+        "tools/dev_environment.py",
+        "devices"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "DCP: List Android AVDs",
+      "type": "process",
+      "command": "python",
+      "args": [
+        "tools/dev_environment.py",
+        "avds"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "DCP: Launch Android AVD",
+      "type": "process",
+      "command": "python",
+      "args": [
+        "tools/dev_environment.py",
+        "launch-avd",
+        "--name",
+        "${input:avdName}"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "DCP: Python contract tests",
+      "type": "process",
+      "command": "python",
+      "args": [
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-v"
+      ],
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "DCP: Dashboard browser smoke tests",
+      "type": "process",
+      "command": "node",
+      "args": [
+        "tests/browser_smoke.mjs"
+      ],
+      "problemMatcher": [],
+      "group": "test"
+    }
+  ]
+}
