@@ -63,8 +63,29 @@ try {
   await page.locator("#sim-open-route").click();
   assert.equal(await frame.contentFrame().locator("#route-title").textContent(), "Overview");
 
+
+  // Code Navigator must use the existing route/color managers and make its
+  // actions truthful: trace the real view, then run DOM-only checks.
+  await page.locator('[data-tab="code-navigator"]').click();
+  await page.locator('[data-code-nav-route="ui-routes"]').click();
+  await page.locator("#code-nav-trace-calls").click();
+  assert.match(await page.locator("#code-nav-result").textContent(), /Trace Calls — declared mapping only/);
+  await page.locator("#code-nav-run-checks").click();
+  assert.match(await page.locator("#code-nav-result").textContent(), /Mapped elements present: 5\/5/);
+  assert.match(await page.locator("#code-nav-evidence").textContent(), /CI \/ deployment evidence: UNKNOWN/);
+  await page.locator("#code-nav-show-ui").click();
+  assert.equal(await page.locator("#ui-routes").evaluate((el) => el.classList.contains("active")), true);
+  await page.locator('[data-tab="code-navigator"]').click();
+  await page.locator("#code-nav-filter").selectOption("security");
+  assert.equal(await page.locator('[data-code-nav-route="evidence"]').count(), 1);
+  assert.equal(await page.locator('[data-code-nav-route="ui-routes"]').count(), 0);
+  await page.locator("#code-nav-search").fill("nonexistent-route-query");
+  assert.equal(await page.locator('[data-code-nav-route]').count(), 0);
+  await page.locator("#code-nav-search").fill("");
+  await page.locator("#code-nav-filter").selectOption("all");
+
   assert.deepEqual(pageErrors, [], "dashboard should not raise uncaught browser errors");
-  console.log("Browser smoke tests passed: route colors, registry CRUD, connections, sandbox, and route preview.");
+  console.log("Browser smoke tests passed: route colors, registry CRUD, connections, sandbox, route preview, and Code Navigator mapping/actions.");
 } finally {
   await browser.close();
   await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
