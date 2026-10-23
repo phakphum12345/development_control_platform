@@ -7,6 +7,7 @@ An independent control plane for development phases, quality gates, commit-bound
 Open dashboard/index.html in a modern browser. Current tools:
 
 - **Repository Explorer** — inspect public repository metadata, up to 100 branches and the first 20 open pull requests.
+- **Research OS API** — staged, read-only connector using Research OS Google sign-in and a one-time OAuth handoff. The session token remains in tab memory only; no GitHub token is sent to the browser.
 - **Pull Request Review** — inspect public PR metadata, up to 100 changed files and reviews, and check runs for the exact PR head SHA.
 - **User Explorer** — inspect public GitHub profile information. Public profile data is not proof of organization membership or permissions.
 - **SHA & Evidence Validator** — validate evidence record structure, full SHA format, timestamp and HTTPS URL.
@@ -21,7 +22,7 @@ The dashboard calls the unauthenticated public GitHub REST API directly from the
 
 ## Security limitations
 
-This static dashboard does **not** implement server-side authentication, GitHub App/OAuth installation, private repository access, organization tenant isolation, role-based authorization, durable audit logs, evidence freshness enforcement, production route integration, or Git write actions. UI Route Manager access labels are planning metadata only; browser-local registry edits do not alter the actual router. The UI Simulator runs user-authored preview code inside a sandboxed iframe and is not a production deployment tool. It cannot create branches or PRs, approve reviews, merge, push, or deploy. Browser controls are not an authorization boundary.
+The static public-GitHub tools do not provide private-repository access or authenticated GitHub permissions. The Research OS API connector is staged and is **not production-ready** until the matching backend changes are deployed to the canonical Render source repository and end-to-end tests prove session validation, owner authorization, repository allowlisting, CORS, and OAuth handoff. Until then, do not treat the connector as an available production capability. The dashboard does not implement organization tenant isolation, durable audit logs, evidence freshness enforcement, production route integration, or Git write actions. UI Route Manager access labels are planning metadata only; browser-local registry edits do not alter the actual router. The UI Simulator runs user-authored preview code inside a sandboxed iframe and is not a production deployment tool. It cannot create branches or PRs, approve reviews, merge, push, or deploy. Browser controls are not an authorization boundary.
 
 The evidence validator checks structure only. A structurally valid record is not proof that a gate actually passed. Independently verify the source, freshness, run result, and exact full commit SHA. Missing, stale, mismatched, or unverifiable evidence is unknown. Do not merge while a required gate is failing, pending, or unknown.
 
