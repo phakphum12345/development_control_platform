@@ -97,7 +97,7 @@ class DashboardContractTests(unittest.TestCase):
             'function codeNavTraceCalls()', 'function codeNavShowUI()',
             'function codeNavCompare()', 'function codeNavRunChecks()',
             'function codeNavCheckpoint()', 'dcp.ui-route-registry.v1',
-            'dcp.route-colors.v1', 'Dynamic call edges: UNKNOWN',
+            'dcp.route-colors.v1', 'Unmapped dynamic call edges: UNKNOWN',
             'CI / deployment evidence: UNKNOWN',
             'sandbox', 'Trace Calls', 'Run Checks', 'Impact / Dependencies',
         ):
