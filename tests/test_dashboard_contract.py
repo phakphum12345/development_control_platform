@@ -127,6 +127,32 @@ class DashboardContractTests(unittest.TestCase):
         self.assertIn("status_unknown", HTML)
 
 
+
+    def test_pwa_shell_and_password_auth_fail_closed(self):
+        import json
+        manifest = json.loads((ROOT / "dashboard" / "manifest.webmanifest").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["display"], "standalone")
+        self.assertEqual(manifest["scope"], "./")
+        self.assertTrue((ROOT / "dashboard" / "sw.js").is_file())
+        self.assertTrue((ROOT / "dashboard" / "icons" / "dcp.svg").is_file())
+        for expected in (
+            'rel="manifest" href="./manifest.webmanifest"',
+            'name="apple-mobile-web-app-capable" content="yes"',
+            'id="account"', 'id="auth-login-form"',
+            './api/auth/session', './api/auth/login', './api/auth/logout',
+            'credentials:"same-origin"', 'type="password"',
+            'GitHub Pages is static hosting',
+            'No password login will be simulated',
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, HTML)
+        self.assertNotIn("localStorage.setItem(\"auth", HTML)
+        self.assertNotIn("sessionStorage.setItem(\"auth", HTML)
+        worker = (ROOT / "dashboard" / "sw.js").read_text(encoding="utf-8")
+        self.assertIn("Authentication/API requests are always network-only", worker)
+        self.assertIn('request.method !== "GET"', worker)
+        self.assertIn("url.pathname.startsWith(apiPrefix)", worker)
+
 class DevEnvironmentDashboardContractTests(unittest.TestCase):
     def test_local_tooling_view_is_honest_and_actionable(self):
         for expected in (
