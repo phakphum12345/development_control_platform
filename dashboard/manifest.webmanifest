@@ -1,0 +1,20 @@
+{
+  "id": "./",
+  "name": "Development Control Platform",
+  "short_name": "DCP",
+  "description": "Mobile-friendly development control dashboard",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#101b35",
+  "theme_color": "#101b35",
+  "icons": [
+    {
+      "src": "./icons/dcp.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
