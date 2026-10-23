@@ -1,142 +1,203 @@
 <!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>Development Control Platform</title>
+<style>
+:root{font:16px system-ui,sans-serif;color:#182235;background:#f4f7fb;--p:#fff;--l:#dce3ed;--m:#596579;--a:#3457d5;--s:#edf1f7}*{box-sizing:border-box}body{margin:0}.wrap{max-width:1350px;margin:auto;padding:22px}header,.row,.actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:space-between}h1{margin:0;font-size:2rem}h2{margin-top:0}p{line-height:1.55;color:var(--m)}button,input,select,textarea{font:inherit;padding:10px;border:1px solid var(--l);border-radius:9px;background:var(--p);color:inherit}button{cursor:pointer}button.primary{background:var(--a);color:white}.layout{display:grid;grid-template-columns:220px minmax(0,1fr);gap:16px;margin-top:18px}.nav,.panel{background:var(--p);border:1px solid var(--l);border-radius:13px;padding:14px}.nav{position:sticky;top:10px;height:max-content}.nav button{width:100%;text-align:left;margin:3px 0}.nav button.active{background:var(--s);font-weight:700}.view{display:none}.view.active{display:block}.panel{margin-bottom:14px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.field{margin-bottom:12px}label{display:block;font-weight:650;margin-bottom:5px}input,select,textarea{width:100%}.output{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--s);padding:12px;border-radius:9px;margin-top:12px}.muted{color:var(--m)}.pill{display:inline-block;border:1px solid var(--l);border-radius:99px;padding:6px 10px;font-size:.8rem}.warn{padding:12px;background:#fff4d9;border:1px solid #dfc174;border-radius:10px;line-height:1.5}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.stat{background:var(--p);border:1px solid var(--l);border-radius:10px;padding:13px}.stat strong{display:block;font-size:1.4rem}table{border-collapse:collapse;width:100%;margin-top:10px}th,td{text-align:left;border-bottom:1px solid var(--l);padding:9px;vertical-align:top}a{color:var(--a);overflow-wrap:anywhere}.check{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--l)}.check input{width:auto}.check label{font-weight:400}.small{font-size:.85rem}.empty{padding:15px;border:1px dashed var(--l);border-radius:9px;color:var(--m)}@media(max-width:800px){.layout{grid-template-columns:1fr}.nav{position:static;display:grid;grid-template-columns:repeat(2,1fr)}.stats{grid-template-columns:repeat(2,1fr)}}@media(max-width:550px){.grid{grid-template-columns:1fr}.wrap{padding:12px}.stats{grid-template-columns:repeat(2,1fr)}}@media(prefers-color-scheme:dark){:root{color:#e8edf6;background:#101521;--p:#171f2d;--l:#303b4d;--m:#a4afc0;--a:#9aafff;--s:#202b3c}.warn{background:#352d19;color:#ffdfa0}}
+
+/* Shared route/status color tokens: one source of truth for the dashboard. */
+:root{--route-read:#2563eb;--route-analyze:#7c3aed;--route-write:#ea580c;--route-test:#15803d;--route-audit:#0f766e;--route-block:#dc2626;--route-unknown:#64748b;--status-pass:#15803d;--status-fail:#dc2626;--status-pending:#a16207;--status-unknown:#64748b}
+.route-legend{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.route-tag,.route-state{display:inline-flex;align-items:center;gap:6px;border:1px solid currentColor;border-radius:999px;padding:5px 9px;font-size:.82rem;font-weight:650;background:color-mix(in srgb,currentColor 9%,transparent)}.route-tag::before,.route-state::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}.route-read{color:var(--route-read)}.route-analyze{color:var(--route-analyze)}.route-write{color:var(--route-write)}.route-test{color:var(--route-test)}.route-audit{color:var(--route-audit)}.route-block{color:var(--route-block)}.route-unknown{color:var(--route-unknown)}.route-state[data-status="pass"]{color:var(--status-pass)}.route-state[data-status="fail"]{color:var(--status-fail)}.route-state[data-status="pending"]{color:var(--status-pending)}.route-state[data-status="unknown"]{color:var(--status-unknown)}.color-row{display:grid;grid-template-columns:minmax(0,1fr) 100px;gap:12px;align-items:center;padding:9px 0;border-bottom:1px solid var(--l)}.color-row label{margin:0}.color-row input[type=color]{width:100%;height:42px;padding:3px}.route-preview{display:flex;gap:8px;flex-wrap:wrap;padding:14px;border:1px solid var(--l);border-radius:10px;margin:12px 0}
+/* UI route registry and isolated two-pane simulator. */
+.route-manager-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(280px,.8fr);gap:14px}.route-map{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch}.route-node{min-width:120px;max-width:220px;padding:12px;border:1px solid var(--l);border-radius:10px;background:var(--s);overflow-wrap:anywhere}.route-node strong,.route-node small{display:block}.route-edge-list{display:grid;gap:8px}.route-edge{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px;border-bottom:1px solid var(--l)}.sim-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:stretch}.sim-pane{min-width:0}.sim-editor{width:100%;min-height:420px;resize:vertical;font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre;tab-size:2}.sim-frame{display:block;width:100%;height:500px;border:1px solid var(--l);border-radius:10px;background:#fff}.sim-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.route-table-wrap{overflow-x:auto}@media(max-width:900px){.route-manager-grid,.sim-layout{grid-template-columns:1fr}.sim-editor{min-height:300px}.sim-frame{height:400px}}
+</style></head><body><main class="wrap">
+<header><div><h1>Development Control Platform</h1><p>Repository inspection · PR review · evidence · gates · checkpoints · audit</p></div><span class="pill">READ-ONLY · PUBLIC API</span></header>
+<div class="warn"><b>Safety boundary:</b> This dashboard reads public GitHub API data only. No token, private repository access, push, branch creation, approval, merge or deployment is available. Registry remains opt-in and empty. Browser validation does not prove CI passed.</div>
+<div class="layout"><nav class="nav" aria-label="Tools">
+<button class="active" data-tab="home">Overview</button> <button data-tab="ui-routes">UI Route Manager</button><button data-tab="ui-simulator">UI Simulator</button><button data-tab="route-colors">Route Color Manager</button><button data-tab="repo">Repository Explorer</button><button data-tab="pr">Pull Request Review</button><button data-tab="user">User Explorer</button><button data-tab="evidence">SHA & Evidence</button><button data-tab="gates">Quality Gate Planner</button><button data-tab="checkpoint">Checkpoint Builder</button><button data-tab="audit">Audit & Safety</button>
+</nav><div>
+<section class="view active" id="home"><div class="stats"><div class="stat"><span class="muted small">Registered projects</span><strong>0</strong><span class="small muted">Opt-in only</span></div><div class="stat"><span class="muted small">Selected repo</span><strong id="selected">—</strong></div><div class="stat"><span class="muted small">Evidence</span><strong id="evidence-stat">UNKNOWN</strong></div><div class="stat"><span class="muted small">Write actions</span><strong>0</strong><span class="small muted">Disabled</span></div></div><div class="panel"><h2>Available tools</h2><p>Use the navigation to inspect public repositories and PRs, validate evidence structure, plan quality gates, generate a checkpoint, and export an audit checklist.</p><p><b>READ → ANALYZE → WRITE/MODIFY → TEST → AUDIT</b></p><div class="route-legend" aria-label="Shared workflow route colors"><span class="route-tag route-read">READ</span><span class="route-tag route-analyze">ANALYZE</span><span class="route-tag route-write">WRITE / MODIFY</span><span class="route-tag route-test">TEST</span><span class="route-tag route-audit">AUDIT</span><span class="route-state" data-status="unknown">UNKNOWN</span></div><p>Write/modify is intentionally unavailable in this release. Missing, stale, mismatched or unverifiable results remain UNKNOWN.</p></div></section>
+<section class="view" id="repo"><div class="panel"><h2>Repository Explorer</h2><p>Public repositories only. Enter owner/repository.</p><div class="grid"><div class="field"><label for="repo-name">Repository</label><input id="repo-name" placeholder="octocat/Hello-World"></div><div class="field"><label for="branch-name">Branch filter (optional)</label><input id="branch-name" placeholder="main"></div></div><div class="actions"><button class="primary" id="repo-load">Load repository</button><button id="repo-clear">Clear</button></div><div id="repo-msg" class="output">No repository loaded.</div><div id="repo-data" class="empty">Repository details appear here.</div><h3>Open pull requests</h3><div id="repo-prs" class="empty">Load a repository first.</div></div></section>
+<section class="view" id="pr"><div class="panel"><h2>Pull Request Review</h2><div class="grid"><div class="field"><label for="pr-repo">Public repository</label><input id="pr-repo" placeholder="owner/repository"></div><div class="field"><label for="pr-num">PR number</label><input id="pr-num" type="number" min="1" placeholder="123"></div></div><div class="actions"><button class="primary" id="pr-load">Inspect PR</button><button id="pr-clear">Clear</button></div><div id="pr-msg" class="output">No PR loaded.</div><div id="pr-data" class="empty">Enter repository and PR number.</div><h3>Changed files</h3><div id="pr-files" class="empty">No files loaded.</div><h3>Reviews</h3><div id="pr-reviews" class="empty">No reviews loaded.</div><h3>Checks for exact head SHA</h3><div id="pr-checks" class="empty">No checks loaded; readiness UNKNOWN.</div></div></section>
+<section class="view" id="user"><div class="panel"><h2>User Explorer</h2><p>Public profile only. This does not establish team membership, roles or repository permissions.</p><div class="field"><label for="user-name">GitHub username</label><input id="user-name" placeholder="octocat"></div><div class="actions"><button class="primary" id="user-load">Load profile</button><button id="user-clear">Clear</button></div><div id="user-msg" class="output">No user loaded.</div><div id="user-data" class="empty">Profile details appear here.</div></div></section>
+<section class="view" id="evidence"><div class="panel"><h2>SHA & Evidence Validator</h2><p>Structural validation only; it cannot independently prove an external check passed.</p>
+<div class="field"><label for="ev-repo">Repository</label><input id="ev-repo" placeholder="owner/repository"></div><div class="grid"><div class="field"><label for="ev-branch">Branch</label><input id="ev-branch" placeholder="feature/example"></div><div class="field"><label for="ev-sha">Full commit SHA (40 hex)</label><input id="ev-sha" maxlength="40" placeholder="40-character SHA"></div></div><div class="grid"><div class="field"><label for="ev-gate">Gate name</label><input id="ev-gate" placeholder="unit-tests"></div><div class="field"><label for="ev-status">Status</label><select id="ev-status"><option>unknown</option><option>pending</option><option>not_run</option><option>fail</option><option>pass</option></select></div></div><div class="grid"><div class="field"><label for="ev-time">Observed at (ISO date/time)</label><input id="ev-time" placeholder="2026-10-22T10:00:00Z"></div><div class="field"><label for="ev-url">Evidence URL (HTTPS)</label><input id="ev-url" placeholder="https://github.com/owner/repo/actions/runs/..."></div></div><div class="actions"><button class="primary" id="ev-check">Validate</button><button id="ev-copy">Copy JSON</button><button id="ev-clear">Clear</button></div><div id="ev-output" class="output">No record validated. Status UNKNOWN.</div></div></section>
+<section class="view" id="gates"><div class="panel"><h2>Quality Gate Planner</h2><div class="field"><label for="gate-sha">Target full commit SHA</label><input id="gate-sha" maxlength="40" placeholder="40-character SHA"></div><div id="gate-list"></div><div class="actions"><button class="primary" id="gate-eval">Evaluate readiness</button><button id="gate-reset">Reset</button><button id="gate-export">Export JSON</button></div><div id="gate-output" class="output">Readiness UNKNOWN — no gate results verified.</div></div></section>
+<section class="view" id="checkpoint"><div class="panel"><h2>Checkpoint Builder</h2><p>Creates a Markdown handoff note; does not write into the repository.</p><div class="grid"><div class="field"><label for="cp-repo">Repository</label><input id="cp-repo" placeholder="owner/repository"></div><div class="field"><label for="cp-branch">Branch</label><input id="cp-branch" placeholder="feature/branch"></div></div><div class="field"><label for="cp-sha">Full commit SHA</label><input id="cp-sha" maxlength="40" placeholder="40-character SHA"></div><div class="field"><label for="cp-goal">Goal</label><textarea id="cp-goal" rows="2"></textarea></div><div class="field"><label for="cp-done">Completed work</label><textarea id="cp-done" rows="3"></textarea></div><div class="field"><label for="cp-pending">Remaining work / blockers</label><textarea id="cp-pending" rows="3"></textarea></div><div class="field"><label for="cp-tests">Tests and evidence URLs</label><textarea id="cp-tests" rows="3"></textarea></div><div class="actions"><button class="primary" id="cp-build">Build checkpoint</button><button id="cp-copy">Copy Markdown</button><button id="cp-download">Download .md</button></div><textarea id="cp-output" class="output" rows="16" aria-label="Generated checkpoint"></textarea></div></section>
+<section class="view" id="ui-routes">
+<div class="panel"><h2>UI Route Manager</h2><p>กำหนดเส้นทางเมนูและหน้าจอจาก Registry กลางชุดเดียว ทั้งตารางและ Visual Builder แสดงข้อมูลเดียวกัน การแก้ไขเก็บในเบราว์เซอร์นี้เท่านั้น ยังไม่เปลี่ยน router ของแอปจริงหรือระบบอื่น</p><div class="warn">ขอบเขตเริ่มต้น: Dashboard นี้เท่านั้น • Local prototype • ไม่มี server-side authorization • ค่า Access เป็น metadata เพื่อวางแผน ไม่ใช่การบังคับสิทธิ์จริง</div>
+<div class="route-manager-grid">
+<div class="panel"><h3>Route Registry</h3><div class="grid"><div class="field"><label for="route-id">Route ID</label><input id="route-id" placeholder="settings"></div><div class="field"><label for="route-label">ชื่อเมนู/หน้าจอ</label><input id="route-label" placeholder="Settings"></div><div class="field"><label for="route-parent">Parent route</label><select id="route-parent"></select></div><div class="field"><label for="route-target">Target screen ID</label><select id="route-target"></select></div><div class="field"><label for="route-access">Access policy label</label><select id="route-access"><option value="public">Public</option><option value="signed-in">Signed-in (planned)</option><option value="owner">Owner (planned)</option><option value="admin">Admin (planned)</option></select></div><div class="field"><label for="route-enabled">Enabled</label><select id="route-enabled"><option value="true">Yes</option><option value="false">No</option></select></div></div><div class="actions"><button class="primary" id="route-add">Add route</button><button id="route-cancel-edit" hidden>Cancel edit</button><button id="route-reset">Reset registry</button><button id="route-export">Export registry JSON</button></div><div id="route-registry-message" class="output">Dashboard route registry loaded from defaults.</div><div id="route-registry-table" class="route-table-wrap"></div></div>
+<div class="panel"><h3>Visual Builder</h3><p class="small">เลือกต้นทางและปลายทางเพื่อบันทึกความสัมพันธ์การนำทาง แสดงเป็นโหนดและเส้นทางเชิงตรรกะ โดยไม่แก้โค้ด routing จริง</p><div class="field"><label for="edge-from">From</label><select id="edge-from"></select></div><div class="field"><label for="edge-to">To</label><select id="edge-to"></select></div><div class="actions"><button class="primary" id="edge-add">Connect screens</button><button id="edge-clear">Clear connections</button></div><h4>Screen map</h4><p class="small">Drag one route node onto another to connect them; the connection list below uses the same Registry.</p><div id="route-visual-map" class="route-map"></div><h4>Connections</h4><div id="route-edge-list" class="route-edge-list"></div><h4>Validation</h4><div id="route-validation" class="output" aria-live="polite">Validation not run.</div></div>
+</div></div>
+</section>
+<section class="view" id="ui-simulator">
+<div class="panel"><h2>UI Simulator — Code + Live Preview</h2><p>เขียน HTML/CSS/JavaScript ทางซ้าย แล้วกด Run เพื่อดู UI ทางขวาในทันที หน้านี้เป็น sandbox สำหรับทดลองเท่านั้น ไม่ได้ deploy หรือแก้ไฟล์แอปจริง</p><div class="warn">โค้ดที่รันจะอยู่ใน iframe แบบ sandbox แยกจาก Dashboard หลัก ห้ามใส่ secret/token หรือข้อมูลจริงลงใน simulator</div><div class="sim-toolbar"><label for="sim-route-select">Preview registry route</label><select id="sim-route-select" aria-label="Route to simulate"></select><button id="sim-open-route">Open route preview</button><button class="primary" id="sim-run">Run code preview</button><button id="sim-reset">Reset sample</button><button id="sim-download">Download HTML</button><span class="pill" id="sim-status">Sample loaded</span></div><div class="sim-layout"><div class="sim-pane"><h3>1. Code editor</h3><label for="sim-code">HTML document</label><textarea id="sim-code" class="sim-editor" spellcheck="false" aria-label="Simulator HTML code"></textarea></div><div class="sim-pane"><h3>2. UI preview</h3><iframe id="sim-preview" class="sim-frame" title="Sandboxed UI preview" sandbox="allow-scripts"></iframe><p class="small muted">Preview is isolated and temporary. Network/API calls and production routing are not part of this tool.</p></div></div></div>
+</section>
+<section class="view" id="route-colors"><div class="panel"><h2>Shared Route Color Manager</h2><p>กำหนดสีจากแหล่งกลางเดียวกัน ใช้ร่วมกันกับป้ายเส้นทางและสถานะทั่ว Dashboard การตั้งค่านี้มีผลเฉพาะเบราว์เซอร์นี้และไม่เปลี่ยนสถานะ CI จริง</p><div class="warn">สีใช้ช่วยแยกประเภท/สถานะเท่านั้น ไม่ใช่หลักฐานการผ่าน gate; ข้อมูลที่ขาดหรือยืนยันไม่ได้ต้องเป็น UNKNOWN</div><h3>เส้นทางงาน</h3><div id="route-color-controls"></div><h3>สถานะ</h3><div id="status-color-controls"></div><h3>ตัวอย่างสีปัจจุบัน</h3><div id="route-color-preview" class="route-preview" aria-live="polite"></div><div class="actions"><button class="primary" id="route-color-save">Save colors on this browser</button><button id="route-color-reset">Reset defaults</button><button id="route-color-export">Export JSON</button></div><div id="route-color-message" class="output">Default palette loaded; not yet saved.</div><textarea id="route-color-json" class="output" rows="10" aria-label="Route color JSON" readonly></textarea></div></section>
+<section class="view" id="audit"><div class="panel"><h2>Audit & Safety Checklist</h2><p>Local checklist only; not a persistent authoritative audit log.</p><div id="audit-list"></div><div class="actions"><button class="primary" id="audit-eval">Evaluate checklist</button><button id="audit-reset">Reset</button><button id="audit-export">Export JSON</button></div><div id="audit-output" class="output">Audit readiness UNKNOWN.</div></div><div class="panel"><h3>Not implemented here</h3><ul><li>OAuth / GitHub App and private repository access</li><li>Server-side auth, role enforcement and tenant isolation</li><li>Persistent tamper-evident audit log and evidence freshness</li><li>Push, branch/PR creation, approvals, merge or deployment</li></ul></div></section>
+</div></div><p class="muted small">Public API limits and network failures are surfaced as errors. No credentials are stored. Never merge while required gates are failing, pending or unknown.</p></main>
+<script>
+"use strict";
+const $=id=>document.getElementById(id),esc=v=>String(v==null?"":v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])),isRepo=v=>/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(v.trim())&&!v.includes(".."),isSha=v=>/^[a-f0-9]{40}$/i.test(v.trim());
+const state={repo:null,pr:null,user:null,evidence:null,gates:null,audit:null};
+function msg(id,s){$(id).textContent=s}function link(url,label){return '<a target="_blank" rel="noopener noreferrer" href="'+esc(url)+'">'+esc(label||url)+'</a>'}
+async function api(path){const r=await fetch("https://api.github.com"+path,{headers:{Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"}});if(!r.ok){let m="HTTP "+r.status;try{m=(await r.json()).message||m}catch(_){}throw Error(m+(r.status===403||r.status===429?" (rate limit/permission restriction)":""))}return r.json()}
+function table(head,rows){return rows.length?'<table><thead><tr>'+head.map(x=>'<th>'+esc(x)+'</th>').join("")+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(x=>'<td>'+x+'</td>').join("")+'</tr>').join("")+'</tbody></table>':'<div class="empty">No records returned.</div>'}
+function tab(name){document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id===name));document.querySelectorAll("[data-tab]").forEach(x=>x.classList.toggle("active",x.dataset.tab===name))}
+document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>tab(b.dataset.tab));
+$("repo-load").onclick=async()=>{let n=$("repo-name").value.trim();if(!isRepo(n)){msg("repo-msg","Enter a valid owner/repository.");return}msg("repo-msg","Loading public repository…");try{let [r,b,p]=await Promise.all([api("/repos/"+n),api("/repos/"+n+"/branches?per_page=100"),api("/repos/"+n+"/pulls?state=open&per_page=20")]);state.repo={r,b,p};$("selected").textContent=n;msg("repo-msg","Loaded public GitHub data. No permission check is implied.");$("repo-data").innerHTML='<h3>'+esc(r.full_name)+'</h3><p>'+esc(r.description||"No description")+'</p>'+link(r.html_url,"Open repository")+table(["Property","Value"],[["Default branch",esc(r.default_branch)],["Archived",esc(r.archived)],["Stars",esc(r.stargazers_count)],["Open issues",esc(r.open_issues_count)],["Pushed at",esc(r.pushed_at)],["Branches returned",esc(b.length)+(b.length===100?" (first 100)":"")]]);$("repo-prs").innerHTML=table(["PR","Title","Author","Updated"],p.map(x=>[link(x.html_url,"#"+x.number),esc(x.title),esc(x.user.login),esc(x.updated_at)]));}catch(e){state.repo=null;msg("repo-msg","Could not load: "+e.message);$("repo-data").innerHTML='<div class="empty">No verified data loaded.</div>';$("repo-prs").innerHTML=""}};
+$("repo-clear").onclick=()=>{$("repo-name").value="";$("branch-name").value="";state.repo=null;$("selected").textContent="—";msg("repo-msg","Cleared.");$("repo-data").innerHTML='<div class="empty">Repository details appear here.</div>';$("repo-prs").innerHTML=""};
+$("pr-load").onclick=async()=>{let n=$("pr-repo").value.trim(),num=$("pr-num").value.trim();if(!isRepo(n)||!/^[1-9]\d*$/.test(num)){msg("pr-msg","Enter valid owner/repository and positive PR number.");return}msg("pr-msg","Loading PR, files, reviews and checks…");try{let [p,f,r]=await Promise.all([api("/repos/"+n+"/pulls/"+num),api("/repos/"+n+"/pulls/"+num+"/files?per_page=100"),api("/repos/"+n+"/pulls/"+num+"/reviews?per_page=100")]);let c=null,ce="";try{c=await api("/repos/"+n+"/commits/"+p.head.sha+"/check-runs?per_page=100")}catch(e){ce=e.message}state.pr={p,f,r,c};msg("pr-msg","Loaded public PR. Head SHA: "+p.head.sha);$("pr-data").innerHTML='<h3>'+esc(p.title)+'</h3>'+link(p.html_url,"Open PR")+table(["Property","Value"],[["State",esc(p.state)],["Draft",esc(p.draft)],["Author",esc(p.user.login)],["Base",esc(p.base.ref)],["Head",esc(p.head.ref)],["Full head SHA",'<code>'+esc(p.head.sha)+'</code>'],["Mergeable",esc(p.mergeable===null?"unknown":p.mergeable)],["Files",esc(p.changed_files)],["Additions / deletions",esc(p.additions+" / "+p.deletions)]]);$("pr-files").innerHTML=table(["File","Status","+ / -"],f.map(x=>[link(x.blob_url,x.filename),esc(x.status),esc("+"+x.additions+" / -"+x.deletions)]));$("pr-reviews").innerHTML=table(["Reviewer","State","Submitted"],r.map(x=>[esc(x.user.login),esc(x.state),esc(x.submitted_at||"pending")]));$("pr-checks").innerHTML=c?table(["Check","Status","Conclusion","Link"],c.check_runs.map(x=>[esc(x.name),esc(x.status),esc(x.conclusion||"UNKNOWN"),x.html_url?link(x.html_url,"Open run"):"—"])):'<div class="empty">Checks unavailable: '+esc(ce)+'. Readiness UNKNOWN.</div>';if(c&&!c.check_runs.length)$("pr-checks").innerHTML='<div class="empty">No checks returned; readiness UNKNOWN.</div>'}catch(e){state.pr=null;msg("pr-msg","Could not inspect PR: "+e.message)}};
+$("pr-clear").onclick=()=>{$("pr-repo").value="";$("pr-num").value="";state.pr=null;msg("pr-msg","Cleared.");["pr-data","pr-files","pr-reviews","pr-checks"].forEach(x=>$(x).innerHTML='<div class="empty">No data loaded.</div>')};
+$("user-load").onclick=async()=>{let n=$("user-name").value.trim();if(!/^[A-Za-z0-9-]{1,39}$/.test(n)){msg("user-msg","Enter a valid GitHub username.");return}msg("user-msg","Loading profile…");try{let u=await api("/users/"+encodeURIComponent(n));state.user=u;msg("user-msg","Public profile loaded; this does not prove membership or permissions.");$("user-data").innerHTML='<h3>'+esc(u.name||u.login)+'</h3>'+link(u.html_url,"Open profile")+table(["Property","Value"],[["Username",esc(u.login)],["Bio",esc(u.bio||"—")],["Public repositories",esc(u.public_repos)],["Followers",esc(u.followers)],["Following",esc(u.following)],["Created",esc(u.created_at)]])}catch(e){state.user=null;msg("user-msg","Could not load profile: "+e.message)}};
+$("user-clear").onclick=()=>{$("user-name").value="";state.user=null;msg("user-msg","Cleared.");$("user-data").innerHTML='<div class="empty">Profile details appear here.</div>'};
+function evRecord(){return {repository:$("ev-repo").value.trim(),branch:$("ev-branch").value.trim(),commit_sha:$("ev-sha").value.trim(),gate:$("ev-gate").value.trim(),status:$("ev-status").value,observed_at:$("ev-time").value.trim(),evidence_url:$("ev-url").value.trim()}}
+function validateEv(r){let e=[];if(!isRepo(r.repository))e.push("Repository must be owner/name.");if(!r.branch)e.push("Branch required.");if(!isSha(r.commit_sha))e.push("SHA must be 40 hex characters.");if(!r.gate)e.push("Gate name required.");if(!r.observed_at||Number.isNaN(Date.parse(r.observed_at)))e.push("Valid observation timestamp required.");if(r.evidence_url){try{if(new URL(r.evidence_url).protocol!=="https:")e.push("Evidence URL must use HTTPS.")}catch(_){e.push("Evidence URL invalid.")}}if(r.status==="pass"&&!r.evidence_url)e.push("PASS requires evidence URL.");return {record:r,errors:e,structurally_valid:!e.length,readiness:r.status==="pass"&&!e.length?"UNVERIFIED_PASS":"UNKNOWN",note:"Structure validation is not external evidence verification."}}
+$("ev-check").onclick=()=>{state.evidence=validateEv(evRecord());$("evidence-stat").textContent=state.evidence.structurally_valid?state.evidence.readiness:"INVALID";msg("ev-output",(state.evidence.errors.length?"Invalid:\n- "+state.evidence.errors.join("\n- "):"Record structure valid; external result remains unverified.")+"\n\n"+JSON.stringify(state.evidence,null,2))};
+$("ev-copy").onclick=()=>copy(JSON.stringify(state.evidence||validateEv(evRecord()),null,2));$("ev-clear").onclick=()=>{["ev-repo","ev-branch","ev-sha","ev-gate","ev-time","ev-url"].forEach(x=>$(x).value="");$("ev-status").value="unknown";state.evidence=null;$("evidence-stat").textContent="UNKNOWN";msg("ev-output","Cleared. Status UNKNOWN.")};
+const gateNames=[["format","Format / style"],["tests","Unit / integration tests"],["build","Build / package"],["security","Security / secret scan"],["sha","Commit SHA binding"],["review","Independent review"]];
+$("gate-list").innerHTML=gateNames.map(([id,n])=>'<div class="check"><input type="checkbox" id="g-'+id+'" checked><label for="g-'+id+'">'+n+'</label><select data-g="'+id+'"><option>unknown</option><option>pending</option><option>not_run</option><option>fail</option><option>pass</option></select></div>').join("");
+function gateResult(){let sha=$("gate-sha").value.trim(),g=[];document.querySelectorAll("[data-g]").forEach(x=>{if($("g-"+x.dataset.g).checked)g.push({name:x.dataset.g,status:x.value,commit_sha:sha})});let errors=[];if(!isSha(sha))errors.push("Target SHA invalid.");g.forEach(x=>{if(x.status!=="pass")errors.push(x.name+" is "+x.status+", not PASS.")});return {target_commit_sha:sha,required_gates:g,ready:isSha(sha)&&g.length>0&&errors.length===0,errors,note:"Local checklist only; verify real CI source and SHA independently."}}
+$("gate-eval").onclick=()=>{state.gates=gateResult();msg("gate-output",(state.gates.ready?"All selected gates reported PASS locally; source verification still required.":"BLOCKED / UNKNOWN — required gates are not all passing.")+"\n"+state.gates.errors.join("\n")+"\n"+JSON.stringify(state.gates,null,2))};$("gate-reset").onclick=()=>{document.querySelectorAll("[data-g]").forEach(x=>x.value="unknown");state.gates=null;msg("gate-output","Readiness UNKNOWN — results reset.")};$("gate-export").onclick=()=>download("quality-gates.json",JSON.stringify(state.gates||gateResult(),null,2),"application/json");
+function checkpoint(){let v=id=>$(id).value.trim();return "# Development Checkpoint\n\n## Target\n- Repository: "+(v("cp-repo")||"Not specified")+"\n- Branch: "+(v("cp-branch")||"Not specified")+"\n- Commit SHA: "+(v("cp-sha")||"UNKNOWN")+"\n- Created: "+new Date().toISOString()+"\n\n## Goal\n"+(v("cp-goal")||"Not specified")+"\n\n## Completed\n"+(v("cp-done")||"- None recorded")+"\n\n## Remaining / blockers\n"+(v("cp-pending")||"- None recorded")+"\n\n## Tests and evidence\n"+(v("cp-tests")||"- No test evidence; UNKNOWN.")+"\n\n## Safety\n- No force-push or history rewrite.\n- Required gates must pass on the exact full SHA.\n- Missing, stale, mismatched or unverifiable evidence is UNKNOWN.\n- This checkpoint is not proof of successful tests.\n"}
+$("cp-build").onclick=()=>$("cp-output").value=checkpoint();$("cp-copy").onclick=()=>copy($("cp-output").value||checkpoint());$("cp-download").onclick=()=>download("CHECKPOINT.md",$("cp-output").value||checkpoint(),"text/markdown");
+const audits=[["a-target","Target repository, branch and full SHA verified."],["a-scope","Diff and changed-file scope reviewed."],["a-secret","No secrets or private data added."],["a-tests","Required tests and security scans have real results."],["a-evidence","Evidence is fresh and bound to the exact SHA."],["a-history","No force-push, history rewrite or direct main edit."],["a-auth","Write scope has explicit approval and server enforcement."]];
+$("audit-list").innerHTML=audits.map(([id,t])=>'<div class="check"><input type="checkbox" id="'+id+'"><label for="'+id+'">'+t+'</label></div>').join("");
+function auditResult(){let items=audits.map(([id,t])=>({item:t,checked:$(id).checked}));return {items,complete:items.every(x=>x.checked),missing:items.filter(x=>!x.checked).map(x=>x.item),note:"Browser checklist only, not a durable audit log."}}
+$("audit-eval").onclick=()=>{state.audit=auditResult();msg("audit-output",(state.audit.complete?"Checklist complete; independently verify evidence and permissions.":"NOT READY — "+state.audit.missing.length+" unchecked items.")+"\n"+state.audit.note+"\n"+JSON.stringify(state.audit,null,2))};$("audit-reset").onclick=()=>{audits.forEach(([id])=>$(id).checked=false);state.audit=null;msg("audit-output","Audit readiness UNKNOWN.")};$("audit-export").onclick=()=>download("audit-checklist.json",JSON.stringify(state.audit||auditResult(),null,2));
+async function copy(t){try{await navigator.clipboard.writeText(t);alert("Copied.")}catch(_){alert("Clipboard unavailable; select and copy manually.")}}function download(n,t,type){let u=URL.createObjectURL(new Blob([t],{type:type||"text/plain;charset=utf-8"})),a=document.createElement("a");a.href=u;a.download=n;a.click();URL.revokeObjectURL(u)}
+
+// Central UI route registry: dashboard view metadata only, browser-local.
+const ROUTE_REGISTRY_KEY="dcp.ui-route-registry.v1";
+const ROUTE_EDGES_KEY="dcp.ui-route-edges.v1";
+const ROUTE_DEFAULTS=[
+{id:"home",label:"Overview",parent:"",target:"home",access:"public",enabled:true},
+{id:"repo",label:"Repository Explorer",parent:"home",target:"repo",access:"public",enabled:true},
+{id:"pr",label:"Pull Request Review",parent:"home",target:"pr",access:"public",enabled:true},
+{id:"user",label:"User Explorer",parent:"home",target:"user",access:"public",enabled:true},
+{id:"evidence",label:"SHA & Evidence",parent:"home",target:"evidence",access:"public",enabled:true},
+{id:"gates",label:"Quality Gate Planner",parent:"home",target:"gates",access:"public",enabled:true},
+{id:"checkpoint",label:"Checkpoint Builder",parent:"home",target:"checkpoint",access:"public",enabled:true},
+{id:"audit",label:"Audit & Safety",parent:"home",target:"audit",access:"public",enabled:true},
+{id:"route-colors",label:"Route Color Manager",parent:"home",target:"route-colors",access:"public",enabled:true},
+{id:"ui-routes",label:"UI Route Manager",parent:"home",target:"ui-routes",access:"public",enabled:true},
+{id:"ui-simulator",label:"UI Simulator",parent:"home",target:"ui-simulator",access:"public",enabled:true}
+];
+let routeRegistry=ROUTE_DEFAULTS.map(x=>({...x}));
+let routeEdges=[{from:"home",to:"repo"},{from:"home",to:"pr"},{from:"home",to:"gates"},{from:"home",to:"audit"}];
+const screenExists=id=>Boolean($(id));
+function safeRouteId(v){return /^[a-z][a-z0-9-]{0,39}$/.test(String(v||""))}
+function routeStore(){try{localStorage.setItem(ROUTE_REGISTRY_KEY,JSON.stringify(routeRegistry));localStorage.setItem(ROUTE_EDGES_KEY,JSON.stringify(routeEdges));return true}catch(_){return false}}
+function routeOptions(selectId,includeBlank){const el=$(selectId);if(!el)return;const old=el.value;const options=selectId==="route-target"?Array.from(document.querySelectorAll(".view")).map(v=>({id:v.id,label:(document.querySelector('[data-tab="'+v.id+'"]')||{}).textContent||v.id})):routeRegistry;el.innerHTML=(includeBlank?'<option value="">— None —</option>':"")+options.map(r=>'<option value="'+esc(r.id)+'">'+esc(r.label)+' ('+esc(r.id)+')</option>').join("");if(options.some(r=>r.id===old))el.value=old}
+let routeEditingId=null;
+function cancelRouteEdit(){routeEditingId=null;$("route-add").textContent="Add route";$("route-cancel-edit").hidden=true;$("route-id").disabled=false;$("route-id").value="";$("route-label").value="";$("route-parent").value="";$("route-access").value="public";$("route-enabled").value="true"}
+function beginRouteEdit(id){
+ const r=routeRegistry.find(x=>x.id===id);if(!r)return;
+ routeEditingId=id;$("route-id").value=r.id;$("route-id").disabled=true;$("route-label").value=r.label;
+ $("route-parent").value=r.parent||"";$("route-target").value=r.target;$("route-access").value=r.access;$("route-enabled").value=String(r.enabled);
+ $("route-add").textContent="Save route changes";$("route-cancel-edit").hidden=false;
+ msg("route-registry-message","Editing "+id+". Save to update the shared local registry.");
+ $("route-id").focus();
+}
+function renderRouteRegistry(){
+ const tableEl=$("route-registry-table");
+ tableEl.innerHTML=routeRegistry.length?'<table><thead><tr><th>ID</th><th>Label</th><th>Parent</th><th>Target</th><th>Access</th><th>Enabled</th><th>Actions</th></tr></thead><tbody>'+routeRegistry.map(r=>'<tr><td><code>'+esc(r.id)+'</code></td><td>'+esc(r.label)+'</td><td>'+esc(r.parent||"—")+'</td><td><code>'+esc(r.target)+'</code></td><td>'+esc(r.access)+'</td><td>'+esc(r.enabled?"Yes":"No")+'</td><td><button type="button" data-route-edit="'+esc(r.id)+'" aria-label="Edit route '+esc(r.id)+'">Edit</button> <button type="button" data-route-delete="'+esc(r.id)+'" '+(ROUTE_DEFAULTS.some(d=>d.id===r.id)?'disabled title="Default routes cannot be removed in this prototype"':"")+' aria-label="Delete route '+esc(r.id)+'">Delete</button></td></tr>').join("")+'</tbody></table>':'<div class="empty">No routes defined.</div>';
+ tableEl.querySelectorAll("[data-route-edit]").forEach(b=>b.onclick=()=>beginRouteEdit(b.dataset.routeEdit));
+ tableEl.querySelectorAll("[data-route-delete]").forEach(b=>b.onclick=()=>{const id=b.dataset.routeDelete;if(routeEditingId===id)cancelRouteEdit();routeRegistry=routeRegistry.filter(r=>r.id!==id);routeEdges=routeEdges.filter(e=>e.from!==id&&e.to!==id);routeStore();renderRouteManager();msg("route-registry-message","Route removed locally; validate the registry before use.")});
+ routeOptions("route-parent",true);routeOptions("route-target",false);routeOptions("edge-from",false);routeOptions("edge-to",false);routeOptions("sim-route-select",false);renderRouteVisual();validateRouteRegistry();
+}
+function renderRouteVisual(){
+ const map=$("route-visual-map");
+ map.innerHTML=routeRegistry.map(r=>'<div class="route-node" draggable="true" data-route-node="'+esc(r.id)+'" tabindex="0" role="button" aria-label="Route node '+esc(r.label)+'. Drag onto another node to connect."><strong>'+esc(r.label)+'</strong><small>'+esc(r.id)+' → '+esc(r.target)+'</small><small>'+esc(r.enabled?"Enabled":"Disabled")+'</small><small class="muted">Drag to connect</small></div>').join("");
+ map.querySelectorAll("[data-route-node]").forEach(node=>{
+  node.addEventListener("dragstart",ev=>{ev.dataTransfer.setData("text/plain",node.dataset.routeNode);if(ev.dataTransfer)ev.dataTransfer.effectAllowed="link"});
+  node.addEventListener("dragover",ev=>{ev.preventDefault();if(ev.dataTransfer)ev.dataTransfer.dropEffect="link"});
+  node.addEventListener("drop",ev=>{ev.preventDefault();const from=ev.dataTransfer.getData("text/plain"),to=node.dataset.routeNode;if(!from||!to||from===to){msg("route-registry-message","Drop a route onto a different route to connect them.");return}if(routeEdges.some(e=>e.from===from&&e.to===to)){msg("route-registry-message","That connection already exists.");return}routeEdges.push({from,to});routeStore();renderRouteVisual();validateRouteRegistry();msg("route-registry-message","Drag-and-drop connection added to the shared local registry.")});
+  node.addEventListener("keydown",ev=>{if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();$("edge-from").value=node.dataset.routeNode;$("edge-to").focus()}});
+ });
+ $("route-edge-list").innerHTML=routeEdges.length?routeEdges.map((e,i)=>'<div class="route-edge"><span><code>'+esc(e.from)+'</code></span><span aria-label="leads to">→</span><span><code>'+esc(e.to)+'</code></span><button type="button" data-edge-delete="'+i+'">Remove</button></div>').join(""):'<div class="empty">No connections defined.</div>';
+ $("route-edge-list").querySelectorAll("[data-edge-delete]").forEach(b=>b.onclick=()=>{routeEdges.splice(Number(b.dataset.edgeDelete),1);routeStore();renderRouteVisual();validateRouteRegistry()});
+}
+function validateRouteRegistry(){
+ const errors=[],warnings=[],ids=routeRegistry.map(r=>r.id),known=new Set(ids),parentById=new Map(routeRegistry.map(r=>[r.id,r.parent||""]));
+ if(new Set(ids).size!==ids.length)errors.push("Duplicate route IDs found.");
+ routeRegistry.forEach(r=>{if(!safeRouteId(r.id))errors.push("Invalid route ID: "+r.id);if(!String(r.label||"").trim())errors.push("Empty label: "+r.id);if(!screenExists(r.target))errors.push("Missing target screen for "+r.id+": "+r.target);if(r.parent&&!known.has(r.parent))errors.push("Missing parent route for "+r.id+": "+r.parent);if(r.parent===r.id)errors.push("Route cannot be its own parent: "+r.id)});
+ const reportedCycles=new Set();
+ routeRegistry.forEach(r=>{const path=[],positions=new Map();let current=r.id;while(current&&parentById.has(current)){if(positions.has(current)){const cycle=path.slice(positions.get(current)).sort().join("|");if(!reportedCycles.has(cycle)){reportedCycles.add(cycle);errors.push("Parent cycle detected: "+path.slice(positions.get(current)).concat(current).join(" → "))}break}positions.set(current,path.length);path.push(current);current=parentById.get(current)}});
+ const seenEdges=new Set();
+ routeEdges.forEach(e=>{const key=e.from+"→"+e.to;if(!known.has(e.from)||!known.has(e.to))errors.push("Connection points to a missing route: "+e.from+" → "+e.to);if(e.from===e.to)errors.push("Self connection: "+e.from);if(seenEdges.has(key))errors.push("Duplicate connection: "+key);seenEdges.add(key);const destination=routeRegistry.find(r=>r.id===e.to);if(destination&&destination.enabled===false)warnings.push("Connection leads to disabled route: "+e.to)});
+ const result={valid:errors.length===0,route_count:routeRegistry.length,connection_count:routeEdges.length,errors,warnings,note:"Metadata-only validation. It does not prove production navigation or access enforcement."};
+ msg("route-validation",(result.valid?"PASS — no registry errors detected.":"FAIL — "+errors.length+" registry issue(s).")+"\n"+JSON.stringify(result,null,2));return result;
+}
+function renderRouteManager(){renderRouteRegistry()}
+$("route-add").onclick=()=>{
+ const r={id:$("route-id").value.trim(),label:$("route-label").value.trim(),parent:$("route-parent").value,target:$("route-target").value,access:$("route-access").value,enabled:$("route-enabled").value==="true"};
+ if(!safeRouteId(r.id)||!r.label||!screenExists(r.target)){msg("route-registry-message","Invalid input: use a lowercase route ID, a label, and an existing target screen.");return}
+ if(r.parent===r.id){msg("route-registry-message","A route cannot be its own parent.");return}
+ if(routeEditingId){
+  const index=routeRegistry.findIndex(x=>x.id===routeEditingId);if(index<0){cancelRouteEdit();return}
+  routeRegistry[index]={...routeRegistry[index],label:r.label,parent:r.parent,target:r.target,access:r.access,enabled:r.enabled};
+  cancelRouteEdit();routeStore();renderRouteManager();msg("route-registry-message","Route updated in the shared browser-local registry. Actual app navigation is unchanged.");return;
+ }
+ if(routeRegistry.some(x=>x.id===r.id)){msg("route-registry-message","Duplicate route ID: "+r.id);return}
+ routeRegistry.push(r);routeStore();$("route-id").value="";$("route-label").value="";renderRouteManager();msg("route-registry-message","Route added to browser-local registry. No application route was changed.")
+};
+$("route-cancel-edit").onclick=cancelRouteEdit;
+$("route-reset").onclick=()=>{cancelRouteEdit();routeRegistry=ROUTE_DEFAULTS.map(x=>({...x}));routeEdges=[{from:"home",to:"repo"},{from:"home",to:"pr"},{from:"home",to:"gates"},{from:"home",to:"audit"}];routeStore();renderRouteManager();msg("route-registry-message","Default registry restored in this browser.")};
+$("route-export").onclick=()=>download("dcp-ui-route-registry.json",JSON.stringify({routes:routeRegistry,connections:routeEdges,scope:"dashboard-metadata-only"},null,2),"application/json");
+$("edge-add").onclick=()=>{const from=$("edge-from").value,to=$("edge-to").value;if(!from||!to||from===to){msg("route-registry-message","Choose two different screens to connect.");return}if(routeEdges.some(e=>e.from===from&&e.to===to)){msg("route-registry-message","Connection already exists.");return}routeEdges.push({from,to});routeStore();renderRouteVisual();validateRouteRegistry();msg("route-registry-message","Connection added to browser-local visual model.")};
+$("edge-clear").onclick=()=>{routeEdges=[];routeStore();renderRouteVisual();validateRouteRegistry();msg("route-registry-message","Connections cleared locally.")};
+function initRouteManager(){try{const r=JSON.parse(localStorage.getItem(ROUTE_REGISTRY_KEY)||"null");if(Array.isArray(r)&&r.every(x=>x&&typeof x.id==="string"&&typeof x.label==="string"&&typeof x.target==="string"))routeRegistry=r.map(x=>({id:x.id,label:x.label,parent:x.parent||"",target:x.target,access:x.access||"public",enabled:x.enabled!==false}));const e=JSON.parse(localStorage.getItem(ROUTE_EDGES_KEY)||"null");if(Array.isArray(e)&&e.every(x=>x&&typeof x.from==="string"&&typeof x.to==="string"))routeEdges=e}catch(_){routeRegistry=ROUTE_DEFAULTS.map(x=>({...x}));routeEdges=[]}renderRouteManager()}
+
+// UI Simulator: editable HTML runs only inside a sandboxed iframe.
+const SIM_SAMPLE=String.raw`<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light">
-<title>Development Control Platform</title>
+<title>UI Simulator sample</title>
 <style>
-:root {
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  color: #172033;
-  background: #f5f7fb;
-  --read: #2563eb;
-  --analyze: #7c3aed;
-  --write: #b45309;
-  --test: #15803d;
-  --audit: #0f766e;
-  --block: #b91c1c;
-  --unknown: #64748b;
-}
-* { box-sizing: border-box; }
-body { margin: 0; }
-.wrap { max-width: 1000px; margin: auto; padding: 28px 18px 60px; }
-header { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; flex-wrap:wrap; }
-h1 { margin:0; font-size:clamp(1.5rem,3vw,2.2rem); }
-h2 { margin-top:0; }
-p { line-height:1.6; color:#596579; }
-.card { background:#fff; border:1px solid #e0e6ef; border-radius:16px; padding:20px; margin-top:20px; }
-.pill { display:inline-block; border:1px solid #d7deea; border-radius:999px; padding:6px 10px; font-size:.82rem; background:#fff; }
-.banner { padding:14px 16px; border-left:4px solid var(--unknown); background:#eef2f7; border-radius:8px; line-height:1.6; margin-top:20px; }
-.navigation { display:grid; grid-template-columns:repeat(auto-fit,minmax(145px,1fr)); gap:12px; margin-top:16px; }
-.route { display:block; min-height:112px; padding:14px; border:1px solid #d7deea; border-top:5px solid var(--route); border-radius:12px; background:#fff; color:#172033; text-decoration:none; }
-.route strong { display:block; margin-bottom:7px; }
-.route span { color:#596579; font-size:.9rem; line-height:1.45; }
-.route:focus-visible, a:focus-visible { outline:3px solid #111827; outline-offset:3px; }
-.read { --route:var(--read); }
-.analyze { --route:var(--analyze); }
-.write { --route:var(--write); }
-.test { --route:var(--test); }
-.audit { --route:var(--audit); }
-.block { --route:var(--block); }
-.unknown { --route:var(--unknown); }
-.notice { padding:12px; border-radius:8px; background:#fff7ed; border-left:4px solid var(--write); line-height:1.6; }
-.state { display:inline-block; padding:4px 9px; border-radius:999px; font-size:.82rem; font-weight:700; }
-.state-unknown { color:#334155; background:#e2e8f0; }
-.state-block { color:#991b1b; background:#fee2e2; }
-.state-pass { color:#166534; background:#dcfce7; }
-.muted { color:#667085; }
-ul, ol { line-height:1.8; }
-@media (prefers-reduced-motion: reduce) { * { scroll-behavior:auto !important; } }
+:root{font:16px system-ui,sans-serif;color:#1f2937;background:#f8fafc}
+body{margin:0;padding:24px}
+.card{max-width:520px;margin:20px auto;padding:24px;background:white;border:1px solid #dbe3ef;border-radius:16px;box-shadow:0 8px 28px #0f172a12}
+button{padding:10px 14px;border:0;border-radius:8px;background:#3457d5;color:white;cursor:pointer}
+small{color:#64748b}
 </style>
 </head>
 <body>
-<main class="wrap" data-control-plane-nav="static">
-<header>
-  <div>
-    <h1>Development Control Platform</h1>
-    <p>Color-coded navigation for safe project review and evidence tracking.</p>
-  </div>
-  <span class="pill">STATIC PREVIEW · INTEGRATIONS DISABLED</span>
-</header>
-
-<section class="banner" role="status" aria-live="polite">
-  <strong>Read-only preview.</strong>
-  This page does not connect to repositories, fetch CI data, or modify files.
-  No project or gate is represented as passing.
-</section>
-
-<section class="card" aria-labelledby="navigation-title">
-  <h2 id="navigation-title">Development navigation</h2>
-  <p>Colors indicate the type of activity, not permission to perform it.</p>
-  <nav class="navigation" aria-label="Development workflow">
-    <a class="route read" href="#read"><strong>01 · READ</strong><span>Inspect repository, branch, commit and working tree.</span></a>
-    <a class="route analyze" href="#analyze"><strong>02 · ANALYZE</strong><span>Review diffs, requirements, gate results and SHA binding.</span></a>
-    <a class="route write" href="#write"><strong>03 · WRITE / MODIFY</strong><span>Confirm target and authorized file scope before editing.</span></a>
-    <a class="route test" href="#test"><strong>04 · TEST</strong><span>Run checks and capture evidence for the exact commit.</span></a>
-    <a class="route audit" href="#audit"><strong>05 · AUDIT</strong><span>Review permissions, evidence freshness and Git history.</span></a>
-    <a class="route block" href="#block"><strong>STOP · BLOCK</strong><span>Stop if the target, permissions or commit identity mismatch.</span></a>
-  </nav>
-</section>
-
-<section class="card" id="read">
-  <h2><span class="state" style="color:#1d4ed8;background:#dbeafe">READ</span> Confirm the target</h2>
-  <ul>
-    <li>Repository: not connected in this preview.</li>
-    <li>Branch and full commit SHA: must be verified from the actual repository.</li>
-    <li>Registered projects: <strong>0</strong>.</li>
-  </ul>
-</section>
-
-<section class="card" id="analyze">
-  <h2><span class="state" style="color:#6d28d9;background:#ede9fe">ANALYZE</span> Verify before acting</h2>
-  <ul>
-    <li>Compare staged and unstaged changes separately.</li>
-    <li>Confirm the intended repository, branch, files and approved scope.</li>
-    <li>Reject missing, stale, mismatched or unverifiable evidence.</li>
-  </ul>
-</section>
-
-<section class="card" id="write">
-  <h2><span class="state" style="color:#92400e;background:#fef3c7">WRITE</span> Explicit scope only</h2>
-  <p class="notice">This preview provides no write action. Color, navigation or project selection never grants write permission.</p>
-  <ul>
-    <li>Keep integrations disabled by default.</li>
-    <li>Require explicit approval for new write scopes.</li>
-    <li>Do not force-push or rewrite canonical history.</li>
-  </ul>
-</section>
-
-<section class="card" id="test">
-  <h2><span class="state state-unknown">UNKNOWN</span> Test evidence</h2>
-  <p>No live test results are loaded. A green indicator must only be used after a real check passes against the exact intended commit SHA.</p>
-</section>
-
-<section class="card" id="audit">
-  <h2>AUDIT</h2>
-  <ul>
-    <li>Review the full diff and file inventory.</li>
-    <li>Verify the source, freshness and commit identity of evidence.</li>
-    <li>Confirm all required gates pass before any merge decision.</li>
-  </ul>
-</section>
-
-<section class="card" id="block">
-  <h2><span class="state state-block">BLOCK</span> Stop conditions</h2>
-  <ul>
-    <li>Repository or branch does not match the approved target.</li>
-    <li>Evidence SHA differs from the project commit SHA.</li>
-    <li>A required gate is missing or not passing.</li>
-    <li>Write permission or external connection has not been explicitly authorized.</li>
-  </ul>
-</section>
-
-<section class="card">
-  <h2>Product editions</h2>
-  <p><strong>Personal Edition</strong> — independent project tracking for individuals.</p>
-  <p><strong>Organization Edition</strong> — requires server-side authorization, tenant isolation, role enforcement and audit logging before production use.</p>
-  <p class="muted">These are product scopes. This static page does not implement authorization or live status.</p>
-</section>
+<main class="card">
+<small>DEVELOPMENT CONTROL PLATFORM · SANDBOX</small>
+<h1>Hello, UI Builder</h1>
+<p>Edit this HTML on the left and press <b>Run preview</b>.</p>
+<button onclick="document.getElementById('demo').textContent='Button interaction works in the sandbox.'">Try interaction</button>
+<p id="demo" aria-live="polite">Preview only — not connected to the app router.</p>
 </main>
 </body>
-</html>
+</html>`;
+function buildRoutePreviewDocument(routeId){
+ const payload=JSON.stringify({routes:routeRegistry.map(r=>({id:r.id,label:r.label,parent:r.parent,target:r.target,access:r.access,enabled:r.enabled})),edges:routeEdges}).replace(/</g,"\\u003c");
+ const selected=JSON.stringify(routeId).replace(/</g,"\\u003c");
+ return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Route Preview</title><style>body{font:16px system-ui,sans-serif;margin:0;padding:24px;background:#f8fafc;color:#172033}.card{max-width:700px;margin:auto;background:white;border:1px solid #dbe3ef;border-radius:14px;padding:22px}small{color:#64748b}.links{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}button{border:0;border-radius:8px;padding:10px 14px;background:#3457d5;color:white;cursor:pointer}button:disabled{background:#94a3b8;cursor:not-allowed}.pill{display:inline-block;padding:4px 8px;border-radius:20px;background:#e2e8f0;margin:4px 0}</style></head><body><main class="card"><small>DEVELOPMENT CONTROL PLATFORM · ROUTE SIMULATOR</small><h1 id="route-title">Route preview</h1><p id="route-meta"></p><span class="pill" id="route-status"></span><p>This is a simulated navigation view built from the current local registry and connection list. It does not invoke the production router.</p><h2>Connected destinations</h2><div class="links" id="route-links"></div><p id="route-empty"></p></main><script>const data='+payload+';let current='+selected+';function render(){const r=data.routes.find(x=>x.id===current);const title=document.getElementById("route-title"),meta=document.getElementById("route-meta"),status=document.getElementById("route-status"),links=document.getElementById("route-links"),empty=document.getElementById("route-empty");links.replaceChildren();if(!r){title.textContent="Route not found";meta.textContent=current;status.textContent="MISSING";empty.textContent="Choose an existing registry route in the parent window.";return}title.textContent=r.label;meta.textContent="Route ID: "+r.id+" · Target screen: "+r.target+" · Access label: "+r.access;status.textContent=r.enabled?"ENABLED":"DISABLED";const destinations=data.edges.filter(e=>e.from===r.id).map(e=>data.routes.find(x=>x.id===e.to)).filter(Boolean);destinations.forEach(dest=>{const b=document.createElement("button");b.type="button";b.textContent=dest.label;b.disabled=!dest.enabled;b.addEventListener("click",()=>{current=dest.id;render()});links.appendChild(b)});empty.textContent=destinations.length?"Select a destination to simulate navigation.":"No outgoing connections registered for this route."}render();</scr'+'ipt></body></html>';
+}
+function openRegisteredRoutePreview(){const id=$("sim-route-select").value;if(!id){msg("sim-status","Select a route to preview.");return} $("sim-preview").srcdoc=buildRoutePreviewDocument(id);$("sim-status").textContent="Registry route preview";msg("sim-status","Route preview generated from current local registry and connections.")}
+function runSimulator(){const code=$("sim-code").value;$("sim-preview").srcdoc=code;$("sim-status").textContent="Preview refreshed";msg("sim-status","Preview refreshed")}
+$("sim-open-route").onclick=openRegisteredRoutePreview;
+$("sim-run").onclick=runSimulator;
+$("sim-reset").onclick=()=>{$("sim-code").value=SIM_SAMPLE;runSimulator();msg("sim-status","Sample restored")};
+$("sim-download").onclick=()=>download("dcp-ui-simulator.html",$("sim-code").value,"text/html;charset=utf-8");
+$("sim-code").value=SIM_SAMPLE;runSimulator();
+initRouteManager();
+
+// Shared route color manager: centralized, validated, browser-local preferences.
+// Colors are presentation only; they never prove gate status.
+const ROUTE_COLOR_DEFAULTS=Object.freeze({route_read:"#2563eb",route_analyze:"#7c3aed",route_write:"#ea580c",route_test:"#15803d",route_audit:"#0f766e",route_block:"#dc2626",route_unknown:"#64748b",status_pass:"#15803d",status_fail:"#dc2626",status_pending:"#a16207",status_unknown:"#64748b"});
+const ROUTE_COLOR_LABELS=Object.freeze({route_read:"READ",route_analyze:"ANALYZE",route_write:"WRITE / MODIFY",route_test:"TEST",route_audit:"AUDIT",route_block:"BLOCKED",route_unknown:"UNKNOWN",status_pass:"PASS",status_fail:"FAIL",status_pending:"PENDING",status_unknown:"UNKNOWN"});
+const ROUTE_COLOR_STORAGE_KEY="dcp.route-colors.v1";
+let routeColors={...ROUTE_COLOR_DEFAULTS};
+function validHexColor(v){return typeof v==="string"&&/^#[0-9a-f]{6}$/i.test(v)}
+function normalizeRouteColors(candidate){const clean={...ROUTE_COLOR_DEFAULTS};if(!candidate||typeof candidate!=="object"||Array.isArray(candidate))return clean;for(const key of Object.keys(clean)){if(validHexColor(candidate[key]))clean[key]=candidate[key].toLowerCase()}return clean}
+function applyRouteColors(candidate){routeColors=normalizeRouteColors(candidate);const root=document.documentElement;for(const [key,value] of Object.entries(routeColors)){const cssName=key.startsWith("route_")?"--route-"+key.slice(6).replaceAll("_","-"):"--status-"+key.slice(7);root.style.setProperty(cssName,value)}renderRouteColorPreview();return {...routeColors}}
+function renderColorInputs(targetId,keys){const target=$(targetId);target.innerHTML=keys.map(key=>'<div class="color-row"><label for="color-'+key+'">'+esc(ROUTE_COLOR_LABELS[key])+'</label><input type="color" id="color-'+key+'" data-route-color="'+key+'" value="'+routeColors[key]+'" aria-label="'+esc(ROUTE_COLOR_LABELS[key])+' color"></div>').join("");target.querySelectorAll("[data-route-color]").forEach(input=>input.addEventListener("input",()=>{routeColors=normalizeRouteColors({...routeColors,[input.dataset.routeColor]:input.value});applyRouteColors(routeColors);$("route-color-json").value=JSON.stringify(routeColors,null,2);msg("route-color-message","Preview updated; press Save to persist in this browser.")}))}
+function renderRouteColorPreview(){const el=$("route-color-preview");if(!el)return;el.innerHTML=Object.keys(ROUTE_COLOR_DEFAULTS).map(key=>'<span class="'+(key.startsWith("route_")?"route-tag route-"+key.slice(6).replaceAll("_","-"):"route-state")+'" '+(key.startsWith("status_")?'data-status="'+key.slice(7)+'"':'')+'>'+esc(ROUTE_COLOR_LABELS[key])+'</span>').join("");$("route-color-json").value=JSON.stringify(routeColors,null,2)}
+function initRouteColorManager(){renderColorInputs("route-color-controls",["route_read","route_analyze","route_write","route_test","route_audit","route_block","route_unknown"]);renderColorInputs("status-color-controls",["status_pass","status_fail","status_pending","status_unknown"]);let saved=null;try{saved=JSON.parse(localStorage.getItem(ROUTE_COLOR_STORAGE_KEY)||"null")}catch(_){saved=null}applyRouteColors(saved||ROUTE_COLOR_DEFAULTS);document.querySelectorAll("[data-route-color]").forEach(input=>{input.value=routeColors[input.dataset.routeColor]});msg("route-color-message",saved?"Saved browser palette loaded.":"Default palette loaded; not yet saved.");$("route-color-save").onclick=()=>{try{localStorage.setItem(ROUTE_COLOR_STORAGE_KEY,JSON.stringify(routeColors));msg("route-color-message","Colors saved in this browser only.")}catch(_){msg("route-color-message","Could not save browser storage; colors remain preview-only.")}};$("route-color-reset").onclick=()=>{try{localStorage.removeItem(ROUTE_COLOR_STORAGE_KEY)}catch(_){}applyRouteColors(ROUTE_COLOR_DEFAULTS);document.querySelectorAll("[data-route-color]").forEach(input=>input.value=routeColors[input.dataset.routeColor]);msg("route-color-message","Default colors restored. Press Save to persist them.")};$("route-color-export").onclick=()=>{const json=JSON.stringify(routeColors,null,2);$("route-color-json").value=json;download("dcp-route-colors.json",json,"application/json");msg("route-color-message","Current palette exported as JSON.")}}
+initRouteColorManager();
+</script></body></html>
