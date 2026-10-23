@@ -7,10 +7,10 @@ HTML = (ROOT / "dashboard" / "index.html").read_text(encoding="utf-8")
 
 class DashboardContractTests(unittest.TestCase):
     def test_all_tool_views_exist(self):
-        for view in ("home", "repo", "pr", "user", "evidence", "gates", "checkpoint", "audit", "route-colors", "ui-routes", "ui-simulator"):
+        for view in ("home", "repo", "pr", "user", "workspace", "evidence", "gates", "checkpoint", "audit", "route-colors", "ui-routes", "ui-simulator"):
             with self.subTest(view=view):
                 self.assertIn('id="' + view + '"', HTML)
-        for control in ("repo-load", "pr-load", "user-load", "ev-check", "gate-eval", "cp-build", "audit-eval", "route-color-save", "route-color-reset", "route-color-export", "route-add", "route-reset", "route-export", "edge-add", "edge-clear", "sim-run", "sim-reset", "sim-download"):
+        for control in ("repo-load", "pr-load", "user-load", "ws-load", "ws-repo", "ws-branch", "ws-permission", "ws-branches", "ev-check", "gate-eval", "cp-build", "audit-eval", "route-color-save", "route-color-reset", "route-color-export", "route-add", "route-reset", "route-export", "edge-add", "edge-clear", "sim-run", "sim-reset", "sim-download"):
             with self.subTest(control=control):
                 self.assertIn('id="' + control + '"', HTML)
 
