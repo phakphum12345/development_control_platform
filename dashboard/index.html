@@ -218,7 +218,8 @@ let rosApiSession = "";
 let rosApiAccount = null;
 let rosApiPopup = null;
 function rosApiBase() {
-  const raw = $("ros-api-base").value.trim().replace(/\\/+$/, "");
+  let raw = $("ros-api-base").value.trim();
+  while (raw.endsWith("/")) raw = raw.slice(0, -1);
   const parsed = new URL(raw);
   if (parsed.protocol !== "https:") throw new Error("API URL must use HTTPS.");
   return parsed.origin;
@@ -277,7 +278,8 @@ $("ros-api-load").addEventListener("click", async () => {
     if (!rosApiSession) throw new Error("Connect first.");
     const base = rosApiBase();
     const repository = $("ros-api-repository").value.trim();
-    if (!/^[^/\\s]+\\/[^/\\s]+$/.test(repository)) throw new Error("Repository must use owner/name format.");
+    const repoParts = repository.split("/");
+    if (repoParts.length !== 2 || repoParts.some(part => !part || /\s/.test(part))) throw new Error("Repository must use owner/name format.");
     rosApiStatus("Requesting authenticated GitHub dashboard…");
     const response = await fetch(base + "/v1/github/dashboard?repository=" + encodeURIComponent(repository), {
       headers: {"X-Research-OS-Session":rosApiSession}, cache:"no-store"
@@ -295,7 +297,7 @@ $("ros-api-load").addEventListener("click", async () => {
       "Open pull requests: " + String(prs.length),
       "Recent workflow runs:",
       ...runs.map(run => "- " + String(run.name || "workflow") + " | " + String(run.status || "unknown") + " | " + String(run.conclusion || "pending") + " | " + String(run.url || ""))
-    ].join("\\n");
+    ].join("\n");
     rosApiStatus("API request passed. Read-only dashboard data loaded for " + repository + ".");
   } catch (error) {
     $("ros-api-result").textContent = "No data loaded.";
