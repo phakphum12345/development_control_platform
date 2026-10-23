@@ -39,7 +39,9 @@
 .code-nav-panel{border-top:1px solid var(--l);padding-top:10px;margin-top:10px}
 .code-nav-highlight{outline:3px solid var(--route-analyze,#7c3aed)!important;outline-offset:3px;scroll-margin-top:16px}
 @media(max-width:1000px){.code-nav-shell{grid-template-columns:1fr}.code-nav-tree{position:static}.code-nav-map{grid-template-columns:95px minmax(0,1fr)}}
-</style></head><body><main class="wrap">
+.pwa-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.auth-status{padding:10px;border-radius:9px;border:1px solid var(--l);background:var(--s);overflow-wrap:anywhere}.auth-status[data-state="ready"]{border-color:#15803d}.auth-status[data-state="error"]{border-color:#b91c1c}
+@media(max-width:900px){.layout{grid-template-columns:1fr}.nav{position:static;display:flex;gap:5px;overflow-x:auto;flex-wrap:nowrap}.nav button{white-space:nowrap;flex:0 0 auto;width:auto!important}.grid{grid-template-columns:1fr}}
+@media(max-width:600px){.wrap{padding:12px}.layout{gap:10px}header h1{font-size:1.55rem}.panel{padding:12px}button,input,select,textarea{min-height:44px}.nav{top:0}}</style></head><body><main class="wrap">
 <header><div><h1>Development Control Platform</h1><p>Repository inspection · PR review · evidence · gates · checkpoints · audit</p></div><div class="pwa-actions"><button type="button" id="pwa-install" hidden>Install app</button><span class="pill" id="pwa-state">Web app</span><span class="pill">READ-ONLY · PUBLIC API</span></div></header>
 <div class="warn"><b>Safety boundary:</b> This dashboard reads public GitHub API data only. No token, private repository access, push, branch creation, approval, merge or deployment is available. Registry remains opt-in and empty. Browser validation does not prove CI passed.</div>
 <div class="layout"><nav class="nav" aria-label="Tools">
