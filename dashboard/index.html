@@ -444,7 +444,7 @@ function initPWA(){
 }
 async function initPasswordAuth(){
  const status=$("auth-backend-status"),session=$("auth-session-status"),submit=$("auth-submit"),form=$("auth-login-form"),logout=$("auth-logout");
- const show=(el,text,state)=>{el.textContent=text;el.dataset.state=state||"unknown"};
+ const show=(el,text,state)=>{el.textContent=text;el.dataset.state=state||"unknown"};\n let csrfToken=null;
  async function sessionCheck(){
   submit.disabled=true;logout.disabled=true;
   try{
@@ -469,7 +469,7 @@ async function initPasswordAuth(){
  });
  logout.addEventListener("click",async()=>{
   logout.disabled=true;
-  try{const r=await fetch("./api/auth/logout",{method:"POST",credentials:"same-origin",cache:"no-store",headers:{Accept:"application/json"}});if(!r.ok)throw new Error("Sign-out endpoint unavailable (HTTP "+r.status+").");show(session,"Signed out.","unknown");}
+  try{if(!csrfToken)throw new Error("Sign-out blocked: missing server-issued CSRF token.");const r=await fetch("./api/auth/logout",{method:"POST",credentials:"same-origin",cache:"no-store",headers:{Accept:"application/json","X-CSRF-Token":csrfToken}});if(!r.ok)throw new Error("Sign-out endpoint unavailable (HTTP "+r.status+").");show(session,"Signed out.","unknown");}
   catch(e){show(session,e.message,"error");}
   await sessionCheck();
  });
