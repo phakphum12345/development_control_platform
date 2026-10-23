@@ -53,6 +53,18 @@ Run the real-browser smoke tests with Node.js and Playwright Chromium:
 
 The CI workflow runs both static contract tests and browser smoke tests. Browser coverage exercises route-color persistence, route registry add/edit/delete, connection editing, the sandboxed simulator, and registry-route preview. These checks do not replace authenticated integration tests or a production security review.
 
+## Local emulators and VS Code
+
+Open this repository root in VS Code. Recommended extensions and workspace tasks are declared in `.vscode/extensions.json`, `.vscode/tasks.json`, and `.vscode/launch.json`.
+
+- Run **DCP: Check local development environment** to inspect available Python, Node/npm, VS Code CLI, Flutter, Android SDK tools, and macOS simulator tooling.
+- Run **DCP: List connected devices** to query Flutter and Android Debug Bridge when installed.
+- Run **DCP: List Android AVDs** to discover existing Android Virtual Devices.
+- Run **DCP: Launch Android AVD** only with an exact name returned by the AVD list.
+- Run **DCP: Python contract tests** and **DCP: Dashboard browser smoke tests** for local validation.
+
+The helper is read-only except for the explicit `launch-avd` command. It does not install SDKs, change environment variables, create AVDs, read credentials, or install an application. Missing tools return UNKNOWN; starting an emulator does not prove that an app booted or passed tests. iOS Simulator discovery is reported only on macOS, and this repository does not itself contain a native Flutter application to install on an emulator.
+
 ## Repository components
 
 - config/projects.yml — opt-in project registry and safety policy.

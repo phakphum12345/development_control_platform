@@ -1,0 +1,27 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "DCP: Local environment audit",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/tools/dev_environment.py",
+      "args": [
+        "status"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "DCP: Discover connected devices",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/tools/dev_environment.py",
+      "args": [
+        "devices"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": true
+    }
+  ]
+}
