@@ -444,7 +444,8 @@ function initPWA(){
 }
 async function initPasswordAuth(){
  const status=$("auth-backend-status"),session=$("auth-session-status"),submit=$("auth-submit"),form=$("auth-login-form"),logout=$("auth-logout");
- const show=(el,text,state)=>{el.textContent=text;el.dataset.state=state||"unknown"};\n let csrfToken=null;
+ const show=(el,text,state)=>{el.textContent=text;el.dataset.state=state||"unknown"};
+ let csrfToken=null;
  async function sessionCheck(){
   submit.disabled=true;logout.disabled=true;
   try{
