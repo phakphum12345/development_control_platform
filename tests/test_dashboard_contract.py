@@ -140,7 +140,7 @@ class DashboardContractTests(unittest.TestCase):
             'name="apple-mobile-web-app-capable" content="yes"',
             'id="account"', 'id="auth-login-form"',
             './api/auth/session', './api/auth/login', './api/auth/logout',
-            'credentials:"same-origin"', 'type="password"',
+            'credentials:"same-origin"', 'X-CSRF-Token', 'csrfToken=null', 'type="password"',
             'GitHub Pages is static hosting',
             'No password login will be simulated',
         ):
