@@ -8,11 +8,11 @@ The dashboard is a static GitHub Pages site. GitHub Pages does not run server-si
 
 ## Required endpoints
 
-- `GET /api/auth/session` → `{ "authenticated": true, "user": { "displayName": "..." } }` or `{ "authenticated": false }`
+- `GET /api/auth/session` → `{ "authenticated": true, "csrfToken": "...", "user": { "displayName": "..." } }` or `{ "authenticated": false, "csrfToken": "..." }`. Issue a session-bound CSRF token even for an unauthenticated session, and rotate it when appropriate.
 - `POST /api/auth/login` with JSON `{ "username": "...", "password": "..." }` → `{ "authenticated": true, "user": { "displayName": "..." } }`
 - `POST /api/auth/logout` → `{ "authenticated": false }`
 
-The server must set and clear the session cookie; do not return a session token to JavaScript. Use HTTPS and a cookie with `Secure; HttpOnly; SameSite=Lax` (or stricter compatible policy), server-side expiry and revocation. Rotate session IDs after login and privilege changes. Apply CSRF protection to state-changing requests, rate limiting and progressive throttling to login, generic authentication errors, password hashing with a modern password-hashing algorithm (Argon2id preferred), and server-side authorization on every protected operation. Never log passwords, cookies, or session identifiers.
+The server must set and clear the session cookie; do not return a session token to JavaScript. The UI sends the separate server-issued CSRF token in `X-CSRF-Token` for login/logout POST requests and keeps it in tab memory only. Use HTTPS and a cookie with `Secure; HttpOnly; SameSite=Lax` (or stricter compatible policy), server-side expiry and revocation. Rotate session IDs after login and privilege changes. Apply CSRF protection to state-changing requests, rate limiting and progressive throttling to login, generic authentication errors, password hashing with a modern password-hashing algorithm (Argon2id preferred), and server-side authorization on every protected operation. Never log passwords, cookies, or session identifiers.
 
 The API must return `Cache-Control: no-store` for authentication responses. Configure CORS narrowly (ideally same-origin); do not use wildcard origins with credentials. Add account recovery, password reset, audit events, and an explicit account lifecycle before real users depend on this.
 
