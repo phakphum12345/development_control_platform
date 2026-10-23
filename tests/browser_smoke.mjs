@@ -84,8 +84,22 @@ try {
   await page.locator("#code-nav-search").fill("");
   await page.locator("#code-nav-filter").selectOption("all");
 
+
+  // PWA assets and password-login client must be present; static hosting must
+  // fail closed rather than invent a client-side authenticated session.
+  assert.equal(await page.locator('link[rel="manifest"]').getAttribute("href"), "./manifest.webmanifest");
+  assert.equal(await page.locator("#pwa-install").isVisible(), false);
+  await page.locator('[data-tab="account"]').click();
+  assert.equal(await page.locator("#auth-submit").isDisabled(), true);
+  assert.match(await page.locator("#auth-backend-status").textContent(), /Authentication backend unavailable/);
+  await page.locator("#auth-username").fill("test@example.invalid");
+  await page.locator("#auth-password").fill("never-store-this");
+  assert.equal(await page.evaluate(() => localStorage.getItem("auth-token")), null);
+  assert.equal(await page.evaluate(() => sessionStorage.getItem("auth-token")), null);
+  assert.equal(await page.locator("#auth-submit").isDisabled(), true);
+
   assert.deepEqual(pageErrors, [], "dashboard should not raise uncaught browser errors");
-  console.log("Browser smoke tests passed: route colors, registry CRUD, connections, sandbox, route preview, and Code Navigator mapping/actions.");
+  console.log("Browser smoke tests passed: route colors, registry CRUD, connections, sandbox, route preview, Code Navigator, PWA metadata, and fail-closed authentication UI.");
 } finally {
   await browser.close();
   await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
