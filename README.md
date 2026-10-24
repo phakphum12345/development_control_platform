@@ -16,6 +16,7 @@ Open dashboard/index.html in a modern browser. Current tools:
 - **Audit & Safety Checklist** — export a local safety checklist as JSON.
 - **Shared Route Color Manager** — one centralized palette for READ, ANALYZE, WRITE/MODIFY, TEST, AUDIT, BLOCKED and UNKNOWN plus PASS/FAIL/PENDING/UNKNOWN status colors. Customize, preview, save in the current browser, reset, or export JSON; colors are presentation only and never prove gate status.
 - **UI Route Manager** — discovers actual Dashboard view IDs dynamically, with add/edit/delete controls, a drag-and-drop visual connection builder, and JSON export. Automatic validation detects duplicate IDs/connections, missing targets/parents, parent cycles, self-connections, and connections to disabled routes (warnings). Registry and visual connections use the same browser-local data model; access labels remain metadata only.
+- **Code Navigator** — route-aware, three-panel mapping from the current Dashboard view to DOM elements, declared handlers, API/service boundaries, browser state, tests, and evidence limits. Colored route bars reuse the existing route-color CSS palette; Trace UI, Trace Calls, Show UI, Compare, DOM-only Run Checks, and Checkpoint actions are wired. Unknown call edges and live CI/deployment evidence remain explicitly UNKNOWN; the navigator does not execute inspected code.
 - **UI Simulator** — a split code-editor/live-preview page for HTML/CSS/JavaScript prototypes, plus a registry-route preview that simulates navigation over the same registered connections. Both previews run in a sandboxed iframe and can be downloaded as an HTML file; neither modifies production routing or deploys the preview.
 
 The dashboard calls the unauthenticated public GitHub REST API directly from the browser. Network errors, inaccessible resources, and rate limits are shown as errors. This is not private-repository integration and uses no credentials.
@@ -65,7 +66,7 @@ Open this repository root in VS Code. Recommended extensions and workspace tasks
 
 The helper is read-only except for the explicit `launch-avd` command. It does not install SDKs, change environment variables, create AVDs, read credentials, or install an application. Missing tools return UNKNOWN; starting an emulator does not prove that an app booted or passed tests. iOS Simulator discovery is reported only on macOS, and this repository does not itself contain a native Flutter application to install on an emulator.
 
-## Repository components
+## Mobile app and authentication boundary\n\n- **PWA shell** — installable dashboard manifest, app icon, mobile-friendly navigation, and a service worker that caches only the static shell. Authentication/API requests are network-only.\n- **Password Login** — frontend integration contract only. GitHub Pages is static hosting; the server-side authentication API is not present in this repository. The login stays disabled until `/api/auth/session` confirms a backend is available. Do not treat this UI as working authentication until the API is deployed and security tests pass. See `docs/authentication-deployment.md`.\n\n## Repository components
 
 - config/projects.yml — opt-in project registry and safety policy.
 - schemas/project-state.schema.json — project state and gate evidence contract.

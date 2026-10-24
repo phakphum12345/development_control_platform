@@ -7,10 +7,10 @@ HTML = (ROOT / "dashboard" / "index.html").read_text(encoding="utf-8")
 
 class DashboardContractTests(unittest.TestCase):
     def test_all_tool_views_exist(self):
-        for view in ("home", "repo", "pr", "user", "workspace", "evidence", "gates", "checkpoint", "audit", "route-colors", "ui-routes", "ui-simulator", "dev-tools"):
+        for view in ("home", "repo", "pr", "user", "workspace", "evidence", "gates", "checkpoint", "audit", "route-colors", "ui-routes", "ui-simulator", "dev-tools", "code-navigator"):
             with self.subTest(view=view):
                 self.assertIn('id="' + view + '"', HTML)
-        for control in ("repo-load", "pr-load", "user-load", "ws-load", "ws-repo", "ws-branch", "ws-permission", "ws-branches", "ev-check", "gate-eval", "cp-build", "audit-eval", "route-color-save", "route-color-reset", "route-color-export", "route-add", "route-reset", "route-export", "edge-add", "edge-clear", "sim-run", "sim-reset", "sim-download", "dev-tools-copy-status"):
+        for control in ("repo-load", "pr-load", "user-load", "ws-load", "ws-repo", "ws-branch", "ws-permission", "ws-branches", "ev-check", "gate-eval", "cp-build", "audit-eval", "route-color-save", "route-color-reset", "route-color-export", "route-add", "route-reset", "route-export", "edge-add", "edge-clear", "sim-run", "sim-reset", "sim-download", "dev-tools-copy-status", "code-nav-search", "code-nav-filter", "code-nav-trace-ui", "code-nav-trace-calls", "code-nav-show-ui", "code-nav-compare", "code-nav-run-checks", "code-nav-checkpoint", "code-nav-route-list", "code-nav-mapping", "code-nav-evidence"):
             with self.subTest(control=control):
                 self.assertIn('id="' + control + '"', HTML)
 
@@ -89,6 +89,21 @@ class DashboardContractTests(unittest.TestCase):
             with self.subTest(contract=contract):
                 self.assertIn(contract, HTML)
 
+
+    def test_code_navigator_mapping_is_explicit_safe_and_route_aware(self):
+        for expected in (
+            'id="code-navigator"', 'data-tab="code-navigator"',
+            'CODE_NAV_MAPPINGS', 'function codeNavTraceUI()',
+            'function codeNavTraceCalls()', 'function codeNavShowUI()',
+            'function codeNavCompare()', 'function codeNavRunChecks()',
+            'function codeNavCheckpoint()', 'dcp.ui-route-registry.v1',
+            'dcp.route-colors.v1', 'Unmapped dynamic call edges: UNKNOWN',
+            'CI / deployment evidence: UNKNOWN',
+            'sandbox', 'Trace Calls', 'Run Checks', 'Impact / Dependencies',
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, HTML)
+
     def test_shared_route_color_manager_is_centralized_and_safe(self):
         for contract in (
             "ROUTE_COLOR_DEFAULTS",
@@ -111,6 +126,32 @@ class DashboardContractTests(unittest.TestCase):
         self.assertIn("route_unknown", HTML)
         self.assertIn("status_unknown", HTML)
 
+
+
+    def test_pwa_shell_and_password_auth_fail_closed(self):
+        import json
+        manifest = json.loads((ROOT / "dashboard" / "manifest.webmanifest").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["display"], "standalone")
+        self.assertEqual(manifest["scope"], "./")
+        self.assertTrue((ROOT / "dashboard" / "sw.js").is_file())
+        self.assertTrue((ROOT / "dashboard" / "icons" / "dcp.svg").is_file())
+        for expected in (
+            'rel="manifest" href="./manifest.webmanifest"',
+            'name="apple-mobile-web-app-capable" content="yes"',
+            'id="account"', 'id="auth-login-form"',
+            './api/auth/session', './api/auth/login', './api/auth/logout',
+            'credentials:"same-origin"', 'X-CSRF-Token', 'csrfToken=null', 'type="password"',
+            'GitHub Pages is static hosting',
+            'No password login will be simulated',
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, HTML)
+        self.assertNotIn("localStorage.setItem(\"auth", HTML)
+        self.assertNotIn("sessionStorage.setItem(\"auth", HTML)
+        worker = (ROOT / "dashboard" / "sw.js").read_text(encoding="utf-8")
+        self.assertIn("Authentication/API requests are always network-only", worker)
+        self.assertIn('request.method !== "GET"', worker)
+        self.assertIn("url.pathname.startsWith(apiPrefix)", worker)
 
 class DevEnvironmentDashboardContractTests(unittest.TestCase):
     def test_local_tooling_view_is_honest_and_actionable(self):
