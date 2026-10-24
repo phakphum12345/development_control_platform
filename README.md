@@ -66,7 +66,12 @@ Open this repository root in VS Code. Recommended extensions and workspace tasks
 
 The helper is read-only except for the explicit `launch-avd` command. It does not install SDKs, change environment variables, create AVDs, read credentials, or install an application. Missing tools return UNKNOWN; starting an emulator does not prove that an app booted or passed tests. iOS Simulator discovery is reported only on macOS, and this repository does not itself contain a native Flutter application to install on an emulator.
 
-## Mobile app and authentication boundary\n\n- **PWA shell** — installable dashboard manifest, app icon, mobile-friendly navigation, and a service worker that caches only the static shell. Authentication/API requests are network-only.\n- **Password Login** — frontend integration contract only. GitHub Pages is static hosting; the server-side authentication API is not present in this repository. The login stays disabled until `/api/auth/session` confirms a backend is available. Do not treat this UI as working authentication until the API is deployed and security tests pass. See `docs/authentication-deployment.md`.\n\n## Repository components
+## Mobile app and authentication boundary
+
+- **PWA shell** — installable dashboard manifest, app icon, mobile-friendly navigation, and a service worker that caches only the static shell. Authentication/API requests are network-only.
+- **Password Login** — frontend integration contract only. GitHub Pages is static hosting; the server-side authentication API is not present in this repository. The login stays disabled until `/api/auth/session` confirms a backend is available. Do not treat this UI as working authentication until the API is deployed and security tests pass. See `docs/authentication-deployment.md`.
+
+## Repository components
 
 - config/projects.yml — opt-in project registry and safety policy.
 - schemas/project-state.schema.json — project state and gate evidence contract.
