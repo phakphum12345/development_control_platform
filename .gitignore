@@ -1,0 +1,6 @@
+# Python runtime caches
+__pycache__/
+*.py[cod]
+
+# Local-only isolated launcher smoke-test scripts and artifacts
+.dcp-test-8001/
