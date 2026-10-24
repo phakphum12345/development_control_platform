@@ -185,6 +185,3 @@ try {
 }
 if (-not $testPassed) { exit 1 }
 exit 0
-
-if (-not $testPassed) { exit 1 }
-exit 0
