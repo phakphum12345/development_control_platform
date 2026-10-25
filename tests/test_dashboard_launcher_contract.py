@@ -15,8 +15,11 @@ class DashboardLauncherContractTests(unittest.TestCase):
         self.assertIn("[System.IO.Path]::GetFullPath($PSScriptRoot)", STOP)
         self.assertIn("127.0.0.1", START)
         self.assertIn("127.0.0.1", STOP)
-        self.assertIn("ValidateRange(1, 65535)", START)
-        self.assertIn("ValidateRange(1, 65535)", STOP)
+        self.assertIn("ValidateRange(0, 65535)", START)
+        self.assertIn("ValidateRange(0, 65535)", STOP)
+        self.assertIn("$Port = 0", START)
+        self.assertIn("TcpListener", START)
+        self.assertIn("$autoPort", STOP)
 
     def test_start_verifies_served_content_before_reuse(self):
         self.assertIn("Test-DcpResponseMatchesDashboard", START)
@@ -37,6 +40,8 @@ class DashboardLauncherContractTests(unittest.TestCase):
 
     def test_cmd_wrappers_use_script_relative_paths_and_exact_exit_code(self):
         self.assertIn("%~dp0Start-DCP-Dashboard.ps1", OPEN_CMD)
+        self.assertIn("-OpenBrowser", OPEN_CMD)
+        self.assertNotIn("http://127.0.0.1:8000/", OPEN_CMD)
         self.assertIn("%~dp0Stop-DCP-Dashboard.ps1", STOP_CMD)
         self.assertIn('if "%RC%"=="4" goto :not_owned', STOP_CMD)
 
