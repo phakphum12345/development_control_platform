@@ -1,17 +1,46 @@
 [CmdletBinding()]
 param(
-    [ValidateRange(1, 65535)]
-    [int]$Port = 8000
+    # Zero means choose a free loopback port automatically. Explicit ports are
+    # retained for controlled tests and troubleshooting.
+    [ValidateRange(0, 65535)]
+    [int]$Port = 0,
+    [switch]$OpenBrowser
 )
 
 $ErrorActionPreference = 'Stop'
 $project = [System.IO.Path]::GetFullPath($PSScriptRoot)
 $dashboard = [System.IO.Path]::GetFullPath((Join-Path $project 'dashboard'))
 $indexFile = Join-Path $dashboard 'index.html'
-$url = "http://127.0.0.1:$Port/"
-$stateName = if ($Port -eq 8000) { 'DCP' } else { "DCP-Test-$Port" }
+$requestedPort = $Port
+$autoPort = $requestedPort -eq 0
+$stateName = if ($autoPort -or $Port -eq 8000) { 'DCP' } else { "DCP-Test-$Port" }
 $stateDir = Join-Path $env:LOCALAPPDATA $stateName
 $pidFile = Join-Path $stateDir 'dashboard-server.json'
+
+# When this launcher already owns a server, reuse its recorded port. Otherwise
+# ask Windows for an ephemeral loopback port rather than assuming 8000 is free.
+if ($autoPort -and (Test-Path -LiteralPath $pidFile -PathType Leaf)) {
+    try {
+        $priorRecord = Get-Content -LiteralPath $pidFile -Raw | ConvertFrom-Json
+        $priorPort = 0
+        if ([int]::TryParse([string]$priorRecord.port, [ref]$priorPort) -and
+            $priorPort -ge 1 -and $priorPort -le 65535) {
+            $Port = $priorPort
+        }
+    } catch {
+        # Preserve malformed ownership evidence; the validation below will fail closed.
+    }
+}
+if ($autoPort -and $Port -eq 0) {
+    $probe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+    try {
+        $probe.Start()
+        $Port = [int]$probe.LocalEndpoint.Port
+    } finally {
+        $probe.Stop()
+    }
+}
+$url = "http://127.0.0.1:$Port/"
 
 if (-not (Test-Path -LiteralPath $indexFile -PathType Leaf)) {
     throw "Dashboard entry point not found: $indexFile"
@@ -87,7 +116,7 @@ function Read-DcpOwnershipRecord {
     if ([string]$record.dashboard -ne $dashboard) {
         throw "Ownership record refers to a different dashboard and was preserved: $pidFile"
     }
-    if ($record.PSObject.Properties.Name -contains 'port' -and [int]$record.port -ne $Port) {
+    if (-not $autoPort -and $record.PSObject.Properties.Name -contains 'port' -and [int]$record.port -ne $Port) {
         throw "Ownership record refers to a different port and was preserved: $pidFile"
     }
     return $record
@@ -124,6 +153,7 @@ if ($listeners.Count -gt 0) {
         throw "The ownership record PID does not own port $Port; record preserved and no process stopped."
     }
     Write-Output "REUSED_VERIFIED_SERVER: PID $($ownerPids[0]) serves the current dashboard on $url. No ownership was newly claimed."
+    if ($OpenBrowser) { try { Start-Process -FilePath $url } catch { Write-Warning "Dashboard is ready at $url, but the browser could not be opened automatically: $($_.Exception.Message)" } }
     return
 }
 
@@ -185,6 +215,7 @@ try {
     Move-Item -LiteralPath $tempRecord -Destination $pidFile
     $tempRecord = $null
     Write-Output "STARTED_VERIFIED_SERVER: PID $startedPid; URL $url; state $pidFile"
+    if ($OpenBrowser) { try { Start-Process -FilePath $url } catch { Write-Warning "Dashboard is ready at $url, but the browser could not be opened automatically: $($_.Exception.Message)" } }
 } catch {
     if ($tempRecord -and (Test-Path -LiteralPath $tempRecord)) {
         Remove-Item -LiteralPath $tempRecord -Force -ErrorAction SilentlyContinue

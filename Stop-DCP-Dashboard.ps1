@@ -1,14 +1,35 @@
 [CmdletBinding()]
 param(
-    [ValidateRange(1, 65535)]
-    [int]$Port = 8000
+    # Zero reads the launcher-owned record to discover the actual port.
+    [ValidateRange(0, 65535)]
+    [int]$Port = 0
 )
 
 $ErrorActionPreference = 'Stop'
 $project = [System.IO.Path]::GetFullPath($PSScriptRoot)
 $dashboard = [System.IO.Path]::GetFullPath((Join-Path $project 'dashboard'))
-$stateName = if ($Port -eq 8000) { 'DCP' } else { "DCP-Test-$Port" }
+$requestedPort = $Port
+$autoPort = $requestedPort -eq 0
+$stateName = if ($autoPort -or $Port -eq 8000) { 'DCP' } else { "DCP-Test-$Port" }
 $pidFile = Join-Path (Join-Path $env:LOCALAPPDATA $stateName) 'dashboard-server.json'
+
+if ($autoPort) {
+    if (-not (Test-Path -LiteralPath $pidFile -PathType Leaf)) {
+        Write-Output 'NO_OWNED_SERVER: no launcher-owned PID record; nothing was stopped.'
+        exit 4
+    }
+    try {
+        $initialRecord = Get-Content -LiteralPath $pidFile -Raw | ConvertFrom-Json
+        $recordPort = 0
+        if (-not [int]::TryParse([string]$initialRecord.port, [ref]$recordPort) -or
+            $recordPort -lt 1 -or $recordPort -gt 65535) {
+            throw 'Ownership record has no valid port.'
+        }
+        $Port = $recordPort
+    } catch {
+        throw "REFUSED: cannot discover port from ownership record; record preserved: $pidFile"
+    }
+}
 
 function Get-DcpListeners {
     @(
@@ -44,7 +65,7 @@ if ($null -eq $record -or $null -eq $record.pid -or
 if ([string]$record.dashboard -ne $dashboard) {
     throw 'REFUSED: ownership record dashboard path does not match. Nothing was stopped.'
 }
-if ($record.PSObject.Properties.Name -contains 'port' -and [int]$record.port -ne $Port) {
+if (-not $autoPort -and $record.PSObject.Properties.Name -contains 'port' -and [int]$record.port -ne $Port) {
     throw 'REFUSED: ownership record port does not match. Nothing was stopped.'
 }
 $recordPid = 0
