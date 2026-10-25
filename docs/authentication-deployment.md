@@ -29,3 +29,17 @@ The service worker caches only the static application shell. Requests under `/ap
 - [ ] Verify service-worker cache contains no API responses, credentials or private data.
 - [ ] Run iPhone Safari and Android Chrome install/offline smoke tests.
 - [ ] Inspect results for the exact tested commit SHA; skipped jobs are not passes.
+
+
+## Multiple applications and login systems (recommended deployment shape)
+
+Use one standards-based OpenID Connect (OIDC) identity provider as the identity broker, with a **separate registered client for each application**. Password sign-in and Google sign-in are provider-managed identity methods; they must not be implemented as competing client-side sessions. Each app keeps its own callback/redirect allowlist, client ID, audience/API permissions, logout redirect and authorization policy. Map provider subject IDs to local app roles server-side; do not use an email address alone as a durable account key.
+
+For the DCP dashboard and any future apps:
+- Keep the Research OS owner Google OAuth handoff separate from end-user sign-in. It grants a different capability and must not silently create a DCP session or confer owner privileges.
+- Prefer serving the dashboard and auth callback/API behind one HTTPS origin (custom domain plus reverse proxy, or a host that serves both). GitHub Pages alone cannot host the session API. Do not point the dashboard at an unrelated Render origin and assume same-origin cookies will work.
+- Use Authorization Code flow with PKCE for browser-based clients; validate issuer, audience, signature, state, nonce and exact redirect URI. Keep client secrets only on the server. Use Secure, HttpOnly, appropriately scoped cookies for server-managed sessions, and CSRF protection on state-changing requests.
+- Isolate apps by client ID, redirect URI, API audience and role/permission policy. A shared identity provider can provide SSO without sharing application sessions or permissions.
+- Before production enablement, configure the identity-provider tenant, verified domain/redirect URLs, persistent user/account lifecycle and recovery, server secrets, rate limiting, session revocation, audit events and deployment monitoring. Never seed a default password or pretend a missing backend is available.
+
+This repository currently has no configured identity-provider tenant or deployed /api/auth/* service. The recommendations above are the target architecture, not evidence that login is live.

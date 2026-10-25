@@ -463,6 +463,8 @@ async function initPasswordAuth(){
    const r=await fetch("./api/auth/session",{method:"GET",credentials:"same-origin",headers:{Accept:"application/json"},cache:"no-store"});
    if(!r.ok)throw new Error("Authentication API unavailable (HTTP "+r.status+").");
    const data=await r.json();
+   if(typeof data.csrfToken!=="string"||data.csrfToken.length<16)throw new Error("Authentication API did not issue a valid CSRF token.");
+   csrfToken=data.csrfToken;
    if(data.authenticated===true){show(status,"Authentication backend connected.","ready");show(session,"Signed in"+(data.user&&data.user.displayName?" as "+data.user.displayName:"")+".","ready");logout.disabled=false;}
    else{show(status,"Authentication backend connected; sign-in required.","ready");show(session,"Session: NOT AUTHENTICATED.","unknown");submit.disabled=false;}
   }catch(e){show(status,"Authentication backend unavailable. No password login will be simulated. Deploy the server-side /api/auth endpoints over HTTPS first.","error");show(session,"Session: UNKNOWN — "+e.message,"unknown");}
@@ -471,7 +473,8 @@ async function initPasswordAuth(){
   e.preventDefault();submit.disabled=true;show(session,"Signing in…","unknown");
   const username=$("auth-username").value.trim(),password=$("auth-password").value;
   try{
-   const r=await fetch("./api/auth/login",{method:"POST",credentials:"same-origin",cache:"no-store",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({username,password})});
+   if(!csrfToken)throw new Error("Sign-in blocked: missing server-issued CSRF token. Refresh session and try again.");
+   const r=await fetch("./api/auth/login",{method:"POST",credentials:"same-origin",cache:"no-store",headers:{"Content-Type":"application/json","Accept":"application/json","X-CSRF-Token":csrfToken},body:JSON.stringify({username,password})});
    if(!r.ok)throw new Error("Sign-in failed or authentication API unavailable (HTTP "+r.status+").");
    const data=await r.json();
    if(data.authenticated!==true)throw new Error("Server did not confirm authentication.");
@@ -481,7 +484,7 @@ async function initPasswordAuth(){
  });
  logout.addEventListener("click",async()=>{
   logout.disabled=true;
-  try{if(!csrfToken)throw new Error("Sign-out blocked: missing server-issued CSRF token.");const r=await fetch("./api/auth/logout",{method:"POST",credentials:"same-origin",cache:"no-store",headers:{Accept:"application/json","X-CSRF-Token":csrfToken}});if(!r.ok)throw new Error("Sign-out endpoint unavailable (HTTP "+r.status+").");show(session,"Signed out.","unknown");}
+  try{if(!csrfToken)throw new Error("Sign-out blocked: missing server-issued CSRF token.");const r=await fetch("./api/auth/logout",{method:"POST",credentials:"same-origin",cache:"no-store",headers:{Accept:"application/json","X-CSRF-Token":csrfToken}});if(!r.ok)throw new Error("Sign-out endpoint unavailable (HTTP "+r.status+").");csrfToken=null;show(session,"Signed out.","unknown");}
   catch(e){show(session,e.message,"error");}
   await sessionCheck();
  });
