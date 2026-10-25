@@ -153,7 +153,7 @@ if ($listeners.Count -gt 0) {
         throw "The ownership record PID does not own port $Port; record preserved and no process stopped."
     }
     Write-Output "REUSED_VERIFIED_SERVER: PID $($ownerPids[0]) serves the current dashboard on $url. No ownership was newly claimed."
-    if ($OpenBrowser) { Start-Process -FilePath $url }
+    if ($OpenBrowser) { try { Start-Process -FilePath $url } catch { Write-Warning "Dashboard is ready at $url, but the browser could not be opened automatically: $($_.Exception.Message)" } }
     return
 }
 
@@ -215,7 +215,7 @@ try {
     Move-Item -LiteralPath $tempRecord -Destination $pidFile
     $tempRecord = $null
     Write-Output "STARTED_VERIFIED_SERVER: PID $startedPid; URL $url; state $pidFile"
-    if ($OpenBrowser) { Start-Process -FilePath $url }
+    if ($OpenBrowser) { try { Start-Process -FilePath $url } catch { Write-Warning "Dashboard is ready at $url, but the browser could not be opened automatically: $($_.Exception.Message)" } }
 } catch {
     if ($tempRecord -and (Test-Path -LiteralPath $tempRecord)) {
         Remove-Item -LiteralPath $tempRecord -Force -ErrorAction SilentlyContinue
