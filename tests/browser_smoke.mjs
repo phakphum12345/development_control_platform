@@ -85,6 +85,14 @@ try {
   await page.locator("#code-nav-filter").selectOption("all");
 
 
+  // Google OAuth sync must use the existing start endpoint and reject non-HTTPS API origins.
+  await page.locator('[data-tab="github-api"]').click();
+  await page.locator("#ros-api-base").fill("http://127.0.0.1");
+  await page.locator("#ros-api-sync").click();
+  await page.waitForFunction(() => document.querySelector("#ros-api-status")?.textContent.includes("Could not start Google OAuth sync"));
+  assert.match(await page.locator("#ros-api-status").textContent(), /API URL must use HTTPS/);
+  assert.equal(await page.locator("#ros-api-load").isDisabled(), true, "OAuth sync failure must not enable authenticated data loading");
+
   // PWA assets and password-login client must be present; static hosting must
   // fail closed rather than invent a client-side authenticated session.
   assert.equal(await page.locator('link[rel="manifest"]').getAttribute("href"), "./manifest.webmanifest");
