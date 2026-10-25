@@ -1,9 +1,8 @@
 @echo off
 setlocal
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Start-DCP-Dashboard.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Start-DCP-Dashboard.ps1" -OpenBrowser
 set "RC=%ERRORLEVEL%"
 if not "%RC%"=="0" goto :failed
-start "" "http://127.0.0.1:8000/"
 exit /b 0
 :failed
 echo Dashboard startup failed with exit code %RC%.
