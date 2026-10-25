@@ -249,6 +249,22 @@ jobs:
           print("JSON Schema meta-validation and evidence fixtures passed.")
           PY
 
+  windows-launcher-integration:
+    name: Windows dynamic-port launcher integration
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Exercise dynamic dashboard start, reuse, and stop
+        shell: pwsh
+        run: ./tests/test_dashboard_dynamic_port.ps1
+
       - name: Check for likely credential patterns
         shell: bash
         run: |
