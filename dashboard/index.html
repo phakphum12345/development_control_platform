@@ -307,6 +307,7 @@ function rosApiSetConnected(connected) {
   $("ros-api-load").disabled = !connected;
   $("ros-api-disconnect").disabled = !connected;
   $("ros-api-connect").disabled = connected;
+  $("ros-api-sync").disabled = false;
 }
 window.addEventListener("message", async (event) => {
   let expectedOrigin;
@@ -348,7 +349,9 @@ async function rosApiStartOAuthSync() {
     const response = await fetch(base + "/v1/auth/google/start", {method:"POST",headers:{"Content-Type":"application/json"},body:"{}",cache:"no-store"});
     const payload = await response.json();
     if (!response.ok || typeof payload.authorization_url !== "string") throw new Error(payload.detail || payload.error || "Google OAuth reconnect could not start.");
-    popup.location.replace(payload.authorization_url);
+    const authorizationUrl = new URL(payload.authorization_url);
+    if (authorizationUrl.protocol !== "https:" || authorizationUrl.hostname !== "accounts.google.com") throw new Error("OAuth authorization URL must use HTTPS on accounts.google.com.");
+    popup.location.replace(authorizationUrl.href);
     rosApiStatus("Google OAuth reconnect opened in a popup. Complete sign-in to refresh the session and status.");
   } catch (error) {
     try { popup.close(); } catch (_) {}
