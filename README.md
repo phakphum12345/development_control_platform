@@ -7,7 +7,7 @@ An independent control plane for development phases, quality gates, commit-bound
 Open dashboard/index.html in a modern browser. Current tools:
 
 - **Repository Explorer** — inspect public repository metadata, up to 100 branches and the first 20 open pull requests.
-- **Research OS API** — staged, read-only connector using Research OS Google sign-in and a one-time OAuth handoff. The session token remains in tab memory only; no GitHub token is sent to the browser.
+- **Research OS API** — staged, read-only connector using Research OS Google sign-in and a one-time OAuth handoff. **Sync Google OAuth** restarts the existing `/v1/auth/google/start` flow and updates the in-tab connection status after `/v1/auth/google/handoff`; it accepts only HTTPS API origins and HTTPS authorization URLs on `accounts.google.com`. The session token remains in tab memory only; no GitHub token is sent to the browser. This reconnect/status action does not sync Google Drive files.
 - **Pull Request Review** — inspect public PR metadata, up to 100 changed files and reviews, and check runs for the exact PR head SHA.
 - **User Explorer** — inspect public GitHub profile information. Public profile data is not proof of organization membership or permissions.
 - **SHA & Evidence Validator** — validate evidence record structure, full SHA format, timestamp and HTTPS URL.
