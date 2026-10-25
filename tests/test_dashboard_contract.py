@@ -128,6 +128,22 @@ class DashboardContractTests(unittest.TestCase):
 
 
 
+    def test_google_oauth_sync_reuses_existing_endpoints_and_fails_closed(self):
+        for expected in (
+            'id="ros-api-sync"', 'Sync Google OAuth',
+            'function rosApiStartOAuthSync()',
+            '"/v1/auth/google/start"', '"/v1/auth/google/handoff"',
+            '"/v1/auth/signout"', 'event.origin !== expectedOrigin',
+            'event.data.type !== "research-os-oauth-complete"',
+            'authorizationUrl.protocol !== "https:"',
+            'authorizationUrl.hostname !== "accounts.google.com"',
+            'Session is memory-only',
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, HTML)
+        self.assertNotIn('localStorage.setItem("rosApiSession"', HTML)
+        self.assertNotIn('sessionStorage.setItem("rosApiSession"', HTML)
+
     def test_pwa_shell_and_password_auth_fail_closed(self):
         import json
         manifest = json.loads((ROOT / "dashboard" / "manifest.webmanifest").read_text(encoding="utf-8"))
