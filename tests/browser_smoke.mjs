@@ -85,13 +85,23 @@ try {
   await page.locator("#code-nav-filter").selectOption("all");
 
 
-  // Google OAuth sync must use the existing start endpoint and reject non-HTTPS API origins.
+  // Local dashboard mode may use an HTTP loopback API only from a loopback dashboard.
+  // A non-loopback HTTP endpoint must still be rejected before any request is sent.
   await page.locator('[data-tab="github-api"]').click();
-  await page.locator("#ros-api-base").fill("http://127.0.0.1");
+  assert.equal(await page.locator("#ros-api-local-guidance").count(), 1);
+  await page.locator("#ros-api-base").fill("http://192.0.2.1");
   await page.locator("#ros-api-sync").click();
   await page.waitForFunction(() => document.querySelector("#ros-api-status")?.textContent.includes("Could not start Google OAuth sync"));
   assert.match(await page.locator("#ros-api-status").textContent(), /API URL must use HTTPS/);
   assert.equal(await page.locator("#ros-api-load").isDisabled(), true, "OAuth sync failure must not enable authenticated data loading");
+
+  // Loopback HTTP is allowed for a local backend, but this smoke server is only a static shell,
+  // so its HTML response must fail JSON handoff and must not create a session.
+  await page.locator("#ros-api-base").fill("http://127.0.0.1");
+  await page.locator("#ros-api-sync").click();
+  await page.waitForFunction(() => document.querySelector("#ros-api-status")?.textContent.includes("Could not start Google OAuth sync"));
+  assert.doesNotMatch(await page.locator("#ros-api-status").textContent(), /API URL must use HTTPS/);
+  assert.equal(await page.locator("#ros-api-load").isDisabled(), true, "a non-API local server must not enable authenticated data loading");
 
   // PWA assets and password-login client must be present; static hosting must
   // fail closed rather than invent a client-side authenticated session.
