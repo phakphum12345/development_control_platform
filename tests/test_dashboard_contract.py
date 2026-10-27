@@ -215,5 +215,21 @@ class DevEnvironmentDashboardContractTests(unittest.TestCase):
         self.assertTrue(all(task["type"] == "process" for task in tasks["tasks"]))
 
 
+class LocalResearchOSApiContractTests(unittest.TestCase):
+    def test_local_api_health_preflight_is_explicit_and_fail_closed(self):
+        for expected in (
+            'id="ros-api-health"',
+            'function rosApiCheckHealth()',
+            'fetch(base + "/health"',
+            'AbortController()',
+            'Timed out after 5 seconds.',
+            'OAuth remains UNKNOWN',
+            'does not verify Google OAuth, session handoff, repository allowlisting, or owner authorization',
+            'Local mode uses public GitHub tools',
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, HTML)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
