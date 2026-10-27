@@ -1,7 +1,20 @@
 version: 1
 
-# Opt-in registry. Start empty; never register personal projects implicitly.
-projects: []
+# Opt-in registry. Projects are registered explicitly and never inferred.
+projects:
+  - id: phakphum-calendar
+    name: Phakphum Calendar
+    repository: phakphum12345/phakphum-calendar
+    default_branch: main
+    status_source: github
+    required_gates:
+      - Dart and Flutter quality
+      - Unit and widget tests
+      - Shift exchange audit coverage
+      - Timeline actor attribution
+      - Authorization and privacy review
+      - GitHub Actions final gate
+      - Web deployment verification
 
 policy:
   merge_requires_all_required_gates_passed: true

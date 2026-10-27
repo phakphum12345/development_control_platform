@@ -1,0 +1,59 @@
+{
+  "project_id": "phakphum-calendar",
+  "repository": "phakphum12345/phakphum-calendar",
+  "branch": "main",
+  "commit_sha": "333cf26fc8a346c94c982a9af443e31c68c55b88",
+  "observed_at": "2026-10-27T01:00:00Z",
+  "source_url": "https://github.com/phakphum12345/phakphum-calendar/commit/333cf26fc8a346c94c982a9af443e31c68c55b88",
+  "gates": [
+    {
+      "name": "Dart and Flutter quality",
+      "status": "unknown",
+      "commit_sha": "333cf26fc8a346c94c982a9af443e31c68c55b88",
+      "observed_at": "2026-10-27T01:00:00Z",
+      "notes": "No current SHA-bound evidence has been recorded; do not treat as passed."
+    },
+    {
+      "name": "Unit and widget tests",
+      "status": "unknown",
+      "commit_sha": "333cf26fc8a346c94c982a9af443e31c68c55b88",
+      "observed_at": "2026-10-27T01:00:00Z",
+      "notes": "No current SHA-bound evidence has been recorded; do not treat as passed."
+    },
+    {
+      "name": "Shift exchange audit coverage",
+      "status": "unknown",
+      "commit_sha": "333cf26fc8a346c94c982a9af443e31c68c55b88",
+      "observed_at": "2026-10-27T01:00:00Z",
+      "notes": "No current SHA-bound evidence has been recorded; do not treat as passed."
+    },
+    {
+      "name": "Timeline actor attribution",
+      "status": "unknown",
+      "commit_sha": "333cf26fc8a346c94c982a9af443e31c68c55b88",
+      "observed_at": "2026-10-27T01:00:00Z",
+      "notes": "No current SHA-bound evidence has been recorded; do not treat as passed."
+    },
+    {
+      "name": "Authorization and privacy review",
+      "status": "unknown",
+      "commit_sha": "333cf26fc8a346c94c982a9af443e31c68c55b88",
+      "observed_at": "2026-10-27T01:00:00Z",
+      "notes": "No current SHA-bound evidence has been recorded; do not treat as passed."
+    },
+    {
+      "name": "GitHub Actions final gate",
+      "status": "unknown",
+      "commit_sha": "333cf26fc8a346c94c982a9af443e31c68c55b88",
+      "observed_at": "2026-10-27T01:00:00Z",
+      "notes": "No current SHA-bound evidence has been recorded; do not treat as passed."
+    },
+    {
+      "name": "Web deployment verification",
+      "status": "unknown",
+      "commit_sha": "333cf26fc8a346c94c982a9af443e31c68c55b88",
+      "observed_at": "2026-10-27T01:00:00Z",
+      "notes": "No current SHA-bound evidence has been recorded; do not treat as passed."
+    }
+  ]
+}

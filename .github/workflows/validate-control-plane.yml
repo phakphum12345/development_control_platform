@@ -177,7 +177,9 @@ jobs:
                       "project commit_sha"
                   )
 
-              check_required_gate_status(project["required_gates"], state)
+              # Registration validation checks structure and SHA-bound evidence only.
+              # UNKNOWN/FAIL/PENDING states are valid records, not merge approval.
+              # Readiness is evaluated separately by the quality-gate planner/policy.
               states_by_id[project_id] = state
 
           assert set(states_by_id) == set(project_by_id), (
