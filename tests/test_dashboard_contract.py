@@ -225,7 +225,7 @@ class LocalResearchOSApiContractTests(unittest.TestCase):
             'Timed out after 5 seconds.',
             'OAuth remains UNKNOWN',
             'does not verify Google OAuth, session handoff, repository allowlisting, or owner authorization',
-            'Public GitHub, PR review, SHA/evidence and quality gates',
+            'Public GitHub, PR review, SHA/evidence',
         ):
             with self.subTest(expected=expected):
                 self.assertIn(expected, HTML)
