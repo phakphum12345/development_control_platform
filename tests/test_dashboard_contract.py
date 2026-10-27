@@ -138,6 +138,11 @@ class DashboardContractTests(unittest.TestCase):
             with self.subTest(expected=expected):
                 self.assertIn(expected, HTML)
 
+    def test_research_os_api_defaults_to_loopback_for_local_development(self):
+        self.assertIn('id="ros-api-base" type="url" value="http://127.0.0.1:8788"', HTML)
+        self.assertIn("local-first", (ROOT / "README.md").read_text(encoding="utf-8").lower())
+        self.assertIn("does not start the API server", (ROOT / "README.md").read_text(encoding="utf-8"))
+
     def test_google_oauth_sync_reuses_existing_endpoints_and_fails_closed(self):
         for expected in (
             'id="ros-api-sync"', 'Sync Google OAuth',
