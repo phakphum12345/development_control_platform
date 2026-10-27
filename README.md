@@ -54,6 +54,14 @@ Run the real-browser smoke tests with Node.js and Playwright Chromium:
 
 The CI workflow runs both static contract tests and browser smoke tests. Browser coverage exercises route-color persistence, route registry add/edit/delete, connection editing, the sandboxed simulator, and registry-route preview. These checks do not replace authenticated integration tests or a production security review.
 
+## Run the dashboard locally
+
+On Windows, open the repository folder and run `Open-DCP-Dashboard.cmd`. It starts the static dashboard on `127.0.0.1`, chooses an available port automatically, and opens the browser. It does not kill an unrelated process if a port is occupied. You can also start it from PowerShell:
+
+    .\\Start-DCP-Dashboard.ps1 -OpenBrowser
+
+The dashboard UI and the Research OS API are separate processes. By default, the Research OS API field still points to the configured HTTPS Render backend. To use a locally running API, start that backend separately and enter its loopback URL (for example, `http://127.0.0.1:8788`) while the dashboard itself is served from `localhost` or `127.0.0.1`. The backend must implement the same API contract and explicitly allow the local dashboard origin through CORS; this repository does not contain or start that API server. HTTP API URLs on non-loopback hosts remain blocked, OAuth authorization must remain HTTPS on Google's authorization host, and a session is kept in tab memory only. Local UI availability is not evidence that API authentication succeeded.
+
 ## Local emulators and VS Code
 
 Open this repository root in VS Code. Recommended extensions and workspace tasks are declared in `.vscode/extensions.json`, `.vscode/tasks.json`, and `.vscode/launch.json`.

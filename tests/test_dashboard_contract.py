@@ -128,6 +128,16 @@ class DashboardContractTests(unittest.TestCase):
 
 
 
+    def test_local_dashboard_can_target_loopback_api_without_weakening_remote_https(self):
+        for expected in (
+            'id="ros-api-local-guidance"', 'Open-DCP-Dashboard.cmd',
+            'const apiIsLoopback = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";',
+            'const dashboardIsLoopback = location.hostname === "localhost" || location.hostname === "127.0.0.1";',
+            'API URL must use HTTPS, except HTTP on loopback when the dashboard is also served on loopback.',
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, HTML)
+
     def test_google_oauth_sync_reuses_existing_endpoints_and_fails_closed(self):
         for expected in (
             'id="ros-api-sync"', 'Sync Google OAuth',
