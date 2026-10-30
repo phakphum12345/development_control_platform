@@ -233,3 +233,17 @@ class LocalResearchOSApiContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+    def test_shared_github_account_and_repository_selector_contract(self):
+        for expected in (
+            'id="repo-selector"', 'id="shared-owner"', 'id="shared-owner-custom"',
+            'id="shared-repo"', 'id="shared-load"', 'id="shared-apply"',
+            'function sharedOwner()', 'sharedSelection.repositories',
+            'api("/users/"+encodeURIComponent(owner))',
+            'api("/users/"+encodeURIComponent(owner)+"/repos?type=public&sort=updated&per_page=100")',
+            '["repo-name","pr-repo","ev-repo","ros-api-repository"]',
+            'Permission: UNKNOWN', 'does not switch linked GitHub connector account',
+            'Private repositories',
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, HTML)
