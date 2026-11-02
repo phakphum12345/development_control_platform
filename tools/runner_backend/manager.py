@@ -24,18 +24,18 @@ class RunnerRequest:
     max_runtime_minutes: int = 60
 
     def validate(self, allowed_repositories: set[str]) -> None:
-        if not _REPO.fullmatch(self.repository):
+        if not isinstance(self.repository, str) or not _REPO.fullmatch(self.repository):
             raise RunnerPolicyError("Repository must use owner/name form.")
         if self.repository not in allowed_repositories:
             raise RunnerPolicyError("Repository is not allowlisted for cloud runner provisioning.")
-        if self.workflow_run_id <= 0:
+        if isinstance(self.workflow_run_id, bool) or not isinstance(self.workflow_run_id, int) or self.workflow_run_id <= 0:
             raise RunnerPolicyError("workflow_run_id must be a positive integer.")
-        if not _SHA.fullmatch(self.commit_sha):
+        if not isinstance(self.commit_sha, str) or not _SHA.fullmatch(self.commit_sha):
             raise RunnerPolicyError("commit_sha must be a full lowercase 40-character SHA.")
         if self.image != "macos-15-arm64":
             raise RunnerPolicyError("Only the approved macos-15-arm64 image is enabled.")
-        if not 5 <= self.max_runtime_minutes <= 180:
-            raise RunnerPolicyError("max_runtime_minutes must be between 5 and 180.")
+        if isinstance(self.max_runtime_minutes, bool) or not isinstance(self.max_runtime_minutes, int) or not 5 <= self.max_runtime_minutes <= 180:
+            raise RunnerPolicyError("max_runtime_minutes must be an integer between 5 and 180.")
 
 
 class RunnerManager:
@@ -61,11 +61,11 @@ class RunnerManager:
         })
 
     def status(self, provider_id: str) -> RunnerInstance:
-        if not provider_id or len(provider_id) > 200:
+        if not isinstance(provider_id, str) or not provider_id or len(provider_id) > 200:
             raise RunnerPolicyError("Invalid provider runner ID.")
         return self.provider.status(provider_id)
 
     def terminate(self, provider_id: str) -> RunnerInstance:
-        if not provider_id or len(provider_id) > 200:
+        if not isinstance(provider_id, str) or not provider_id or len(provider_id) > 200:
             raise RunnerPolicyError("Invalid provider runner ID.")
         return self.provider.terminate(provider_id)
