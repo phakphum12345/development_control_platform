@@ -1,0 +1,8 @@
+﻿{
+  "schema_version": 1,
+  "build_mode": "mock",
+  "image_name": "dcp/local-image-lab",
+  "tag": "baseline",
+  "base_image": "python:3.14-slim",
+  "description": "Safe mock blueprint; does not pull or build an image."
+}

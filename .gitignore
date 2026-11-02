@@ -4,3 +4,5 @@ __pycache__/
 
 # Local-only isolated launcher smoke-test scripts and artifacts
 .dcp-test-8001/
+# Local Image Lab generated evidence
+.local-image-lab/
