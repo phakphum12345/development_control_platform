@@ -24,7 +24,7 @@ Base URL must be HTTPS and is supplied through `DCP_RUNNER_PROVIDER_URL`. Authen
 - `GET /v1/runners/{id}` — returns current lifecycle state.
 - `DELETE /v1/runners/{id}` — requests teardown.
 
-Responses are JSON objects with required `id` and `state`, plus optional `runner_name`, `labels`, and `detail`. The gateway must enforce authenticated caller identity, repository allowlisting, rate limits, idempotency, audit logging, VM TTL, cleanup on workflow completion/cancellation, and protection against arbitrary command execution. The gateway implementation is not included in this repository yet; no vendor-specific API is assumed.
+The adapter accepts JSON objects with non-empty string fields `id` and `state`; optional `runner_name` and `detail` must be strings, and `labels` must be a list of strings. Responses are capped at 65,536 bytes. Provider IDs are URL-escaped when used in status and teardown paths. The configured URL must be an HTTPS origin only (no path, query, fragment, or embedded credentials). Transport errors are reported by exception type only so response text and credentials are not copied into error messages. The gateway must enforce authenticated caller identity, repository allowlisting, rate limits, idempotency, audit logging, VM TTL, cleanup on workflow completion/cancellation, and protection against arbitrary command execution. The gateway implementation is not included in this repository yet; no vendor-specific API is assumed.
 
 ## Configuration
 
@@ -51,4 +51,4 @@ python -m unittest tests.test_cloud_runner_backend -v
 python -m unittest discover -s tests -v
 ```
 
-Tests use a fake provider and validate policy decisions only. They do not make paid cloud calls.
+Tests cover both the policy manager (with a fake provider) and the HTTPS adapter (with mocked HTTP responses). They validate request authentication/serialization, URL validation, response shape and size limits, URL-escaped IDs, and error redaction. The HTTP tests do not contact a real gateway and do not make paid cloud calls.
