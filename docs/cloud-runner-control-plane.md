@@ -24,7 +24,7 @@ Base URL must be HTTPS and is supplied through `DCP_RUNNER_PROVIDER_URL`. Authen
 - `GET /v1/runners/{id}` — returns current lifecycle state.
 - `DELETE /v1/runners/{id}` — requests teardown.
 
-Responses are JSON objects with required `id` and `state`, plus optional `runner_name`, `labels`, and `detail`. The gateway must enforce authenticated caller identity, repository allowlisting, rate limits, idempotency, audit logging, VM TTL, cleanup on workflow completion/cancellation, and protection against arbitrary command execution. The gateway implementation is not included in this repository yet; no vendor-specific API is assumed.
+Responses are JSON objects with non-empty string `id` and `state`; optional `runner_name` and `detail` must be strings, and `labels` must be a list of strings. The adapter caps response bodies at 65,536 bytes, URL-escapes provider IDs in lifecycle paths, and rejects gateway URLs containing paths, query strings, fragments, credentials, or invalid ports. Transport error messages expose only the exception type so endpoint details and credentials are not copied into user-visible errors. The gateway must enforce authenticated caller identity, repository allowlisting, rate limits, idempotency, audit logging, VM TTL, cleanup on workflow completion/cancellation, and protection against arbitrary command execution. The gateway implementation is not included in this repository yet; no vendor-specific API is assumed.
 
 ## Configuration
 
@@ -51,4 +51,4 @@ python -m unittest tests.test_cloud_runner_backend -v
 python -m unittest discover -s tests -v
 ```
 
-Tests use a fake provider and validate policy decisions only. They do not make paid cloud calls.
+Tests cover the policy manager with a fake provider and the HTTPS adapter with mocked HTTP responses. They exercise authentication and JSON serialization, URL validation and escaping, response shape and size limits, and transport-error redaction. They do not contact a real gateway or make paid cloud calls.
