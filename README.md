@@ -2,9 +2,9 @@
 
 An independent control plane for development phases, quality gates, commit-bound evidence, and resumable checkpoints.
 
-## macOS Cloud Runner Control Plane
+## Cloud Runner Control Plane
 
-The DCP includes a provider-neutral backend for requesting ephemeral macOS cloud runners for allowlisted repositories. See [docs/macos-cloud-runner-control-plane.md](docs/macos-cloud-runner-control-plane.md). The backend is opt-in and fail-closed: without provider HTTPS endpoint/token secrets it cannot provision anything. Dispatch acceptance is not runner-online or build-pass evidence. The initial allowlist contains only `phakphum12345/generated-A4-pdf`. No paid cloud provider is selected or activated automatically.
+The DCP includes a provider-neutral backend for requesting ephemeral macOS cloud runners for allowlisted repositories. See [docs/cloud-runner-control-plane.md](docs/cloud-runner-control-plane.md) for the canonical gateway API contract. The historical [macOS runner design note](docs/macos-cloud-runner-control-plane.md) is retained as a legacy architecture record and is not the current adapter contract. The backend is opt-in and fail-closed: without provider HTTPS endpoint/token secrets it cannot provision anything. Dispatch acceptance is not runner-online or build-pass evidence. The initial allowlist contains only `phakphum12345/generated-A4-pdf`. No paid cloud provider is selected or activated automatically.
 
 ## Interactive dashboard toolkit
 
@@ -80,8 +80,8 @@ The helper is read-only except for the explicit `launch-avd` command. It does no
 
 ## Mobile app and authentication boundary
 
-- **PWA shell** — installable dashboard manifest, app icon, mobile-friendly navigation, and a service worker that caches only the static shell. Authentication/API requests are network-only.
-- **Password Login** — frontend integration contract only. GitHub Pages is static hosting; the server-side authentication API is not present in this repository. The login stays disabled until `/api/auth/session` confirms a backend is available. Do not treat this UI as working authentication until the API is deployed and security tests pass. See `docs/authentication-deployment.md`.
+- **PWA shell** — installable dashboard manifest, app icon, mobile-friendly navigation, and a service worker that caches only the static shell.
+- **Password Login** — frontend integration contract only. GitHub Pages is static hosting; the server-side authentication API is not present in this repository. The login stays disabled until `/api/auth/session` confirms a backend is available. Do not treat this UI as working authentication until the API is deployed and security tests pass. See [docs/authentication-deployment.md](docs/authentication-deployment.md).
 
 ## Repository components
 
@@ -91,4 +91,6 @@ The helper is read-only except for the explicit `launch-avd` command. It does no
 - dashboard/index.html — interactive read-only toolkit.
 - tests/test_dashboard_contract.py — static dashboard contract tests.
 - tests/browser_smoke.mjs — Playwright browser smoke tests.
+- tools/runner_backend/cloud_api.py — HTTPS provider gateway adapter.
+- tests/test_cloud_runner_backend.py — policy and HTTP adapter contract tests.
 - .github/workflows/validate-control-plane.yml — JavaScript syntax, static and browser tests, registry/schema checks, credential-pattern scanning, and optional self-hosted Windows smoke tests.
