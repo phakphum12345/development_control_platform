@@ -28,14 +28,22 @@ class RunnerRequest:
             raise RunnerPolicyError("Repository must use owner/name form.")
         if self.repository not in allowed_repositories:
             raise RunnerPolicyError("Repository is not allowlisted for cloud runner provisioning.")
-        if self.workflow_run_id <= 0:
+        if (
+            not isinstance(self.workflow_run_id, int)
+            or isinstance(self.workflow_run_id, bool)
+            or self.workflow_run_id <= 0
+        ):
             raise RunnerPolicyError("workflow_run_id must be a positive integer.")
         if not _SHA.fullmatch(self.commit_sha):
             raise RunnerPolicyError("commit_sha must be a full lowercase 40-character SHA.")
         if self.image != "macos-15-arm64":
             raise RunnerPolicyError("Only the approved macos-15-arm64 image is enabled.")
-        if not 5 <= self.max_runtime_minutes <= 180:
-            raise RunnerPolicyError("max_runtime_minutes must be between 5 and 180.")
+        if (
+            not isinstance(self.max_runtime_minutes, int)
+            or isinstance(self.max_runtime_minutes, bool)
+            or not 5 <= self.max_runtime_minutes <= 180
+        ):
+            raise RunnerPolicyError("max_runtime_minutes must be an integer between 5 and 180.")
 
 
 class RunnerManager:
