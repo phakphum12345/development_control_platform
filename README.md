@@ -4,7 +4,7 @@ An independent control plane for development phases, quality gates, commit-bound
 
 ## Cloud Runner Control Plane
 
-The DCP includes a provider-neutral backend for requesting ephemeral macOS cloud runners for allowlisted repositories. See [docs/cloud-runner-control-plane.md](docs/cloud-runner-control-plane.md) for the canonical gateway API contract. The historical [macOS runner design note](docs/macos-cloud-runner-control-plane.md) is retained as a legacy architecture record and is not the current adapter contract. The backend is opt-in and fail-closed: without provider HTTPS endpoint/token secrets it cannot provision anything. Dispatch acceptance is not runner-online or build-pass evidence. The initial allowlist contains only `phakphum12345/generated-A4-pdf`. No paid cloud provider is selected or activated automatically.
+The DCP includes a provider-neutral backend for requesting ephemeral macOS cloud runners for allowlisted repositories. See [docs/cloud-runner-control-plane.md](docs/cloud-runner-control-plane.md) for the canonical gateway API contract. The machine-readable [OpenAPI specification](schemas/cloud-runner-gateway.openapi.yaml) is validated by `tests/test_cloud_runner_openapi.py`. The historical [macOS runner design note](docs/macos-cloud-runner-control-plane.md) is retained as a legacy architecture record and is not the current adapter contract. The backend is opt-in and fail-closed: without provider HTTPS endpoint/token secrets it cannot provision anything. Dispatch acceptance is not runner-online or build-pass evidence. The initial allowlist contains only `phakphum12345/generated-A4-pdf`. No paid cloud provider is selected or activated automatically.
 
 ## Interactive dashboard toolkit
 
