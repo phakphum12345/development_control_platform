@@ -114,6 +114,7 @@ class CloudAPIProviderTests(unittest.TestCase):
             "https://gateway.example.test/?token=x",
             "https://gateway.example.test/#fragment",
             "https://",
+            "https://gateway.example.test:65536",
         ):
             with self.subTest(url=url), self.assertRaises(ProviderError):
                 CloudAPIProvider(base_url=url, token=self.TOKEN)
