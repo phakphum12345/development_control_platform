@@ -39,7 +39,7 @@ class CloudAPIProvider:
                 and not parsed.params
                 and not parsed.query
                 and not parsed.fragment
-                and parsed.port != 0
+                and (parsed.port is None or 1 <= parsed.port <= 65535)
             )
         except ValueError:
             valid_origin = False
