@@ -1,97 +1,63 @@
-"""Safety and contract tests for the DCP macOS cloud runner backend."""
-import json
+"""Policy and lifecycle contract tests for the DCP runner backend."""
 import unittest
-from urllib.error import HTTPError
 
-from tools.cloud_runner.backend import (
-    ProvisionRequest, RunnerSettings, request_provisioning,
-)
+from tools.runner_backend.manager import RunnerManager, RunnerPolicyError, RunnerRequest
+from tools.runner_backend.provider import RunnerInstance
 
 
-class RunnerBackendTests(unittest.TestCase):
+class FakeProvider:
+    def __init__(self):
+        self.calls = []
+
+    def provision(self, payload):
+        self.calls.append(("provision", payload))
+        return RunnerInstance("runner-123", "provisioning", labels=tuple(payload["labels"]))
+
+    def status(self, provider_id):
+        self.calls.append(("status", provider_id))
+        return RunnerInstance(provider_id, "online")
+
+    def terminate(self, provider_id):
+        self.calls.append(("terminate", provider_id))
+        return RunnerInstance(provider_id, "terminated")
+
+
+class CloudRunnerBackendTests(unittest.TestCase):
     def setUp(self):
-        self.settings = RunnerSettings(
-            endpoint="https://provider.example.test/provision",
-            bearer_token="test-token",
-        )
-        self.request = ProvisionRequest(
-            repository="phakphum12345/generated-A4-pdf",
-            commit_sha="a" * 40,
-            ref="refs/heads/main",
-            workflow_run_id=100,
+        self.provider = FakeProvider()
+        self.manager = RunnerManager(self.provider, {"phakphum12345/generated-A4-pdf"})
+        self.request = RunnerRequest(
+            "phakphum12345/generated-A4-pdf", 12345, "a" * 40
         )
 
-    def test_payload_is_ephemeral_one_job_and_repository_scoped(self):
-        payload = self.request.payload(self.settings)
-        self.assertEqual(payload["contract"], "dcp.macos-runner-provision.v1")
-        self.assertTrue(payload["runner"]["ephemeral"])
-        self.assertEqual(payload["runner"]["max_jobs"], 1)
-        self.assertEqual(payload["repository"], "phakphum12345/generated-A4-pdf")
-        self.assertTrue(payload["safety"]["one_job_then_destroy"])
+    def test_provision_uses_ephemeral_macos_arm64_and_provider_side_token(self):
+        result = self.manager.provision_macos(self.request)
+        self.assertEqual(result.state, "provisioning")
+        payload = self.provider.calls[0][1]
+        self.assertEqual(payload["image"], "macos-15-arm64")
+        self.assertTrue(payload["ephemeral"])
+        self.assertEqual(payload["registration_token_handling"], "provider-side-only")
+        self.assertIn("dcp-cloud-macos", payload["labels"])
 
-    def test_rejects_repository_outside_allowlist(self):
-        request = ProvisionRequest("attacker/repo", "a" * 40, "refs/heads/main", 100)
-        with self.assertRaisesRegex(ValueError, "allowlist"):
-            request.payload(self.settings)
+    def test_unregistered_repository_is_rejected_before_provider_call(self):
+        bad = RunnerRequest("attacker/repo", 12345, "a" * 40)
+        with self.assertRaises(RunnerPolicyError):
+            self.manager.provision_macos(bad)
+        self.assertEqual(self.provider.calls, [])
 
-    def test_rejects_short_sha_and_invalid_run_id(self):
-        with self.assertRaisesRegex(ValueError, "40-character"):
-            ProvisionRequest(self.request.repository, "abc", "main", 100).payload(self.settings)
-        with self.assertRaisesRegex(ValueError, "positive"):
-            ProvisionRequest(self.request.repository, "a" * 40, "main", 0).payload(self.settings)
+    def test_invalid_sha_is_rejected(self):
+        bad = RunnerRequest(self.request.repository, 12345, "not-a-sha")
+        with self.assertRaises(RunnerPolicyError):
+            self.manager.provision_macos(bad)
 
-    def test_settings_require_https_and_secret(self):
-        with self.assertRaisesRegex(ValueError, "HTTPS"):
-            RunnerSettings("http://provider.example.test", "token")
-        with self.assertRaisesRegex(ValueError, "bearer token"):
-            RunnerSettings("https://provider.example.test", " ")
+    def test_runtime_limit_is_bounded(self):
+        bad = RunnerRequest(self.request.repository, 12345, "a" * 40, max_runtime_minutes=999)
+        with self.assertRaises(RunnerPolicyError):
+            self.manager.provision_macos(bad)
 
-    def test_from_env_parses_json_allowlist_and_labels(self):
-        settings = RunnerSettings.from_env({
-            "DCP_RUNNER_PROVIDER_URL": "https://provider.example.test/provision",
-            "DCP_RUNNER_PROVIDER_TOKEN": "secret",
-            "DCP_RUNNER_ALLOWED_REPOSITORIES": '["owner/repo"]',
-            "DCP_MACOS_RUNNER_LABELS": '["self-hosted","macOS","ARM64"]',
-        })
-        self.assertEqual(settings.allowed_repositories, ("owner/repo",))
-        self.assertEqual(settings.labels[-1], "ARM64")
-        self.assertNotIn("secret", repr(settings))
-
-    def test_dispatch_posts_auth_payload_and_accepts_request(self):
-        captured = {}
-        class Response:
-            def __enter__(self): return self
-            def __exit__(self, *_args): return False
-            def read(self): return json.dumps({"accepted": True, "request_id": "req-1", "state": "provisioning"}).encode()
-        def fake_urlopen(req, timeout):
-            captured["auth"] = req.get_header("Authorization")
-            captured["body"] = json.loads(req.data.decode())
-            captured["timeout"] = timeout
-            return Response()
-        import urllib.request
-        original = urllib.request.urlopen
-        urllib.request.urlopen = fake_urlopen
-        try:
-            result = request_provisioning(self.settings, self.request)
-        finally:
-            urllib.request.urlopen = original
-        self.assertTrue(result.accepted)
-        self.assertEqual(result.request_id, "req-1")
-        self.assertEqual(captured["auth"], "Bearer test-token")
-        self.assertTrue(captured["body"]["runner"]["ephemeral"])
-
-    def test_provider_rejection_does_not_leak_response_body(self):
-        import urllib.request
-        original = urllib.request.urlopen
-        def fail(*_args, **_kwargs):
-            raise HTTPError("https://provider.example.test", 403, "Forbidden", {}, None)
-        urllib.request.urlopen = fail
-        try:
-            with self.assertRaisesRegex(RuntimeError, "HTTP 403") as ctx:
-                request_provisioning(self.settings, self.request)
-        finally:
-            urllib.request.urlopen = original
-        self.assertNotIn("test-token", str(ctx.exception))
+    def test_status_and_terminate_delegate_to_provider(self):
+        self.assertEqual(self.manager.status("runner-123").state, "online")
+        self.assertEqual(self.manager.terminate("runner-123").state, "terminated")
 
 
 if __name__ == "__main__":
