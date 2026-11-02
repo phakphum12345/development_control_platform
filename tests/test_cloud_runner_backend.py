@@ -131,7 +131,7 @@ class CloudAPIProviderTests(unittest.TestCase):
         self.assertEqual(request.get_header("Authorization"), f"Bearer {self.token}")
         self.assertEqual(request.get_header("Accept"), "application/json")
         self.assertEqual(json.loads(request.data.decode("utf-8")), payload)
-        self.assertEqual(mocked_open.call_args.kwargs["timeout"], 20 if False else 3)
+        self.assertEqual(mocked_open.call_args.kwargs["timeout"], 3)
         self.assertEqual((result.provider_id, result.state, result.runner_name), ("request-1", "provisioning", "dcp-runner-1"))
 
     @patch("tools.runner_backend.cloud_api.urllib.request.urlopen")
