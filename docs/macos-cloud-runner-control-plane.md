@@ -46,6 +46,6 @@ The adapter is deliberately provider-neutral because no cloud vendor or billing 
 
 Run:
 
-    python -m unittest tests.test_cloud_runner_backend -v
+    python -m unittest discover -s tests -p 'test_cloud_runner_backend.py' -v
 
 The tests cover allowlisting, SHA/run validation, HTTPS-only endpoint configuration, secret redaction, ephemeral one-job payloads, accepted/rejected provider responses, and dispatch authentication. They do not validate a real provider or macOS VM.
