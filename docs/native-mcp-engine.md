@@ -18,7 +18,11 @@ The adapter exposes exactly four tools:
 The MCP adapter deliberately does **not** expose `copy_apply`, shell execution,
 Git operations, arbitrary network access, repository mutation, or a network
 listener. It uses STDIO and one fixed workspace root configured at process
-startup with `DCP_MCP_ROOT`. Relative paths are confined to that root. The
+startup with `DCP_MCP_ROOT`. Relative paths are confined to that root. Common
+credential locations and file types (such as `.env*`, `.git`, `.ssh`, `.aws`,
+`.codex`, `secrets/`, `credentials/`, `.pem`, and `.key`) are blocked by the
+adapter; this denylist is defense in depth, not a guarantee that every secret
+file format is detected. The
 engine retains its 2 MiB file-inspection ceiling. Text returned to a model is
 limited to 64 KiB and 8,000 Unicode characters per call; diff output is capped
 at 8,000 characters and explicitly marked when truncated.
