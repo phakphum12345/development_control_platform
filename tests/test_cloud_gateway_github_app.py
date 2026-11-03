@@ -135,7 +135,7 @@ class GitHubAppBootstrapTests(unittest.TestCase):
                     "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat(),
                     "permissions": {"administration": "read"},
                 }
-            if "page=1" in path:
+            if path.endswith("page=1"):
                 return {"runners": [
                     {"id": i + 1, "name": "other-" + str(i), "status": "offline"}
                     for i in range(100)
