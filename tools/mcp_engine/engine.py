@@ -1,7 +1,8 @@
 """Native, local-first source inspection and copy-preview engine.
 
 This module is deliberately independent of third-party MCP servers. It exposes
-small functions that a future MCP adapter can call after applying authorization.
+small functions that a local MCP adapter may call after applying its fixed-root
+and read-only policy.
 """
 from __future__ import annotations
 
@@ -16,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 MAX_FILE_BYTES = 2 * 1024 * 1024
+MAX_MCP_TEXT_BYTES = 64 * 1024
 
 
 class EngineError(ValueError):
@@ -59,6 +61,36 @@ def inspect_file(root: str | Path, relative_path: str) -> dict[str, Any]:
         "sha256": sha256_file(path),
         "encoding": "utf-8" if _is_utf8(path) else "binary-or-non-utf8",
         "operation": "READ_ONLY",
+    }
+
+
+def read_text_file(
+    root: str | Path,
+    relative_path: str,
+    max_bytes: int = MAX_MCP_TEXT_BYTES,
+) -> dict[str, Any]:
+    """Read bounded UTF-8 text from within one configured root; never writes."""
+    if isinstance(max_bytes, bool) or not isinstance(max_bytes, int):
+        raise EngineError("max_bytes must be an integer.")
+    if not 1 <= max_bytes <= MAX_MCP_TEXT_BYTES:
+        raise EngineError(f"max_bytes must be between 1 and {MAX_MCP_TEXT_BYTES}.")
+    base, path = _rooted_file(root, relative_path)
+    with path.open("rb") as stream:
+        raw = stream.read(max_bytes + 1)
+    if len(raw) > max_bytes:
+        raise EngineError(f"Text file exceeds the {max_bytes}-byte read limit.")
+    try:
+        content = raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise EngineError("File is not valid UTF-8 text.") from exc
+    return {
+        "status": "PASS",
+        "operation": "READ_ONLY",
+        "root": str(base),
+        "path": path.relative_to(base).as_posix(),
+        "size_bytes": len(raw),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "content": content,
     }
 
 
@@ -130,7 +162,7 @@ def copy_preview(source_root: str | Path, source_path: str,
 
 def copy_apply(source_root: str | Path, source_path: str,
                destination_root: str | Path, destination_path: str) -> dict[str, Any]:
-    """Copy to a new destination only; never overwrite existing data."""
+    """Copy to a new destination only; never overwrite existing files."""
     preview = copy_preview(source_root, source_path, destination_root, destination_path)
     target = Path(preview["destination"])
     # Re-check destination immediately before writing. No overwrite path exists.
