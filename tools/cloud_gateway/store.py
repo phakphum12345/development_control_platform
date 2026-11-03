@@ -44,6 +44,9 @@ class RunnerStore:
             CREATE TABLE IF NOT EXISTS audit(
                 id INTEGER PRIMARY KEY,runner_id TEXT,event TEXT,
                 detail_json TEXT,created_at TEXT
+            );
+            CREATE TABLE IF NOT EXISTS auth_nonces(
+                nonce TEXT PRIMARY KEY,expires_at REAL NOT NULL
             );""")
 
     def db(self):
@@ -150,6 +153,24 @@ class RunnerStore:
             )
             c.execute("COMMIT")
             return self.get(rid)
+
+    def consume_auth_nonce(self, nonce, now_epoch, expires_at_epoch):
+        if not isinstance(nonce, str) or not 16 <= len(nonce) <= 128:
+            raise ValueError("Invalid authentication nonce")
+        if (isinstance(now_epoch, bool) or not isinstance(now_epoch, (int, float))
+                or isinstance(expires_at_epoch, bool) or not isinstance(expires_at_epoch, (int, float))
+                or expires_at_epoch <= now_epoch):
+            raise ValueError("Invalid authentication nonce expiry")
+        with self.lock, self.db() as c:
+            c.execute("DELETE FROM auth_nonces WHERE expires_at<=?", (now_epoch,))
+            try:
+                c.execute(
+                    "INSERT INTO auth_nonces(nonce,expires_at) VALUES(?,?)",
+                    (nonce, expires_at_epoch),
+                )
+            except sqlite3.IntegrityError:
+                return False
+            return True
 
     def mark_cleanup_due(self, rid):
         timestamp = now()
