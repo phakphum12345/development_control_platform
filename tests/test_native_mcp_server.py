@@ -29,8 +29,11 @@ class NativeMCPServerTests(unittest.IsolatedAsyncioTestCase):
             root = Path(temp)
             (root / "one.txt").write_text("alpha\nbeta\n", encoding="utf-8")
             (root / "two.txt").write_text("alpha\ngamma\n", encoding="utf-8")
-            outside = root.parent / "dcp-mcp-outside-test.txt"
+            outside = root.parent / f"dcp-mcp-outside-{root.name}.txt"
             outside.write_text("outside", encoding="utf-8")
+            (root / "large.txt").write_text("x" * 8_001, encoding="utf-8")
+            (root / "large-left.txt").write_text("a\n" * 5_000, encoding="utf-8")
+            (root / "large-right.txt").write_text("b\n" * 5_000, encoding="utf-8")
             try:
                 env = os.environ.copy()
                 env["DCP_MCP_ROOT"] = str(root)
@@ -65,6 +68,11 @@ class NativeMCPServerTests(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual(read_data["operation"], "READ_ONLY")
                         self.assertEqual(len(read_data["sha256"]), 64)
 
+                        oversized_text = await session.call_tool(
+                            "read_text_file", {"path": "large.txt"}
+                        )
+                        self.assertTrue(oversized_text.isError)
+
                         inspect_result = await session.call_tool(
                             "inspect_file", {"path": "one.txt"}
                         )
@@ -80,6 +88,15 @@ class NativeMCPServerTests(unittest.IsolatedAsyncioTestCase):
                         self.assertFalse(diff_data["equal"])
                         self.assertIn("+gamma", diff_data["diff"])
 
+                        bounded_diff = await session.call_tool(
+                            "diff_files",
+                            {"left_path": "large-left.txt", "right_path": "large-right.txt"},
+                        )
+                        self.assertFalse(bounded_diff.isError)
+                        bounded_data = _tool_json(bounded_diff)
+                        self.assertTrue(bounded_data["diff_truncated"])
+                        self.assertLessEqual(len(bounded_data["diff"]), 8_000)
+
                         preview_result = await session.call_tool(
                             "copy_preview",
                             {"source_path": "one.txt", "destination_path": "preview.txt"},
@@ -90,7 +107,7 @@ class NativeMCPServerTests(unittest.IsolatedAsyncioTestCase):
                         self.assertFalse((root / "preview.txt").exists())
 
                         traversal = await session.call_tool(
-                            "read_text_file", {"path": "../dcp-mcp-outside-test.txt"}
+                            "read_text_file", {"path": f"../{outside.name}"}
                         )
                         self.assertTrue(traversal.isError)
             finally:
