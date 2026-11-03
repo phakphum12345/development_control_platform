@@ -16,7 +16,7 @@ class FakeGitHubApp:
         self.repositories.append(repository)
         return SimpleNamespace(
             token=self.token,
-            expires_at=datetime.now(timezone.utc) + timedelta(minutes=45),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=self.expiry_delta),
         )
 
 
