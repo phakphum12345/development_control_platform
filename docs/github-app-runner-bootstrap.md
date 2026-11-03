@@ -11,7 +11,7 @@ The implementation is deliberately fail-closed:
 - The GitHub App ID and installation ID are validated at startup.
 - Only exact `owner/repository` values in the configured allowlist are accepted.
 - The installation access token request is scoped to that one repository.
-- The installation must grant Actions write permission.
+- The installation must grant repository Administration write permission required by the registration-token endpoint.
 - The registration token is returned only to the provider-side caller.
 - Token fields are excluded from object representations; API errors are sanitized.
 - The App private key is accepted in memory and must be read from a server-side
@@ -41,7 +41,7 @@ strings, audit events, workflow logs, or Git history.
 1. Validate the requested repository against the exact allowlist.
 2. Sign a short-lived RS256 App JWT (issued-at skew, expiry under ten minutes).
 3. Exchange it for an installation access token scoped to one repository.
-4. Require Actions write permission in the returned installation permissions.
+4. Require repository Administration write permission in the returned installation permissions.
 5. Create that repository's Actions runner registration token.
 6. Return a redacted credential object to the provider-side bootstrap caller.
 
