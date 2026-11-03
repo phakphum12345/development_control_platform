@@ -33,6 +33,7 @@ class AzureArmClient:
   if not isinstance(data,dict): raise AzureProvisionError("Azure returned an invalid response shape")
   return data
 class AzureVMProvider:
+ requires_runner_cleanup=True
  def __init__(self,arm,location,subnet_id,nsg_id,vm_sizes,image_references,bootstrap_factory,runner_online_checker=None,network_policy_checker=None):
   self.arm=arm; self.location=location; self.subnet_id=subnet_id; self.nsg_id=nsg_id
   self.vm_sizes=dict(vm_sizes); self.image_references={k:dict(v) for k,v in image_references.items()}
