@@ -12,11 +12,6 @@ on:
         description: Full 40-character commit SHA to validate on macOS
         required: true
         type: string
-      target_ref:
-        description: Git ref to validate (for example refs/pull/7/head)
-        required: true
-        default: refs/heads/main
-        type: string
 
 permissions:
   contents: read
@@ -39,6 +34,5 @@ jobs:
           DCP_RUNNER_PROVIDER_TOKEN: ${{ secrets.DCP_RUNNER_PROVIDER_TOKEN }}
           DCP_TARGET_REPOSITORY: ${{ inputs.target_repository }}
           DCP_TARGET_COMMIT_SHA: ${{ inputs.target_commit_sha }}
-          DCP_TARGET_REF: ${{ inputs.target_ref }}
-          DCP_RUNNER_ALLOWED_REPOSITORIES: '["phakphum12345/generated-A4-pdf"]'
+          DCP_RUNNER_ALLOWED_REPOSITORIES: phakphum12345/generated-A4-pdf
         run: python -m tools.cloud_runner
