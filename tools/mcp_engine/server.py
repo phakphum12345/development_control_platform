@@ -43,8 +43,16 @@ def inspect_file(path: str) -> dict[str, Any]:
 
 @mcp.tool()
 def diff_files(left_path: str, right_path: str) -> dict[str, Any]:
-    """Compare two files inside the same configured workspace; never writes."""
-    return engine_diff_files(WORKSPACE_ROOT, left_path, WORKSPACE_ROOT, right_path)
+    """Compare files in the workspace; diff text is capped at 8,000 characters."""
+    result = engine_diff_files(WORKSPACE_ROOT, left_path, WORKSPACE_ROOT, right_path)
+    diff = result.get("diff")
+    if isinstance(diff, str) and len(diff) > 8_000:
+        result["diff"] = diff[:8_000]
+        result["diff_truncated"] = True
+        result["diff_total_characters"] = len(diff)
+    else:
+        result["diff_truncated"] = False
+    return result
 
 
 @mcp.tool()
