@@ -154,6 +154,32 @@ class RunnerStore:
             c.execute("COMMIT")
             return self.get(rid)
 
+    def lifecycle_summary(self):
+        """Return aggregate lifecycle/cleanup counts without runner identifiers."""
+        with self.lock, self.db() as c:
+            state_rows = c.execute(
+                "SELECT state,count(*) FROM runners GROUP BY state"
+            ).fetchall()
+            cleanup_pending = c.execute(
+                "SELECT count(*) FROM runners WHERE state='terminating' "
+                "OR (state='failed' AND provider_id IS NOT NULL AND NOT EXISTS "
+                "(SELECT 1 FROM audit WHERE audit.runner_id=runners.id "
+                "AND audit.event IN ('runner_cleanup_confirmed','provider_cleanup_confirmed')))"
+            ).fetchone()[0]
+            cleanup_retries = c.execute(
+                "SELECT count(*) FROM audit WHERE event='cleanup_retry'"
+            ).fetchone()[0]
+            cleanup_confirmed = c.execute(
+                "SELECT count(*) FROM audit WHERE event IN "
+                "('runner_cleanup_confirmed','provider_cleanup_confirmed')"
+            ).fetchone()[0]
+        return {
+            "state_counts": {state: count for state, count in state_rows},
+            "cleanup_pending": cleanup_pending,
+            "cleanup_retries": cleanup_retries,
+            "cleanup_confirmed": cleanup_confirmed,
+        }
+
     def consume_auth_nonce(self, nonce, now_epoch, expires_at_epoch):
         if not isinstance(nonce, str) or not 16 <= len(nonce) <= 128:
             raise ValueError("Invalid authentication nonce")
