@@ -43,11 +43,33 @@ class OrkaProvider:
   name="dcp-"+str(payload["workflow_run_id"])+"-"+uuid.uuid4().hex[:8]
   metadata={"managed-by":"dcp-cloud-runner","repository":payload["repository"],"workflow-run-id":str(payload["workflow_run_id"]),"commit-sha":payload["commit_sha"],"target-os":"macos"}
   body={"name":name,"vmConfig":self.vm_config,"shouldGenerateName":False,"customMetadata":metadata}
-  data=self._request("POST","/api/v1/namespaces/"+quote(self.namespace,safe="")+"/vms",body)
+  path="/api/v1/namespaces/"+quote(self.namespace,safe="")+"/vms/"+quote(name,safe="")
+  collection="/api/v1/namespaces/"+quote(self.namespace,safe="")+"/vms"
+  try:
+   data=self._request("POST",collection,body)
+  except Exception as original:
+   if self._rollback_partial_vm(path):
+    error=OrkaError("Orka provisioning failed; VM cleanup is pending")
+    error.provider_id=name
+    raise error from original
+   raise
   vm_name=data.get("name")
-  if not isinstance(vm_name,str) or vm_name!=name: raise OrkaError("Orka did not confirm the requested VM identity")
+  if not isinstance(vm_name,str) or vm_name!=name:
+   if self._rollback_partial_vm(path):
+    error=OrkaError("Orka did not confirm VM identity; cleanup is pending")
+    error.provider_id=name
+    raise error
+   raise OrkaError("Orka did not confirm the requested VM identity")
   # A running VM is not proof that the GitHub runner has registered.
   return RunnerInstance(vm_name,"provisioning",vm_name,tuple(payload["labels"]),"VM accepted; runner registration pending")
+ def _rollback_partial_vm(self,path):
+  try:
+   existing=self._request("GET",path,allow_missing=True)
+   if existing is None: return False
+   self._request("DELETE",path,allow_missing=True)
+   return self._request("GET",path,allow_missing=True) is not None
+  except Exception:
+   return True
  def status(self,provider_id):
   if not isinstance(provider_id,str) or not re.fullmatch(r"dcp-[0-9]+-[a-f0-9]{8}",provider_id): raise OrkaError("Invalid DCP Orka VM identifier")
   path="/api/v1/namespaces/"+quote(self.namespace,safe="")+"/vms/"+quote(provider_id,safe="")
