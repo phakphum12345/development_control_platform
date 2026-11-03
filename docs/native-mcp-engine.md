@@ -19,8 +19,9 @@ The MCP adapter deliberately does **not** expose `copy_apply`, shell execution,
 Git operations, arbitrary network access, repository mutation, or a network
 listener. It uses STDIO and one fixed workspace root configured at process
 startup with `DCP_MCP_ROOT`. Relative paths are confined to that root. The
-engine retains its 2 MiB file-inspection ceiling; text returned to a model is
-limited to 64 KiB per call.
+engine retains its 2 MiB file-inspection ceiling. Text returned to a model is
+limited to 64 KiB and 8,000 Unicode characters per call; diff output is capped
+at 8,000 characters and explicitly marked when truncated.
 
 ## Install the optional adapter dependency
 
