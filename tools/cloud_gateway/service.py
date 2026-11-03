@@ -31,6 +31,8 @@ class GatewayService:
             if old["fingerprint"] != fingerprint:
                 raise LifecycleConflict("Idempotency key conflicts with an existing request")
             return self.public(old), False
+        if getattr(self.provider, "requires_budget_guard", False) and self.budget_guard is None:
+            raise PolicyDenied("Live budget guard is not configured", 503)
         if getattr(self.provider, "requires_runner_cleanup", False) and self.runner_cleanup is None:
             raise PolicyDenied("GitHub runner deregistration is not configured", 503)
         readiness = getattr(self.provider, "readiness", None)
