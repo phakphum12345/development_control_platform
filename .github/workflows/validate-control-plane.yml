@@ -103,7 +103,7 @@ jobs:
               seen_ids.add(project_id)
 
               assert re.fullmatch(
-                  r"[^/\\s]+/[^/\\s]+", project["repository"]
+                  r"[^/\s]+/[^/\s]+", project["repository"]
               ), f"Invalid repository name for {project_id}"
               assert project["default_branch"]
               assert project["status_source"] in ("manual", "github")
