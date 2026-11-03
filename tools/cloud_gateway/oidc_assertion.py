@@ -75,10 +75,14 @@ def sign_verified_oidc_assertion(
         raise OIDCAssertionError("Invalid assertion time")
     expires = claims.get("exp")
     issued_at = claims.get("iat")
+    not_before = claims.get("nbf")
     if (isinstance(expires, bool) or not isinstance(expires, int) or expires <= current
             or isinstance(issued_at, bool) or not isinstance(issued_at, int)
-            or issued_at > current + 60 or current - issued_at > 600 or expires <= issued_at):
-        raise OIDCAssertionError("OIDC token is expired or outside the accepted issue-time window")
+            or issued_at > current + 60 or current - issued_at > 600 or expires <= issued_at
+            or (not_before is not None and (
+                isinstance(not_before, bool) or not isinstance(not_before, int) or not_before > current
+            ))):
+        raise OIDCAssertionError("OIDC token is expired, not yet valid, or outside the accepted issue-time window")
     subject = claims.get("sub")
     if not isinstance(subject, str) or not re.fullmatch(r"[A-Za-z0-9._:@/-]{1,256}", subject):
         raise OIDCAssertionError("OIDC subject is invalid")
