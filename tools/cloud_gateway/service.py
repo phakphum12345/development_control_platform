@@ -62,7 +62,16 @@ class GatewayService:
             row = self.store.transition(rid, "provisioning", instance.provider_id)
             row.update(runner_name=instance.runner_name, labels=list(instance.labels))
         except Exception as exc:
-            self.store.transition(\n                rid, "failed", provider_id=getattr(exc, "provider_id", None),\n                detail=type(exc).__name__,\n            )
+            provider_id = getattr(exc, "provider_id", None)
+            self.store.transition(
+                rid, "failed", provider_id=provider_id, detail=type(exc).__name__,
+            )
+            if provider_id and self.runner_cleanup is not None:
+                try:
+                    self.terminate(rid)
+                except Exception:
+                    # The row remains terminating and is retried by reconciliation.
+                    pass
             raise
         return self.public(row), True
 
