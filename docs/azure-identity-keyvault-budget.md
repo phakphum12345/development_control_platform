@@ -24,8 +24,9 @@ as current spend. A missing or malformed forecast is UNKNOWN and blocks
 provisioning; a currency mismatch is not treated as a comparable value.
 Budget snapshots reject negative, NaN, infinite, or malformed amounts.
 
-`DCP_AZURE_PROJECTED_RUN_COST_USD` is the conservative projected cost for one
-runner at its configured maximum runtime. The guard evaluates
+`DCP_AZURE_PROJECTED_RUN_COST_USD` is the conservative upper-bound cost for one
+eligible Azure runner at its configured maximum runtime (use the more expensive
+of the enabled Azure Linux/Windows profiles). The guard evaluates
 `projected_run_cost_usd * (active_runner_count + 1)`, so existing active and
 cleanup-pending runners are included before authorizing another runner. Failed
 records with provider resources still pending cleanup continue to count against
