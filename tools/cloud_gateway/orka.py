@@ -36,7 +36,7 @@ class OrkaProvider:
  def readiness(self,os_name):
   if os_name!="macos": return {"ready":False,"message":"Orka supports only the approved macOS profile"}
   if self.online is None: return {"ready":False,"message":"Independent GitHub runner-online verification is not configured"}
-  return {"ready":False,"message":"Orka API v1 deploy contract has no protected guest user-data bootstrap; macOS runner remains disabled"}
+  return {"ready":False,"message":"Orka User Data bootstrap is not version-verified or securely configured; macOS runner remains disabled"}
  def provision(self,payload):
   if payload.get("target_os")!="macos" or payload.get("image")!="macos-15-arm64": raise OrkaError("Orka adapter accepts only the approved macOS 15 ARM64 profile")
   if payload.get("ephemeral") is not True or payload.get("network_policy")!="restricted-egress": raise OrkaError("Orka request violates ephemeral network policy")
