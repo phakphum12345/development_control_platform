@@ -14,3 +14,29 @@ A budget read must return amount, currentSpend, and currency. Forecast spend is 
 
 ## Verification boundary
 Tests use mocked HTTP responses only. No Azure endpoint was contacted, no identity token was requested from a live host, and no billable Azure resource was created. Required role assignments and live authorization are deployment-time checks and remain unverified here.
+
+
+## Projection and freshness safety
+
+The Azure budget reader now requires a valid forecast amount with the same currency
+as current spend. A missing or malformed forecast is UNKNOWN and blocks
+provisioning; a currency mismatch is not treated as a comparable value.
+Budget snapshots reject negative, NaN, infinite, or malformed amounts.
+
+`DCP_GATEWAY_PROJECTED_RUN_COST_USD` is the conservative projected cost for one
+runner at its configured maximum runtime. The guard evaluates
+`projected_run_cost_usd * (active_runner_count + 1)`, so existing active and
+cleanup-pending runners are included before authorizing another runner. Failed
+records with provider resources still pending cleanup continue to count against
+concurrency.
+
+The Gateway status response includes only aggregate lifecycle counters
+(`state_counts`, `cleanup_pending`, `cleanup_retries`, and
+`cleanup_confirmed`); it does not disclose runner names, repository IDs, or
+provider identifiers.
+
+All Azure ARM, Key Vault, GitHub App, and Orka bearer credentials are placed in
+non-redirected request headers. A redirect cannot forward these credentials to
+a different host. Provider creation requires both a live budget guard and
+verified cleanup wiring. The production bootstrap remains disabled until all
+deployment-side controls are configured and accepted.
