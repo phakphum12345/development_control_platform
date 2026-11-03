@@ -95,6 +95,10 @@ class BudgetGuardTests(unittest.TestCase):
             guard.authorize(2)
         self.assertEqual(snapshot.projected, [20, 30])
 
+    def test_zero_projected_run_cost_is_rejected(self):
+        with self.assertRaises(ValueError):
+            AzureBudgetGuard(Reader(Snapshot(True)), 0)
+
     def test_nonfinite_projected_run_cost_is_rejected(self):
         for value in (float("nan"), float("inf"), float("-inf")):
             with self.assertRaises(ValueError):
