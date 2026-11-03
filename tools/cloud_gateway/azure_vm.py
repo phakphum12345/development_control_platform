@@ -95,8 +95,16 @@ class AzureVMProvider:
   data=self.arm.request("GET",self._url("Microsoft.Compute","virtualMachines",provider_id)+"&$expand=instanceView",allow_missing=True)
   if data is None:
    nic="dcpnic"+provider_id.rsplit("-",1)[1]
-   self.arm.request("DELETE",self._url("Microsoft.Network","networkInterfaces",nic,API_NETWORK),allow_missing=True)
-   return RunnerInstance(provider_id,"terminated")
+   nic_url=self._url("Microsoft.Network","networkInterfaces",nic,API_NETWORK)
+   nic_data=self.arm.request("GET",nic_url,allow_missing=True)
+   if nic_data is None:
+    return RunnerInstance(provider_id,"terminated",provider_id)
+   self.arm.request("DELETE",nic_url,allow_missing=True)
+   remaining=self.arm.request("GET",nic_url,allow_missing=True)
+   if remaining is None:
+    return RunnerInstance(provider_id,"terminated",provider_id)
+   return RunnerInstance(provider_id,"terminating",provider_id,detail="NIC cleanup pending")
+
   state=str(data.get("properties",{}).get("provisioningState","")).lower()
   if state=="failed": result="failed"
   else:
