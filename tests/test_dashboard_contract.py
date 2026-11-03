@@ -247,3 +247,25 @@ if __name__ == "__main__":
         ):
             with self.subTest(expected=expected):
                 self.assertIn(expected, HTML)
+
+
+    def test_cloud_runner_control_is_visible_and_fails_closed(self):
+        for value in (
+            'data-tab="cloud-runners"', 'id="cloud-runners"',
+            'id="runner-refresh"', 'id="runner-create"',
+            'id="runner-list"', 'id="runner-gate-budget"',
+            'data-runner-os="linux"', 'data-runner-os="windows"',
+            'data-runner-os="macos"',
+        ):
+            with self.subTest(value=value):
+                self.assertIn(value, HTML)
+        self.assertIn('disabled>Start ephemeral runner', HTML)
+        self.assertIn('runnerCanCreate()', HTML)
+        self.assertIn('s.budget_gate==="PASS"', HTML)
+        self.assertIn('s.owner_approved===true', HTML)
+        self.assertIn('s.bootstrap_ready===true', HTML)
+        self.assertIn('credentials:"same-origin"', HTML)
+        self.assertIn('"X-CSRF-Token"', HTML)
+        self.assertIn('registration_token_handling:"provider-side-only"', HTML)
+        self.assertIn('No Gateway token', HTML)
+        self.assertIn('UNKNOWN', HTML)
