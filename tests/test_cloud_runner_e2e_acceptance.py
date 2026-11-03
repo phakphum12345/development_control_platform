@@ -133,7 +133,6 @@ class CloudRunnerEndToEndAcceptanceTests(unittest.TestCase):
             self.service,
             proxy_secret=SECRET,
             public_origin=ORIGIN,
-            internal_api_token="internal-api-token-for-test-only",
         )
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
