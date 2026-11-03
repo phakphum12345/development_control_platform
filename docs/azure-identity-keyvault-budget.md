@@ -59,3 +59,8 @@ Azure's Consumption Budgets API only returns `forecastSpend` when the budget
 contains a forecast alert type. Configure a forecasted notification on the
 target budget; otherwise DCP treats the snapshot as UNKNOWN and denies runner
 creation rather than silently falling back to current spend only.
+
+
+## Reference
+
+- Microsoft Learn: [Azure Consumption Budgets - Get (2023-05-01)](https://learn.microsoft.com/en-us/rest/api/consumption/budgets/get?view=rest-consumption-2023-05-01). The API defines the budget time period and notes that forecast spend is returned only when a forecast alert type is configured.
