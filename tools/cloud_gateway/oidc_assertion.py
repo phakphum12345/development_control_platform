@@ -63,8 +63,13 @@ def sign_verified_oidc_assertion(
         raise OIDCAssertionError("Verified OIDC claims are required")
     if not isinstance(issuer, str) or not issuer or claims.get("iss") != issuer:
         raise OIDCAssertionError("OIDC issuer mismatch")
-    if not isinstance(audience, str) or not audience or audience not in _audiences(claims.get("aud")):
+    audiences = _audiences(claims.get("aud"))
+    if not isinstance(audience, str) or not audience or audience not in audiences:
         raise OIDCAssertionError("OIDC audience mismatch")
+    authorized_party = claims.get("azp")
+    if ((len(audiences) > 1 and authorized_party != audience)
+            or (authorized_party is not None and authorized_party != audience)):
+        raise OIDCAssertionError("OIDC authorized party mismatch")
     current = int(time.time()) if now_epoch is None else now_epoch
     if isinstance(current, bool) or not isinstance(current, int):
         raise OIDCAssertionError("Invalid assertion time")
