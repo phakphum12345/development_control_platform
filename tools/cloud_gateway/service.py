@@ -92,6 +92,7 @@ class GatewayService:
                 result = self.runner_cleanup(row, instance)
             except Exception:
                 self.store.record_event(rid, "cleanup_retry", "pending")
+                self.store.mark_cleanup_due(rid)
                 raise
             self.store.record_event(rid, "runner_cleanup_confirmed", result)
         return self.store.transition(rid, terminal)
@@ -104,8 +105,11 @@ class GatewayService:
             instance = self.provider.status(row["provider_id"])
             if instance.state == "online" and row["state"] == "provisioning":
                 row = self.store.transition(rid, "online")
-            elif instance.state == "terminating" and row["state"] != "terminating":
-                row = self.store.transition(rid, "terminating")
+            elif instance.state == "terminating":
+                if row["state"] != "terminating":
+                    row = self.store.transition(rid, "terminating")
+                self.store.record_event(rid, "cleanup_retry", "pending")
+                self.store.mark_cleanup_due(rid)
             elif instance.state in ("terminated", "failed"):
                 row = self._finalize_provider_state(row, instance)
             row.update(runner_name=instance.runner_name, labels=list(instance.labels))
@@ -130,9 +134,13 @@ class GatewayService:
                 instance = self.provider.status(row["provider_id"])
         except Exception:
             self.store.record_event(rid, "cleanup_retry", "pending")
+            self.store.mark_cleanup_due(rid)
             raise
         if instance.state in ("terminated", "failed"):
             row = self._finalize_provider_state(row, instance)
+        else:
+            self.store.record_event(rid, "cleanup_retry", "pending")
+            self.store.mark_cleanup_due(rid)
         return self.public(row)
 
     def reconcile_expired(self, now_utc=None):
