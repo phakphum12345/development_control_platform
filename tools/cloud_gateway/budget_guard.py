@@ -15,6 +15,10 @@ class AzureBudgetGuard:
         self.reader = reader
         self.projected_run_cost_usd = float(projected_run_cost_usd)
 
+    def inspect(self):
+        """Read current budget state for display; failures remain UNKNOWN to callers."""
+        return self.reader.read()
+
     def authorize(self, active_count: int) -> None:
         if isinstance(active_count, bool) or not isinstance(active_count, int) or active_count < 0:
             raise PolicyDenied("Active runner count is invalid", 503)
