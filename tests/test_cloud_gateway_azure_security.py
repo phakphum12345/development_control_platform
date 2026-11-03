@@ -1,5 +1,6 @@
 """Mock-only tests for Managed Identity, Key Vault, and Azure budget reads."""
 import json,unittest
+from datetime import datetime,timedelta,timezone
 from unittest.mock import patch,MagicMock
 from tools.cloud_gateway.azure_identity import ManagedIdentityCredential,IdentityError
 from tools.cloud_gateway.key_vault import KeyVaultSecretReader
@@ -28,6 +29,10 @@ class KeyVaultTests(unittest.TestCase):
  def test_invalid_secret_name_rejected(self):
   reader=KeyVaultSecretReader("https://demo.vault.azure.net",MagicMock())
   with self.assertRaises(ValueError): reader.get_secret("../leak")
+def active_period():
+ now=datetime.now(timezone.utc)
+ return {"startDate":(now-timedelta(days=1)).isoformat(),"endDate":(now+timedelta(days=30)).isoformat()}
+
 class BudgetTests(unittest.TestCase):
  def test_budget_permit_checks_current_forecast_and_currency(self):
   self.assertTrue(BudgetSnapshot(100,20,70,"USD").permits(10))
@@ -37,7 +42,7 @@ class BudgetTests(unittest.TestCase):
  def test_budget_reader_is_read_only_and_parses_budget(self):
   credential=MagicMock(); credential.get_token.return_value="arm-token"
   response=MagicMock(); response.__enter__.return_value=response
-  response.read.return_value=json.dumps({"properties":{"amount":50,"currentSpend":{"amount":12,"unit":"USD"},"forecastSpend":{"amount":35,"unit":"USD"}}}).encode()
+  response.read.return_value=json.dumps({"properties":{"timePeriod":active_period(),"amount":50,"currentSpend":{"amount":12,"unit":"USD"},"forecastSpend":{"amount":35,"unit":"USD"}}}).encode()
   with patch("tools.cloud_gateway.azure_budget.urlopen",return_value=response) as call:
    snapshot=AzureBudgetReader("00000000-0000-0000-0000-000000000000","dcp-monthly",credential).read()
   self.assertEqual(snapshot.current_spend,12); self.assertTrue(snapshot.permits(3))
@@ -49,11 +54,18 @@ class BudgetTests(unittest.TestCase):
   credential=MagicMock(); credential.get_token.return_value="token"
   for forecast in (None,{"amount":20,"unit":"THB"}):
    response=MagicMock(); response.__enter__.return_value=response
-   body={"properties":{"amount":50,"currentSpend":{"amount":12,"unit":"USD"}}}
+   body={"properties":{"timePeriod":active_period(),"amount":50,"currentSpend":{"amount":12,"unit":"USD"}}}
    if forecast is not None: body["properties"]["forecastSpend"]=forecast
    response.read.return_value=json.dumps(body).encode()
    with patch("tools.cloud_gateway.azure_budget.urlopen",return_value=response):
     with self.assertRaises(BudgetReadError): AzureBudgetReader("00000000-0000-0000-0000-000000000000","dcp-budget",credential).read()
+ def test_budget_reader_rejects_expired_budget_period(self):
+  credential=MagicMock(); credential.get_token.return_value="token"
+  old={"startDate":"2020-01-01T00:00:00+00:00","endDate":"2021-01-01T00:00:00+00:00"}
+  response=MagicMock(); response.__enter__.return_value=response
+  response.read.return_value=json.dumps({"properties":{"timePeriod":old,"amount":50,"currentSpend":{"amount":12,"unit":"USD"},"forecastSpend":{"amount":35,"unit":"USD"}}}).encode()
+  with patch("tools.cloud_gateway.azure_budget.urlopen",return_value=response):
+   with self.assertRaises(BudgetReadError): AzureBudgetReader("00000000-0000-0000-0000-000000000000","dcp-budget",credential).read()
  def test_invalid_budget_data_fails_closed(self):
   credential=MagicMock(); credential.get_token.return_value="token"
   response=MagicMock(); response.__enter__.return_value=response; response.read.return_value=b'{}'
