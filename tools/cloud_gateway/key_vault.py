@@ -17,7 +17,8 @@ class KeyVaultSecretReader:
   if version: suffix+="/"+quote(version,safe="")
   try:
    token=self.credential.get_token("https://vault.azure.net")
-   req=Request(self.base+suffix+"?api-version=7.4",headers={"Authorization":"Bearer "+token,"Accept":"application/json"})
+   req=Request(self.base+suffix+"?api-version=7.4",headers={"Accept":"application/json"})
+   req.add_unredirected_header("Authorization","Bearer "+token)
    with urlopen(req,timeout=self.timeout) as response: data=json.loads(response.read(65537).decode("utf-8"))
   except Exception as exc: raise KeyVaultError("Key Vault read failed: "+type(exc).__name__) from exc
   value=data.get("value") if isinstance(data,dict) else None
