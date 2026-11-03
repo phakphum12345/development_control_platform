@@ -183,9 +183,10 @@ class GatewayCleanupIntegrationTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             service.create(request_payload(), "cleanup-key-partial")
         row = self.store.get_by_key("cleanup-key-partial")
-        self.assertEqual(row["state"], "failed")
+        self.assertEqual(row["state"], "terminated")
         self.assertEqual(row["provider_id"], "dcp-123-abcdef12")
-        self.assertEqual(self.store.active_count(), 1)
+        self.assertIn(("terminate", "dcp-123-abcdef12"), provider.calls)
+        self.assertEqual(self.store.active_count(), 0)
 
     def test_provider_readiness_must_be_pass(self):
         class NotReady(CleanupProvider):
