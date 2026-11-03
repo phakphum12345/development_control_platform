@@ -124,6 +124,31 @@ class GitHubAppBootstrapTests(unittest.TestCase):
         self.assertEqual(stub.args[2], ("self-hosted", "Windows", "X64", "dcp-cloud-windows"))
         self.assertFalse(checker("dcp-123-abcdef12", "phakphum12345/generated-A4-pdf", "unknown"))
 
+    def test_runner_inventory_paginates_before_deciding_runner_is_absent(self):
+        app = self.make()
+        calls = []
+        def request(method, path, token, payload=None):
+            calls.append(path)
+            if path.startswith("/app/"):
+                return {
+                    "token": "read-installation-token",
+                    "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat(),
+                    "permissions": {"administration": "read"},
+                }
+            if "page=1" in path:
+                return {"runners": [
+                    {"id": i + 1, "name": "other-" + str(i), "status": "offline"}
+                    for i in range(100)
+                ]}
+            return {"runners": [{
+                "id": 999, "name": "dcp-123-abcdef12", "status": "offline",
+                "labels": [{"name": "self-hosted"}],
+            }]}
+        app._request = request
+        runner = app.find_runner("phakphum12345/generated-A4-pdf", "dcp-123-abcdef12")
+        self.assertEqual(runner["id"], 999)
+        self.assertEqual(len([path for path in calls if "actions/runners?" in path]), 2)
+
     def test_runner_online_requires_exact_name_status_and_labels(self):
         app = self.make()
         calls = []
