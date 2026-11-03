@@ -16,9 +16,11 @@ The Gateway must confirm each resource boundary in order:
 7. Query GitHub again and confirm that the runner is absent.
 8. Only then transition the durable Gateway record to `terminated`.
 
-If any step fails, the row remains `terminating`, the error detail is not copied
-to audit logs, and the next TTL/reconciliation sweep retries. A failed row with
-a provider ID remains counted against concurrency until cleanup completes.
+If any step fails, the row remains `terminating`, its cleanup deadline is moved
+to now, the error detail is not copied to audit logs, and the next reconciliation
+sweep retries promptly. Partial provider-create failures that expose a known
+provider ID are immediately sent through the same cleanup path. A failed row
+with a provider ID remains counted against concurrency until cleanup completes.
 
 ## Gateway wiring
 
