@@ -172,6 +172,21 @@ class GatewayCleanupIntegrationTests(unittest.TestCase):
         self.assertIn("cleanup_retry", [event["event"] for event in events])
         self.assertNotIn("private token", str(events))
 
+    def test_partial_provider_failure_persists_cleanup_identity(self):
+        class PartialFailure(CleanupProvider):
+            def provision(self, payload):
+                error = RuntimeError("provider failed after resource creation")
+                error.provider_id = "dcp-123-abcdef12"
+                raise error
+        provider = PartialFailure()
+        service = GatewayService(settings(), self.store, provider, runner_cleanup=lambda *_: "removed")
+        with self.assertRaises(RuntimeError):
+            service.create(request_payload(), "cleanup-key-partial")
+        row = self.store.get_by_key("cleanup-key-partial")
+        self.assertEqual(row["state"], "failed")
+        self.assertEqual(row["provider_id"], "dcp-123-abcdef12")
+        self.assertEqual(self.store.active_count(), 1)
+
     def test_provider_readiness_must_be_pass(self):
         class NotReady(CleanupProvider):
             def readiness(self, os_name):
