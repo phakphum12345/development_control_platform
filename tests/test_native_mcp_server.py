@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -42,7 +43,7 @@ class NativeMCPServerTests(unittest.IsolatedAsyncioTestCase):
                     os.pathsep + existing_pythonpath if existing_pythonpath else ""
                 )
                 params = StdioServerParameters(
-                    command=os.sys.executable,
+                    command=sys.executable,
                     args=["-m", "tools.mcp_engine.server"],
                     env=env,
                     cwd=str(REPOSITORY_ROOT),
