@@ -65,6 +65,11 @@ class AzureVMTests(unittest.TestCase):
   arm.get_result=None; arm.nic_exists=False
   self.assertEqual(p.status(vm.provider_id).state,"terminated")
   self.assertFalse(any(call[0]=="DELETE" and "networkInterfaces/" in call[1] for call in arm.calls))
+ def test_failed_vm_is_deleted_before_runner_cleanup_can_begin(self):
+  p,arm=self.make(); vm=p.provision(payload("linux"))
+  arm.get_result={"properties":{"provisioningState":"Failed"},"tags":{"repository":"phakphum12345/generated-A4-pdf","target-os":"linux"}}
+  self.assertEqual(p.status(vm.provider_id).state,"terminating")
+  self.assertTrue(any(call[0]=="DELETE" and "Microsoft.Compute/virtualMachines/" in call[1] for call in arm.calls))
  def test_readiness_requires_bootstrap_online_and_network_policy(self):
   p,_=self.make()
   self.assertFalse(p.readiness("linux")["ready"])
