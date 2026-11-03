@@ -55,6 +55,9 @@ class GatewayService:
             raise
         return self.public(row), True
 
+    def list_recent(self, limit=50):
+        return [self.public(row) for row in self.store.list_recent(limit)]
+
     def get(self, rid):
         row = self.store.get(rid)
         if not row:

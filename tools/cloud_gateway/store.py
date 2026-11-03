@@ -71,6 +71,17 @@ class RunnerStore:
             ).fetchall()
             return [dict(row) for row in rows]
 
+    def list_recent(self, limit=50):
+        """Return newest runner records without request payloads or credentials."""
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
+            raise ValueError("Runner list limit must be 1..200")
+        with self.lock, self.db() as c:
+            rows = c.execute(
+                "SELECT id,state,target_os,created_at,updated_at,expires_at FROM runners "
+                "ORDER BY created_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+            return [dict(row) for row in rows]
+
     def get(self, rid):
         with self.lock, self.db() as c:
             r = c.execute("SELECT * FROM runners WHERE id=?", (rid,)).fetchone()
