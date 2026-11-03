@@ -154,6 +154,10 @@ class GatewayCleanupIntegrationTests(unittest.TestCase):
         self.assertEqual(calls, ["dcp-123-abcdef12"])
         events = self.store.audit_events(row["id"])
         self.assertIn("runner_cleanup_confirmed", [event["event"] for event in events])
+        summary = self.store.lifecycle_summary()
+        self.assertEqual(summary["cleanup_pending"], 0)
+        self.assertEqual(summary["cleanup_confirmed"], 1)
+        self.assertEqual(summary["state_counts"]["terminated"], 1)
 
     def test_cleanup_failure_keeps_runner_retryable(self):
         calls = []
