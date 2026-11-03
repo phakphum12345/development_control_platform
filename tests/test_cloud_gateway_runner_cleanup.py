@@ -188,6 +188,24 @@ class GatewayCleanupIntegrationTests(unittest.TestCase):
         self.assertIn(("terminate", "dcp-123-abcdef12"), provider.calls)
         self.assertEqual(self.store.active_count(), 0)
 
+    def test_provider_still_terminating_is_scheduled_for_immediate_retry(self):
+        class PendingProvider(CleanupProvider):
+            def terminate(self, provider_id):
+                self.calls.append(("terminate", provider_id))
+                return RunnerInstance(provider_id, "terminating", provider_id)
+            def status(self, provider_id):
+                self.calls.append(("status", provider_id))
+                return RunnerInstance(provider_id, "terminating", provider_id)
+        provider = PendingProvider()
+        service = GatewayService(
+            settings(), self.store, provider,
+            runner_cleanup=lambda *_: "removed",
+        )
+        row, _ = service.create(request_payload(), "cleanup-key-pending")
+        result = service.terminate(row["id"])
+        self.assertEqual(result["state"], "terminating")
+        self.assertEqual(len(self.store.expired_active(datetime.now(timezone.utc).isoformat())), 1)
+
     def test_provider_readiness_must_be_pass(self):
         class NotReady(CleanupProvider):
             def readiness(self, os_name):
