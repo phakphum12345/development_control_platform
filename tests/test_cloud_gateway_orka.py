@@ -40,6 +40,11 @@ class OrkaTests(unittest.TestCase):
   p=self.make(); name="dcp-123-"+"a"*8
   with patch("tools.cloud_gateway.orka.urlopen",return_value=response({"status":"Terminating"})): self.assertEqual(p.terminate(name).state,"terminating")
   with patch("tools.cloud_gateway.orka.urlopen",side_effect=HTTPError("url",404,"missing",{},None)): self.assertEqual(p.status(name).state,"terminated")
+ def test_readiness_fails_closed_without_protected_guest_bootstrap(self):
+  p=self.make(lambda *args:True)
+  readiness=p.readiness("macos")
+  self.assertFalse(readiness["ready"])
+  self.assertIn("protected guest user-data",readiness["message"])
  def test_provider_errors_do_not_echo_credentials(self):
   p=self.make()
   with patch("tools.cloud_gateway.orka.urlopen",side_effect=HTTPError("url",401,"denied",{},None)):
