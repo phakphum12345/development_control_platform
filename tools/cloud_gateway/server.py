@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
 import os
 import re
 import threading
@@ -217,10 +218,13 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
             if guard is not None:
                 try:
                     snapshot = guard.inspect()
-                    budget_state = "PASS" if snapshot.permits(guard.projected_run_cost_usd) else "FAIL"
+                    active_runners = service.store.active_count()
+                    projected_total = guard.projected_run_cost_usd * (active_runners + 1)
+                    budget_state = "PASS" if snapshot.permits(projected_total) else "FAIL"
                     budget_message = (
                         f"{snapshot.currency} budget; current spend {snapshot.current_spend:g}; "
-                        f"forecast {snapshot.forecast_spend if snapshot.forecast_spend is not None else 'unavailable'}"
+                        f"forecast {snapshot.forecast_spend if snapshot.forecast_spend is not None else 'unavailable'}; "
+                        f"projected {projected_total:g} for {active_runners + 1} runner(s)"
                     )
                 except Exception:
                     budget_state = "UNKNOWN"
@@ -242,6 +246,9 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
                     result.get("message", "Provider bootstrap not configured")
                     if isinstance(result, dict) else description + " bootstrap not configured"
                 )
+                if ready and getattr(service.provider, "requires_budget_guard", False) and service.budget_guard is None:
+                    ready = False
+                    message = "Live budget guard is not configured"
                 if ready and getattr(service.provider, "requires_runner_cleanup", False) and service.runner_cleanup is None:
                     ready = False
                     message = "GitHub runner deregistration is not configured"
@@ -253,6 +260,8 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
                 "provisioning_enabled": service.settings.provisioning_enabled,
                 "budget_gate": budget_state,
                 "budget_message": budget_message,
+                "active_runners": service.store.active_count(),
+                "lifecycle": service.store.lifecycle_summary(),
                 "bootstrap_ready": bootstrap_ready,
                 "circuit_breaker_tripped": service.settings.circuit_breaker_tripped,
                 "providers": providers,
@@ -349,10 +358,17 @@ def _budget_guard_from_env(settings):
         if settings.provisioning_enabled:
             raise SystemExit("Azure budget subscription/name required; refusing provisioning startup")
         return None
+    projected_raw = os.getenv("DCP_AZURE_PROJECTED_RUN_COST_USD", "")
+    if not projected_raw:
+        if settings.provisioning_enabled:
+            raise SystemExit("DCP_AZURE_PROJECTED_RUN_COST_USD must be explicitly configured; refusing zero-cost projection")
+        return None
     try:
-        projected = float(os.getenv("DCP_AZURE_PROJECTED_RUN_COST_USD", "0"))
+        projected = float(projected_raw)
     except ValueError as exc:
         raise SystemExit("DCP_AZURE_PROJECTED_RUN_COST_USD must be numeric") from exc
+    if not math.isfinite(projected) or projected <= 0:
+        raise SystemExit("DCP_AZURE_PROJECTED_RUN_COST_USD must be finite and positive")
     from .azure_budget import AzureBudgetReader
     from .budget_guard import AzureBudgetGuard
     reader = AzureBudgetReader(subscription, budget_name)

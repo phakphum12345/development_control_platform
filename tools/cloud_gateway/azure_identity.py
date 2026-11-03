@@ -18,16 +18,19 @@ class ManagedIdentityCredential:
    params={"api-version":"2019-08-01","resource":resource}
    if self.env.get("AZURE_CLIENT_ID"): params["client_id"]=self.env["AZURE_CLIENT_ID"]
    url=endpoint+("&" if "?" in endpoint else "?")+urlencode(params)
-   headers={"X-IDENTITY-HEADER":self.env["IDENTITY_HEADER"],"Metadata":"true"}
+   headers={"Metadata":"true"}
+   identity_header=self.env["IDENTITY_HEADER"]
   elif self.env.get("DCP_AZURE_USE_IMDS","false").lower()=="true":
    params={"api-version":"2018-02-01","resource":resource}
    if self.env.get("AZURE_CLIENT_ID"): params["client_id"]=self.env["AZURE_CLIENT_ID"]
    url="http://169.254.169.254/metadata/identity/oauth2/token?"+urlencode(params)
    headers={"Metadata":"true"}
+   identity_header=None
   else:
    raise IdentityError("Managed identity endpoint is unavailable; refusing client-secret fallback")
   try:
    req=Request(url,headers=headers)
+   if identity_header: req.add_unredirected_header("X-IDENTITY-HEADER",identity_header)
    with urlopen(req,timeout=self.timeout) as response: data=json.loads(response.read(65537).decode("utf-8"))
   except Exception as exc:
    raise IdentityError("Managed identity token request failed: "+type(exc).__name__) from exc

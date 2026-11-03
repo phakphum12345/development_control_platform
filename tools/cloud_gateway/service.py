@@ -1,4 +1,5 @@
 """Fail-closed gateway orchestration over injected provider and durable store."""
+import threading
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -13,6 +14,7 @@ class GatewayService:
         self.provider = provider
         self.budget_guard = budget_guard
         self.runner_cleanup = runner_cleanup
+        self.create_lock = threading.Lock()
 
     @staticmethod
     def public(row):
@@ -26,34 +28,39 @@ class GatewayService:
             raise PolicyDenied("Idempotency-Key must be 8..200 characters", 400)
         request = validate_runner_request(payload, self.settings)
         fingerprint = idempotency_fingerprint(request)
-        old = self.store.get_by_key(key)
-        if old:
-            if old["fingerprint"] != fingerprint:
-                raise LifecycleConflict("Idempotency key conflicts with an existing request")
-            return self.public(old), False
-        if getattr(self.provider, "requires_runner_cleanup", False) and self.runner_cleanup is None:
-            raise PolicyDenied("GitHub runner deregistration is not configured", 503)
-        readiness = getattr(self.provider, "readiness", None)
-        if callable(readiness):
-            try:
-                ready = readiness(request["target_os"])
-            except Exception:
-                ready = None
-            if not isinstance(ready, dict) or ready.get("ready") is not True:
-                raise PolicyDenied("Selected runner provider is not ready", 503)
-        active_count = self.store.active_count()
-        self.settings.authorize_provisioning(active_count)
-        if self.budget_guard is not None:
-            self.budget_guard.authorize(active_count)
-        rid = str(uuid.uuid4())
-        expiry = (datetime.now(timezone.utc) + timedelta(
-            minutes=request["max_runtime_minutes"]
-        )).isoformat()
-        row, created = self.store.create(rid, key, fingerprint, request, expiry)
-        if not created:
-            if row["fingerprint"] != fingerprint:
-                raise LifecycleConflict("Idempotency key conflicts with an existing request")
-            return self.public(row), False
+        # Reserve capacity before releasing the lock to provision. The durable
+        # provisioning row is counted by the next request, preventing local races.
+        with self.create_lock:
+            old = self.store.get_by_key(key)
+            if old:
+                if old["fingerprint"] != fingerprint:
+                    raise LifecycleConflict("Idempotency key conflicts with an existing request")
+                return self.public(old), False
+            if getattr(self.provider, "requires_budget_guard", False) and self.budget_guard is None:
+                raise PolicyDenied("Live budget guard is not configured", 503)
+            if getattr(self.provider, "requires_runner_cleanup", False) and self.runner_cleanup is None:
+                raise PolicyDenied("GitHub runner deregistration is not configured", 503)
+            readiness = getattr(self.provider, "readiness", None)
+            if callable(readiness):
+                try:
+                    ready = readiness(request["target_os"])
+                except Exception:
+                    ready = None
+                if not isinstance(ready, dict) or ready.get("ready") is not True:
+                    raise PolicyDenied("Selected runner provider is not ready", 503)
+            active_count = self.store.active_count()
+            self.settings.authorize_provisioning(active_count)
+            if self.budget_guard is not None:
+                self.budget_guard.authorize(active_count)
+            rid = str(uuid.uuid4())
+            expiry = (datetime.now(timezone.utc) + timedelta(
+                minutes=request["max_runtime_minutes"]
+            )).isoformat()
+            row, created = self.store.create(rid, key, fingerprint, request, expiry)
+            if not created:
+                if row["fingerprint"] != fingerprint:
+                    raise LifecycleConflict("Idempotency key conflicts with an existing request")
+                return self.public(row), False
         try:
             instance = self.provider.provision(request)
             from tools.runner_backend.provider import RunnerInstance

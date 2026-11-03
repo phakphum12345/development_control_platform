@@ -1,11 +1,12 @@
 """Live-budget guard and expired-lease reconciliation tests (no cloud calls)."""
 import tempfile
+import threading
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from tools.cloud_gateway.budget_guard import AzureBudgetGuard
-from tools.cloud_gateway.policy import GatewaySettings, PROFILES
+from tools.cloud_gateway.policy import GatewaySettings, PolicyDenied, PROFILES
 from tools.cloud_gateway.service import GatewayService
 from tools.cloud_gateway.store import RunnerStore
 from tools.runner_backend.provider import RunnerInstance
@@ -80,6 +81,29 @@ class BudgetGuardTests(unittest.TestCase):
         guard.authorize(1)
         self.assertEqual(reader.calls, 2)
 
+    def test_projection_includes_every_active_runner_and_new_runner(self):
+        class RecordingSnapshot:
+            def __init__(self):
+                self.projected = []
+            def permits(self, projected):
+                self.projected.append(projected)
+                return projected <= 25
+        snapshot = RecordingSnapshot()
+        guard = AzureBudgetGuard(Reader(snapshot), 10)
+        guard.authorize(1)
+        with self.assertRaisesRegex(Exception, "budget or forecast ceiling"):
+            guard.authorize(2)
+        self.assertEqual(snapshot.projected, [20, 30])
+
+    def test_zero_projected_run_cost_is_rejected(self):
+        with self.assertRaises(ValueError):
+            AzureBudgetGuard(Reader(Snapshot(True)), 0)
+
+    def test_nonfinite_projected_run_cost_is_rejected(self):
+        for value in (float("nan"), float("inf"), float("-inf")):
+            with self.assertRaises(ValueError):
+                AzureBudgetGuard(Reader(Snapshot(True)), value)
+
     def test_denies_when_budget_reader_is_unavailable(self):
         guard = AzureBudgetGuard(Reader(error=RuntimeError("private endpoint")), 1)
         with self.assertRaisesRegex(Exception, "Live Azure budget is unavailable"):
@@ -102,6 +126,46 @@ class BudgetGuardTests(unittest.TestCase):
                 service.create(request_payload(), "budget-key-001")
         self.assertEqual(provider.calls, [])
         self.assertEqual(reader.calls, 1)
+
+
+class ConcurrentReservationTests(unittest.TestCase):
+    def test_capacity_is_reserved_before_provider_provisioning(self):
+        class SlowProvider(Provider):
+            def __init__(self):
+                super().__init__()
+                self.started = threading.Event()
+                self.release = threading.Event()
+            def provision(self, payload):
+                self.started.set()
+                self.release.wait(5)
+                return super().provision(payload)
+        provider = SlowProvider()
+        config = GatewaySettings(
+            provisioning_enabled=True, owner_approved=True,
+            allowed_repositories=(REPOSITORY,), budget_limit_usd=100,
+            current_spend_usd=0, projected_run_cost_usd=1,
+            max_concurrent_runners=1, max_runtime_minutes=180,
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            service = GatewayService(config, RunnerStore(str(Path(temp) / "gateway.sqlite")), provider)
+            first_result = []
+            first_error = []
+            def create_first():
+                try:
+                    first_result.append(service.create(request_payload(), "concurrent-key-001"))
+                except Exception as exc:
+                    first_error.append(exc)
+            thread = threading.Thread(target=create_first)
+            thread.start()
+            self.assertTrue(provider.started.wait(3))
+            with self.assertRaises(PolicyDenied):
+                service.create(request_payload(), "concurrent-key-002")
+            provider.release.set()
+            thread.join(timeout=5)
+            self.assertFalse(thread.is_alive())
+            self.assertEqual(first_error, [])
+            self.assertEqual(len(first_result), 1)
+            self.assertEqual(len([call for call in provider.calls if call[0] == "provision"]), 1)
 
 
 class ExpiryReconciliationTests(unittest.TestCase):

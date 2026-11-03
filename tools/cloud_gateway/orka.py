@@ -9,6 +9,7 @@ from tools.runner_backend.provider import RunnerInstance
 class OrkaError(RuntimeError): pass
 class OrkaProvider:
  requires_runner_cleanup=True
+ requires_budget_guard=True
  def __init__(self,base_url,namespace,vm_config,secret_reader,secret_name="orka-api-token",runner_online_checker=None,timeout=20):
   parsed=urlparse(base_url)
   if parsed.scheme!="https" or not parsed.hostname or parsed.username or parsed.password or parsed.path not in ("","/") or parsed.query or parsed.fragment: raise ValueError("Orka endpoint must be an HTTPS origin")
@@ -20,7 +21,8 @@ class OrkaProvider:
  def _request(self,method,path,payload=None,allow_missing=False):
   token=self.secret_reader.get_secret(self.secret_name)
   body=None if payload is None else json.dumps(payload,separators=(",",":")).encode()
-  req=Request(self.base+path,data=body,method=method,headers={"Authorization":"Bearer "+token,"Accept":"application/json","Content-Type":"application/json","User-Agent":"DCP-Orka-Adapter/1.0"})
+  req=Request(self.base+path,data=body,method=method,headers={"Accept":"application/json","Content-Type":"application/json","User-Agent":"DCP-Orka-Adapter/1.0"})
+  req.add_unredirected_header("Authorization","Bearer "+token)
   try:
    with urlopen(req,timeout=self.timeout) as response: raw=response.read(65537)
   except HTTPError as exc:
@@ -36,7 +38,7 @@ class OrkaProvider:
  def readiness(self,os_name):
   if os_name!="macos": return {"ready":False,"message":"Orka supports only the approved macOS profile"}
   if self.online is None: return {"ready":False,"message":"Independent GitHub runner-online verification is not configured"}
-  return {"ready":False,"message":"Orka User Data bootstrap is not version-verified or securely configured; macOS runner remains disabled"}
+  return {"ready":False,"message":"Orka User Data bootstrap and provider-specific cost guard are not verified; macOS runner remains disabled"}
  def provision(self,payload):
   if payload.get("target_os")!="macos" or payload.get("image")!="macos-15-arm64": raise OrkaError("Orka adapter accepts only the approved macOS 15 ARM64 profile")
   if payload.get("ephemeral") is not True or payload.get("network_policy")!="restricted-egress": raise OrkaError("Orka request violates ephemeral network policy")

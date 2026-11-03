@@ -21,7 +21,7 @@ class OrkaTests(unittest.TestCase):
    body=json.loads(req.data); return response({"name":body["name"],"status":"Running"})
   with patch("tools.cloud_gateway.orka.urlopen",side_effect=create) as call: result=provider.provision(request())
   req=call.call_args.args[0]; body=json.loads(req.data)
-  self.assertEqual(req.get_method(),"POST"); self.assertEqual(req.get_header("Authorization"),"Bearer mock-bearer")
+  self.assertEqual(req.get_method(),"POST"); self.assertEqual(req.get_header("Authorization"),"Bearer mock-bearer"); self.assertTrue(any(k.lower()=="authorization" for k in req.unredirected_hdrs))
   self.assertEqual(body["vmConfig"],"macos15-arm64"); self.assertNotIn("token",json.dumps(body).lower())
   self.assertEqual(result.state,"provisioning")
  def test_rejects_linux_and_non_ephemeral_payloads(self):

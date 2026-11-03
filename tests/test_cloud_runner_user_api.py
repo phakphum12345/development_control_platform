@@ -14,6 +14,7 @@ from urllib.request import Request, urlopen
 from tools.cloud_gateway.policy import GatewaySettings
 from tools.cloud_gateway.server import DisabledProvider, ProxyIdentityVerifier, make_handler
 from tools.cloud_gateway.oidc_assertion import OIDCAssertionError, sign_verified_oidc_assertion
+from tools.cloud_gateway.budget_guard import AzureBudgetGuard
 from tools.cloud_gateway.service import GatewayService
 from tools.cloud_gateway.store import RunnerStore
 
@@ -70,8 +71,30 @@ class AuthenticatedControlAPITests(unittest.TestCase):
             self.assertFalse(status["bootstrap_ready"])
             self.assertFalse(status["providers"]["linux"]["ready"])
             self.assertEqual(status["budget_gate"], "UNKNOWN")
+            self.assertEqual(status["active_runners"], 0)
+            self.assertEqual(status["lifecycle"]["cleanup_pending"], 0)
+            self.assertEqual(status["lifecycle"]["cleanup_retries"], 0)
         with urlopen(self.request("GET", "/api/cloud-runners", "nonce_list_000001")) as response:
             self.assertEqual(json.loads(response.read()), {"runners": []})
+
+    def test_status_projects_budget_for_all_active_runners(self):
+        self.store.create("seed-runner", "seed-budget-key", "seed-fingerprint", {"repository":"phakphum12345/generated-A4-pdf","workflow_run_id":1,"commit_sha":"a"*40,"target_os":"linux"}, "2999-01-01T00:00:00+00:00")
+        self.store.transition("seed-runner", "online", "provider-seed")
+        class Snapshot:
+            currency = "USD"
+            current_spend = 10
+            forecast_spend = 40
+            def permits(self, projected):
+                return projected <= 15
+        class Reader:
+            def read(self):
+                return Snapshot()
+        self.service.budget_guard = AzureBudgetGuard(Reader(), 10)
+        with urlopen(self.request("GET", "/api/cloud-runners/status", "nonce_budget_status_001")) as response:
+            status = json.loads(response.read())
+        self.assertEqual(status["active_runners"], 1)
+        self.assertEqual(status["budget_gate"], "FAIL")
+        self.assertIn("projected 20 for 2 runner(s)", status["budget_message"])
 
     def test_missing_or_invalid_identity_is_denied(self):
         req = Request(self.base + "/api/cloud-runners/status")
