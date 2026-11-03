@@ -53,7 +53,7 @@ class BudgetTests(unittest.TestCase):
  def test_budget_reader_is_read_only_and_parses_budget(self):
   credential=MagicMock(); credential.get_token.return_value="arm-token"
   response=MagicMock(); response.__enter__.return_value=response
-  response.read.return_value=json.dumps({"properties":{"timePeriod":active_period(),"amount":50,"currentSpend":{"amount":12,"unit":"USD"},"forecastSpend":{"amount":35,"unit":"USD"}}}).encode()
+  response.read.return_value=json.dumps({"properties":{"category":"Cost","timePeriod":active_period(),"amount":50,"currentSpend":{"amount":12,"unit":"USD"},"forecastSpend":{"amount":35,"unit":"USD"}}}).encode()
   with patch("tools.cloud_gateway.azure_budget.urlopen",return_value=response) as call:
    snapshot=AzureBudgetReader("00000000-0000-0000-0000-000000000000","dcp-monthly",credential).read()
   self.assertEqual(snapshot.current_spend,12); self.assertTrue(snapshot.permits(3))
@@ -74,7 +74,7 @@ class BudgetTests(unittest.TestCase):
   credential=MagicMock(); credential.get_token.return_value="token"
   old={"startDate":"2020-01-01T00:00:00+00:00","endDate":"2021-01-01T00:00:00+00:00"}
   response=MagicMock(); response.__enter__.return_value=response
-  response.read.return_value=json.dumps({"properties":{"timePeriod":old,"amount":50,"currentSpend":{"amount":12,"unit":"USD"},"forecastSpend":{"amount":35,"unit":"USD"}}}).encode()
+  response.read.return_value=json.dumps({"properties":{"category":"Cost","timePeriod":old,"amount":50,"currentSpend":{"amount":12,"unit":"USD"},"forecastSpend":{"amount":35,"unit":"USD"}}}).encode()
   with patch("tools.cloud_gateway.azure_budget.urlopen",return_value=response):
    with self.assertRaises(BudgetReadError): AzureBudgetReader("00000000-0000-0000-0000-000000000000","dcp-budget",credential).read()
  def test_invalid_budget_data_fails_closed(self):
