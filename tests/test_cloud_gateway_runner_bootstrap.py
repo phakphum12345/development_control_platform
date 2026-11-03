@@ -8,8 +8,9 @@ from tools.cloud_gateway.runner_bootstrap import AzureRunnerBootstrapFactory, Ru
 
 
 class FakeGitHubApp:
-    def __init__(self, token="mock-registration-token"):
+    def __init__(self, token="mock-registration-token", expiry_delta=45):
         self.token = token
+        self.expiry_delta = expiry_delta
         self.repositories = []
 
     def create_registration_token(self, repository):
