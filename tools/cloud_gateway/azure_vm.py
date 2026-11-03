@@ -106,7 +106,9 @@ class AzureVMProvider:
    return RunnerInstance(provider_id,"terminating",provider_id,detail="NIC cleanup pending")
 
   state=str(data.get("properties",{}).get("provisioningState","")).lower()
-  if state=="failed": result="failed"
+  if state=="failed":
+   self.arm.request("DELETE",self._url("Microsoft.Compute","virtualMachines",provider_id),allow_missing=True)
+   return RunnerInstance(provider_id,"terminating",provider_id,detail="failed VM cleanup requested")
   else:
    tags=data.get("tags",{})
    repository=tags.get("repository") if isinstance(tags,dict) else None
