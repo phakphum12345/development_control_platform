@@ -12,8 +12,8 @@ class AzureBudgetGuard:
     def __init__(self, reader, projected_run_cost_usd: float):
         if isinstance(projected_run_cost_usd, bool) or not isinstance(projected_run_cost_usd, (int, float)):
             raise ValueError("Projected run cost must be numeric")
-        if not math.isfinite(projected_run_cost_usd) or projected_run_cost_usd < 0:
-            raise ValueError("Projected run cost must be finite and non-negative")
+        if not math.isfinite(projected_run_cost_usd) or projected_run_cost_usd <= 0:
+            raise ValueError("Projected run cost must be finite and positive")
         self.reader = reader
         self.projected_run_cost_usd = float(projected_run_cost_usd)
 
