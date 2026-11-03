@@ -83,11 +83,29 @@ class AzureVMProvider:
    "storageProfile":{"imageReference":self.image_references[os_name],"osDisk":{"name":vm_name+"-os","createOption":"FromImage","caching":"ReadOnly","managedDisk":{"storageAccountType":"Standard_LRS"},"diffDiskSettings":{"option":"Local"}}},
    "osProfile":bootstrap["os_profile"],"networkProfile":{"networkInterfaces":[{"id":nic_id,"properties":{"primary":True}}]},
    "securityProfile":{"uefiSettings":{"secureBootEnabled":True,"vTpmEnabled":True},"securityType":"TrustedLaunch"},"resources":[bootstrap["extension"]]}
+  vm_url=self._url("Microsoft.Compute","virtualMachines",vm_name)
+  vm_create_started=False
   try:
-   self.arm.request("PUT",nic_url,nic_body); self.arm.request("PUT",self._url("Microsoft.Compute","virtualMachines",vm_name),vm_body)
-  except Exception:
-   try: self.arm.request("DELETE",nic_url,allow_missing=True)
-   except Exception: pass
+   self.arm.request("PUT",nic_url,nic_body)
+   vm_create_started=True
+   self.arm.request("PUT",vm_url,vm_body)
+  except Exception as original:
+   cleanup_pending=False
+   if vm_create_started:
+    try:
+     self.arm.request("DELETE",vm_url,allow_missing=True)
+     if self.arm.request("GET",vm_url,allow_missing=True) is not None: cleanup_pending=True
+    except Exception:
+     cleanup_pending=True
+   try:
+    self.arm.request("DELETE",nic_url,allow_missing=True)
+    if self.arm.request("GET",nic_url,allow_missing=True) is not None: cleanup_pending=True
+   except Exception:
+    cleanup_pending=True
+   if cleanup_pending:
+    error=AzureProvisionError("Azure provisioning failed; resource cleanup is pending")
+    error.provider_id=vm_name
+    raise error from original
    raise
   return RunnerInstance(vm_name,"provisioning",vm_name,tuple(payload.get("labels",[])),"Azure VM create accepted; runner registration pending")
  def status(self,provider_id):
