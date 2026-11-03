@@ -151,7 +151,7 @@ class GitHubAppBootstrapTests(unittest.TestCase):
             "repositories": ["phakphum12345/generated-A4-pdf"],
             "permissions": {"administration": "read"},
         })
-        self.assertEqual(calls[1][1], "/repos/phakphum12345/generated-A4-pdf/actions/runners?per_page=100")
+        self.assertEqual(calls[1][1], "/repos/phakphum12345/generated-A4-pdf/actions/runners?per_page=100&page=1")
 
     def test_runner_online_fails_closed_for_missing_runner(self):
         app = self.make()
