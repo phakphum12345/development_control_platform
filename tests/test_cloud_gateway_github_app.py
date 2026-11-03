@@ -101,6 +101,20 @@ class GitHubAppBootstrapTests(unittest.TestCase):
         with self.assertRaises(GitHubAppError):
             app.create_registration_token("phakphum12345/generated-A4-pdf")
 
+    def test_bearer_token_is_marked_unredirected(self):
+        captured = []
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self, size): return b"{}"
+        def opener(request, timeout):
+            captured.append(request)
+            return Response()
+        self.make(opener=opener)._request("GET", "/app/installations/1", "jwt-secret")
+        request = captured[0]
+        self.assertEqual(request.get_header("Authorization"), "Bearer jwt-secret")
+        self.assertTrue(any(key.lower() == "authorization" for key in request.unredirected_hdrs))
+
     def test_http_error_is_sanitized(self):
         from urllib.error import HTTPError
         app = self.make(opener=lambda *a, **k: (_ for _ in ()).throw(
