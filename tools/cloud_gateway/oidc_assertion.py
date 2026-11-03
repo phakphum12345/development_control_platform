@@ -29,6 +29,11 @@ def _audiences(value):
 def map_oidc_groups(groups, owner_groups, operator_groups):
     if not isinstance(groups, list) or any(not isinstance(group, str) for group in groups):
         raise OIDCAssertionError("Verified OIDC groups must be a string list")
+    if (not isinstance(owner_groups, (list, tuple, set))
+            or not isinstance(operator_groups, (list, tuple, set))
+            or any(not isinstance(group, str) or not group for group in owner_groups)
+            or any(not isinstance(group, str) or not group for group in operator_groups)):
+        raise OIDCAssertionError("Owner and operator group mappings must be string collections")
     owner = set(owner_groups)
     operator = set(operator_groups)
     if not owner or not operator or owner & operator:
