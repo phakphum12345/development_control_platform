@@ -56,7 +56,7 @@ class ProxyIdentityVerifier:
         timestamp = self._header(handler, "X-DCP-Auth-Timestamp")
         nonce = self._header(handler, "X-DCP-Auth-Nonce")
         signature = self._header(handler, "X-DCP-Auth-Signature")
-        if (not subject or len(subject) > 256 or role not in ("owner", "operator")
+        if (not re.fullmatch(r"[A-Za-z0-9._:@/-]{1,256}", subject) or role not in ("owner", "operator")
                 or not re.fullmatch(r"[A-Za-z0-9_-]{16,128}", session_id)
                 or not timestamp.isdigit()
                 or not re.fullmatch(r"[A-Za-z0-9_-]{16,128}", nonce)
@@ -213,18 +213,30 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
                     budget_message = "Live budget read failed; provisioning remains blocked"
             # Provider adapters do not become READY until secure GitHub runner
             # registration/bootstrap and independent online checks are wired.
-            providers = {
-                "linux": {"ready": False, "message": "Azure Linux bootstrap not configured"},
-                "windows": {"ready": False, "message": "Azure Windows bootstrap not configured"},
-                "macos": {"ready": False, "message": "Orka macOS bootstrap not configured"},
-            }
+            readiness = getattr(service.provider, "readiness", None)
+            providers = {}
+            for os_name, description in (
+                ("linux", "Azure Linux"), ("windows", "Azure Windows"),
+                ("macos", "Orka macOS"),
+            ):
+                try:
+                    result = readiness(os_name) if callable(readiness) else None
+                except Exception:
+                    result = None
+                ready = isinstance(result, dict) and result.get("ready") is True
+                providers[os_name] = {
+                    "ready": ready,
+                    "message": result.get("message", "Provider bootstrap not configured")
+                    if isinstance(result, dict) else description + " bootstrap not configured",
+                }
+            bootstrap_ready = any(item["ready"] for item in providers.values())
             return {
                 "gateway": "READY",
                 "owner_approved": service.settings.owner_approved,
                 "provisioning_enabled": service.settings.provisioning_enabled,
                 "budget_gate": budget_state,
                 "budget_message": budget_message,
-                "bootstrap_ready": False,
+                "bootstrap_ready": bootstrap_ready,
                 "circuit_breaker_tripped": service.settings.circuit_breaker_tripped,
                 "providers": providers,
             }
@@ -242,8 +254,18 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
                 if path != "/api/cloud-runners":
                     return self.send_json(404, {"error": "not found"})
                 try:
+                    payload = self.body()
+                    status = self.control_status()
+                    platform = payload.get("target_os")
+                    provider_state = status["providers"].get(platform, {})
+                    if not status["provisioning_enabled"] or not status["owner_approved"]:
+                        return self.send_json(503, {"error": "owner approval or provisioning gate is not ready"})
+                    if status["budget_gate"] != "PASS":
+                        return self.send_json(503, {"error": "live budget gate is not PASS"})
+                    if status["circuit_breaker_tripped"] or not provider_state.get("ready"):
+                        return self.send_json(503, {"error": "provider bootstrap is not ready"})
                     result, created = service.create(
-                        self.body(), self.headers.get("Idempotency-Key", "")
+                        payload, self.headers.get("Idempotency-Key", "")
                     )
                     return self.send_json(202 if created else 200, result)
                 except PolicyDenied as exc:
