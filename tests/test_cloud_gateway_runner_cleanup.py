@@ -233,6 +233,16 @@ class GatewayCleanupIntegrationTests(unittest.TestCase):
 
 
 class FailedRunnerAccountingTests(unittest.TestCase):
+    def test_failed_record_stops_counting_after_cleanup_confirmation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            store = RunnerStore(str(Path(temp) / "gateway.sqlite"))
+            expiry = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+            store.create("runner-id", "failed-key", "fingerprint", request_payload(), expiry)
+            store.transition("runner-id", "failed", provider_id="dcp-123-abcdef12")
+            store.record_event("runner-id", "provider_cleanup_confirmed", "provider_only")
+            self.assertEqual(store.active_count(), 0)
+            self.assertEqual(store.expired_active(datetime.now(timezone.utc).isoformat()), [])
+
     def test_failed_record_with_provider_id_counts_until_cleanup(self):
         with tempfile.TemporaryDirectory() as temp:
             store = RunnerStore(str(Path(temp) / "gateway.sqlite"))
