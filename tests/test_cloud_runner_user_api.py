@@ -78,7 +78,7 @@ class AuthenticatedControlAPITests(unittest.TestCase):
             self.assertEqual(json.loads(response.read()), {"runners": []})
 
     def test_status_projects_budget_for_all_active_runners(self):
-        self.store.create("seed-runner", "seed-budget-key", "seed-fingerprint", {}, "2999-01-01T00:00:00+00:00")
+        self.store.create("seed-runner", "seed-budget-key", "seed-fingerprint", {"repository":"phakphum12345/generated-A4-pdf","workflow_run_id":1,"commit_sha":"a"*40,"target_os":"linux"}, "2999-01-01T00:00:00+00:00")
         self.store.transition("seed-runner", "online", "provider-seed")
         class Snapshot:
             currency = "USD"
