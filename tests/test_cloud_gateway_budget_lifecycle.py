@@ -80,6 +80,25 @@ class BudgetGuardTests(unittest.TestCase):
         guard.authorize(1)
         self.assertEqual(reader.calls, 2)
 
+    def test_projection_includes_every_active_runner_and_new_runner(self):
+        class RecordingSnapshot:
+            def __init__(self):
+                self.projected = []
+            def permits(self, projected):
+                self.projected.append(projected)
+                return projected <= 25
+        snapshot = RecordingSnapshot()
+        guard = AzureBudgetGuard(Reader(snapshot), 10)
+        guard.authorize(1)
+        with self.assertRaisesRegex(Exception, "budget or forecast ceiling"):
+            guard.authorize(2)
+        self.assertEqual(snapshot.projected, [20, 30])
+
+    def test_nonfinite_projected_run_cost_is_rejected(self):
+        for value in (float("nan"), float("inf"), float("-inf")):
+            with self.assertRaises(ValueError):
+                AzureBudgetGuard(Reader(Snapshot(True)), value)
+
     def test_denies_when_budget_reader_is_unavailable(self):
         guard = AzureBudgetGuard(Reader(error=RuntimeError("private endpoint")), 1)
         with self.assertRaisesRegex(Exception, "Live Azure budget is unavailable"):
