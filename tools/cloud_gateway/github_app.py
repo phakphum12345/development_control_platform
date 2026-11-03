@@ -190,18 +190,9 @@ class GitHubAppRunnerBootstrap:
         expiry = self._expiry(registration.get("expires_at"))
         return RunnerRegistrationCredential(token=token, expires_at=expiry)
 
-    def is_runner_online(
-        self, repository: str, runner_name: str, expected_labels: list[str] | tuple[str, ...]
-    ) -> bool:
+    def find_runner(self, repository: str, runner_name: str) -> dict | None:
         if not isinstance(runner_name, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", runner_name):
             raise GitHubAppError("Invalid GitHub runner name")
-        if not isinstance(expected_labels, (list, tuple)):
-            raise GitHubAppError("Expected runner labels must be a list or tuple")
-        labels = tuple(expected_labels)
-        if not labels or any(not isinstance(label, str) or not re.fullmatch(
-            r"[A-Za-z0-9_.-]{1,64}", label
-        ) for label in labels):
-            raise GitHubAppError("Invalid expected GitHub runner labels")
         token = self._installation_token(repository, "read")
         owner, name = repository.split("/", 1)
         data = self._request(
@@ -213,17 +204,36 @@ class GitHubAppRunnerBootstrap:
         if not isinstance(runners, list):
             raise GitHubAppError("GitHub runner inventory response is invalid")
         matches = [runner for runner in runners if isinstance(runner, dict) and runner.get("name") == runner_name]
-        if len(matches) != 1:
-            return False
+        if len(matches) > 1:
+            raise GitHubAppError("GitHub returned duplicate runner names")
+        if not matches:
+            return None
         runner = matches[0]
+        runner_id = runner.get("id")
+        status = runner.get("status")
+        if isinstance(runner_id, bool) or not isinstance(runner_id, int) or runner_id < 1:
+            raise GitHubAppError("GitHub runner inventory omitted a valid runner ID")
+        if status not in ("online", "offline"):
+            raise GitHubAppError("GitHub runner inventory returned an unknown status")
         observed = runner.get("labels")
-        if not isinstance(observed, list):
-            return False
-        observed_names = {
-            item.get("name") for item in observed
+        labels = tuple(
+            item["name"] for item in observed
             if isinstance(item, dict) and isinstance(item.get("name"), str)
-        }
-        return runner.get("status") == "online" and set(labels).issubset(observed_names)
+        ) if isinstance(observed, list) else ()
+        return {"id": runner_id, "name": runner_name, "status": status, "labels": labels}
+
+    def is_runner_online(
+        self, repository: str, runner_name: str, expected_labels: list[str] | tuple[str, ...]
+    ) -> bool:
+        if not isinstance(expected_labels, (list, tuple)):
+            raise GitHubAppError("Expected runner labels must be a list or tuple")
+        labels = tuple(expected_labels)
+        if not labels or any(not isinstance(label, str) or not re.fullmatch(
+            r"[A-Za-z0-9_.-]{1,64}", label
+        ) for label in labels):
+            raise GitHubAppError("Invalid expected GitHub runner labels")
+        runner = self.find_runner(repository, runner_name)
+        return bool(runner and runner["status"] == "online" and set(labels).issubset(set(runner["labels"])))
 
     def remove_runner(self, repository: str, runner_id: int) -> bool:
         if isinstance(runner_id, bool) or not isinstance(runner_id, int) or runner_id < 1:
