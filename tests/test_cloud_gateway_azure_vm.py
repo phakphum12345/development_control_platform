@@ -6,10 +6,17 @@ SUB="00000000-0000-0000-0000-000000000000"
 IMAGES={"linux":{"publisher":"Canonical","offer":"ubuntu-24_04-lts","sku":"server","version":"24.04.202501150"},"windows":{"publisher":"MicrosoftWindowsServer","offer":"WindowsServer","sku":"2025-datacenter-g2","version":"20348.1.250101"}}
 class FakeArm:
  subscription_id=SUB; resource_group="dcp"
- def __init__(self): self.calls=[]; self.get_result={"properties":{"provisioningState":"Succeeded"},"tags":{"repository":"phakphum12345/generated-A4-pdf","target-os":"linux"}}
+ def __init__(self):
+  self.calls=[]; self.nic_exists=True
+  self.get_result={"properties":{"provisioningState":"Succeeded"},"tags":{"repository":"phakphum12345/generated-A4-pdf","target-os":"linux"}}
  def resource_url(self,provider,kind,name,version): return f"https://management.azure.com/subscriptions/{SUB}/resourceGroups/dcp/providers/{provider}/{kind}/{name}?api-version={version}"
  def resource_id(self,provider,kind,name): return f"/subscriptions/{SUB}/resourceGroups/dcp/providers/{provider}/{kind}/{name}"
- def request(self,method,url,payload=None,allow_missing=False): self.calls.append((method,url,payload)); return self.get_result if method=="GET" else {}
+ def request(self,method,url,payload=None,allow_missing=False):
+  self.calls.append((method,url,payload))
+  if "Microsoft.Network/networkInterfaces/" in url:
+   if method=="GET": return {"properties":{"provisioningState":"Succeeded"}} if self.nic_exists else None
+   if method=="DELETE": return {}
+  return self.get_result if method=="GET" else {}
 def bootstrap(vm,os_name,payload):
  os_profile={"computerName":vm,"adminUsername":"dcpadmin"}
  if os_name=="linux": os_profile["linuxConfiguration"]={"disablePasswordAuthentication":True}
@@ -41,9 +48,18 @@ class AzureVMTests(unittest.TestCase):
   p,_=self.make(); vm=p.provision(payload("linux")); self.assertEqual(p.status(vm.provider_id).state,"provisioning")
  def test_runner_online_requires_independent_checker(self):
   p,_=self.make(lambda *args:True); vm=p.provision(payload("linux")); self.assertEqual(p.status(vm.provider_id).state,"online")
- def test_termination_waits_for_missing_vm_before_nic_cleanup(self):
-  p,arm=self.make(); vm=p.provision(payload("linux")); p.terminate(vm.provider_id); self.assertEqual(arm.calls[-1][0],"DELETE")
-  arm.get_result=None; self.assertEqual(p.status(vm.provider_id).state,"terminated"); self.assertEqual(arm.calls[-1][0],"DELETE")
+ def test_termination_waits_for_missing_vm_and_nic_before_terminal_state(self):
+  p,arm=self.make(); vm=p.provision(payload("linux")); p.terminate(vm.provider_id)
+  arm.get_result=None
+  self.assertEqual(p.status(vm.provider_id).state,"terminating")
+  self.assertTrue(any(call[0]=="DELETE" and "networkInterfaces/" in call[1] for call in arm.calls))
+  arm.nic_exists=False
+  self.assertEqual(p.status(vm.provider_id).state,"terminated")
+ def test_missing_nic_is_already_clean(self):
+  p,arm=self.make(); vm=p.provision(payload("linux")); p.terminate(vm.provider_id)
+  arm.get_result=None; arm.nic_exists=False
+  self.assertEqual(p.status(vm.provider_id).state,"terminated")
+  self.assertFalse(any(call[0]=="DELETE" and "networkInterfaces/" in call[1] for call in arm.calls))
  def test_readiness_requires_bootstrap_online_and_network_policy(self):
   p,_=self.make()
   self.assertFalse(p.readiness("linux")["ready"])
