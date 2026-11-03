@@ -52,6 +52,13 @@ class BudgetSnapshot:
         return self.forecast_spend + projected_cost <= self.amount
 
 
+def _amount(value):
+    if (isinstance(value, bool) or not isinstance(value, (int, float))
+            or not math.isfinite(value) or value < 0):
+        raise ValueError("Budget amount is not a finite non-negative number")
+    return float(value)
+
+
 class AzureBudgetReader:
     def __init__(self, subscription_id, budget_name, credential=None, timeout=10):
         if not isinstance(subscription_id, str) or not re.fullmatch(r"[0-9a-fA-F-]{36}", subscription_id):
@@ -84,14 +91,14 @@ class AzureBudgetReader:
             raise BudgetReadError("Azure budget read failed: " + type(exc).__name__) from exc
         try:
             properties = data["properties"]
-            amount = float(properties["amount"])
+            amount = _amount(properties["amount"])
             current = properties["currentSpend"]
-            current_amount = float(current["amount"])
+            current_amount = _amount(current["amount"])
             currency = str(current["unit"])
             forecast = properties.get("forecastSpend")
             if not isinstance(forecast, dict) or "amount" not in forecast or "unit" not in forecast:
                 raise ValueError("Forecast is missing")
-            forecast_amount = float(forecast["amount"])
+            forecast_amount = _amount(forecast["amount"])
             forecast_currency = str(forecast["unit"])
             if forecast_currency != currency:
                 raise ValueError("Forecast currency mismatch")
