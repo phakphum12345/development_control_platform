@@ -659,7 +659,7 @@ async function runnerRefresh(){
   runnerRenderGate();
   await runnerLoadList();
  }catch(error){
-  runnerUI.status=null;runnerUI.session=runnerUI.session===true;
+  runnerUI.status=null;runnerUI.session=false;runnerUI.csrf=null;
   runnerText("runner-last-check","ตรวจสอบไม่สำเร็จ — "+error.message);
   runnerRenderGate();
   runnerGate("runner-gate-budget","Live budget and forecast","unknown","API unavailable");
