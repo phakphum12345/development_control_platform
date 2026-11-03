@@ -8,7 +8,7 @@ from unittest.mock import patch
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from tools.cloud_gateway.github_app import GitHubAppError, GitHubAppRunnerBootstrap
+from tools.cloud_gateway.github_app import GitHubAppError, GitHubAppRunnerBootstrap, GitHubRunnerOnlineChecker
 
 
 def encoded_part(part):
@@ -110,6 +110,19 @@ class GitHubAppBootstrapTests(unittest.TestCase):
             app._request("POST", "/app/installations/1/access_tokens", "jwt")
         self.assertNotIn("jwt", str(caught.exception))
 
+
+    def test_platform_online_checker_uses_expected_os_labels(self):
+        class StubApp:
+            def __init__(self):
+                self.args = None
+            def is_runner_online(self, repository, runner_name, labels):
+                self.args = (repository, runner_name, tuple(labels))
+                return True
+        stub = StubApp()
+        checker = GitHubRunnerOnlineChecker(stub)
+        self.assertTrue(checker("dcp-123-abcdef12", "phakphum12345/generated-A4-pdf", "windows"))
+        self.assertEqual(stub.args[2], ("self-hosted", "Windows", "X64", "dcp-cloud-windows"))
+        self.assertFalse(checker("dcp-123-abcdef12", "phakphum12345/generated-A4-pdf", "unknown"))
 
     def test_runner_online_requires_exact_name_status_and_labels(self):
         app = self.make()
