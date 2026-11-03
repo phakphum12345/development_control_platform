@@ -131,6 +131,7 @@ class CloudRunnerEndToEndAcceptanceTests(unittest.TestCase):
         )
         handler = make_handler(
             self.service,
+            token="internal-api-token-for-test-only",
             proxy_secret=SECRET,
             public_origin=ORIGIN,
         )
