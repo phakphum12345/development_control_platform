@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import math
 import re
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -91,6 +92,13 @@ class AzureBudgetReader:
             raise BudgetReadError("Azure budget read failed: " + type(exc).__name__) from exc
         try:
             properties = data["properties"]
+            period = properties["timePeriod"]
+            start = datetime.fromisoformat(str(period["startDate"]).replace("Z", "+00:00"))
+            end = datetime.fromisoformat(str(period["endDate"]).replace("Z", "+00:00"))
+            current_time = datetime.now(timezone.utc)
+            if (start.tzinfo is None or end.tzinfo is None or start >= end
+                    or current_time < start or current_time >= end):
+                raise ValueError("Budget time period is not current")
             amount = _amount(properties["amount"])
             current = properties["currentSpend"]
             current_amount = _amount(current["amount"])
