@@ -60,7 +60,7 @@ class GitHubAppBootstrapTests(unittest.TestCase):
         future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
         registration_expiry = (datetime.now(timezone.utc) + timedelta(minutes=50)).isoformat()
         responses = [
-            {"token": "installation-secret", "expires_at": future, "permissions": {"actions": "write"}},
+            {"token": "installation-secret", "expires_at": future, "permissions": {"administration": "write"}},
             {"token": "registration-secret", "expires_at": registration_expiry},
         ]
         seen = []
@@ -74,7 +74,7 @@ class GitHubAppBootstrapTests(unittest.TestCase):
         self.assertEqual(credential.token, "registration-secret")
         self.assertNotIn("registration-secret", repr(credential))
         self.assertEqual(seen[0][1], "/app/installations/987654/access_tokens")
-        self.assertEqual(seen[0][3], {"repositories": ["phakphum12345/generated-A4-pdf"]})
+        self.assertEqual(seen[0][3], {"repositories": ["phakphum12345/generated-A4-pdf"], "permissions": {"administration": "write"}})
         self.assertEqual(seen[1][1], "/repos/phakphum12345/generated-A4-pdf/actions/runners/registration-token")
         self.assertEqual(seen[1][2], "installation-secret")
 
@@ -83,7 +83,7 @@ class GitHubAppBootstrapTests(unittest.TestCase):
         app._request = lambda *args, **kwargs: {
             "token": "installation-secret",
             "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat(),
-            "permissions": {"actions": "read"},
+            "permissions": {"administration": "read"},
         }
         with self.assertRaises(GitHubAppError):
             app.create_registration_token("phakphum12345/generated-A4-pdf")
@@ -93,7 +93,7 @@ class GitHubAppBootstrapTests(unittest.TestCase):
         app._request = lambda method, path, token, payload=None: (
             {"token": "installation-secret",
              "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=20)).isoformat(),
-             "permissions": {"actions": "write"}}
+             "permissions": {"administration": "write"}}
             if path.startswith("/app/") else
             {"token": "registration-secret",
              "expires_at": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()}
