@@ -10,7 +10,7 @@ a third-party MCP server repository.
 
 The adapter exposes exactly four tools:
 
-- `read_text_file` — read UTF-8 text from the configured workspace, capped at 64 KiB;
+- `read_text_file` — read UTF-8 text from the configured workspace, capped at 64 KiB and 8,000 Unicode characters;
 - `inspect_file` — return bounded file metadata and SHA-256;
 - `diff_files` — compare two files inside the same configured workspace;
 - `copy_preview` — preview a copy to a new path without writing anything.
