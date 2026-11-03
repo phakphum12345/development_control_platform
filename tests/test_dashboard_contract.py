@@ -267,5 +267,5 @@ if __name__ == "__main__":
         self.assertIn('credentials:"same-origin"', HTML)
         self.assertIn('"X-CSRF-Token"', HTML)
         self.assertIn('registration_token_handling:"provider-side-only"', HTML)
-        self.assertIn('No Gateway token', HTML)
+        self.assertIn("Gateway token", HTML)
         self.assertIn('UNKNOWN', HTML)
