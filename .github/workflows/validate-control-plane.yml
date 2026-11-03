@@ -24,6 +24,11 @@ jobs:
       - name: Install validators
         run: python -m pip install --disable-pip-version-check PyYAML jsonschema -r requirements-cloud-gateway.txt
 
+      - name: Validate generated Linux runner bootstrap shell syntax
+        run: |
+          python tests/emit_runner_bootstrap_scripts.py "$RUNNER_TEMP"
+          bash -n "$RUNNER_TEMP/dcp-linux-bootstrap.sh"
+
       - name: Set up Node for dashboard JavaScript syntax check
         uses: actions/setup-node@v4
         with:
@@ -262,6 +267,24 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Install cloud gateway test dependency
+        run: python -m pip install --disable-pip-version-check -r requirements-cloud-gateway.txt
+
+      - name: Parse generated Windows runner bootstrap PowerShell
+        shell: pwsh
+        run: |
+          python tests/emit_runner_bootstrap_scripts.py $env:RUNNER_TEMP
+          $tokens = $null
+          $errors = $null
+          $scriptPath = Join-Path $env:RUNNER_TEMP "dcp-windows-bootstrap.ps1"
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            $scriptPath, [ref]$tokens, [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String | Write-Error
+            throw "Generated Windows runner bootstrap script is invalid PowerShell."
+          }
 
       - name: Exercise dynamic dashboard start, reuse, and stop
         shell: pwsh
