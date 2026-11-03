@@ -33,10 +33,10 @@ class AzureArmClient:
   if not isinstance(data,dict): raise AzureProvisionError("Azure returned an invalid response shape")
   return data
 class AzureVMProvider:
- def __init__(self,arm,location,subnet_id,nsg_id,vm_sizes,image_references,bootstrap_factory,runner_online_checker=None):
+ def __init__(self,arm,location,subnet_id,nsg_id,vm_sizes,image_references,bootstrap_factory,runner_online_checker=None,network_policy_checker=None):
   self.arm=arm; self.location=location; self.subnet_id=subnet_id; self.nsg_id=nsg_id
   self.vm_sizes=dict(vm_sizes); self.image_references={k:dict(v) for k,v in image_references.items()}
-  self.bootstrap_factory=bootstrap_factory; self.online=runner_online_checker
+  self.bootstrap_factory=bootstrap_factory; self.online=runner_online_checker; self.network_policy=network_policy_checker
   sub=arm.subscription_id; scope=r"^/subscriptions/"+re.escape(sub)+r"/resourceGroups/[A-Za-z0-9_.()-]+/providers/Microsoft\.Network/"
   if not re.match(scope,subnet_id,re.I) or "/virtualNetworks/" not in subnet_id or "/subnets/" not in subnet_id: raise ValueError("Subnet must be a resource ID in the configured subscription")
   if not re.match(scope,nsg_id,re.I) or "/networkSecurityGroups/" not in nsg_id: raise ValueError("NSG must be a resource ID in the configured subscription")
@@ -46,6 +46,22 @@ class AzureVMProvider:
   if set(self.image_references)!={"linux","windows"}: raise ValueError("Exact image references for Linux and Windows are required")
   for ref in self.image_references.values():
    if set(ref)!={"publisher","offer","sku","version"} or any(not isinstance(v,str) or not v or v.lower()=="latest" for v in ref.values()): raise ValueError("Marketplace image must be explicitly version-pinned; latest is forbidden")
+ def readiness(self,os_name):
+  if os_name not in ("linux","windows"):
+   return {"ready":False,"message":"Azure supports only approved Linux or Windows runner profiles"}
+  if not callable(self.bootstrap_factory):
+   return {"ready":False,"message":"Protected GitHub runner bootstrap is not configured"}
+  if not callable(self.online):
+   return {"ready":False,"message":"Independent GitHub runner-online verification is not configured"}
+  if not callable(self.network_policy):
+   return {"ready":False,"message":"Subnet and NSG egress policy verification is not configured"}
+  try:
+   verified=self.network_policy(os_name,self.subnet_id,self.nsg_id)
+  except Exception:
+   verified=False
+  if verified is not True:
+   return {"ready":False,"message":"Runner network egress policy has not been verified"}
+  return {"ready":True,"message":"Protected bootstrap, runner-online check, and network policy are configured"}
  def _url(self,provider,kind,name,version=API_COMPUTE): return self.arm.resource_url(provider,kind,name,version)
  def _names(self,run_id):
   suffix=uuid.uuid4().hex[:8]; return "dcp-"+str(run_id)+"-"+suffix,"dcpnic"+suffix
