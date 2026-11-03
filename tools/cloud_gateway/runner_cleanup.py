@@ -7,6 +7,8 @@ class GitHubRunnerCleanup:
         self.github_app = github_app
 
     def __call__(self, row: dict, provider_state) -> str:
+        if getattr(provider_state, "state", None) not in ("terminated", "failed"):
+            raise GitHubAppError("Provider deletion is not confirmed")
         repository = row.get("repository")
         runner_name = row.get("provider_id")
         if not isinstance(repository, str) or not isinstance(runner_name, str):
