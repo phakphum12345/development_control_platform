@@ -190,19 +190,28 @@ class GitHubAppRunnerBootstrap:
         expiry = self._expiry(registration.get("expires_at"))
         return RunnerRegistrationCredential(token=token, expires_at=expiry)
 
+    def _list_runners(self, repository: str) -> list[dict]:
+        token = self._installation_token(repository, "read")
+        owner, name = repository.split("/", 1)
+        runners = []
+        for page in range(1, 11):
+            data = self._request(
+                "GET",
+                "/repos/{}/{}/actions/runners?per_page=100&page={}".format(owner, name, page),
+                token,
+            )
+            batch = data.get("runners")
+            if not isinstance(batch, list):
+                raise GitHubAppError("GitHub runner inventory response is invalid")
+            runners.extend(item for item in batch if isinstance(item, dict))
+            if len(batch) < 100:
+                return runners
+        raise GitHubAppError("GitHub runner inventory exceeded the safe pagination limit")
+
     def find_runner(self, repository: str, runner_name: str) -> dict | None:
         if not isinstance(runner_name, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", runner_name):
             raise GitHubAppError("Invalid GitHub runner name")
-        token = self._installation_token(repository, "read")
-        owner, name = repository.split("/", 1)
-        data = self._request(
-            "GET",
-            "/repos/{}/{}/actions/runners?per_page=100".format(owner, name),
-            token,
-        )
-        runners = data.get("runners")
-        if not isinstance(runners, list):
-            raise GitHubAppError("GitHub runner inventory response is invalid")
+        runners = self._list_runners(repository)
         matches = [runner for runner in runners if isinstance(runner, dict) and runner.get("name") == runner_name]
         if len(matches) > 1:
             raise GitHubAppError("GitHub returned duplicate runner names")
@@ -241,15 +250,7 @@ class GitHubAppRunnerBootstrap:
         owner, name = repository.split("/", 1) if repository in self.allowed_repositories else ("", "")
         if not owner:
             raise GitHubAppError("Repository is not allowlisted for runner administration")
-        read_token = self._installation_token(repository, "read")
-        inventory = self._request(
-            "GET",
-            "/repos/{}/{}/actions/runners?per_page=100".format(owner, name),
-            read_token,
-        )
-        runners = inventory.get("runners")
-        if not isinstance(runners, list):
-            raise GitHubAppError("GitHub runner inventory response is invalid")
+        runners = self._list_runners(repository)
         matches = [runner for runner in runners if isinstance(runner, dict) and runner.get("id") == runner_id]
         if not matches:
             return True
