@@ -157,14 +157,14 @@ class GitHubAppRunnerBootstrap:
             "POST",
             "/app/installations/{}/access_tokens".format(self.installation_id),
             app_jwt,
-            {"repositories": [repository]},
+            {"repositories": [repository], "permissions": {"administration": "write"}},
         )
         installation_token = installation.get("token")
         if not isinstance(installation_token, str) or not installation_token:
             raise GitHubAppError("GitHub installation token was not issued")
         permissions = installation.get("permissions")
-        if not isinstance(permissions, dict) or permissions.get("actions") not in ("write", "admin"):
-            raise GitHubAppError("GitHub App installation lacks Actions write permission")
+        if not isinstance(permissions, dict) or permissions.get("administration") not in ("write", "admin"):
+            raise GitHubAppError("GitHub App installation lacks Administration write permission")
         installation_expiry = self._expiry(installation.get("expires_at"))
         if installation_expiry <= datetime.now(timezone.utc):
             raise GitHubAppError("GitHub installation token is expired")
