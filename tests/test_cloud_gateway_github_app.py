@@ -154,24 +154,43 @@ class GitHubAppBootstrapTests(unittest.TestCase):
             "phakphum12345/generated-A4-pdf", "dcp-123-abcdef12", ["Linux"]
         ))
 
-    def test_remove_runner_uses_scoped_admin_write_token(self):
+    def test_remove_runner_uses_scoped_admin_write_token_after_offline_check(self):
         app = self.make()
         calls = []
         def request(method, path, token, payload=None):
             calls.append((method, path, payload))
             if path.startswith("/app/"):
+                permission = "read" if sum(1 for call in calls if call[1].startswith("/app/")) == 1 else "write"
                 return {
-                    "token": "write-installation-token",
+                    "token": permission + "-installation-token",
                     "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat(),
-                    "permissions": {"administration": "write"},
+                    "permissions": {"administration": permission},
                 }
+            if method == "GET":
+                return {"runners": [{"id": 42, "name": "dcp-123-abcdef12", "status": "offline"}]}
             return {}
         app._request = request
         self.assertTrue(app.remove_runner("phakphum12345/generated-A4-pdf", 42))
-        self.assertEqual(calls[1][0], "DELETE")
-        self.assertEqual(calls[1][1], "/repos/phakphum12345/generated-A4-pdf/actions/runners/42")
+        self.assertEqual(calls[1][0], "GET")
+        self.assertEqual(calls[2][1], "/app/installations/987654/access_tokens")
+        self.assertEqual(calls[3][0], "DELETE")
+        self.assertEqual(calls[3][1], "/repos/phakphum12345/generated-A4-pdf/actions/runners/42")
         with self.assertRaises(GitHubAppError):
             app.remove_runner("phakphum12345/generated-A4-pdf", True)
+
+    def test_remove_runner_refuses_online_runner(self):
+        app = self.make()
+        def request(method, path, token, payload=None):
+            if path.startswith("/app/"):
+                return {
+                    "token": "read-installation-token",
+                    "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat(),
+                    "permissions": {"administration": "read"},
+                }
+            return {"runners": [{"id": 42, "name": "dcp-123-abcdef12", "status": "online"}]}
+        app._request = request
+        with self.assertRaisesRegex(GitHubAppError, "not confirmed offline"):
+            app.remove_runner("phakphum12345/generated-A4-pdf", 42)
 
 
 if __name__ == "__main__":
