@@ -8,6 +8,7 @@ from tools.runner_backend.provider import RunnerInstance
 
 class OrkaError(RuntimeError): pass
 class OrkaProvider:
+ requires_runner_cleanup=True
  def __init__(self,base_url,namespace,vm_config,secret_reader,secret_name="orka-api-token",runner_online_checker=None,timeout=20):
   parsed=urlparse(base_url)
   if parsed.scheme!="https" or not parsed.hostname or parsed.username or parsed.password or parsed.path not in ("","/") or parsed.query or parsed.fragment: raise ValueError("Orka endpoint must be an HTTPS origin")
@@ -32,26 +33,59 @@ class OrkaProvider:
   except (UnicodeDecodeError,json.JSONDecodeError) as exc: raise OrkaError("Orka returned malformed JSON") from exc
   if not isinstance(data,dict): raise OrkaError("Orka returned an invalid response shape")
   return data
+ def readiness(self,os_name):
+  if os_name!="macos": return {"ready":False,"message":"Orka supports only the approved macOS profile"}
+  if self.online is None: return {"ready":False,"message":"Independent GitHub runner-online verification is not configured"}
+  return {"ready":False,"message":"Orka User Data bootstrap is not version-verified or securely configured; macOS runner remains disabled"}
  def provision(self,payload):
   if payload.get("target_os")!="macos" or payload.get("image")!="macos-15-arm64": raise OrkaError("Orka adapter accepts only the approved macOS 15 ARM64 profile")
   if payload.get("ephemeral") is not True or payload.get("network_policy")!="restricted-egress": raise OrkaError("Orka request violates ephemeral network policy")
   name="dcp-"+str(payload["workflow_run_id"])+"-"+uuid.uuid4().hex[:8]
   metadata={"managed-by":"dcp-cloud-runner","repository":payload["repository"],"workflow-run-id":str(payload["workflow_run_id"]),"commit-sha":payload["commit_sha"],"target-os":"macos"}
   body={"name":name,"vmConfig":self.vm_config,"shouldGenerateName":False,"customMetadata":metadata}
-  data=self._request("POST","/api/v1/namespaces/"+quote(self.namespace,safe="")+"/vms",body)
+  path="/api/v1/namespaces/"+quote(self.namespace,safe="")+"/vms/"+quote(name,safe="")
+  collection="/api/v1/namespaces/"+quote(self.namespace,safe="")+"/vms"
+  try:
+   data=self._request("POST",collection,body)
+  except Exception as original:
+   if self._rollback_partial_vm(path):
+    error=OrkaError("Orka provisioning failed; VM cleanup is pending")
+    error.provider_id=name
+    raise error from original
+   raise
   vm_name=data.get("name")
-  if not isinstance(vm_name,str) or vm_name!=name: raise OrkaError("Orka did not confirm the requested VM identity")
+  if not isinstance(vm_name,str) or vm_name!=name:
+   if self._rollback_partial_vm(path):
+    error=OrkaError("Orka did not confirm VM identity; cleanup is pending")
+    error.provider_id=name
+    raise error
+   raise OrkaError("Orka did not confirm the requested VM identity")
   # A running VM is not proof that the GitHub runner has registered.
   return RunnerInstance(vm_name,"provisioning",vm_name,tuple(payload["labels"]),"VM accepted; runner registration pending")
+ def _rollback_partial_vm(self,path):
+  try:
+   existing=self._request("GET",path,allow_missing=True)
+   if existing is None: return False
+   self._request("DELETE",path,allow_missing=True)
+   return self._request("GET",path,allow_missing=True) is not None
+  except Exception:
+   return True
  def status(self,provider_id):
   if not isinstance(provider_id,str) or not re.fullmatch(r"dcp-[0-9]+-[a-f0-9]{8}",provider_id): raise OrkaError("Invalid DCP Orka VM identifier")
   path="/api/v1/namespaces/"+quote(self.namespace,safe="")+"/vms/"+quote(provider_id,safe="")
   data=self._request("GET",path,allow_missing=True)
   if data is None: return RunnerInstance(provider_id,"terminated")
   vm_status=str(data.get("status","")).lower()
-  if vm_status in ("failed","error","crashed"): state="failed"
+  if vm_status in ("failed","error","crashed"):
+   self._request("DELETE",path,allow_missing=True)
+   state="terminating"
   elif vm_status in ("deleting","terminating"): state="terminating"
-  elif vm_status in ("running","ready") and self.online and self.online(provider_id): state="online"
+  elif vm_status in ("running","ready") and self.online:
+   metadata=data.get("customMetadata",{})
+   repository=metadata.get("repository") if isinstance(metadata,dict) else None
+   try: online=self.online(provider_id,repository,"macos") is True
+   except Exception: online=False
+   state="online" if online else "provisioning"
   else: state="provisioning"
   return RunnerInstance(provider_id,state,provider_id)
  def terminate(self,provider_id):

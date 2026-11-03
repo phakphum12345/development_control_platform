@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ACTIVE = ("provisioning", "online", "terminating")
+CLEANUP_EVENTS = {"runner_cleanup_confirmed", "provider_cleanup_confirmed", "cleanup_retry"}
 TRANSITIONS = {
     "provisioning": {"provisioning", "online", "terminating", "terminated", "failed"},
     "online": {"terminating", "terminated", "failed"},
@@ -53,7 +54,11 @@ class RunnerStore:
     def active_count(self):
         with self.lock, self.db() as c:
             return c.execute(
-                "SELECT count(*) FROM runners WHERE state IN (?,?,?)", ACTIVE
+                "SELECT count(*) FROM runners WHERE state IN (?,?,?) "
+                "OR (state='failed' AND provider_id IS NOT NULL AND NOT EXISTS "
+                "(SELECT 1 FROM audit WHERE audit.runner_id=runners.id "
+                "AND audit.event IN ('runner_cleanup_confirmed','provider_cleanup_confirmed')))",
+                ACTIVE,
             ).fetchone()[0]
 
     def expired_active(self, now_iso):
@@ -66,7 +71,11 @@ class RunnerStore:
             raise ValueError("Expiry comparison requires a timezone-aware timestamp")
         with self.lock, self.db() as c:
             rows = c.execute(
-                "SELECT * FROM runners WHERE state IN (?,?,?) AND expires_at<=? ORDER BY expires_at",
+                "SELECT * FROM runners WHERE "
+                "(state IN (?,?,?) OR (state='failed' AND provider_id IS NOT NULL AND NOT EXISTS "
+                "(SELECT 1 FROM audit WHERE audit.runner_id=runners.id "
+                "AND audit.event IN ('runner_cleanup_confirmed','provider_cleanup_confirmed')))) "
+                "AND expires_at<=? ORDER BY expires_at",
                 (*ACTIVE, now_iso),
             ).fetchall()
             return [dict(row) for row in rows]
@@ -141,6 +150,32 @@ class RunnerStore:
             )
             c.execute("COMMIT")
             return self.get(rid)
+
+    def mark_cleanup_due(self, rid):
+        timestamp = now()
+        with self.lock, self.db() as c:
+            changed = c.execute(
+                "UPDATE runners SET expires_at=?,updated_at=? "
+                "WHERE id=? AND state IN (?,?,?)",
+                (timestamp, timestamp, rid, "provisioning", "online", "terminating"),
+            ).rowcount
+            if not changed:
+                raise LifecycleConflict("Runner is not in a retryable cleanup state")
+
+    def record_event(self, rid, event, result=None):
+        if event not in CLEANUP_EVENTS:
+            raise ValueError("Audit event is not allowlisted")
+        safe = {}
+        if result in ("removed", "already_absent", "provider_only", "pending"):
+            safe["result"] = result
+        with self.lock, self.db() as c:
+            exists = c.execute("SELECT 1 FROM runners WHERE id=?", (rid,)).fetchone()
+            if not exists:
+                raise KeyError(rid)
+            c.execute(
+                "INSERT INTO audit(runner_id,event,detail_json,created_at) VALUES(?,?,?,?)",
+                (rid, event, json.dumps(safe), now()),
+            )
 
     def audit_events(self, rid):
         with self.lock, self.db() as c:

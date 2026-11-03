@@ -224,11 +224,14 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
                 except Exception:
                     result = None
                 ready = isinstance(result, dict) and result.get("ready") is True
-                providers[os_name] = {
-                    "ready": ready,
-                    "message": result.get("message", "Provider bootstrap not configured")
-                    if isinstance(result, dict) else description + " bootstrap not configured",
-                }
+                message = (
+                    result.get("message", "Provider bootstrap not configured")
+                    if isinstance(result, dict) else description + " bootstrap not configured"
+                )
+                if ready and getattr(service.provider, "requires_runner_cleanup", False) and service.runner_cleanup is None:
+                    ready = False
+                    message = "GitHub runner deregistration is not configured"
+                providers[os_name] = {"ready": ready, "message": message}
             bootstrap_ready = any(item["ready"] for item in providers.values())
             return {
                 "gateway": "READY",

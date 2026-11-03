@@ -7,11 +7,12 @@ from .store import LifecycleConflict
 
 
 class GatewayService:
-    def __init__(self, settings, store, provider, budget_guard=None):
+    def __init__(self, settings, store, provider, budget_guard=None, runner_cleanup=None):
         self.settings = settings
         self.store = store
         self.provider = provider
         self.budget_guard = budget_guard
+        self.runner_cleanup = runner_cleanup
 
     @staticmethod
     def public(row):
@@ -30,6 +31,16 @@ class GatewayService:
             if old["fingerprint"] != fingerprint:
                 raise LifecycleConflict("Idempotency key conflicts with an existing request")
             return self.public(old), False
+        if getattr(self.provider, "requires_runner_cleanup", False) and self.runner_cleanup is None:
+            raise PolicyDenied("GitHub runner deregistration is not configured", 503)
+        readiness = getattr(self.provider, "readiness", None)
+        if callable(readiness):
+            try:
+                ready = readiness(request["target_os"])
+            except Exception:
+                ready = None
+            if not isinstance(ready, dict) or ready.get("ready") is not True:
+                raise PolicyDenied("Selected runner provider is not ready", 503)
         active_count = self.store.active_count()
         self.settings.authorize_provisioning(active_count)
         if self.budget_guard is not None:
@@ -51,12 +62,43 @@ class GatewayService:
             row = self.store.transition(rid, "provisioning", instance.provider_id)
             row.update(runner_name=instance.runner_name, labels=list(instance.labels))
         except Exception as exc:
-            self.store.transition(rid, "failed", detail=type(exc).__name__)
+            provider_id = getattr(exc, "provider_id", None)
+            self.store.transition(
+                rid, "failed", provider_id=provider_id, detail=type(exc).__name__,
+            )
+            if provider_id:
+                try:
+                    self.terminate(rid)
+                except Exception:
+                    # The row remains terminating and is retried by reconciliation.
+                    pass
             raise
         return self.public(row), True
 
     def list_recent(self, limit=50):
         return [self.public(row) for row in self.store.list_recent(limit)]
+
+    def _finalize_provider_state(self, row, instance):
+        terminal = instance.state
+        if terminal not in ("terminated", "failed"):
+            return row
+        rid = row["id"]
+        if row["state"] != "terminating":
+            row = self.store.transition(rid, "terminating")
+        if getattr(self.provider, "requires_runner_cleanup", False) and self.runner_cleanup is None:
+            raise RuntimeError("GitHub runner deregistration is not configured")
+        if row.get("provider_id"):
+            if self.runner_cleanup is not None:
+                try:
+                    result = self.runner_cleanup(row, instance)
+                except Exception:
+                    self.store.record_event(rid, "cleanup_retry", "pending")
+                    self.store.mark_cleanup_due(rid)
+                    raise
+                self.store.record_event(rid, "runner_cleanup_confirmed", result)
+            else:
+                self.store.record_event(rid, "provider_cleanup_confirmed", "provider_only")
+        return self.store.transition(rid, terminal)
 
     def get(self, rid):
         row = self.store.get(rid)
@@ -66,8 +108,13 @@ class GatewayService:
             instance = self.provider.status(row["provider_id"])
             if instance.state == "online" and row["state"] == "provisioning":
                 row = self.store.transition(rid, "online")
-            elif instance.state in ("terminated", "failed") and row["state"] != instance.state:
-                row = self.store.transition(rid, instance.state)
+            elif instance.state == "terminating":
+                if row["state"] != "terminating":
+                    row = self.store.transition(rid, "terminating")
+                self.store.record_event(rid, "cleanup_retry", "pending")
+                self.store.mark_cleanup_due(rid)
+            elif instance.state in ("terminated", "failed"):
+                row = self._finalize_provider_state(row, instance)
             row.update(runner_name=instance.runner_name, labels=list(instance.labels))
         return self.public(row)
 
@@ -77,16 +124,30 @@ class GatewayService:
             return None
         if row["state"] == "terminated":
             return self.public(row)
+        if getattr(self.provider, "requires_runner_cleanup", False) and self.runner_cleanup is None:
+            raise RuntimeError("GitHub runner deregistration is not configured")
         if row["state"] != "terminating":
             row = self.store.transition(rid, "terminating")
-        if row["provider_id"]:
+        if not row.get("provider_id"):
+            row = self.store.transition(rid, "terminated")
+            return self.public(row)
+        try:
             instance = self.provider.terminate(row["provider_id"])
-            if instance.state == "terminated":
-                row = self.store.transition(rid, "terminated")
+            if instance.state not in ("terminated", "failed"):
+                instance = self.provider.status(row["provider_id"])
+        except Exception:
+            self.store.record_event(rid, "cleanup_retry", "pending")
+            self.store.mark_cleanup_due(rid)
+            raise
+        if instance.state in ("terminated", "failed"):
+            row = self._finalize_provider_state(row, instance)
+        else:
+            self.store.record_event(rid, "cleanup_retry", "pending")
+            self.store.mark_cleanup_due(rid)
         return self.public(row)
 
     def reconcile_expired(self, now_utc=None):
-        """Retry cleanup for expired active records; safe to call repeatedly."""
+        """Retry provider and GitHub cleanup for expired active/failed records."""
         current = now_utc or datetime.now(timezone.utc)
         if current.tzinfo is None:
             raise ValueError("Reconciliation time must be timezone-aware")

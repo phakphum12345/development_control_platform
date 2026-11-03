@@ -33,6 +33,7 @@ class AzureArmClient:
   if not isinstance(data,dict): raise AzureProvisionError("Azure returned an invalid response shape")
   return data
 class AzureVMProvider:
+ requires_runner_cleanup=True
  def __init__(self,arm,location,subnet_id,nsg_id,vm_sizes,image_references,bootstrap_factory,runner_online_checker=None,network_policy_checker=None):
   self.arm=arm; self.location=location; self.subnet_id=subnet_id; self.nsg_id=nsg_id
   self.vm_sizes=dict(vm_sizes); self.image_references={k:dict(v) for k,v in image_references.items()}
@@ -82,11 +83,29 @@ class AzureVMProvider:
    "storageProfile":{"imageReference":self.image_references[os_name],"osDisk":{"name":vm_name+"-os","createOption":"FromImage","caching":"ReadOnly","managedDisk":{"storageAccountType":"Standard_LRS"},"diffDiskSettings":{"option":"Local"}}},
    "osProfile":bootstrap["os_profile"],"networkProfile":{"networkInterfaces":[{"id":nic_id,"properties":{"primary":True}}]},
    "securityProfile":{"uefiSettings":{"secureBootEnabled":True,"vTpmEnabled":True},"securityType":"TrustedLaunch"},"resources":[bootstrap["extension"]]}
+  vm_url=self._url("Microsoft.Compute","virtualMachines",vm_name)
+  vm_create_started=False
   try:
-   self.arm.request("PUT",nic_url,nic_body); self.arm.request("PUT",self._url("Microsoft.Compute","virtualMachines",vm_name),vm_body)
-  except Exception:
-   try: self.arm.request("DELETE",nic_url,allow_missing=True)
-   except Exception: pass
+   self.arm.request("PUT",nic_url,nic_body)
+   vm_create_started=True
+   self.arm.request("PUT",vm_url,vm_body)
+  except Exception as original:
+   cleanup_pending=False
+   if vm_create_started:
+    try:
+     self.arm.request("DELETE",vm_url,allow_missing=True)
+     if self.arm.request("GET",vm_url,allow_missing=True) is not None: cleanup_pending=True
+    except Exception:
+     cleanup_pending=True
+   try:
+    self.arm.request("DELETE",nic_url,allow_missing=True)
+    if self.arm.request("GET",nic_url,allow_missing=True) is not None: cleanup_pending=True
+   except Exception:
+    cleanup_pending=True
+   if cleanup_pending:
+    error=AzureProvisionError("Azure provisioning failed; resource cleanup is pending")
+    error.provider_id=vm_name
+    raise error from original
    raise
   return RunnerInstance(vm_name,"provisioning",vm_name,tuple(payload.get("labels",[])),"Azure VM create accepted; runner registration pending")
  def status(self,provider_id):
@@ -94,10 +113,20 @@ class AzureVMProvider:
   data=self.arm.request("GET",self._url("Microsoft.Compute","virtualMachines",provider_id)+"&$expand=instanceView",allow_missing=True)
   if data is None:
    nic="dcpnic"+provider_id.rsplit("-",1)[1]
-   self.arm.request("DELETE",self._url("Microsoft.Network","networkInterfaces",nic,API_NETWORK),allow_missing=True)
-   return RunnerInstance(provider_id,"terminated")
+   nic_url=self._url("Microsoft.Network","networkInterfaces",nic,API_NETWORK)
+   nic_data=self.arm.request("GET",nic_url,allow_missing=True)
+   if nic_data is None:
+    return RunnerInstance(provider_id,"terminated",provider_id)
+   self.arm.request("DELETE",nic_url,allow_missing=True)
+   remaining=self.arm.request("GET",nic_url,allow_missing=True)
+   if remaining is None:
+    return RunnerInstance(provider_id,"terminated",provider_id)
+   return RunnerInstance(provider_id,"terminating",provider_id,detail="NIC cleanup pending")
+
   state=str(data.get("properties",{}).get("provisioningState","")).lower()
-  if state=="failed": result="failed"
+  if state=="failed":
+   self.arm.request("DELETE",self._url("Microsoft.Compute","virtualMachines",provider_id),allow_missing=True)
+   return RunnerInstance(provider_id,"terminating",provider_id,detail="failed VM cleanup requested")
   else:
    tags=data.get("tags",{})
    repository=tags.get("repository") if isinstance(tags,dict) else None
