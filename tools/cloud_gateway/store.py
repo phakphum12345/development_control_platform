@@ -54,7 +54,8 @@ class RunnerStore:
     def active_count(self):
         with self.lock, self.db() as c:
             return c.execute(
-                "SELECT count(*) FROM runners WHERE state IN (?,?,?)", ACTIVE
+                "SELECT count(*) FROM runners WHERE state IN (?,?,?) "
+                "OR (state='failed' AND provider_id IS NOT NULL)", ACTIVE
             ).fetchone()[0]
 
     def expired_active(self, now_iso):
