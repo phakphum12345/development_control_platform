@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from tools.cloud_gateway.budget_guard import AzureBudgetGuard
-from tools.cloud_gateway.policy import GatewaySettings, PROFILES
+from tools.cloud_gateway.policy import GatewaySettings, PolicyDenied, PROFILES
 from tools.cloud_gateway.service import GatewayService
 from tools.cloud_gateway.store import RunnerStore
 from tools.runner_backend.provider import RunnerInstance
@@ -154,7 +154,7 @@ class ConcurrentReservationTests(unittest.TestCase):
             thread = threading.Thread(target=create_first)
             thread.start()
             self.assertTrue(provider.started.wait(3))
-            with self.assertRaises(Exception):
+            with self.assertRaises(PolicyDenied):
                 service.create(request_payload(), "concurrent-key-002")
             provider.release.set()
             thread.join(timeout=5)
