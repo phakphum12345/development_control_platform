@@ -1,27 +1,28 @@
-"""Policy-enforcing orchestration for ephemeral macOS cloud runners."""
+"""Policy-enforcing orchestration for ephemeral multi-platform cloud runners."""
 from __future__ import annotations
-
-import os
-import re
+import os, re
 from dataclasses import dataclass
-
 from .provider import RunnerInstance, RunnerProvider
 
 _SHA = re.compile(r"^[0-9a-f]{40}$")
 _REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
-
+PLATFORM_PROFILES = {
+    "linux": {"image": "ubuntu-24.04-x64", "labels": ("self-hosted", "Linux", "X64", "dcp-cloud-linux")},
+    "windows": {"image": "windows-2025-x64", "labels": ("self-hosted", "Windows", "X64", "dcp-cloud-windows")},
+    "macos": {"image": "macos-15-arm64", "labels": ("self-hosted", "macOS", "ARM64", "dcp-cloud-macos")},
+}
 
 class RunnerPolicyError(ValueError):
     pass
-
 
 @dataclass(frozen=True)
 class RunnerRequest:
     repository: str
     workflow_run_id: int
     commit_sha: str
-    image: str = "macos-15-arm64"
+    image: str | None = None
     max_runtime_minutes: int = 60
+    target_os: str = "macos"
 
     def validate(self, allowed_repositories: set[str]) -> None:
         if not isinstance(self.repository, str) or not _REPO.fullmatch(self.repository):
@@ -32,11 +33,12 @@ class RunnerRequest:
             raise RunnerPolicyError("workflow_run_id must be a positive integer.")
         if not isinstance(self.commit_sha, str) or not _SHA.fullmatch(self.commit_sha):
             raise RunnerPolicyError("commit_sha must be a full lowercase 40-character SHA.")
-        if self.image != "macos-15-arm64":
-            raise RunnerPolicyError("Only the approved macos-15-arm64 image is enabled.")
+        if self.target_os not in PLATFORM_PROFILES:
+            raise RunnerPolicyError("target_os must be one of: linux, windows, macos.")
+        if self.image is not None and self.image != PLATFORM_PROFILES[self.target_os]["image"]:
+            raise RunnerPolicyError(f"Image is not approved for {self.target_os}.")
         if isinstance(self.max_runtime_minutes, bool) or not isinstance(self.max_runtime_minutes, int) or not 5 <= self.max_runtime_minutes <= 180:
             raise RunnerPolicyError("max_runtime_minutes must be an integer between 5 and 180.")
-
 
 class RunnerManager:
     def __init__(self, provider: RunnerProvider, allowed_repositories: set[str] | None = None):
@@ -46,19 +48,22 @@ class RunnerManager:
             item.strip() for item in configured.split(",") if item.strip()
         }
 
-    def provision_macos(self, request: RunnerRequest) -> RunnerInstance:
+    def provision(self, request: RunnerRequest) -> RunnerInstance:
         request.validate(self.allowed_repositories)
+        profile = PLATFORM_PROFILES[request.target_os]
         return self.provider.provision({
-            "repository": request.repository,
-            "workflow_run_id": request.workflow_run_id,
-            "commit_sha": request.commit_sha,
-            "image": request.image,
-            "labels": ["self-hosted", "macOS", "ARM64", "dcp-cloud-macos"],
-            "ephemeral": True,
-            "max_runtime_minutes": request.max_runtime_minutes,
+            "repository": request.repository, "workflow_run_id": request.workflow_run_id,
+            "commit_sha": request.commit_sha, "target_os": request.target_os,
+            "image": profile["image"], "labels": list(profile["labels"]),
+            "ephemeral": True, "max_runtime_minutes": request.max_runtime_minutes,
             "network_policy": "restricted-egress",
             "registration_token_handling": "provider-side-only",
         })
+
+    def provision_macos(self, request: RunnerRequest) -> RunnerInstance:
+        if request.target_os != "macos":
+            raise RunnerPolicyError("provision_macos only accepts target_os=macos.")
+        return self.provision(request)
 
     def status(self, provider_id: str) -> RunnerInstance:
         if not isinstance(provider_id, str) or not provider_id or len(provider_id) > 200:

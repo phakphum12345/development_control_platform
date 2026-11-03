@@ -265,6 +265,24 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install cloud gateway test dependency
+        run: python -m pip install --disable-pip-version-check -r requirements-cloud-gateway.txt
+
+      - name: Parse generated Windows runner bootstrap PowerShell
+        shell: pwsh
+        run: |
+          python tests/emit_runner_bootstrap_scripts.py $env:RUNNER_TEMP
+          $tokens = $null
+          $errors = $null
+          $scriptPath = Join-Path $env:RUNNER_TEMP "dcp-windows-bootstrap.ps1"
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            $scriptPath, [ref]$tokens, [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String | Write-Error
+            throw "Generated Windows runner bootstrap script is invalid PowerShell."
+          }
+
       - name: Exercise dynamic dashboard start, reuse, and stop
         shell: pwsh
         run: ./tests/test_dashboard_dynamic_port.ps1
