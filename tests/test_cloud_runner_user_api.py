@@ -36,7 +36,7 @@ class AuthenticatedControlAPITests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.store = RunnerStore(str(Path(self.temp.name) / "gateway.sqlite"))
-        self.settings = GatewaySettings()
+        self.settings = GatewaySettings(allowed_repositories=("phakphum12345/generated-A4-pdf",))
         self.service = GatewayService(self.settings, self.store, DisabledProvider())
         self.server = ThreadingHTTPServer(
             ("127.0.0.1", 0),
