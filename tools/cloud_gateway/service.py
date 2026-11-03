@@ -7,11 +7,12 @@ from .store import LifecycleConflict
 
 
 class GatewayService:
-    def __init__(self, settings, store, provider, budget_guard=None):
+    def __init__(self, settings, store, provider, budget_guard=None, runner_cleanup=None):
         self.settings = settings
         self.store = store
         self.provider = provider
         self.budget_guard = budget_guard
+        self.runner_cleanup = runner_cleanup
 
     @staticmethod
     def public(row):
@@ -58,6 +59,18 @@ class GatewayService:
     def list_recent(self, limit=50):
         return [self.public(row) for row in self.store.list_recent(limit)]
 
+    def _finalize_provider_state(self, row, instance):
+        terminal = instance.state
+        if terminal not in ("terminated", "failed"):
+            return row
+        rid = row["id"]
+        if row["state"] != "terminating":
+            row = self.store.transition(rid, "terminating")
+        if self.runner_cleanup is not None and row.get("provider_id"):
+            result = self.runner_cleanup(row, instance)
+            self.store.record_event(rid, "runner_cleanup_confirmed", result)
+        return self.store.transition(rid, terminal)
+
     def get(self, rid):
         row = self.store.get(rid)
         if not row:
@@ -66,8 +79,10 @@ class GatewayService:
             instance = self.provider.status(row["provider_id"])
             if instance.state == "online" and row["state"] == "provisioning":
                 row = self.store.transition(rid, "online")
-            elif instance.state in ("terminated", "failed") and row["state"] != instance.state:
-                row = self.store.transition(rid, instance.state)
+            elif instance.state == "terminating" and row["state"] != "terminating":
+                row = self.store.transition(rid, "terminating")
+            elif instance.state in ("terminated", "failed"):
+                row = self._finalize_provider_state(row, instance)
             row.update(runner_name=instance.runner_name, labels=list(instance.labels))
         return self.public(row)
 
@@ -79,14 +94,20 @@ class GatewayService:
             return self.public(row)
         if row["state"] != "terminating":
             row = self.store.transition(rid, "terminating")
-        if row["provider_id"]:
+        if not row.get("provider_id"):
+            row = self.store.transition(rid, "terminated")
+            return self.public(row)
+        try:
             instance = self.provider.terminate(row["provider_id"])
-            if instance.state == "terminated":
-                row = self.store.transition(rid, "terminated")
+            if instance.state in ("terminated", "failed"):
+                row = self._finalize_provider_state(row, instance)
+        except Exception:
+            self.store.record_event(rid, "cleanup_retry", "pending")
+            raise
         return self.public(row)
 
     def reconcile_expired(self, now_utc=None):
-        """Retry cleanup for expired active records; safe to call repeatedly."""
+        """Retry provider and GitHub cleanup for expired active/failed records."""
         current = now_utc or datetime.now(timezone.utc)
         if current.tzinfo is None:
             raise ValueError("Reconciliation time must be timezone-aware")
