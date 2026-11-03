@@ -12,7 +12,8 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from tools.cloud_gateway.policy import GatewaySettings
-from tools.cloud_gateway.server import DisabledProvider, make_handler
+from tools.cloud_gateway.server import DisabledProvider, ProxyIdentityVerifier, make_handler
+from tools.cloud_gateway.oidc_assertion import OIDCAssertionError, sign_verified_oidc_assertion
 from tools.cloud_gateway.service import GatewayService
 from tools.cloud_gateway.store import RunnerStore
 
@@ -82,6 +83,133 @@ class AuthenticatedControlAPITests(unittest.TestCase):
         with self.assertRaises(HTTPError) as error:
             urlopen(Request(self.base + "/api/cloud-runners/status", headers=headers))
         self.assertEqual(error.exception.code, 401)
+
+    def test_oidc_verified_claims_map_to_signed_gateway_assertion(self):
+        claims = {
+            "iss": "https://idp.example.test/",
+            "aud": ["dcp-web", "other-client"], "azp": "dcp-web",
+            "sub": "oidc-subject-123",
+            "groups": ["dcp-operators"],
+            "iat": int(time.time()),
+            "exp": int(time.time()) + 300,
+        }
+        headers = sign_verified_oidc_assertion(
+            "GET", "/api/cloud-runners/status?view=compact", claims,
+            "session_1234567890abcdef", SECRET,
+            "https://idp.example.test/", "dcp-web",
+            ["dcp-owners"], ["dcp-operators"],
+        )
+        self.assertEqual(headers["X-DCP-User"], "oidc-subject-123")
+        self.assertEqual(headers["X-DCP-Role"], "operator")
+        class Handler:
+            command = "GET"
+            path = "/api/cloud-runners/status?view=compact"
+            def __init__(self, headers):
+                self.headers = headers
+        verifier = ProxyIdentityVerifier(SECRET)
+        identity = verifier.verify(Handler(headers))
+        self.assertEqual(identity["subject"], "oidc-subject-123")
+        self.assertEqual(identity["role"], "operator")
+
+    def test_oidc_owner_group_has_owner_role_and_invalid_claims_fail_closed(self):
+        claims = {
+            "iss": "https://idp.example.test/", "aud": "dcp-web",
+            "sub": "owner-subject", "groups": ["dcp-owners"],
+            "iat": int(time.time()), "exp": int(time.time()) + 300,
+        }
+        headers = sign_verified_oidc_assertion(
+            "POST", "/api/cloud-runners", claims, "session_1234567890abcdef",
+            SECRET, "https://idp.example.test/", "dcp-web",
+            ["dcp-owners"], ["dcp-operators"],
+        )
+        self.assertEqual(headers["X-DCP-Role"], "owner")
+        with self.assertRaises(OIDCAssertionError):
+            sign_verified_oidc_assertion(
+                "GET", "/api/cloud-runners", claims, "session_1234567890abcdef",
+                SECRET, "https://wrong.example/", "dcp-web",
+                ["dcp-owners"], ["dcp-operators"],
+            )
+        bad_azp = dict(claims, azp="other-client")
+        with self.assertRaises(OIDCAssertionError):
+            sign_verified_oidc_assertion(
+                "GET", "/api/cloud-runners", bad_azp, "session_1234567890abcdef",
+                SECRET, "https://idp.example.test/", "dcp-web",
+                ["dcp-owners"], ["dcp-operators"],
+            )
+        not_yet_valid = dict(claims, nbf=int(time.time()) + 300)
+        with self.assertRaises(OIDCAssertionError):
+            sign_verified_oidc_assertion(
+                "GET", "/api/cloud-runners", not_yet_valid, "session_1234567890abcdef",
+                SECRET, "https://idp.example.test/", "dcp-web",
+                ["dcp-owners"], ["dcp-operators"],
+            )
+        expired = dict(claims, exp=int(time.time()) - 1)
+        with self.assertRaises(OIDCAssertionError):
+            sign_verified_oidc_assertion(
+                "GET", "/api/cloud-runners", expired, "session_1234567890abcdef",
+                SECRET, "https://idp.example.test/", "dcp-web",
+                ["dcp-owners"], ["dcp-operators"],
+            )
+
+    def test_durable_nonce_expiry_allows_reuse_only_after_window(self):
+        nonce = "durable_nonce_000001"
+        self.assertTrue(self.store.consume_auth_nonce(nonce, 100.0, 160.0))
+        self.assertFalse(self.store.consume_auth_nonce(nonce, 120.0, 180.0))
+        self.assertTrue(self.store.consume_auth_nonce(nonce, 161.0, 221.0))
+
+    def test_oidc_assertion_is_bound_to_method_and_path(self):
+        claims = {
+            "iss": "https://idp.example.test/", "aud": "dcp-web",
+            "sub": "oidc-subject-789", "groups": ["dcp-operators"],
+            "iat": int(time.time()), "exp": int(time.time()) + 300,
+        }
+        headers = sign_verified_oidc_assertion(
+            "GET", "/api/cloud-runners/status", claims,
+            "session_1234567890abcdef", SECRET,
+            "https://idp.example.test/", "dcp-web",
+            ["dcp-owners"], ["dcp-operators"],
+        )
+        class Handler:
+            command = "GET"
+            path = "/api/cloud-runners"
+            def __init__(self, value):
+                self.headers = value
+        self.assertIsNone(ProxyIdentityVerifier(SECRET).verify(Handler(headers)))
+
+    def test_durable_nonce_replay_is_rejected_across_verifier_instances(self):
+        claims = {
+            "iss": "https://idp.example.test/", "aud": "dcp-web",
+            "sub": "oidc-subject-456", "groups": ["dcp-operators"],
+            "iat": int(time.time()), "exp": int(time.time()) + 300,
+        }
+        headers = sign_verified_oidc_assertion(
+            "GET", "/api/cloud-runners/status", claims,
+            "session_1234567890abcdef", SECRET,
+            "https://idp.example.test/", "dcp-web",
+            ["dcp-owners"], ["dcp-operators"],
+        )
+        class Handler:
+            command = "GET"
+            path = "/api/cloud-runners/status"
+            def __init__(self, value):
+                self.headers = value
+        first = ProxyIdentityVerifier(SECRET, nonce_store=self.store)
+        second = ProxyIdentityVerifier(SECRET, nonce_store=self.store)
+        self.assertIsNotNone(first.verify(Handler(headers)))
+        self.assertIsNone(second.verify(Handler(headers)))
+
+    def test_durable_nonce_store_fails_closed_when_unavailable(self):
+        class BrokenStore:
+            def consume_auth_nonce(self, *args):
+                raise RuntimeError("database unavailable")
+        headers = signed_headers("GET", "/api/cloud-runners/status", "nonce_durable_0001")
+        class Handler:
+            command = "GET"
+            path = "/api/cloud-runners/status"
+            def __init__(self, value):
+                self.headers = value
+        verifier = ProxyIdentityVerifier(SECRET, nonce_store=BrokenStore())
+        self.assertIsNone(verifier.verify(Handler(headers)))
 
     def test_proxy_nonce_replay_is_rejected(self):
         req = self.request("GET", "/api/cloud-runners/status", "nonce_replay_00001")
