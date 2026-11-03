@@ -252,3 +252,22 @@ class GitHubAppRunnerBootstrap:
             write_token,
         )
         return True
+
+
+class GitHubRunnerOnlineChecker:
+    """Adapt provider metadata to an exact GitHub runner-online check."""
+
+    LABELS = {
+        "linux": ("self-hosted", "Linux", "X64", "dcp-cloud-linux"),
+        "windows": ("self-hosted", "Windows", "X64", "dcp-cloud-windows"),
+        "macos": ("self-hosted", "macOS", "ARM64", "dcp-cloud-macos"),
+    }
+
+    def __init__(self, github_app: GitHubAppRunnerBootstrap):
+        self.github_app = github_app
+
+    def __call__(self, runner_name: str, repository: str, target_os: str) -> bool:
+        labels = self.LABELS.get(target_os)
+        if labels is None:
+            return False
+        return self.github_app.is_runner_online(repository, runner_name, labels)
