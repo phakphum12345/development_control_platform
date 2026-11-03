@@ -40,6 +40,11 @@ class OrkaTests(unittest.TestCase):
   p=self.make(); name="dcp-123-"+"a"*8
   with patch("tools.cloud_gateway.orka.urlopen",return_value=response({"status":"Terminating"})): self.assertEqual(p.terminate(name).state,"terminating")
   with patch("tools.cloud_gateway.orka.urlopen",side_effect=HTTPError("url",404,"missing",{},None)): self.assertEqual(p.status(name).state,"terminated")
+ def test_failed_orka_vm_is_deleted_before_terminal_state(self):
+  p=self.make(); name="dcp-123-"+"a"*8
+  with patch("tools.cloud_gateway.orka.urlopen",return_value=response({"status":"Failed","name":name})):
+   result=p.status(name)
+  self.assertEqual(result.state,"terminating")
  def test_readiness_fails_closed_without_protected_guest_bootstrap(self):
   p=self.make(lambda *args:True)
   readiness=p.readiness("macos")
