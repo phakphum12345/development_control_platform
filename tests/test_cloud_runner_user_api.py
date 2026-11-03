@@ -70,6 +70,9 @@ class AuthenticatedControlAPITests(unittest.TestCase):
             self.assertFalse(status["bootstrap_ready"])
             self.assertFalse(status["providers"]["linux"]["ready"])
             self.assertEqual(status["budget_gate"], "UNKNOWN")
+            self.assertEqual(status["active_runners"], 0)
+            self.assertEqual(status["lifecycle"]["cleanup_pending"], 0)
+            self.assertEqual(status["lifecycle"]["cleanup_retries"], 0)
         with urlopen(self.request("GET", "/api/cloud-runners", "nonce_list_000001")) as response:
             self.assertEqual(json.loads(response.read()), {"runners": []})
 
