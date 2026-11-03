@@ -22,7 +22,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install validators
-        run: python -m pip install --disable-pip-version-check PyYAML jsonschema
+        run: python -m pip install --disable-pip-version-check PyYAML jsonschema -r requirements-cloud-gateway.txt
 
       - name: Set up Node for dashboard JavaScript syntax check
         uses: actions/setup-node@v4
