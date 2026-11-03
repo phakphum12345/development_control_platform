@@ -1,0 +1,3 @@
+# Optional local MCP protocol adapter dependency.
+# Pin v1 because the adapter uses the v1 FastMCP API.
+mcp==1.30.0
