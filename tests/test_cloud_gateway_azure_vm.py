@@ -30,7 +30,7 @@ class AzureVMTests(unittest.TestCase):
    nic=arm.calls[0][2]; vm=arm.calls[1][2]; self.assertNotIn("publicIPAddress",str(nic))
    self.assertEqual(vm["storageProfile"]["osDisk"]["diffDiskSettings"]["option"],"Local")
    self.assertEqual(vm["networkProfile"]["networkInterfaces"][0]["id"],f"/subscriptions/{SUB}/resourceGroups/dcp/providers/Microsoft.Network/networkInterfaces/{arm.calls[0][1].split('/')[-1].split('?')[0]}")
-   self.assertEqual(vm["identity"]["type"],"SystemAssigned"); self.assertEqual(vm["tags"]["managed-by"],"dcp-cloud-runner")
+   self.assertNotIn("identity",vm); self.assertEqual(vm["tags"]["managed-by"],"dcp-cloud-runner")
    self.assertIn("protectedSettings",vm["resources"][0]["properties"])
  def test_rejects_mac_os_and_public_network_policy(self):
   p,_=self.make()
