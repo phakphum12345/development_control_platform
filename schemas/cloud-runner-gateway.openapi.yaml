@@ -1,51 +1,46 @@
 openapi: 3.1.0
 info:
   title: DCP Cloud Runner Gateway API
-  version: 1.0.0
+  version: 1.1.0
   description: |
-    Provider-neutral contract implemented by a separately deployed trusted gateway.
-    This specification does not provision infrastructure and does not select a cloud vendor.
+    Provider-neutral contract. Azure is the control plane and Linux/Windows VM
+    provider; macOS capacity is supplied by Apple-hardware infrastructure such
+    as MacStadium Orka. This contract does not itself deploy cloud resources.
 servers:
   - url: https://gateway.example.invalid
-    description: Placeholder only; replace only after provider and gateway review.
+    description: Placeholder only; replace after deployment and security review.
 security:
   - GatewayBearerAuth: []
 paths:
   /v1/runners:
     post:
       operationId: createEphemeralRunner
-      summary: Request an ephemeral macOS runner
+      summary: Request an ephemeral Linux, Windows, or macOS runner
       description: |
-        The gateway must independently authenticate the caller, enforce repository
-        allowlisting and idempotency, apply billing/runtime guardrails, create the VM,
-        register a short-lived GitHub runner, and arrange teardown on completion,
-        cancellation, or TTL expiry. A 202 response means accepted/provisioning only;
-        it is not evidence that the runner is online or that a build passed.
+        The gateway independently authenticates the caller, enforces repository
+        allowlisting, idempotency, approved platform/image mappings, concurrency
+        and billing limits, creates the isolated runner, registers a short-lived
+        GitHub runner, and arranges teardown on completion, cancellation, or TTL.
+        A 202 response means accepted/provisioning only; it is not evidence that
+        the runner is online or that a build passed. GitHub registration tokens
+        are generated and consumed only server-side and must never reach DCP.
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/RunnerCreateRequest'
+            schema: { $ref: '#/components/schemas/RunnerCreateRequest' }
       responses:
         '202':
           description: Request accepted; runner lifecycle is not yet verified.
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/Runner'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          description: Idempotency conflict or incompatible duplicate request.
-        '429':
-          description: Rate limit or provisioning concurrency limit reached.
-        '503':
-          description: Provider unavailable or provisioning disabled.
+              schema: { $ref: '#/components/schemas/Runner' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: Idempotency conflict or incompatible duplicate request. }
+        '429': { description: Rate or concurrency limit reached. }
+        '503': { description: Provider unavailable or provisioning disabled. }
   /v1/runners/{id}:
     parameters:
       - $ref: '#/components/parameters/RunnerId'
@@ -57,14 +52,10 @@ paths:
           description: Current lifecycle state.
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/Runner'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Runner not found.
+              schema: { $ref: '#/components/schemas/Runner' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Runner not found. }
     delete:
       operationId: terminateRunner
       summary: Request runner teardown
@@ -73,14 +64,10 @@ paths:
           description: Teardown accepted or completed; verify terminal state separately.
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/Runner'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Runner not found.
+              schema: { $ref: '#/components/schemas/Runner' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Runner not found. }
 components:
   securitySchemes:
     GatewayBearerAuth:
@@ -92,93 +79,62 @@ components:
       name: id
       in: path
       required: true
-      description: Opaque gateway identifier; clients must URL-encode it as one path segment.
-      schema:
-        type: string
-        minLength: 1
-        maxLength: 200
+      description: Opaque gateway ID; URL-encode as one path segment.
+      schema: { type: string, minLength: 1, maxLength: 200 }
   schemas:
     RunnerCreateRequest:
       type: object
       additionalProperties: false
-      required:
-        - repository
-        - workflow_run_id
-        - commit_sha
-        - image
-        - labels
-        - ephemeral
-        - max_runtime_minutes
-        - network_policy
-        - registration_token_handling
+      required: [repository, workflow_run_id, commit_sha, target_os, image, labels, ephemeral, max_runtime_minutes, network_policy, registration_token_handling]
       properties:
         repository:
           type: string
           pattern: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
-        workflow_run_id:
-          type: integer
-          minimum: 1
-        commit_sha:
+        workflow_run_id: { type: integer, minimum: 1 }
+        commit_sha: { type: string, pattern: '^[0-9a-f]{40}$' }
+        target_os:
           type: string
-          pattern: '^[0-9a-f]{40}$'
+          enum: [linux, windows, macos]
         image:
           type: string
-          const: macos-15-arm64
+          enum: [ubuntu-24.04-x64, windows-2025-x64, macos-15-arm64]
+          description: Must match the approved image for target_os; gateway enforces the mapping.
         labels:
           type: array
           minItems: 1
           uniqueItems: true
-          items:
-            type: string
-        ephemeral:
-          type: boolean
-          const: true
-        max_runtime_minutes:
-          type: integer
-          minimum: 5
-          maximum: 180
-        network_policy:
-          type: string
-          const: restricted-egress
-        registration_token_handling:
-          type: string
-          const: provider-side-only
+          items: { type: string }
+          description: Must exactly match the server-side platform profile.
+        ephemeral: { type: boolean, const: true }
+        max_runtime_minutes: { type: integer, minimum: 5, maximum: 180 }
+        network_policy: { type: string, const: restricted-egress }
+        registration_token_handling: { type: string, const: provider-side-only }
     Runner:
       type: object
       additionalProperties: true
       required: [id, state]
       properties:
-        id:
-          type: string
-          minLength: 1
+        id: { type: string, minLength: 1 }
         state:
           type: string
           minLength: 1
-          description: Lifecycle state such as provisioning, online, terminating, terminated, or failed.
-        runner_name:
-          type: string
+          description: provisioning, online, terminating, terminated, or failed.
+        runner_name: { type: string }
         labels:
           type: array
-          items:
-            type: string
-        detail:
-          type: string
+          items: { type: string }
+        detail: { type: string }
     Error:
       type: object
       additionalProperties: true
       properties:
-        error:
-          type: string
-        detail:
-          type: string
+        error: { type: string }
+        detail: { type: string }
   responses:
     BadRequest:
       description: Invalid request.
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-    Unauthorized:
-      description: Missing or invalid gateway bearer token.
-    Forbidden:
-      description: Caller or repository is not authorized.
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized: { description: Missing or invalid gateway bearer token. }
+    Forbidden: { description: Caller or repository is not authorized. }

@@ -1,24 +1,30 @@
-name: DCP macOS Cloud Runner Provisioning
+name: DCP Multi-platform Cloud Runner Provisioning
 
 on:
   workflow_dispatch:
     inputs:
       target_repository:
-        description: Allowlisted repository to receive the ephemeral macOS runner
+        description: Allowlisted repository to receive the ephemeral runner
         required: true
         default: phakphum12345/generated-A4-pdf
         type: string
       target_commit_sha:
-        description: Full 40-character commit SHA to validate on macOS
+        description: Full 40-character commit SHA to validate
         required: true
         type: string
+      target_os:
+        description: Operating system capacity to request
+        required: true
+        default: linux
+        type: choice
+        options: [linux, windows, macos]
 
 permissions:
   contents: read
 
 jobs:
   request-cloud-runner:
-    name: Request ephemeral macOS runner
+    name: Request ephemeral runner
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -34,5 +40,6 @@ jobs:
           DCP_RUNNER_PROVIDER_TOKEN: ${{ secrets.DCP_RUNNER_PROVIDER_TOKEN }}
           DCP_TARGET_REPOSITORY: ${{ inputs.target_repository }}
           DCP_TARGET_COMMIT_SHA: ${{ inputs.target_commit_sha }}
+          DCP_TARGET_OS: ${{ inputs.target_os }}
           DCP_RUNNER_ALLOWED_REPOSITORIES: phakphum12345/generated-A4-pdf
         run: python -m tools.cloud_runner
