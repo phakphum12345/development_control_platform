@@ -68,8 +68,146 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Runner not found. }
+  /api/auth/session:
+    get:
+      operationId: getBrowserSession
+      summary: Verify trusted reverse-proxy identity and issue a session-bound CSRF token
+      description: Requires all signed X-DCP identity headers. The signature is generated only by the trusted OIDC reverse proxy.
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Authenticated session and CSRF token held in browser memory.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [authenticated, csrfToken, user]
+                properties:
+                  authenticated: { type: boolean, const: true }
+                  csrfToken: { type: string, minLength: 64, maxLength: 64 }
+                  user:
+                    type: object
+                    properties:
+                      displayName: { type: string }
+                      role: { type: string, enum: [owner, operator] }
+        '401': { description: Missing, invalid, expired, or replayed proxy identity. }
+  /api/cloud-runners/status:
+    get:
+      operationId: getBrowserControlStatus
+      summary: Read readiness gates for the browser control panel
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Current server-side gates. Unknown readiness must never be treated as pass.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [gateway, owner_approved, provisioning_enabled, budget_gate, bootstrap_ready, providers]
+                properties:
+                  gateway: { type: string, enum: [READY] }
+                  owner_approved: { type: boolean }
+                  provisioning_enabled: { type: boolean }
+                  budget_gate: { type: string, enum: [PASS, FAIL, UNKNOWN] }
+                  budget_message: { type: string }
+                  bootstrap_ready: { type: boolean }
+                  circuit_breaker_tripped: { type: boolean }
+                  providers: { type: object, additionalProperties: true }
+        '401': { description: Authenticated proxy assertion required. }
+  /api/cloud-runners:
+    get:
+      operationId: listBrowserRunners
+      summary: List recent runner metadata
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Recent runner records without request payloads or credentials.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [runners]
+                properties:
+                  runners:
+                    type: array
+                    items: { $ref: '#/components/schemas/Runner' }
+        '401': { description: Authenticated proxy assertion required. }
+    post:
+      operationId: createBrowserRunner
+      summary: Request an ephemeral runner through the guarded UI API
+      description: Requires trusted proxy identity, exact Origin, session-bound CSRF, owner approval, provisioning enabled, live budget PASS, and selected provider bootstrap readiness.
+      security:
+        - TrustedProxyAssertion: []
+      parameters:
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: { type: string, minLength: 64, maxLength: 64 }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 200 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RunnerCreateRequest' }
+      responses:
+        '202':
+          description: Request accepted; runner online state remains unverified.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Runner' }
+        '401': { description: Authenticated proxy assertion required. }
+        '403': { description: Origin or CSRF validation failed. }
+        '409': { description: Idempotency conflict. }
+        '429': { description: Budget, concurrency, or rate limit denied. }
+        '503': { description: Owner, budget, provisioning, or provider bootstrap gate is not ready. }
+  /api/cloud-runners/{id}:
+    parameters:
+      - $ref: '#/components/parameters/RunnerId'
+    get:
+      operationId: getBrowserRunner
+      summary: Read a runner through the authenticated browser API
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Current lifecycle state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Runner' }
+        '401': { description: Authenticated proxy assertion required. }
+        '404': { description: Runner not found. }
+    delete:
+      operationId: stopBrowserRunner
+      summary: Request runner cleanup from the authenticated browser API
+      security:
+        - TrustedProxyAssertion: []
+      parameters:
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: { type: string, minLength: 64, maxLength: 64 }
+      responses:
+        '200':
+          description: Termination accepted or completed; verify terminal state separately.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Runner' }
+        '401': { description: Authenticated proxy assertion required. }
+        '403': { description: Origin or CSRF validation failed. }
+        '404': { description: Runner not found. }
 components:
   securitySchemes:
+    TrustedProxyAssertion:
+      type: apiKey
+      in: header
+      name: X-DCP-Auth-Signature
+      description: Signature for the full X-DCP identity assertion. Proxy must also provide user, role, session, timestamp and nonce headers.
     GatewayBearerAuth:
       type: http
       scheme: bearer
