@@ -18,6 +18,7 @@ from typing import Any
 
 MAX_FILE_BYTES = 2 * 1024 * 1024
 MAX_MCP_TEXT_BYTES = 64 * 1024
+MAX_MCP_TEXT_CHARS = 8_000
 
 
 class EngineError(ValueError):
@@ -83,6 +84,10 @@ def read_text_file(
         content = raw.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise EngineError("File is not valid UTF-8 text.") from exc
+    if len(content) > MAX_MCP_TEXT_CHARS:
+        raise EngineError(
+            f"Text file exceeds the {MAX_MCP_TEXT_CHARS}-character model-input limit."
+        )
     return {
         "status": "PASS",
         "operation": "READ_ONLY",
