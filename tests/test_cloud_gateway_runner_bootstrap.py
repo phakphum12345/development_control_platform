@@ -54,9 +54,6 @@ class AzureRunnerBootstrapTests(unittest.TestCase):
         self.assertIn("mock-registration-token", script)
         self.assertIn("sha256sum --check --status", script)
         self.assertIn("--ephemeral --disableupdate", script)
-        self.assertIn("NT AUTHORITY\\NETWORK SERVICE", script)
-        self.assertIn("schtasks.exe /Create", script)
-        self.assertNotIn("svc.cmd install", script)
         self.assertNotIn("mock-registration-token", str(props["settings"]))
         self.assertEqual(app.repositories, ["phakphum12345/generated-A4-pdf"])
 
@@ -72,6 +69,9 @@ class AzureRunnerBootstrapTests(unittest.TestCase):
         self.assertIn("mock-registration-token", script)
         self.assertIn("Get-FileHash -Algorithm SHA256", script)
         self.assertIn("--ephemeral --disableupdate", script)
+        self.assertIn("NT AUTHORITY\\NETWORK SERVICE", script)
+        self.assertIn("schtasks.exe /Create", script)
+        self.assertNotIn("svc.cmd install", script)
         self.assertNotIn("mock-registration-token", str(props["settings"]))
 
     def test_rejects_unpinned_runner_artifacts(self):
