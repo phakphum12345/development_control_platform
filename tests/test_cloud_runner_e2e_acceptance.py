@@ -10,7 +10,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from tools.cloud_gateway.budget_guard import AzureBudgetGuard
-from tools.cloud_gateway.github_app import GitHubRunnerCleanup
+from tools.cloud_gateway.runner_cleanup import GitHubRunnerCleanup
 from tools.cloud_gateway.policy import GatewaySettings
 from tools.cloud_gateway.server import make_handler
 from tools.cloud_gateway.service import GatewayService
