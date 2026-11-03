@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ACTIVE = ("provisioning", "online", "terminating")
+CLEANUP_EVENTS = {"runner_cleanup_confirmed", "cleanup_retry"}
 TRANSITIONS = {
     "provisioning": {"provisioning", "online", "terminating", "terminated", "failed"},
     "online": {"terminating", "terminated", "failed"},
@@ -66,7 +67,9 @@ class RunnerStore:
             raise ValueError("Expiry comparison requires a timezone-aware timestamp")
         with self.lock, self.db() as c:
             rows = c.execute(
-                "SELECT * FROM runners WHERE state IN (?,?,?) AND expires_at<=? ORDER BY expires_at",
+                "SELECT * FROM runners WHERE "
+                "(state IN (?,?,?) OR (state='failed' AND provider_id IS NOT NULL)) "
+                "AND expires_at<=? ORDER BY expires_at",
                 (*ACTIVE, now_iso),
             ).fetchall()
             return [dict(row) for row in rows]
@@ -141,6 +144,21 @@ class RunnerStore:
             )
             c.execute("COMMIT")
             return self.get(rid)
+
+    def record_event(self, rid, event, result=None):
+        if event not in CLEANUP_EVENTS:
+            raise ValueError("Audit event is not allowlisted")
+        safe = {}
+        if result in ("removed", "already_absent", "pending"):
+            safe["result"] = result
+        with self.lock, self.db() as c:
+            exists = c.execute("SELECT 1 FROM runners WHERE id=?", (rid,)).fetchone()
+            if not exists:
+                raise KeyError(rid)
+            c.execute(
+                "INSERT INTO audit(runner_id,event,detail_json,created_at) VALUES(?,?,?,?)",
+                (rid, event, json.dumps(safe), now()),
+            )
 
     def audit_events(self, rid):
         with self.lock, self.db() as c:
