@@ -98,8 +98,13 @@ class AzureVMProvider:
    return RunnerInstance(provider_id,"terminated")
   state=str(data.get("properties",{}).get("provisioningState","")).lower()
   if state=="failed": result="failed"
-  elif self.online and self.online(provider_id): result="online"
-  else: result="provisioning"
+  else:
+   tags=data.get("tags",{})
+   repository=tags.get("repository") if isinstance(tags,dict) else None
+   target_os=tags.get("target-os") if isinstance(tags,dict) else None
+   try: online=callable(self.online) and self.online(provider_id,repository,target_os) is True
+   except Exception: online=False
+   result="online" if online else "provisioning"
   return RunnerInstance(provider_id,result,provider_id)
  def terminate(self,provider_id):
   if not isinstance(provider_id,str) or not re.fullmatch(r"dcp-[0-9]+-[a-f0-9]{8}",provider_id): raise AzureProvisionError("Invalid DCP Azure VM identifier")
