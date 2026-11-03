@@ -129,6 +129,20 @@ class AuthenticatedControlAPITests(unittest.TestCase):
                 SECRET, "https://wrong.example/", "dcp-web",
                 ["dcp-owners"], ["dcp-operators"],
             )
+        bad_azp = dict(claims, azp="other-client")
+        with self.assertRaises(OIDCAssertionError):
+            sign_verified_oidc_assertion(
+                "GET", "/api/cloud-runners", bad_azp, "session_1234567890abcdef",
+                SECRET, "https://idp.example.test/", "dcp-web",
+                ["dcp-owners"], ["dcp-operators"],
+            )
+        not_yet_valid = dict(claims, nbf=int(time.time()) + 300)
+        with self.assertRaises(OIDCAssertionError):
+            sign_verified_oidc_assertion(
+                "GET", "/api/cloud-runners", not_yet_valid, "session_1234567890abcdef",
+                SECRET, "https://idp.example.test/", "dcp-web",
+                ["dcp-owners"], ["dcp-operators"],
+            )
         expired = dict(claims, exp=int(time.time()) - 1)
         with self.assertRaises(OIDCAssertionError):
             sign_verified_oidc_assertion(
