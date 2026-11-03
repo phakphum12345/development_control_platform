@@ -18,8 +18,8 @@ def bootstrap(vm,os_name,payload):
 def payload(os_name):
  p=PLATFORM_PROFILES[os_name]; return {"repository":"phakphum12345/generated-A4-pdf","workflow_run_id":123,"commit_sha":"a"*40,"target_os":os_name,"image":p["image"],"labels":list(p["labels"]),"ephemeral":True,"max_runtime_minutes":30,"network_policy":"restricted-egress","registration_token_handling":"provider-side-only"}
 class AzureVMTests(unittest.TestCase):
- def make(self,checker=None):
-  arm=FakeArm(); p=AzureVMProvider(arm,"eastus",f"/subscriptions/{SUB}/resourceGroups/net/providers/Microsoft.Network/virtualNetworks/vnet/subnets/runners",f"/subscriptions/{SUB}/resourceGroups/net/providers/Microsoft.Network/networkSecurityGroups/runner-nsg",{"linux":"Standard_D2s_v5","windows":"Standard_D4s_v5"},IMAGES,bootstrap,checker); return p,arm
+ def make(self,checker=None,network=None):
+  arm=FakeArm(); p=AzureVMProvider(arm,"eastus",f"/subscriptions/{SUB}/resourceGroups/net/providers/Microsoft.Network/virtualNetworks/vnet/subnets/runners",f"/subscriptions/{SUB}/resourceGroups/net/providers/Microsoft.Network/networkSecurityGroups/runner-nsg",{"linux":"Standard_D2s_v5","windows":"Standard_D4s_v5"},IMAGES,bootstrap,checker,network); return p,arm
  def test_requires_existing_subnet_nsg_and_both_vm_sizes(self):
   with self.assertRaises(ValueError): AzureVMProvider(FakeArm(),"eastus","bad","bad",{"linux":"D2"},IMAGES,bootstrap)
  def test_rejects_latest_image_version(self):
@@ -44,6 +44,14 @@ class AzureVMTests(unittest.TestCase):
  def test_termination_waits_for_missing_vm_before_nic_cleanup(self):
   p,arm=self.make(); vm=p.provision(payload("linux")); p.terminate(vm.provider_id); self.assertEqual(arm.calls[-1][0],"DELETE")
   arm.get_result=None; self.assertEqual(p.status(vm.provider_id).state,"terminated"); self.assertEqual(arm.calls[-1][0],"DELETE")
+ def test_readiness_requires_bootstrap_online_and_network_policy(self):
+  p,_=self.make()
+  self.assertFalse(p.readiness("linux")["ready"])
+  p,_=self.make(lambda _:True)
+  self.assertFalse(p.readiness("linux")["ready"])
+  p,_=self.make(lambda _:True,lambda os_name,subnet,nsg: True)
+  self.assertTrue(p.readiness("linux")["ready"])
+  self.assertFalse(p.readiness("macos")["ready"])
  def test_missing_protected_bootstrap_is_rejected(self):
   p,_=self.make(); p.bootstrap_factory=lambda *a:{"os_profile":{},"extension":{"properties":{"settings":{}}}}
   with self.assertRaises(AzureProvisionError): p.provision(payload("linux"))
