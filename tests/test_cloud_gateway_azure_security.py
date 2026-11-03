@@ -12,7 +12,7 @@ class CredentialTests(unittest.TestCase):
   response=MagicMock(); response.__enter__.return_value=response; response.read.return_value=json.dumps({"access_token":"opaque-token"}).encode()
   with patch("tools.cloud_gateway.azure_identity.urlopen",return_value=response) as call:
    self.assertEqual(ManagedIdentityCredential(env).get_token("https://vault.azure.net"),"opaque-token")
-  req=call.call_args.args[0]; self.assertEqual(req.get_header("X-identity-header"),"header-value"); self.assertIn("resource=https%3A%2F%2Fvault.azure.net",req.full_url)
+  req=call.call_args.args[0]; self.assertEqual(req.get_header("X-identity-header"),"header-value"); self.assertTrue(any(k.lower()=="x-identity-header" for k in req.unredirected_hdrs)); self.assertIn("resource=https%3A%2F%2Fvault.azure.net",req.full_url)
  def test_untrusted_identity_endpoint_rejected(self):
   env={"IDENTITY_ENDPOINT":"https://attacker.example/token","IDENTITY_HEADER":"x"}
   with self.assertRaises(IdentityError): ManagedIdentityCredential(env).get_token("resource")
@@ -24,7 +24,7 @@ class KeyVaultTests(unittest.TestCase):
   response=MagicMock(); response.__enter__.return_value=response; response.read.return_value=b'{"value":"secret-value"}'
   with patch("tools.cloud_gateway.key_vault.urlopen",return_value=response) as call:
    value=KeyVaultSecretReader("https://demo.vault.azure.net",credential).get_secret("orka-token")
-  self.assertEqual(value,"secret-value"); self.assertIn("/secrets/orka-token?api-version=7.4",call.call_args.args[0].full_url)
+  self.assertEqual(value,"secret-value"); req=call.call_args.args[0]; self.assertIn("/secrets/orka-token?api-version=7.4",req.full_url); self.assertTrue(any(k.lower()=="authorization" for k in req.unredirected_hdrs))
  def test_invalid_secret_name_rejected(self):
   reader=KeyVaultSecretReader("https://demo.vault.azure.net",MagicMock())
   with self.assertRaises(ValueError): reader.get_secret("../leak")
@@ -41,7 +41,7 @@ class BudgetTests(unittest.TestCase):
   with patch("tools.cloud_gateway.azure_budget.urlopen",return_value=response) as call:
    snapshot=AzureBudgetReader("00000000-0000-0000-0000-000000000000","dcp-monthly",credential).read()
   self.assertEqual(snapshot.current_spend,12); self.assertTrue(snapshot.permits(3))
-  self.assertEqual(call.call_args.args[0].get_method(),"GET")
+  req=call.call_args.args[0]; self.assertEqual(req.get_method(),"GET"); self.assertTrue(any(k.lower()=="authorization" for k in req.unredirected_hdrs))
  def test_budget_snapshot_rejects_nonfinite_and_negative_values(self):
   for values in ((float("nan"),1,1,"USD"),(100,-1,1,"USD"),(100,1,float("inf"),"USD")):
    with self.assertRaises(ValueError): BudgetSnapshot(*values)
