@@ -203,7 +203,9 @@ class GitHubAppRunnerBootstrap:
             batch = data.get("runners")
             if not isinstance(batch, list):
                 raise GitHubAppError("GitHub runner inventory response is invalid")
-            runners.extend(item for item in batch if isinstance(item, dict))
+            if any(not isinstance(item, dict) for item in batch):
+                raise GitHubAppError("GitHub runner inventory contains an invalid entry")
+            runners.extend(batch)
             if len(batch) < 100:
                 return runners
         raise GitHubAppError("GitHub runner inventory exceeded the safe pagination limit")
