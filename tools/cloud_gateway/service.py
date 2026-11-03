@@ -66,7 +66,7 @@ class GatewayService:
             self.store.transition(
                 rid, "failed", provider_id=provider_id, detail=type(exc).__name__,
             )
-            if provider_id and self.runner_cleanup is not None:
+            if provider_id:
                 try:
                     self.terminate(rid)
                 except Exception:
@@ -87,14 +87,17 @@ class GatewayService:
             row = self.store.transition(rid, "terminating")
         if getattr(self.provider, "requires_runner_cleanup", False) and self.runner_cleanup is None:
             raise RuntimeError("GitHub runner deregistration is not configured")
-        if self.runner_cleanup is not None and row.get("provider_id"):
-            try:
-                result = self.runner_cleanup(row, instance)
-            except Exception:
-                self.store.record_event(rid, "cleanup_retry", "pending")
-                self.store.mark_cleanup_due(rid)
-                raise
-            self.store.record_event(rid, "runner_cleanup_confirmed", result)
+        if row.get("provider_id"):
+            if self.runner_cleanup is not None:
+                try:
+                    result = self.runner_cleanup(row, instance)
+                except Exception:
+                    self.store.record_event(rid, "cleanup_retry", "pending")
+                    self.store.mark_cleanup_due(rid)
+                    raise
+                self.store.record_event(rid, "runner_cleanup_confirmed", result)
+            else:
+                self.store.record_event(rid, "provider_cleanup_confirmed", "provider_only")
         return self.store.transition(rid, terminal)
 
     def get(self, rid):
