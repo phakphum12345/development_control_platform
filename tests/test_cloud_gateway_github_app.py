@@ -78,7 +78,7 @@ class GitHubAppBootstrapTests(unittest.TestCase):
         self.assertEqual(seen[1][1], "/repos/phakphum12345/generated-A4-pdf/actions/runners/registration-token")
         self.assertEqual(seen[1][2], "installation-secret")
 
-    def test_requires_actions_write_permission(self):
+    def test_requires_administration_write_permission(self):
         app = self.make()
         app._request = lambda *args, **kwargs: {
             "token": "installation-secret",
