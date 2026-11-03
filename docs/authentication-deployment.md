@@ -43,3 +43,13 @@ For the DCP dashboard and any future apps:
 - Before production enablement, configure the identity-provider tenant, verified domain/redirect URLs, persistent user/account lifecycle and recovery, server secrets, rate limiting, session revocation, audit events and deployment monitoring. Never seed a default password or pretend a missing backend is available.
 
 This repository currently has no configured identity-provider tenant or deployed /api/auth/* service. The recommendations above are the target architecture, not evidence that login is live.
+
+
+## DCP Gateway OIDC ingress
+
+The Gateway-specific trusted-proxy assertion contract, OIDC group-to-role
+mapping, durable SQLite nonce replay protection, and production acceptance
+gates are documented in [OIDC ingress](oidc-ingress.md). The assertion helper
+accepts claims only after a trusted upstream OIDC middleware has validated the
+JWT signature, issuer, audience, state, nonce, expiry, and redirect URI. It
+does not implement a public OIDC callback or create browser sessions by itself.
