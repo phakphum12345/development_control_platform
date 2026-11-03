@@ -38,6 +38,8 @@ class BudgetSnapshot:
             or self.forecast_spend < 0
         ):
             raise ValueError("Budget forecast must be a finite non-negative number")
+        if self.forecast_spend is not None and self.forecast_spend < self.current_spend:
+            raise ValueError("Budget forecast cannot be below current spend")
         if not isinstance(self.currency, str) or not self.currency:
             raise ValueError("Budget currency is required")
 
