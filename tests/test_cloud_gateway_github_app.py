@@ -8,7 +8,7 @@ from unittest.mock import patch
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from tools.cloud_gateway.github_app import GitHubAppError, GitHubAppRunnerBootstrap
+from tools.cloud_gateway.github_app import GitHubAppError, GitHubAppRunnerBootstrap, GitHubRunnerOnlineChecker
 
 
 def encoded_part(part):
@@ -109,6 +109,101 @@ class GitHubAppBootstrapTests(unittest.TestCase):
         with self.assertRaisesRegex(GitHubAppError, "HTTP 403") as caught:
             app._request("POST", "/app/installations/1/access_tokens", "jwt")
         self.assertNotIn("jwt", str(caught.exception))
+
+
+    def test_platform_online_checker_uses_expected_os_labels(self):
+        class StubApp:
+            def __init__(self):
+                self.args = None
+            def is_runner_online(self, repository, runner_name, labels):
+                self.args = (repository, runner_name, tuple(labels))
+                return True
+        stub = StubApp()
+        checker = GitHubRunnerOnlineChecker(stub)
+        self.assertTrue(checker("dcp-123-abcdef12", "phakphum12345/generated-A4-pdf", "windows"))
+        self.assertEqual(stub.args[2], ("self-hosted", "Windows", "X64", "dcp-cloud-windows"))
+        self.assertFalse(checker("dcp-123-abcdef12", "phakphum12345/generated-A4-pdf", "unknown"))
+
+    def test_runner_online_requires_exact_name_status_and_labels(self):
+        app = self.make()
+        calls = []
+        def request(method, path, token, payload=None):
+            calls.append((method, path, payload))
+            if path.startswith("/app/"):
+                return {
+                    "token": "read-installation-token",
+                    "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat(),
+                    "permissions": {"administration": "read"},
+                }
+            return {"runners": [{
+                "id": 42,
+                "name": "dcp-123-abcdef12",
+                "status": "online",
+                "labels": [{"name": "self-hosted"}, {"name": "Linux"}, {"name": "X64"}],
+            }]}
+        app._request = request
+        self.assertTrue(app.is_runner_online(
+            "phakphum12345/generated-A4-pdf",
+            "dcp-123-abcdef12",
+            ["self-hosted", "Linux", "X64"],
+        ))
+        self.assertEqual(calls[0][2], {
+            "repositories": ["phakphum12345/generated-A4-pdf"],
+            "permissions": {"administration": "read"},
+        })
+        self.assertEqual(calls[1][1], "/repos/phakphum12345/generated-A4-pdf/actions/runners?per_page=100")
+
+    def test_runner_online_fails_closed_for_missing_runner(self):
+        app = self.make()
+        token_response = {
+            "token": "read-installation-token",
+            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat(),
+            "permissions": {"administration": "read"},
+        }
+        app._request = lambda method, path, token, payload=None: (
+            token_response if path.startswith("/app/") else {"runners": []}
+        )
+        self.assertFalse(app.is_runner_online(
+            "phakphum12345/generated-A4-pdf", "dcp-123-abcdef12", ["Linux"]
+        ))
+
+    def test_remove_runner_uses_scoped_admin_write_token_after_offline_check(self):
+        app = self.make()
+        calls = []
+        def request(method, path, token, payload=None):
+            calls.append((method, path, payload))
+            if path.startswith("/app/"):
+                permission = "read" if sum(1 for call in calls if call[1].startswith("/app/")) == 1 else "write"
+                return {
+                    "token": permission + "-installation-token",
+                    "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat(),
+                    "permissions": {"administration": permission},
+                }
+            if method == "GET":
+                return {"runners": [{"id": 42, "name": "dcp-123-abcdef12", "status": "offline"}]}
+            return {}
+        app._request = request
+        self.assertTrue(app.remove_runner("phakphum12345/generated-A4-pdf", 42))
+        self.assertEqual(calls[1][0], "GET")
+        self.assertEqual(calls[2][1], "/app/installations/987654/access_tokens")
+        self.assertEqual(calls[3][0], "DELETE")
+        self.assertEqual(calls[3][1], "/repos/phakphum12345/generated-A4-pdf/actions/runners/42")
+        with self.assertRaises(GitHubAppError):
+            app.remove_runner("phakphum12345/generated-A4-pdf", True)
+
+    def test_remove_runner_refuses_online_runner(self):
+        app = self.make()
+        def request(method, path, token, payload=None):
+            if path.startswith("/app/"):
+                return {
+                    "token": "read-installation-token",
+                    "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat(),
+                    "permissions": {"administration": "read"},
+                }
+            return {"runners": [{"id": 42, "name": "dcp-123-abcdef12", "status": "online"}]}
+        app._request = request
+        with self.assertRaisesRegex(GitHubAppError, "not confirmed offline"):
+            app.remove_runner("phakphum12345/generated-A4-pdf", 42)
 
 
 if __name__ == "__main__":

@@ -149,25 +149,34 @@ class GitHubAppRunnerBootstrap:
             raise GitHubAppError("GitHub token is expired or has no timezone")
         return expiry.astimezone(timezone.utc)
 
-    def create_registration_token(self, repository: str) -> RunnerRegistrationCredential:
+    def _installation_token(self, repository: str, administration: str) -> str:
         if not isinstance(repository, str) or repository not in self.allowed_repositories:
-            raise GitHubAppError("Repository is not allowlisted for runner registration")
+            raise GitHubAppError("Repository is not allowlisted for runner administration")
+        if administration not in ("read", "write"):
+            raise ValueError("Unsupported GitHub repository administration scope")
         app_jwt = self._app_jwt()
         installation = self._request(
             "POST",
             "/app/installations/{}/access_tokens".format(self.installation_id),
             app_jwt,
-            {"repositories": [repository], "permissions": {"administration": "write"}},
+            {
+                "repositories": [repository],
+                "permissions": {"administration": administration},
+            },
         )
-        installation_token = installation.get("token")
-        if not isinstance(installation_token, str) or not installation_token:
+        token = installation.get("token")
+        if not isinstance(token, str) or not token:
             raise GitHubAppError("GitHub installation token was not issued")
         permissions = installation.get("permissions")
-        if not isinstance(permissions, dict) or permissions.get("administration") not in ("write", "admin"):
-            raise GitHubAppError("GitHub App installation lacks Administration write permission")
-        installation_expiry = self._expiry(installation.get("expires_at"))
-        if installation_expiry <= datetime.now(timezone.utc):
-            raise GitHubAppError("GitHub installation token is expired")
+        granted = permissions.get("administration") if isinstance(permissions, dict) else None
+        acceptable = ("read", "write", "admin") if administration == "read" else ("write", "admin")
+        if granted not in acceptable:
+            raise GitHubAppError("GitHub App installation lacks required Administration permission")
+        self._expiry(installation.get("expires_at"))
+        return token
+
+    def create_registration_token(self, repository: str) -> RunnerRegistrationCredential:
+        installation_token = self._installation_token(repository, "write")
         owner, name = repository.split("/", 1)
         registration = self._request(
             "POST",
@@ -180,3 +189,85 @@ class GitHubAppRunnerBootstrap:
             raise GitHubAppError("GitHub runner registration token was not issued")
         expiry = self._expiry(registration.get("expires_at"))
         return RunnerRegistrationCredential(token=token, expires_at=expiry)
+
+    def is_runner_online(
+        self, repository: str, runner_name: str, expected_labels: list[str] | tuple[str, ...]
+    ) -> bool:
+        if not isinstance(runner_name, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", runner_name):
+            raise GitHubAppError("Invalid GitHub runner name")
+        if not isinstance(expected_labels, (list, tuple)):
+            raise GitHubAppError("Expected runner labels must be a list or tuple")
+        labels = tuple(expected_labels)
+        if not labels or any(not isinstance(label, str) or not re.fullmatch(
+            r"[A-Za-z0-9_.-]{1,64}", label
+        ) for label in labels):
+            raise GitHubAppError("Invalid expected GitHub runner labels")
+        token = self._installation_token(repository, "read")
+        owner, name = repository.split("/", 1)
+        data = self._request(
+            "GET",
+            "/repos/{}/{}/actions/runners?per_page=100".format(owner, name),
+            token,
+        )
+        runners = data.get("runners")
+        if not isinstance(runners, list):
+            raise GitHubAppError("GitHub runner inventory response is invalid")
+        matches = [runner for runner in runners if isinstance(runner, dict) and runner.get("name") == runner_name]
+        if len(matches) != 1:
+            return False
+        runner = matches[0]
+        observed = runner.get("labels")
+        if not isinstance(observed, list):
+            return False
+        observed_names = {
+            item.get("name") for item in observed
+            if isinstance(item, dict) and isinstance(item.get("name"), str)
+        }
+        return runner.get("status") == "online" and set(labels).issubset(observed_names)
+
+    def remove_runner(self, repository: str, runner_id: int) -> bool:
+        if isinstance(runner_id, bool) or not isinstance(runner_id, int) or runner_id < 1:
+            raise GitHubAppError("Invalid GitHub runner ID")
+        owner, name = repository.split("/", 1) if repository in self.allowed_repositories else ("", "")
+        if not owner:
+            raise GitHubAppError("Repository is not allowlisted for runner administration")
+        read_token = self._installation_token(repository, "read")
+        inventory = self._request(
+            "GET",
+            "/repos/{}/{}/actions/runners?per_page=100".format(owner, name),
+            read_token,
+        )
+        runners = inventory.get("runners")
+        if not isinstance(runners, list):
+            raise GitHubAppError("GitHub runner inventory response is invalid")
+        matches = [runner for runner in runners if isinstance(runner, dict) and runner.get("id") == runner_id]
+        if not matches:
+            return True
+        if len(matches) != 1 or matches[0].get("status") != "offline":
+            raise GitHubAppError("Refusing to deregister a runner that is not confirmed offline")
+        write_token = self._installation_token(repository, "write")
+        self._request(
+            "DELETE",
+            "/repos/{}/{}/actions/runners/{}".format(owner, name, runner_id),
+            write_token,
+        )
+        return True
+
+
+class GitHubRunnerOnlineChecker:
+    """Adapt provider metadata to an exact GitHub runner-online check."""
+
+    LABELS = {
+        "linux": ("self-hosted", "Linux", "X64", "dcp-cloud-linux"),
+        "windows": ("self-hosted", "Windows", "X64", "dcp-cloud-windows"),
+        "macos": ("self-hosted", "macOS", "ARM64", "dcp-cloud-macos"),
+    }
+
+    def __init__(self, github_app: GitHubAppRunnerBootstrap):
+        self.github_app = github_app
+
+    def __call__(self, runner_name: str, repository: str, target_os: str) -> bool:
+        labels = self.LABELS.get(target_os)
+        if labels is None:
+            return False
+        return self.github_app.is_runner_online(repository, runner_name, labels)
