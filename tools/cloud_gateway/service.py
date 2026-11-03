@@ -27,6 +27,14 @@ class GatewayService:
         if getattr(self.provider, "requires_runner_cleanup", False) and self.runner_cleanup is None:
             raise PolicyDenied("GitHub runner deregistration is not configured", 503)
         request = validate_runner_request(payload, self.settings)
+        readiness = getattr(self.provider, "readiness", None)
+        if callable(readiness):
+            try:
+                ready = readiness(request["target_os"])
+            except Exception:
+                ready = None
+            if not isinstance(ready, dict) or ready.get("ready") is not True:
+                raise PolicyDenied("Selected runner provider is not ready", 503)
         fingerprint = idempotency_fingerprint(request)
         old = self.store.get_by_key(key)
         if old:
