@@ -49,7 +49,7 @@ class OrkaTests(unittest.TestCase):
   p=self.make(lambda *args:True)
   readiness=p.readiness("macos")
   self.assertFalse(readiness["ready"])
-  self.assertIn("protected guest user-data",readiness["message"])
+  self.assertIn("User Data bootstrap",readiness["message"])
  def test_provider_errors_do_not_echo_credentials(self):
   p=self.make()
   with patch("tools.cloud_gateway.orka.urlopen",side_effect=HTTPError("url",401,"denied",{},None)):
