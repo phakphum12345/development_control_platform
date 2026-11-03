@@ -13,7 +13,8 @@ from mcp.server.fastmcp import FastMCP
 
 from .engine import (
     copy_preview as engine_copy_preview,
-    EngineError,\n    diff_files as engine_diff_files,
+    EngineError,
+    diff_files as engine_diff_files,
     inspect_file as engine_inspect_file,
     read_text_file as engine_read_text_file,
 )
@@ -44,7 +45,7 @@ def _checked_path(value: str) -> str:
     """Reject common credential stores before any file operation."""
     if not isinstance(value, str) or not value.strip():
         raise EngineError("A non-empty relative path is required.")
-    normalized = value.replace("\\\\", "/")
+    normalized = value.replace("\\", "/")
     parts = PurePosixPath(normalized).parts
     lowered = [part.casefold() for part in parts]
     filename = lowered[-1] if lowered else ""
@@ -75,7 +76,10 @@ def inspect_file(path: str) -> dict[str, Any]:
 @mcp.tool()
 def diff_files(left_path: str, right_path: str) -> dict[str, Any]:
     """Compare files in the workspace; diff text is capped at 8,000 characters."""
-    result = engine_diff_files(\n        WORKSPACE_ROOT, _checked_path(left_path),\n        WORKSPACE_ROOT, _checked_path(right_path),\n    )
+    result = engine_diff_files(
+        WORKSPACE_ROOT, _checked_path(left_path),
+        WORKSPACE_ROOT, _checked_path(right_path),
+    )
     diff = result.get("diff")
     if isinstance(diff, str) and len(diff) > 8_000:
         result["diff"] = diff[:8_000]
@@ -90,7 +94,8 @@ def diff_files(left_path: str, right_path: str) -> dict[str, Any]:
 def copy_preview(source_path: str, destination_path: str) -> dict[str, Any]:
     """Preview copying to a new path inside the workspace; performs no write."""
     return engine_copy_preview(
-        WORKSPACE_ROOT, _checked_path(source_path),\n        WORKSPACE_ROOT, _checked_path(destination_path)
+        WORKSPACE_ROOT, _checked_path(source_path),
+        WORKSPACE_ROOT, _checked_path(destination_path)
     )
 
 
