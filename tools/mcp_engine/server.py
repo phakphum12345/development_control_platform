@@ -31,7 +31,7 @@ mcp = FastMCP("dcp-local-readonly")
 
 @mcp.tool()
 def read_text_file(path: str) -> dict[str, Any]:
-    """Read a UTF-8 text file under the configured workspace (maximum 64 KiB)."""
+    """Read a UTF-8 text file under the configured workspace (maximum 64 KiB and 8,000 Unicode characters)."""
     return engine_read_text_file(WORKSPACE_ROOT, path)
 
 
