@@ -357,10 +357,17 @@ def _budget_guard_from_env(settings):
         if settings.provisioning_enabled:
             raise SystemExit("Azure budget subscription/name required; refusing provisioning startup")
         return None
+    projected_raw = os.getenv("DCP_AZURE_PROJECTED_RUN_COST_USD", "")
+    if not projected_raw:
+        if settings.provisioning_enabled:
+            raise SystemExit("DCP_AZURE_PROJECTED_RUN_COST_USD must be explicitly configured; refusing zero-cost projection")
+        return None
     try:
-        projected = float(os.getenv("DCP_AZURE_PROJECTED_RUN_COST_USD", "0"))
+        projected = float(projected_raw)
     except ValueError as exc:
         raise SystemExit("DCP_AZURE_PROJECTED_RUN_COST_USD must be numeric") from exc
+    if not math.isfinite(projected) or projected <= 0:
+        raise SystemExit("DCP_AZURE_PROJECTED_RUN_COST_USD must be finite and positive")
     from .azure_budget import AzureBudgetReader
     from .budget_guard import AzureBudgetGuard
     reader = AzureBudgetReader(subscription, budget_name)
