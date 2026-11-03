@@ -5,6 +5,7 @@ from unittest.mock import patch,MagicMock
 from tools.cloud_gateway.azure_identity import ManagedIdentityCredential,IdentityError
 from tools.cloud_gateway.key_vault import KeyVaultSecretReader
 from tools.cloud_gateway.azure_budget import AzureBudgetReader,BudgetSnapshot,BudgetReadError
+from tools.cloud_gateway.azure_vm import AzureArmClient
 class CredentialTests(unittest.TestCase):
  def test_no_secret_fallback_when_identity_missing(self):
   with self.assertRaises(IdentityError): ManagedIdentityCredential(env={}).get_token("https://vault.azure.net")
@@ -17,6 +18,16 @@ class CredentialTests(unittest.TestCase):
  def test_untrusted_identity_endpoint_rejected(self):
   env={"IDENTITY_ENDPOINT":"https://attacker.example/token","IDENTITY_HEADER":"x"}
   with self.assertRaises(IdentityError): ManagedIdentityCredential(env).get_token("resource")
+class AzureArmHeaderTests(unittest.TestCase):
+ def test_arm_bearer_token_is_unredirected(self):
+  credential=MagicMock(); credential.get_token.return_value="arm-token"
+  response=MagicMock(); response.__enter__.return_value=response; response.read.return_value=b"{}"
+  with patch("tools.cloud_gateway.azure_vm.urlopen",return_value=response) as call:
+   AzureArmClient(credential).request("GET","https://management.azure.com/subscriptions/test")
+  req=call.call_args.args[0]
+  self.assertEqual(req.get_header("Authorization"),"Bearer arm-token")
+  self.assertTrue(any(k.lower()=="authorization" for k in req.unredirected_hdrs))
+
 class KeyVaultTests(unittest.TestCase):
  def test_rejects_non_azure_vault_origin(self):
   with self.assertRaises(ValueError): KeyVaultSecretReader("https://example.com")
