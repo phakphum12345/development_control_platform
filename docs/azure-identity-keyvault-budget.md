@@ -40,3 +40,15 @@ non-redirected request headers. A redirect cannot forward these credentials to
 a different host. Provider creation requires both a live budget guard and
 verified cleanup wiring. The production bootstrap remains disabled until all
 deployment-side controls are configured and accepted.
+
+
+The Gateway serializes capacity checks and durable provisioning reservations in
+one process so concurrent requests cannot all observe the same free slot. The
+current SQLite deployment supports one Gateway process; multi-process or
+multi-region provisioning requires a shared transactional reservation/nonce
+store before scaling out.
+
+The Azure Consumption budget is authoritative only for Azure resources. Orka
+macOS remains disabled until its own provider-specific cost/budget guard is
+implemented and verified; an Azure budget PASS must never be treated as proof
+that MacStadium spend is within limits.
