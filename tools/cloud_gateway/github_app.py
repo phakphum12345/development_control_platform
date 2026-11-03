@@ -179,6 +179,4 @@ class GitHubAppRunnerBootstrap:
         if not isinstance(token, str) or not token:
             raise GitHubAppError("GitHub runner registration token was not issued")
         expiry = self._expiry(registration.get("expires_at"))
-        if expiry > installation_expiry:
-            raise GitHubAppError("Runner registration token outlives its installation token")
         return RunnerRegistrationCredential(token=token, expires_at=expiry)
