@@ -32,6 +32,7 @@ class NativeMCPServerTests(unittest.IsolatedAsyncioTestCase):
             (root / "two.txt").write_text("alpha\ngamma\n", encoding="utf-8")
             outside = root.parent / f"dcp-mcp-outside-{root.name}.txt"
             outside.write_text("outside", encoding="utf-8")
+            (root / ".env").write_text("LOCAL_SECRET=do-not-read", encoding="utf-8")
             (root / "large.txt").write_text("x" * 8_001, encoding="utf-8")
             (root / "large-left.txt").write_text("a\n" * 5_000, encoding="utf-8")
             (root / "large-right.txt").write_text("b\n" * 5_000, encoding="utf-8")
@@ -73,6 +74,11 @@ class NativeMCPServerTests(unittest.IsolatedAsyncioTestCase):
                             "read_text_file", {"path": "large.txt"}
                         )
                         self.assertTrue(oversized_text.isError)
+
+                        blocked_secret = await session.call_tool(
+                            "read_text_file", {"path": ".env"}
+                        )
+                        self.assertTrue(blocked_secret.isError)
 
                         inspect_result = await session.call_tool(
                             "inspect_file", {"path": "one.txt"}
