@@ -163,6 +163,8 @@ class RunnerStore:
             raise ValueError("Invalid authentication nonce expiry")
         with self.lock, self.db() as c:
             c.execute("DELETE FROM auth_nonces WHERE expires_at<=?", (now_epoch,))
+            if c.execute("SELECT count(*) FROM auth_nonces").fetchone()[0] >= 100000:
+                return False
             try:
                 c.execute(
                     "INSERT INTO auth_nonces(nonce,expires_at) VALUES(?,?)",
