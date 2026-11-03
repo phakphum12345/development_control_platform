@@ -19,7 +19,8 @@ class AzureArmClient:
  def request(self,method,url,payload=None,allow_missing=False):
   token=self.credential.get_token("https://management.azure.com/")
   body=None if payload is None else json.dumps(payload,separators=(",",":")).encode()
-  req=Request(url,data=body,method=method,headers={"Authorization":"Bearer "+token,"Accept":"application/json","Content-Type":"application/json","User-Agent":"DCP-Azure-VM-Provisioner/1.0"})
+  req=Request(url,data=body,method=method,headers={"Accept":"application/json","Content-Type":"application/json","User-Agent":"DCP-Azure-VM-Provisioner/1.0"})
+  req.add_unredirected_header("Authorization","Bearer "+token)
   try:
    with urlopen(req,timeout=self.timeout) as response: raw=response.read(65537)
   except HTTPError as exc:
