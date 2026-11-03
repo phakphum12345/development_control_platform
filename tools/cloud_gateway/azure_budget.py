@@ -94,6 +94,8 @@ class AzureBudgetReader:
             raise BudgetReadError("Azure budget read failed: " + type(exc).__name__) from exc
         try:
             properties = data["properties"]
+            if properties.get("category") != "Cost":
+                raise ValueError("Budget category is not Cost")
             period = properties["timePeriod"]
             start = datetime.fromisoformat(str(period["startDate"]).replace("Z", "+00:00"))
             end = datetime.fromisoformat(str(period["endDate"]).replace("Z", "+00:00"))
