@@ -146,6 +146,17 @@ class RunnerStore:
             c.execute("COMMIT")
             return self.get(rid)
 
+    def mark_cleanup_due(self, rid):
+        timestamp = now()
+        with self.lock, self.db() as c:
+            changed = c.execute(
+                "UPDATE runners SET expires_at=?,updated_at=? "
+                "WHERE id=? AND state IN (?,?,?)",
+                (timestamp, timestamp, rid, "provisioning", "online", "terminating"),
+            ).rowcount
+            if not changed:
+                raise LifecycleConflict("Runner is not in a retryable cleanup state")
+
     def record_event(self, rid, event, result=None):
         if event not in CLEANUP_EVENTS:
             raise ValueError("Audit event is not allowlisted")
