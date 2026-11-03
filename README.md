@@ -37,7 +37,7 @@ Codex MCP configuration with `DCP_MCP_ROOT` set to the one approved workspace.
 The DCP MCP server exposes only `read_text_file`, `inspect_file`,
 `diff_files`, and `copy_preview`. It does not expose file writes, Git
 operations, shell execution, a network listener, or cloud model calls. The
-text-reading tool is capped at 64 KiB per call.
+text-reading tool is capped at 64 KiB and 8,000 Unicode characters per call; diff output is capped at 8,000 characters.
 
 Codex is the MCP host and can orchestrate the separate `dcp_local` and
 `ollama_local` servers: inspect source through DCP, then submit the bounded
