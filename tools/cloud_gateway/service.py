@@ -79,7 +79,11 @@ class GatewayService:
         if getattr(self.provider, "requires_runner_cleanup", False) and self.runner_cleanup is None:
             raise RuntimeError("GitHub runner deregistration is not configured")
         if self.runner_cleanup is not None and row.get("provider_id"):
-            result = self.runner_cleanup(row, instance)
+            try:
+                result = self.runner_cleanup(row, instance)
+            except Exception:
+                self.store.record_event(rid, "cleanup_retry", "pending")
+                raise
             self.store.record_event(rid, "runner_cleanup_confirmed", result)
         return self.store.transition(rid, terminal)
 
@@ -115,11 +119,11 @@ class GatewayService:
             instance = self.provider.terminate(row["provider_id"])
             if instance.state not in ("terminated", "failed"):
                 instance = self.provider.status(row["provider_id"])
-            if instance.state in ("terminated", "failed"):
-                row = self._finalize_provider_state(row, instance)
         except Exception:
             self.store.record_event(rid, "cleanup_retry", "pending")
             raise
+        if instance.state in ("terminated", "failed"):
+            row = self._finalize_provider_state(row, instance)
         return self.public(row)
 
     def reconcile_expired(self, now_utc=None):
