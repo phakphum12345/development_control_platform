@@ -25,6 +25,29 @@ Open dashboard/index.html in a modern browser. Current tools:
 
 The dashboard calls the unauthenticated public GitHub REST API directly from the browser. Network errors, inaccessible resources, and rate limits are shown as errors. This is not private-repository integration and uses no credentials.
 
+## Local MCP adapter and Ollama workflow
+
+DCP now includes an optional local STDIO MCP adapter for bounded, read-only
+source inspection. See [docs/native-mcp-engine.md](docs/native-mcp-engine.md)
+and [docs/native-mcp-engine-test-plan.md](docs/native-mcp-engine-test-plan.md).
+Install its pinned optional dependency with `python -m pip install -r
+requirements-mcp.txt`, then register `tools.mcp_engine.server` in the local
+Codex MCP configuration with `DCP_MCP_ROOT` set to the one approved workspace.
+
+The DCP MCP server exposes only `read_text_file`, `inspect_file`,
+`diff_files`, and `copy_preview`. It does not expose file writes, Git
+operations, shell execution, a network listener, or cloud model calls. The
+text-reading tool is capped at 64 KiB per call.
+
+Codex is the MCP host and can orchestrate the separate `dcp_local` and
+`ollama_local` servers: inspect source through DCP, then submit the bounded
+text to the local Ollama model for advisory analysis. Model output is not
+evidence that tests passed and does not authorize source changes.
+
+This integration is for the local Codex Desktop/CLI MCP host. The static DCP
+Dashboard does not directly connect to MCP or Ollama; adding browser-to-local
+service integration requires a separate security design and approval.
+
 ## Security limitations
 
 The static public-GitHub tools do not provide private-repository access or authenticated GitHub permissions. The Research OS API connector is staged and is **not production-ready** until the matching backend changes are deployed to the canonical Render source repository and end-to-end tests prove session validation, owner authorization, repository allowlisting, CORS, and OAuth handoff. Until then, do not treat the connector as an available production capability. The dashboard does not implement organization tenant isolation, durable audit logs, evidence freshness enforcement, production route integration, or Git write actions. UI Route Manager access labels are planning metadata only; browser-local registry edits do not alter the actual router. The UI Simulator runs user-authored preview code inside a sandboxed iframe and is not a production deployment tool. It cannot create branches or PRs, approve reviews, merge, push, or deploy. Browser controls are not an authorization boundary.
@@ -50,13 +73,18 @@ Run the static dashboard contract tests using Python 3.12 or newer:
 
     python -m unittest discover -s tests -v
 
+The full suite now includes a local STDIO MCP protocol test and therefore installs
+the pinned optional dependency before test discovery:
+
+    python -m pip install -r requirements-mcp.txt
+
 Run the real-browser smoke tests with Node.js and Playwright Chromium:
 
     npm install --no-save --no-package-lock playwright
     npx playwright install --with-deps chromium
     node tests/browser_smoke.mjs
 
-The CI workflow runs both static contract tests and browser smoke tests. Browser coverage exercises route-color persistence, route registry add/edit/delete, connection editing, the sandboxed simulator, and registry-route preview. These checks do not replace authenticated integration tests or a production security review.
+The CI workflow runs static contract tests and browser smoke tests. Browser coverage exercises route-color persistence, route registry add/edit/delete, connection editing, the sandboxed simulator, and registry-route preview. These checks do not replace authenticated integration tests or a production security review.
 
 ## Run the dashboard locally
 
@@ -93,4 +121,7 @@ The helper is read-only except for the explicit `launch-avd` command. It does no
 - tests/browser_smoke.mjs — Playwright browser smoke tests.
 - tools/runner_backend/cloud_api.py — HTTPS provider gateway adapter.
 - tests/test_cloud_runner_backend.py — policy and HTTP adapter contract tests.
+- tools/mcp_engine/engine.py — bounded local source inspection, diff, and copy-preview engine.
+- tools/mcp_engine/server.py — local read-only STDIO MCP adapter.
+- tests/test_native_mcp_server.py — MCP protocol and read-only boundary tests.
 - .github/workflows/validate-control-plane.yml — JavaScript syntax, static and browser tests, registry/schema checks, credential-pattern scanning, and optional self-hosted Windows smoke tests.
