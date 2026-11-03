@@ -24,6 +24,8 @@ class GatewayService:
     def create(self, payload, key):
         if not isinstance(key, str) or not 8 <= len(key) <= 200:
             raise PolicyDenied("Idempotency-Key must be 8..200 characters", 400)
+        if getattr(self.provider, "requires_runner_cleanup", False) and self.runner_cleanup is None:
+            raise PolicyDenied("GitHub runner deregistration is not configured", 503)
         request = validate_runner_request(payload, self.settings)
         fingerprint = idempotency_fingerprint(request)
         old = self.store.get_by_key(key)
@@ -66,6 +68,8 @@ class GatewayService:
         rid = row["id"]
         if row["state"] != "terminating":
             row = self.store.transition(rid, "terminating")
+        if getattr(self.provider, "requires_runner_cleanup", False) and self.runner_cleanup is None:
+            raise RuntimeError("GitHub runner deregistration is not configured")
         if self.runner_cleanup is not None and row.get("provider_id"):
             result = self.runner_cleanup(row, instance)
             self.store.record_event(rid, "runner_cleanup_confirmed", result)
@@ -92,6 +96,8 @@ class GatewayService:
             return None
         if row["state"] == "terminated":
             return self.public(row)
+        if getattr(self.provider, "requires_runner_cleanup", False) and self.runner_cleanup is None:
+            raise RuntimeError("GitHub runner deregistration is not configured")
         if row["state"] != "terminating":
             row = self.store.transition(rid, "terminating")
         if not row.get("provider_id"):
@@ -99,6 +105,8 @@ class GatewayService:
             return self.public(row)
         try:
             instance = self.provider.terminate(row["provider_id"])
+            if instance.state not in ("terminated", "failed"):
+                instance = self.provider.status(row["provider_id"])
             if instance.state in ("terminated", "failed"):
                 row = self._finalize_provider_state(row, instance)
         except Exception:
