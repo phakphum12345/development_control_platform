@@ -107,7 +107,7 @@ class AzureRunnerBootstrapFactory:
             f"--token {ps(token)} --name {ps(vm_name)} --labels {ps(','.join(labels))} "
             "--ephemeral --disableupdate",
             "$taskScript = Join-Path $root 'start-runner.ps1'",
-            "@'\\nSet-Location -LiteralPath $PSScriptRoot\\n& .\\run.cmd\\nexit $LASTEXITCODE\\n'@ | Set-Content -LiteralPath $taskScript -Encoding UTF8",
+            "@'\nSet-Location -LiteralPath $PSScriptRoot\n& .\\run.cmd\nexit $LASTEXITCODE\n'@ | Set-Content -LiteralPath $taskScript -Encoding UTF8",
             "& icacls.exe $root /inheritance:r /grant 'SYSTEM:(OI)(CI)F' 'BUILTIN\\Administrators:(OI)(CI)F' 'NT AUTHORITY\\NETWORK SERVICE:(OI)(CI)M' | Out-Null",
             "$taskCommand = 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"' + $taskScript + '\"'",
             "& schtasks.exe /Create /SC ONSTART /TN 'DCP-Ephemeral-Runner' /TR $taskCommand /RU 'NT AUTHORITY\\NETWORK SERVICE' /RL LIMITED /F",
