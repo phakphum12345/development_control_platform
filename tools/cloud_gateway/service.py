@@ -62,7 +62,7 @@ class GatewayService:
             row = self.store.transition(rid, "provisioning", instance.provider_id)
             row.update(runner_name=instance.runner_name, labels=list(instance.labels))
         except Exception as exc:
-            self.store.transition(rid, "failed", detail=type(exc).__name__)
+            self.store.transition(\n                rid, "failed", provider_id=getattr(exc, "provider_id", None),\n                detail=type(exc).__name__,\n            )
             raise
         return self.public(row), True
 
