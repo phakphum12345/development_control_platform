@@ -245,6 +245,9 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
                     result.get("message", "Provider bootstrap not configured")
                     if isinstance(result, dict) else description + " bootstrap not configured"
                 )
+                if ready and getattr(service.provider, "requires_budget_guard", False) and service.budget_guard is None:
+                    ready = False
+                    message = "Live budget guard is not configured"
                 if ready and getattr(service.provider, "requires_runner_cleanup", False) and service.runner_cleanup is None:
                     ready = False
                     message = "GitHub runner deregistration is not configured"
