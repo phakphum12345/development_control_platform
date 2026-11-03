@@ -195,6 +195,8 @@ class GitHubAppRunnerBootstrap:
     ) -> bool:
         if not isinstance(runner_name, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", runner_name):
             raise GitHubAppError("Invalid GitHub runner name")
+        if not isinstance(expected_labels, (list, tuple)):
+            raise GitHubAppError("Expected runner labels must be a list or tuple")
         labels = tuple(expected_labels)
         if not labels or any(not isinstance(label, str) or not re.fullmatch(
             r"[A-Za-z0-9_.-]{1,64}", label
@@ -226,11 +228,27 @@ class GitHubAppRunnerBootstrap:
     def remove_runner(self, repository: str, runner_id: int) -> bool:
         if isinstance(runner_id, bool) or not isinstance(runner_id, int) or runner_id < 1:
             raise GitHubAppError("Invalid GitHub runner ID")
-        token = self._installation_token(repository, "write")
-        owner, name = repository.split("/", 1)
+        owner, name = repository.split("/", 1) if repository in self.allowed_repositories else ("", "")
+        if not owner:
+            raise GitHubAppError("Repository is not allowlisted for runner administration")
+        read_token = self._installation_token(repository, "read")
+        inventory = self._request(
+            "GET",
+            "/repos/{}/{}/actions/runners?per_page=100".format(owner, name),
+            read_token,
+        )
+        runners = inventory.get("runners")
+        if not isinstance(runners, list):
+            raise GitHubAppError("GitHub runner inventory response is invalid")
+        matches = [runner for runner in runners if isinstance(runner, dict) and runner.get("id") == runner_id]
+        if not matches:
+            return True
+        if len(matches) != 1 or matches[0].get("status") != "offline":
+            raise GitHubAppError("Refusing to deregister a runner that is not confirmed offline")
+        write_token = self._installation_token(repository, "write")
         self._request(
             "DELETE",
             "/repos/{}/{}/actions/runners/{}".format(owner, name, runner_id),
-            token,
+            write_token,
         )
         return True
