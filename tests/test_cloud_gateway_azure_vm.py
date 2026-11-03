@@ -13,6 +13,7 @@ class FakeArm:
  def resource_id(self,provider,kind,name): return f"/subscriptions/{SUB}/resourceGroups/dcp/providers/{provider}/{kind}/{name}"
  def request(self,method,url,payload=None,allow_missing=False):
   self.calls.append((method,url,payload))
+  if self.fail_vm_put and method=="PUT" and "Microsoft.Compute/virtualMachines/" in url: raise RuntimeError("simulated VM create uncertainty")
   if "Microsoft.Network/networkInterfaces/" in url:
    if method=="GET": return {"properties":{"provisioningState":"Succeeded"}} if self.nic_exists else None
    if method=="DELETE": return {}
