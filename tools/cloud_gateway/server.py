@@ -217,10 +217,13 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
             if guard is not None:
                 try:
                     snapshot = guard.inspect()
-                    budget_state = "PASS" if snapshot.permits(guard.projected_run_cost_usd) else "FAIL"
+                    active_runners = service.store.active_count()
+                    projected_total = guard.projected_run_cost_usd * (active_runners + 1)
+                    budget_state = "PASS" if snapshot.permits(projected_total) else "FAIL"
                     budget_message = (
                         f"{snapshot.currency} budget; current spend {snapshot.current_spend:g}; "
-                        f"forecast {snapshot.forecast_spend if snapshot.forecast_spend is not None else 'unavailable'}"
+                        f"forecast {snapshot.forecast_spend if snapshot.forecast_spend is not None else 'unavailable'}; "
+                        f"projected {projected_total:g} for {active_runners + 1} runner(s)"
                     )
                 except Exception:
                     budget_state = "UNKNOWN"
@@ -253,6 +256,8 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
                 "provisioning_enabled": service.settings.provisioning_enabled,
                 "budget_gate": budget_state,
                 "budget_message": budget_message,
+                "active_runners": service.store.active_count(),
+                "lifecycle": service.store.lifecycle_summary(),
                 "bootstrap_ready": bootstrap_ready,
                 "circuit_breaker_tripped": service.settings.circuit_breaker_tripped,
                 "providers": providers,
