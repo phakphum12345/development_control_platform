@@ -59,7 +59,7 @@ class BudgetTests(unittest.TestCase):
   self.assertEqual(snapshot.current_spend,12); self.assertTrue(snapshot.permits(3))
   req=call.call_args.args[0]; self.assertEqual(req.get_method(),"GET"); self.assertTrue(any(k.lower()=="authorization" for k in req.unredirected_hdrs))
  def test_budget_snapshot_rejects_nonfinite_and_negative_values(self):
-  for values in ((float("nan"),1,1,"USD"),(100,-1,1,"USD"),(100,1,float("inf"),"USD")):
+  for values in ((float("nan"),1,1,"USD"),(100,-1,1,"USD"),(100,1,float("inf"),"USD"),(100,20,10,"USD")):
    with self.assertRaises(ValueError): BudgetSnapshot(*values)
  def test_missing_or_mismatched_forecast_fails_closed(self):
   credential=MagicMock(); credential.get_token.return_value="token"
