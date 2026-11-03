@@ -54,7 +54,9 @@ class OrkaProvider:
   data=self._request("GET",path,allow_missing=True)
   if data is None: return RunnerInstance(provider_id,"terminated")
   vm_status=str(data.get("status","")).lower()
-  if vm_status in ("failed","error","crashed"): state="failed"
+  if vm_status in ("failed","error","crashed"):
+   self._request("DELETE",path,allow_missing=True)
+   state="terminating"
   elif vm_status in ("deleting","terminating"): state="terminating"
   elif vm_status in ("running","ready") and self.online:
    metadata=data.get("customMetadata",{})
