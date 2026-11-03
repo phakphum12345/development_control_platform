@@ -206,6 +206,21 @@ class GatewayCleanupIntegrationTests(unittest.TestCase):
         self.assertEqual(result["state"], "terminating")
         self.assertEqual(len(self.store.expired_active(datetime.now(timezone.utc).isoformat())), 1)
 
+    def test_idempotent_replay_returns_existing_runner_even_if_provider_not_ready(self):
+        class MutableReadiness(CleanupProvider):
+            ready = True
+            def readiness(self, os_name):
+                return {"ready": self.ready}
+        provider = MutableReadiness()
+        service = GatewayService(settings(), self.store, provider, runner_cleanup=lambda *_: "removed")
+        first, created = service.create(request_payload(), "cleanup-key-replay")
+        provider.ready = False
+        replay, replay_created = service.create(request_payload(), "cleanup-key-replay")
+        self.assertTrue(created)
+        self.assertFalse(replay_created)
+        self.assertEqual(first["id"], replay["id"])
+        self.assertEqual(len([call for call in provider.calls if call[0] == "provision"]), 1)
+
     def test_provider_readiness_must_be_pass(self):
         class NotReady(CleanupProvider):
             def readiness(self, os_name):
