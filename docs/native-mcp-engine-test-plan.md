@@ -27,7 +27,9 @@ python -m unittest discover -s tests -v
 - complete MCP initialization and list the exact four tools;
 - verify `read_text_file`, `inspect_file`, and `diff_files` return expected data;
 - verify `copy_preview` reports `writes_performed: false` and creates no file;
-- verify text inputs above 8,000 Unicode characters are rejected;\n- verify diff payloads above 8,000 characters are explicitly truncated;\n- verify traversal outside the configured root is rejected;
+- verify text inputs above 8,000 Unicode characters are rejected;
+- verify diff payloads above 8,000 characters are explicitly truncated;
+- verify traversal outside the configured root is rejected;
 - verify `copy_apply` is not exposed as an MCP tool.
 
 ## Gate labels
