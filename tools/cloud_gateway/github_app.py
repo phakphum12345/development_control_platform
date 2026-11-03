@@ -114,13 +114,13 @@ class GitHubAppRunnerBootstrap:
         body = None if payload is None else json.dumps(payload, separators=(",", ":")).encode("utf-8")
         headers = {
             "Accept": "application/vnd.github+json",
-            "Authorization": "Bearer " + token,
             "X-GitHub-Api-Version": "2022-11-28",
             "User-Agent": "DCP-GitHub-App-Runner-Bootstrap/1.0",
         }
         if body is not None:
             headers["Content-Type"] = "application/json"
         request = Request(self.API_ORIGIN + path, data=body, method=method, headers=headers)
+        request.add_unredirected_header("Authorization", "Bearer " + token)
         try:
             with self.opener(request, timeout=self.timeout) as response:
                 raw = response.read(65537)
