@@ -56,7 +56,12 @@ class OrkaProvider:
   vm_status=str(data.get("status","")).lower()
   if vm_status in ("failed","error","crashed"): state="failed"
   elif vm_status in ("deleting","terminating"): state="terminating"
-  elif vm_status in ("running","ready") and self.online and self.online(provider_id): state="online"
+  elif vm_status in ("running","ready") and self.online:
+   metadata=data.get("customMetadata",{})
+   repository=metadata.get("repository") if isinstance(metadata,dict) else None
+   try: online=self.online(provider_id,repository,"macos") is True
+   except Exception: online=False
+   state="online" if online else "provisioning"
   else: state="provisioning"
   return RunnerInstance(provider_id,state,provider_id)
  def terminate(self,provider_id):
