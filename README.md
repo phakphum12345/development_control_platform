@@ -30,9 +30,14 @@ The dashboard calls the unauthenticated public GitHub REST API directly from the
 DCP now includes an optional local STDIO MCP adapter for bounded, read-only
 source inspection. See [docs/native-mcp-engine.md](docs/native-mcp-engine.md)
 and [docs/native-mcp-engine-test-plan.md](docs/native-mcp-engine-test-plan.md).
-Install its pinned optional dependency with `python -m pip install -r
-requirements-mcp.txt`, then register `tools.mcp_engine.server` in the local
-Codex MCP configuration with `DCP_MCP_ROOT` set to the one approved workspace.
+Install its pinned optional dependency:
+
+```powershell
+python -m pip install -r requirements-mcp.txt
+```
+
+Then register `tools.mcp_engine.server` in the local Codex MCP configuration
+with `DCP_MCP_ROOT` set to the one approved workspace.
 
 The DCP MCP server exposes only `read_text_file`, `inspect_file`,
 `diff_files`, and `copy_preview`. It does not expose file writes, Git
