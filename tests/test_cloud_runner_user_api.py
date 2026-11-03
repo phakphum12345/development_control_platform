@@ -137,6 +137,31 @@ class AuthenticatedControlAPITests(unittest.TestCase):
                 ["dcp-owners"], ["dcp-operators"],
             )
 
+    def test_durable_nonce_expiry_allows_reuse_only_after_window(self):
+        nonce = "durable_nonce_000001"
+        self.assertTrue(self.store.consume_auth_nonce(nonce, 100.0, 160.0))
+        self.assertFalse(self.store.consume_auth_nonce(nonce, 120.0, 180.0))
+        self.assertTrue(self.store.consume_auth_nonce(nonce, 161.0, 221.0))
+
+    def test_oidc_assertion_is_bound_to_method_and_path(self):
+        claims = {
+            "iss": "https://idp.example.test/", "aud": "dcp-web",
+            "sub": "oidc-subject-789", "groups": ["dcp-operators"],
+            "iat": int(time.time()), "exp": int(time.time()) + 300,
+        }
+        headers = sign_verified_oidc_assertion(
+            "GET", "/api/cloud-runners/status", claims,
+            "session_1234567890abcdef", SECRET,
+            "https://idp.example.test/", "dcp-web",
+            ["dcp-owners"], ["dcp-operators"],
+        )
+        class Handler:
+            command = "GET"
+            path = "/api/cloud-runners"
+            def __init__(self, value):
+                self.headers = value
+        self.assertIsNone(ProxyIdentityVerifier(SECRET).verify(Handler(headers)))
+
     def test_durable_nonce_replay_is_rejected_across_verifier_instances(self):
         claims = {
             "iss": "https://idp.example.test/", "aud": "dcp-web",
