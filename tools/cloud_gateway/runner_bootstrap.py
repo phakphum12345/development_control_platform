@@ -109,6 +109,7 @@ class AzureRunnerBootstrapFactory:
             "$taskScript = Join-Path $root 'start-runner.ps1'",
             "@'\nSet-Location -LiteralPath $PSScriptRoot\n& .\\run.cmd\nexit $LASTEXITCODE\n'@ | Set-Content -LiteralPath $taskScript -Encoding UTF8",
             "& icacls.exe $root /inheritance:r /grant 'SYSTEM:(OI)(CI)F' 'BUILTIN\\Administrators:(OI)(CI)F' 'NT AUTHORITY\\NETWORK SERVICE:(OI)(CI)M' | Out-Null",
+            "if ($LASTEXITCODE -ne 0) { throw 'Could not restrict runner directory ACL' }",
             "$taskCommand = 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"' + $taskScript + '\"'",
             "& schtasks.exe /Create /SC ONSTART /TN 'DCP-Ephemeral-Runner' /TR $taskCommand /RU 'NT AUTHORITY\\NETWORK SERVICE' /RL LIMITED /F",
             "if ($LASTEXITCODE -ne 0) { throw 'Could not create least-privilege runner task' }",
