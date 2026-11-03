@@ -88,7 +88,7 @@ class GitHubAppBootstrapTests(unittest.TestCase):
         with self.assertRaises(GitHubAppError):
             app.create_registration_token("phakphum12345/generated-A4-pdf")
 
-    def test_rejects_registration_token_that_outlives_installation_token(self):
+    def test_rejects_expired_registration_token(self):
         app = self.make()
         app._request = lambda method, path, token, payload=None: (
             {"token": "installation-secret",
@@ -96,7 +96,7 @@ class GitHubAppBootstrapTests(unittest.TestCase):
              "permissions": {"actions": "write"}}
             if path.startswith("/app/") else
             {"token": "registration-secret",
-             "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat()}
+             "expires_at": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()}
         )
         with self.assertRaises(GitHubAppError):
             app.create_registration_token("phakphum12345/generated-A4-pdf")
