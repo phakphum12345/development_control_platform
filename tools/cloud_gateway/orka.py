@@ -9,6 +9,7 @@ from tools.runner_backend.provider import RunnerInstance
 class OrkaError(RuntimeError): pass
 class OrkaProvider:
  requires_runner_cleanup=True
+ requires_budget_guard=True
  def __init__(self,base_url,namespace,vm_config,secret_reader,secret_name="orka-api-token",runner_online_checker=None,timeout=20):
   parsed=urlparse(base_url)
   if parsed.scheme!="https" or not parsed.hostname or parsed.username or parsed.password or parsed.path not in ("","/") or parsed.query or parsed.fragment: raise ValueError("Orka endpoint must be an HTTPS origin")
