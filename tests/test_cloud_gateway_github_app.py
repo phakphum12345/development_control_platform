@@ -111,5 +111,68 @@ class GitHubAppBootstrapTests(unittest.TestCase):
         self.assertNotIn("jwt", str(caught.exception))
 
 
+    def test_runner_online_requires_exact_name_status_and_labels(self):
+        app = self.make()
+        calls = []
+        def request(method, path, token, payload=None):
+            calls.append((method, path, payload))
+            if path.startswith("/app/"):
+                return {
+                    "token": "read-installation-token",
+                    "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat(),
+                    "permissions": {"administration": "read"},
+                }
+            return {"runners": [{
+                "id": 42,
+                "name": "dcp-123-abcdef12",
+                "status": "online",
+                "labels": [{"name": "self-hosted"}, {"name": "Linux"}, {"name": "X64"}],
+            }]}
+        app._request = request
+        self.assertTrue(app.is_runner_online(
+            "phakphum12345/generated-A4-pdf",
+            "dcp-123-abcdef12",
+            ["self-hosted", "Linux", "X64"],
+        ))
+        self.assertEqual(calls[0][2], {
+            "repositories": ["phakphum12345/generated-A4-pdf"],
+            "permissions": {"administration": "read"},
+        })
+        self.assertEqual(calls[1][1], "/repos/phakphum12345/generated-A4-pdf/actions/runners?per_page=100")
+
+    def test_runner_online_fails_closed_for_missing_runner(self):
+        app = self.make()
+        token_response = {
+            "token": "read-installation-token",
+            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat(),
+            "permissions": {"administration": "read"},
+        }
+        app._request = lambda method, path, token, payload=None: (
+            token_response if path.startswith("/app/") else {"runners": []}
+        )
+        self.assertFalse(app.is_runner_online(
+            "phakphum12345/generated-A4-pdf", "dcp-123-abcdef12", ["Linux"]
+        ))
+
+    def test_remove_runner_uses_scoped_admin_write_token(self):
+        app = self.make()
+        calls = []
+        def request(method, path, token, payload=None):
+            calls.append((method, path, payload))
+            if path.startswith("/app/"):
+                return {
+                    "token": "write-installation-token",
+                    "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat(),
+                    "permissions": {"administration": "write"},
+                }
+            return {}
+        app._request = request
+        self.assertTrue(app.remove_runner("phakphum12345/generated-A4-pdf", 42))
+        self.assertEqual(calls[1][0], "DELETE")
+        self.assertEqual(calls[1][1], "/repos/phakphum12345/generated-A4-pdf/actions/runners/42")
+        with self.assertRaises(GitHubAppError):
+            app.remove_runner("phakphum12345/generated-A4-pdf", True)
+
+
 if __name__ == "__main__":
     unittest.main()
