@@ -87,7 +87,7 @@ class AuthenticatedControlAPITests(unittest.TestCase):
     def test_oidc_verified_claims_map_to_signed_gateway_assertion(self):
         claims = {
             "iss": "https://idp.example.test/",
-            "aud": ["dcp-web", "other-client"],
+            "aud": ["dcp-web", "other-client"], "azp": "dcp-web",
             "sub": "oidc-subject-123",
             "groups": ["dcp-operators"],
             "iat": int(time.time()),
