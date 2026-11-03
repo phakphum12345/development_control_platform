@@ -34,8 +34,8 @@ class OrkaTests(unittest.TestCase):
   with patch("tools.cloud_gateway.orka.urlopen",return_value=response({"status":"Running","name":name})): result=p.status(name)
   self.assertEqual(result.state,"provisioning")
  def test_online_requires_runner_checker(self):
-  p=self.make(lambda _:True); name="dcp-123-"+"a"*8
-  with patch("tools.cloud_gateway.orka.urlopen",return_value=response({"status":"Running","name":name})): self.assertEqual(p.status(name).state,"online")
+  p=self.make(lambda *args:True); name="dcp-123-"+"a"*8
+  with patch("tools.cloud_gateway.orka.urlopen",return_value=response({"status":"Running","name":name,"customMetadata":{"repository":"phakphum12345/generated-A4-pdf","target-os":"macos"}})): self.assertEqual(p.status(name).state,"online")
  def test_delete_acceptance_is_terminating_and_404_confirms_gone(self):
   p=self.make(); name="dcp-123-"+"a"*8
   with patch("tools.cloud_gateway.orka.urlopen",return_value=response({"status":"Terminating"})): self.assertEqual(p.terminate(name).state,"terminating")
