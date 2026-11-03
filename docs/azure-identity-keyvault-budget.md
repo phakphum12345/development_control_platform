@@ -52,3 +52,9 @@ The Azure Consumption budget is authoritative only for Azure resources. Orka
 macOS remains disabled until its own provider-specific cost/budget guard is
 implemented and verified; an Azure budget PASS must never be treated as proof
 that MacStadium spend is within limits.
+
+
+Azure's Consumption Budgets API only returns `forecastSpend` when the budget
+contains a forecast alert type. Configure a forecasted notification on the
+target budget; otherwise DCP treats the snapshot as UNKNOWN and denies runner
+creation rather than silently falling back to current spend only.
