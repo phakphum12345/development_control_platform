@@ -7,7 +7,7 @@ IMAGES={"linux":{"publisher":"Canonical","offer":"ubuntu-24_04-lts","sku":"serve
 class FakeArm:
  subscription_id=SUB; resource_group="dcp"
  def __init__(self):
-  self.calls=[]; self.nic_exists=True
+  self.calls=[]; self.nic_exists=True; self.fail_vm_put=False
   self.get_result={"properties":{"provisioningState":"Succeeded"},"tags":{"repository":"phakphum12345/generated-A4-pdf","target-os":"linux"}}
  def resource_url(self,provider,kind,name,version): return f"https://management.azure.com/subscriptions/{SUB}/resourceGroups/dcp/providers/{provider}/{kind}/{name}?api-version={version}"
  def resource_id(self,provider,kind,name): return f"/subscriptions/{SUB}/resourceGroups/dcp/providers/{provider}/{kind}/{name}"
@@ -39,6 +39,10 @@ class AzureVMTests(unittest.TestCase):
    self.assertEqual(vm["networkProfile"]["networkInterfaces"][0]["id"],f"/subscriptions/{SUB}/resourceGroups/dcp/providers/Microsoft.Network/networkInterfaces/{arm.calls[0][1].split('/')[-1].split('?')[0]}")
    self.assertNotIn("identity",vm); self.assertEqual(vm["tags"]["managed-by"],"dcp-cloud-runner")
    self.assertIn("protectedSettings",vm["resources"][0]["properties"])
+ def test_partial_vm_create_failure_retains_provider_id_for_reconciliation(self):
+  p,arm=self.make(); arm.fail_vm_put=True
+  with self.assertRaises(AzureProvisionError) as caught: p.provision(payload("linux"))
+  self.assertRegex(caught.exception.provider_id,r"^dcp-[0-9]+-[a-f0-9]{8}$")
  def test_rejects_mac_os_and_public_network_policy(self):
   p,_=self.make()
   with self.assertRaises(AzureProvisionError): p.provision(payload("macos"))
