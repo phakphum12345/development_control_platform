@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ACTIVE = ("provisioning", "online", "terminating")
-CLEANUP_EVENTS = {"runner_cleanup_confirmed", "cleanup_retry"}
+CLEANUP_EVENTS = {"runner_cleanup_confirmed", "provider_cleanup_confirmed", "cleanup_retry"}
 TRANSITIONS = {
     "provisioning": {"provisioning", "online", "terminating", "terminated", "failed"},
     "online": {"terminating", "terminated", "failed"},
@@ -55,7 +55,10 @@ class RunnerStore:
         with self.lock, self.db() as c:
             return c.execute(
                 "SELECT count(*) FROM runners WHERE state IN (?,?,?) "
-                "OR (state='failed' AND provider_id IS NOT NULL)", ACTIVE
+                "OR (state='failed' AND provider_id IS NOT NULL AND NOT EXISTS "
+                "(SELECT 1 FROM audit WHERE audit.runner_id=runners.id "
+                "AND audit.event IN ('runner_cleanup_confirmed','provider_cleanup_confirmed')))",
+                ACTIVE,
             ).fetchone()[0]
 
     def expired_active(self, now_iso):
@@ -69,7 +72,9 @@ class RunnerStore:
         with self.lock, self.db() as c:
             rows = c.execute(
                 "SELECT * FROM runners WHERE "
-                "(state IN (?,?,?) OR (state='failed' AND provider_id IS NOT NULL)) "
+                "(state IN (?,?,?) OR (state='failed' AND provider_id IS NOT NULL AND NOT EXISTS "
+                "(SELECT 1 FROM audit WHERE audit.runner_id=runners.id "
+                "AND audit.event IN ('runner_cleanup_confirmed','provider_cleanup_confirmed')))) "
                 "AND expires_at<=? ORDER BY expires_at",
                 (*ACTIVE, now_iso),
             ).fetchall()
@@ -161,7 +166,7 @@ class RunnerStore:
         if event not in CLEANUP_EVENTS:
             raise ValueError("Audit event is not allowlisted")
         safe = {}
-        if result in ("removed", "already_absent", "pending"):
+        if result in ("removed", "already_absent", "provider_only", "pending"):
             safe["result"] = result
         with self.lock, self.db() as c:
             exists = c.execute("SELECT 1 FROM runners WHERE id=?", (rid,)).fetchone()
