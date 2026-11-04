@@ -8,6 +8,7 @@ from .policy import PROFILES
 class ProviderRouter:
     """Route by approved OS profile and namespace provider IDs across restarts."""
 
+    requires_budget_guard = True
     requires_runner_cleanup = True
     _PREFIXES = {"azure": "azure:", "orka": "orka:"}
 
