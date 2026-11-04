@@ -18,6 +18,7 @@ from urllib.parse import unquote, urlparse
 
 from .policy import GatewaySettings, PolicyDenied
 from .service import GatewayService
+from .provider_router import ProviderRouter
 from .store import LifecycleConflict, RunnerStore
 
 
@@ -404,7 +405,7 @@ def main():
     if proxy_secret and (len(proxy_secret) < 32 or not public_origin.startswith("https://")):
         raise SystemExit("Trusted proxy API requires a 32+ character HMAC secret and HTTPS DCP_PUBLIC_ORIGIN")
     store = RunnerStore(os.getenv("DCP_GATEWAY_DATABASE", "dcp-gateway.sqlite3"))
-    service = GatewayService(settings, store, DisabledProvider(), _budget_guard_from_env(settings))
+    service = GatewayService(settings, store, ProviderRouter(DisabledProvider(), DisabledProvider()), _budget_guard_from_env(settings))
     _start_expiry_reconciler(service, int(os.getenv("DCP_GATEWAY_RECONCILE_SECONDS", "30")))
     ThreadingHTTPServer(
         (host, port), make_handler(service, settings.api_token, proxy_secret, public_origin)
