@@ -8,13 +8,30 @@ from .store import LifecycleConflict
 
 
 class GatewayService:
-    def __init__(self, settings, store, provider, budget_guard=None, runner_cleanup=None):
+    def __init__(
+        self, settings, store, provider, budget_guard=None, runner_cleanup=None,
+        provider_budget_guards=None,
+    ):
         self.settings = settings
         self.store = store
         self.provider = provider
-        self.budget_guard = budget_guard
+        # Backwards-compatible budget_guard is Azure-only. Provider-specific
+        # guards are keyed by the routed provider name (azure, orka, ...).
+        self.provider_budget_guards = dict(provider_budget_guards or {})
+        if budget_guard is not None:
+            self.provider_budget_guards.setdefault("azure", budget_guard)
+        self.budget_guard = self.provider_budget_guards.get("azure")
         self.runner_cleanup = runner_cleanup
         self.create_lock = threading.Lock()
+
+    def budget_provider_for_os(self, os_name):
+        resolver = getattr(self.provider, "budget_provider_for_os", None)
+        if callable(resolver):
+            return resolver(os_name)
+        return getattr(self.provider, "budget_provider", "azure")
+
+    def budget_guard_for_os(self, os_name):
+        return self.provider_budget_guards.get(self.budget_provider_for_os(os_name))
 
     @staticmethod
     def public(row):
@@ -36,8 +53,11 @@ class GatewayService:
                 if old["fingerprint"] != fingerprint:
                     raise LifecycleConflict("Idempotency key conflicts with an existing request")
                 return self.public(old), False
-            if getattr(self.provider, "requires_budget_guard", False) and self.budget_guard is None:
-                raise PolicyDenied("Live budget guard is not configured", 503)
+            budget_guard = self.budget_guard_for_os(request["target_os"])
+            if getattr(self.provider, "requires_budget_guard", False) and budget_guard is None:
+                raise PolicyDenied(
+                    "Live provider-specific budget guard is not configured", 503
+                )
             if getattr(self.provider, "requires_runner_cleanup", False) and self.runner_cleanup is None:
                 raise PolicyDenied("GitHub runner deregistration is not configured", 503)
             readiness = getattr(self.provider, "readiness", None)
@@ -50,8 +70,8 @@ class GatewayService:
                     raise PolicyDenied("Selected runner provider is not ready", 503)
             active_count = self.store.active_count()
             self.settings.authorize_provisioning(active_count)
-            if self.budget_guard is not None:
-                self.budget_guard.authorize(active_count)
+            if budget_guard is not None:
+                budget_guard.authorize(active_count)
             rid = str(uuid.uuid4())
             expiry = (datetime.now(timezone.utc) + timedelta(
                 minutes=request["max_runtime_minutes"]
