@@ -7,9 +7,11 @@ from pathlib import Path
 
 try:
     from tools.project_intelligence import DiscoveryError, discover_project
+    from tools.architecture_planner import plan_implementation
 except ModuleNotFoundError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from tools.project_intelligence import DiscoveryError, discover_project
+    from tools.architecture_planner import plan_implementation
 
 
 def main() -> int:
@@ -20,6 +22,8 @@ def main() -> int:
     args = parser.parse_args()
     try:
         result = discover_project(args.workspace, args.task, args.max_files)
+        if args.task.strip():
+            result["implementation_plan"] = plan_implementation(result, args.task)
     except (DiscoveryError, OSError, ValueError) as exc:
         print(json.dumps({"schema_version": 1, "status": "fail", "error": str(exc)}, ensure_ascii=False))
         return 1
