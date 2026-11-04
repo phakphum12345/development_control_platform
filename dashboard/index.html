@@ -61,9 +61,94 @@
 .runner-table-wrap{overflow-x:auto}
 @media(max-width:800px){.runner-control-grid{grid-template-columns:1fr}.runner-status-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){.runner-platforms{grid-template-columns:1fr}.runner-status-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* DCP Control Center v2 — visual system and responsive navigation */
+:root{
+ --dcp-ink:#17213b;--dcp-muted:#63708a;--dcp-line:#e1e7f2;--dcp-surface:#fff;
+ --dcp-blue:#3157d5;--dcp-violet:#7952d6;--dcp-cyan:#0b91b5;--dcp-green:#16865b;
+ --dcp-amber:#b7791f;--dcp-red:#c83d55;--dcp-shadow:0 12px 32px rgba(31,51,93,.08);
+}
+body{background:radial-gradient(ellipse at 8% 0%,rgba(87,123,255,.12),transparent 34%),radial-gradient(ellipse at 96% 8%,rgba(163,102,255,.11),transparent 28%),#f4f7fc;color:var(--dcp-ink)}
+.wrap{max-width:1540px;padding:clamp(12px,2.2vw,30px)}
+header{padding:20px 22px;border:1px solid rgba(255,255,255,.8);border-radius:20px;background:linear-gradient(118deg,#172b58 0%,#294d9c 48%,#6846ad 100%);box-shadow:0 18px 42px rgba(37,62,126,.18);color:#fff}
+header h1{font-size:clamp(1.45rem,2.8vw,2.2rem);letter-spacing:-.035em}
+header p{color:rgba(255,255,255,.78);margin:.45rem 0 0}
+header .pill{border-color:rgba(255,255,255,.28);background:rgba(255,255,255,.12);color:#fff}
+header a{color:#fff}
+header button{background:#fff;color:#263d78;border:0;font-weight:700}
+.wrap>.warn{margin-top:14px;border:1px solid #f1d18b;background:linear-gradient(100deg,#fff8e8,#fffdf7);box-shadow:0 5px 16px rgba(133,98,30,.05)}
+.layout{grid-template-columns:250px minmax(0,1fr);gap:18px;margin-top:16px}
+.nav{border:1px solid rgba(218,226,241,.9);border-radius:17px;background:rgba(255,255,255,.9);box-shadow:var(--dcp-shadow);padding:12px;max-height:calc(100vh - 24px);overflow:auto}
+.nav button{display:flex;align-items:center;gap:9px;width:100%;border:1px solid transparent;border-radius:10px;padding:10px 11px;margin:2px 0;color:#40506e;background:transparent;font-size:.91rem;transition:background .16s,border-color .16s,transform .16s}
+.nav button:hover{background:#f1f4ff;border-color:#e2e8ff;transform:translateX(2px)}
+.nav button.active{background:linear-gradient(100deg,#e8edff,#f1eaff);border-color:#d6ddff;color:#263f9c;box-shadow:inset 3px 0 #526de0;font-weight:750}
+.nav-group-label{padding:13px 10px 5px;color:#8994aa;font-size:.68rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+.view.active{animation:dcp-view-in .2s ease-out}
+@keyframes dcp-view-in{from{opacity:.65;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+.panel,.stat,.code-nav-tree,.code-nav-inspector,.code-nav-editor{border-color:var(--dcp-line);border-radius:16px;box-shadow:0 7px 22px rgba(31,51,93,.045)}
+.panel{padding:clamp(14px,1.7vw,22px);background:rgba(255,255,255,.96)}
+.panel h2,.panel h3{letter-spacing:-.02em;color:#263653}
+.stats{gap:12px}
+.stat{position:relative;overflow:hidden;padding:17px;background:linear-gradient(145deg,#fff,#f8faff)}
+.stat:after{content:"";position:absolute;width:76px;height:76px;right:-24px;top:-27px;border-radius:50%;background:linear-gradient(135deg,rgba(72,111,230,.13),rgba(147,91,218,.12))}
+.stat:nth-child(2):after{background:rgba(11,145,181,.13)}.stat:nth-child(3):after{background:rgba(183,121,31,.13)}.stat:nth-child(4):after{background:rgba(22,134,91,.13)}
+.stat strong{font-size:1.55rem;letter-spacing:-.03em}
+button{transition:transform .14s,box-shadow .14s,border-color .14s,filter .14s}
+button:hover:not(:disabled){filter:saturate(1.12);box-shadow:0 5px 14px rgba(48,73,139,.12);transform:translateY(-1px)}
+button:active:not(:disabled){transform:translateY(0)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible{outline:3px solid rgba(76,111,230,.38);outline-offset:2px}
+button.primary{background:linear-gradient(110deg,#315bd8,#7651cf);border:0;color:white;font-weight:700}
+button:disabled{cursor:not-allowed;opacity:.52}
+input,select,textarea{border-color:#dbe3f0;background:#fff}
+.output{border:1px solid #e4eaf5;background:linear-gradient(145deg,#f7f9ff,#f5f7fc);color:#35435f}
+.pill{font-weight:650}
+.control-center{margin:16px 0 18px;padding:17px;border:1px solid #dfe6f5;border-radius:18px;background:linear-gradient(115deg,rgba(255,255,255,.97),rgba(246,248,255,.96));box-shadow:var(--dcp-shadow)}
+.control-center-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.control-center-title{display:flex;align-items:center;gap:10px;font-weight:800;color:#283b69}
+.control-center-title .spark{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:linear-gradient(135deg,#dce7ff,#f0ddff);color:#5145b5}
+.control-search{flex:1;min-width:min(100%,260px);max-width:440px;position:relative}
+.control-search input{padding-left:38px;border-radius:12px;background:#fff}
+.control-search:before{content:"⌕";position:absolute;left:13px;top:5px;font-size:23px;color:#7b88a5;pointer-events:none}
+.quick-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px}
+.quick-actions button{border-radius:11px;padding:9px 12px;font-size:.86rem;font-weight:700}
+.quick-actions button[data-tone="blue"]{background:#edf2ff;color:#3154b8;border-color:#dce5ff}
+.quick-actions button[data-tone="violet"]{background:#f3edff;color:#6943b6;border-color:#e7dcff}
+.quick-actions button[data-tone="teal"]{background:#e8f8f8;color:#087c87;border-color:#d0eeee}
+.quick-actions button[data-tone="green"]{background:#eaf7ef;color:#18764f;border-color:#d6eddf}
+.quick-actions button[data-tone="amber"]{background:#fff5e6;color:#946016;border-color:#f4e3c5}
+.control-center-meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;color:#697793;font-size:.78rem}
+.control-center-meta span{padding:5px 9px;border-radius:99px;background:#f0f3fa}
+.control-center-meta strong{color:#3e4d6a}
+.dcp-selfcheck{margin-top:12px;padding:11px 13px;border-radius:11px;border:1px solid #dfe6f2;background:#f8faff;font-size:.85rem;white-space:pre-wrap}
+.dcp-selfcheck[data-status="PASS"]{border-color:#b8e3ce;background:#f0fbf5}
+.dcp-selfcheck[data-status="FAIL"]{border-color:#f0c0c7;background:#fff5f6}
+.dcp-selfcheck[data-status="UNKNOWN"]{border-color:#dfe6f2}
+.nav button[hidden],.nav-group-label[hidden]{display:none!important}
+@media(max-width:900px){.layout{grid-template-columns:1fr}.nav{max-height:none;display:flex;gap:5px;overflow-x:auto;flex-wrap:nowrap;padding:8px}.nav button{white-space:nowrap;flex:0 0 auto;width:auto!important}.nav-group-label{display:none}.control-center{padding:13px}}
+@media(max-width:600px){header{padding:16px;border-radius:15px}.pwa-actions{width:100%}.pwa-actions .pill{font-size:.72rem}.control-search{max-width:none;flex-basis:100%}.quick-actions button{flex:1 1 calc(50% - 8px)}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+
 </style></head><body><main class="wrap">
 <header><div><h1>Development Control Platform</h1><p>Repository inspection · PR review · evidence · gates · checkpoints · audit</p></div><div class="pwa-actions"><a class="pill" href="./recon-back-box/">Recon Back Box Control</a><button type="button" id="pwa-install" hidden>Install app</button><span class="pill" id="pwa-state">Web app</span><span class="pill">READ-ONLY · PUBLIC API</span></div></header>
 <div class="warn"><b>Safety boundary:</b> This dashboard reads public GitHub API data only. No token, private repository access, push, branch creation, approval, merge or deployment is available. Registry remains opt-in and empty. Browser validation does not prove CI passed.</div>
+
+<section class="control-center" id="dcp-control-center-v2" aria-label="Dashboard control center">
+ <div class="control-center-top">
+  <div class="control-center-title"><span class="spark" aria-hidden="true">✦</span><span>Control Center <small style="display:block;font-weight:500;color:#77839b">ศูนย์ควบคุมและทางลัด</small></span></div>
+  <label class="control-search"><span class="sr-only" style="position:absolute;left:-9999px">ค้นหาเมนู</span><input id="dcp-nav-search" type="search" placeholder="ค้นหาเมนู เช่น Repository, Evidence, Audit…" autocomplete="off"></label>
+ </div>
+ <div class="quick-actions" aria-label="Quick actions">
+  <button type="button" data-quick-tab="repo" data-tone="blue">⌕ Repository Explorer</button>
+  <button type="button" data-quick-tab="pr" data-tone="violet">◇ Pull Request Review</button>
+  <button type="button" data-quick-tab="evidence" data-tone="teal">✓ SHA & Evidence</button>
+  <button type="button" data-quick-tab="gates" data-tone="green">▣ Quality Gates</button>
+  <button type="button" data-quick-tab="audit" data-tone="amber">◎ Audit & Safety</button>
+ </div>
+ <div class="control-center-meta"><span>Navigation: <strong id="dcp-nav-count">18 tools</strong></span><span>Write actions: <strong>0 · Disabled</strong></span><span>Evidence default: <strong>UNKNOWN</strong></span><span>Mode: <strong>READ-ONLY</strong></span></div>
+ <div class="dcp-selfcheck" id="dcp-selfcheck" data-status="UNKNOWN" role="status" aria-live="polite">UI self-check: UNKNOWN — ยังไม่ได้ตรวจสอบเมนู</div>
+ <div class="quick-actions"><button type="button" id="dcp-selfcheck-run" class="primary">Run UI self-check</button><button type="button" id="dcp-nav-reset">Clear search / Reset menu</button></div>
+</section>
+
 <div class="layout"><nav class="nav" aria-label="Tools">
 <button class="active" data-tab="home">Overview</button> <button data-tab="account">Password Login</button> <button data-tab="code-navigator">Code Navigator</button><button data-tab="cloud-runners">Cloud Runner Control</button> <button data-tab="dev-tools">Emulators & VS Code</button> <button data-tab="ui-routes">UI Route Manager</button><button data-tab="ui-simulator">UI Simulator</button><button data-tab="route-colors">Route Color Manager</button><button data-tab="github-api">Research OS API</button><button data-tab="repo-selector">Account & Repo</button><button data-tab="repo">Repository Explorer</button><button data-tab="pr">Pull Request Review</button><button data-tab="user">User Explorer</button><button data-tab="workspace">GitHub Workspace</button><button data-tab="evidence">SHA & Evidence</button><button data-tab="gates">Quality Gate Planner</button><button data-tab="checkpoint">Checkpoint Builder</button><button data-tab="audit">Audit & Safety</button>
 </nav><div>
@@ -719,5 +804,64 @@ document.querySelectorAll("[data-runner-os]").forEach(button=>button.addEventLis
 $("runner-refresh").addEventListener("click",runnerRefresh);
 $("runner-list-refresh").addEventListener("click",runnerLoadList);
 $("runner-create").addEventListener("click",runnerCreate);
+
+
+/* DCP Control Center v2: navigation, quick actions and honest UI self-check. */
+(()=>{
+ const nav=document.querySelector('.nav');
+ const search=document.getElementById('dcp-nav-search');
+ const report=document.getElementById('dcp-selfcheck');
+ if(!nav||!search||!report)return;
+ const tabs=[...nav.querySelectorAll('button[data-tab]')];
+ const groups={
+  home:'START',account:'IDENTITY', 'code-navigator':'DEVELOPMENT','cloud-runners':'DEVELOPMENT',
+  'dev-tools':'DEVELOPMENT','ui-routes':'DESIGN & SIMULATION','ui-simulator':'DESIGN & SIMULATION',
+  'route-colors':'DESIGN & SIMULATION','github-api':'INTEGRATIONS','repo-selector':'GITHUB',
+  repo:'GITHUB',pr:'GITHUB',user:'GITHUB',workspace:'GITHUB',
+  evidence:'ASSURANCE','gates':'ASSURANCE','checkpoint':'ASSURANCE',audit:'ASSURANCE'
+ };
+ let lastGroup='';
+ tabs.forEach(btn=>{
+  const group=groups[btn.dataset.tab]||'TOOLS';
+  if(group!==lastGroup){const label=document.createElement('div');label.className='nav-group-label';label.textContent=group;nav.insertBefore(label,btn);lastGroup=group}
+  btn.dataset.navLabel=btn.textContent.trim().toLowerCase();
+ });
+ function filterNav(){
+  const q=search.value.trim().toLowerCase();let shown=0;
+  tabs.forEach(btn=>{const match=!q||btn.dataset.navLabel.includes(q)||btn.dataset.tab.includes(q);btn.hidden=!match;if(match)shown++});
+  nav.querySelectorAll('.nav-group-label').forEach(label=>{
+   let next=label.nextElementSibling,visible=false;
+   while(next&& !next.classList.contains('nav-group-label')){if(next.matches('button[data-tab]')&&!next.hidden)visible=true;next=next.nextElementSibling}
+   label.hidden=!visible;
+  });
+  const count=document.getElementById('dcp-nav-count');if(count)count.textContent=shown+' / '+tabs.length+' tools';
+ }
+ search.addEventListener('input',filterNav);
+ document.querySelectorAll('[data-quick-tab]').forEach(btn=>btn.addEventListener('click',()=>{
+  const target=tabs.find(x=>x.dataset.tab===btn.dataset.quickTab);
+  if(target){search.value='';filterNav();target.click();target.focus()}
+ }));
+ document.getElementById('dcp-nav-reset')?.addEventListener('click',()=>{search.value='';filterNav();const active=nav.querySelector('button.active[data-tab]');if(active)active.click();search.focus()});
+ document.getElementById('dcp-selfcheck-run')?.addEventListener('click',()=>{
+  const errors=[],ids=new Set();
+  document.querySelectorAll('[id]').forEach(el=>{if(ids.has(el.id))errors.push('Duplicate ID: '+el.id);ids.add(el.id)});
+  const missing=tabs.filter(btn=>!document.getElementById(btn.dataset.tab)).map(btn=>btn.dataset.tab);
+  if(missing.length)errors.push('Missing tab target: '+missing.join(', '));
+  const activeTabs=tabs.filter(btn=>btn.classList.contains('active'));
+  if(activeTabs.length!==1)errors.push('Expected exactly one active navigation item; found '+activeTabs.length);
+  const safety=document.querySelector('header .pill:last-child');
+  if(!safety||!safety.textContent.includes('READ-ONLY'))errors.push('READ-ONLY indicator missing');
+  if(errors.length){report.dataset.status='FAIL';report.textContent='UI self-check: FAIL\n'+errors.join('\n');return}
+  report.dataset.status='PASS';
+  report.textContent='UI self-check: PASS\n'+tabs.length+' navigation targets found; active tab state valid; no duplicate element IDs; READ-ONLY indicator present.\nThis is a structural browser check only — it does not prove backend, OAuth, CI, or every external integration is available.';
+ });
+ document.addEventListener('keydown',event=>{
+  if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();search.focus();search.select()}
+  if(event.key==='/'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)){event.preventDefault();search.focus()}
+ });
+ filterNav();
+ const initial=document.querySelector('.nav button.active[data-tab]');
+ if(initial&&initial.dataset.tab!=='home')initial.click();
+})();
 
 </script></body></html>
