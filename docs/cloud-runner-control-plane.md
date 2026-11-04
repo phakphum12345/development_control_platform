@@ -52,3 +52,31 @@ python -m unittest discover -s tests -v
 ```
 
 Tests cover the policy manager with a fake provider and the HTTPS adapter with mocked HTTP responses. They exercise authentication and JSON serialization, URL validation and escaping, response shape and size limits, and transport-error redaction. They do not contact a real gateway or make paid cloud calls.
+
+
+## Gateway GitHub App runtime configuration
+
+The gateway can optionally compose its existing Azure Managed Identity, Key Vault,
+and GitHub App adapters when all of these server-side variables are present:
+
+- `DCP_AZURE_KEY_VAULT_URL`: HTTPS origin of the Azure Key Vault.
+- `DCP_GITHUB_APP_ID`: numeric GitHub App ID.
+- `DCP_GITHUB_APP_INSTALLATION_ID`: numeric installation ID.
+- `DCP_GITHUB_APP_PRIVATE_KEY_SECRET_NAME`: Key Vault secret name containing the PEM private key.
+
+The App private key is fetched at startup through Managed Identity and kept in process
+memory only. The App installation must be restricted to the explicitly configured
+`DCP_GATEWAY_ALLOWED_REPOSITORIES` and have the repository Administration permission
+needed to create short-lived runner registration tokens and inspect/remove runners.
+The gateway identity needs only the Key Vault secret-read role for that vault.
+Do not put the PEM key in environment variables, workflow inputs, request bodies, or logs.
+
+If none of these variables is configured, GitHub App integration remains disabled.
+Partial configuration causes startup to fail closed. Cleanup checks the exact
+allowlisted repository and runner name, refuses deregistration unless GitHub reports
+the runner offline, and treats an absent runner as already cleaned up.
+
+This composition does not enable VM provisioning: the server continues to use
+`DisabledProvider` until the provider bootstrap, independent online verification,
+network policy checks, and provider-specific budget gates are completed and reviewed.
+No Azure or Orka resources are created by this runtime wiring or its tests.
