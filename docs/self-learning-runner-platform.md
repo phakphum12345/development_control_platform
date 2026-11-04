@@ -47,9 +47,10 @@ only after its current contract and tests are understood.
 
 The first implementation slice provides:
 - tools/project_intelligence.py: bounded read-only discovery and stack analysis.
-- tools/dcp_project_intelligence.py: JSON command-line interface.
+- tools/dcp_project_intelligence.py: JSON command-line interface; when a task is supplied it includes a deterministic implementation plan.
 - tools/universal_runner_factory.py: deterministic runner profile preview.
-- tests/test_project_intelligence.py: behavior and safety contract tests.
+- tools/architecture_planner.py: task-aware implementation plan with explicit assumptions and approval gates.
+- tests/test_project_intelligence.py and tests/test_architecture_planner.py: behavior and safety contract tests.
 
 Example invocation (PowerShell):
 
