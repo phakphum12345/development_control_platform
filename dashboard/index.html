@@ -127,6 +127,33 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
 @media(max-width:900px){.layout{grid-template-columns:1fr}.nav{max-height:none;display:flex;gap:5px;overflow-x:auto;flex-wrap:nowrap;padding:8px}.nav button{white-space:nowrap;flex:0 0 auto;width:auto!important}.nav-group-label{display:none}.control-center{padding:13px}}
 @media(max-width:600px){header{padding:16px;border-radius:15px}.pwa-actions{width:100%}.pwa-actions .pill{font-size:.72rem}.control-search{max-width:none;flex-basis:100%}.quick-actions button{flex:1 1 calc(50% - 8px)}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+/* DCP Control Center v2 dark mode */
+@media(prefers-color-scheme:dark){
+ body{background:radial-gradient(ellipse at 8% 0%,rgba(67,91,174,.2),transparent 34%),radial-gradient(ellipse at 96% 8%,rgba(110,70,160,.18),transparent 28%),#101521;color:#e8edf6}
+ header{background:linear-gradient(118deg,#101d3a 0%,#1d376e 48%,#422d70 100%);border-color:#34415b}
+ .wrap>.warn{background:linear-gradient(100deg,#352d19,#292519);border-color:#6e5a2c;color:#ffdfa0}
+ .control-center,.nav,.panel,.stat,.code-nav-tree,.code-nav-inspector,.code-nav-editor{background:#171f2d;border-color:#303b4d;color:#e8edf6}
+ .control-center-title,.panel h2,.panel h3{color:#e4eaff}
+ .control-center-title .spark{background:linear-gradient(135deg,#293b69,#44345f);color:#d7dfff}
+ .control-search input,.panel input,.panel select,.panel textarea,input,select,textarea{background:#111a28;border-color:#3a465b;color:#e8edf6}
+ .nav button{color:#c1cbe0}
+ .nav button:hover{background:#222f46;border-color:#354767}
+ .nav button.active{background:linear-gradient(100deg,#26375e,#352b50);border-color:#455b91;color:#e5eaff}
+ .nav-group-label{color:#8593ad}
+ .stat{background:linear-gradient(145deg,#1a2639,#171f2d)}
+ .output,.dcp-selfcheck{background:#202b3c;border-color:#38465d;color:#e0e7f5}
+ .control-center-meta{color:#a4afc0}
+ .control-center-meta span{background:#263247}
+ .control-center-meta strong{color:#e2e9f7}
+ .quick-actions button[data-tone="blue"]{background:#25365c;color:#cbd8ff;border-color:#3a4e7e}
+ .quick-actions button[data-tone="violet"]{background:#35294f;color:#e0d1ff;border-color:#51406f}
+ .quick-actions button[data-tone="teal"]{background:#1d3b46;color:#b9eff1;border-color:#315d68}
+ .quick-actions button[data-tone="green"]{background:#1e3b32;color:#c0efd5;border-color:#315d4b}
+ .quick-actions button[data-tone="amber"]{background:#44351f;color:#ffe1ae;border-color:#6c542e}
+ .dcp-selfcheck[data-status="PASS"]{background:#18382c;border-color:#28634a}
+ .dcp-selfcheck[data-status="FAIL"]{background:#3a2028;border-color:#713442}
+ a{color:#9eb4ff}
+}
 
 </style></head><body><main class="wrap">
 <header><div><h1>Development Control Platform</h1><p>Repository inspection · PR review · evidence · gates · checkpoints · audit</p></div><div class="pwa-actions"><a class="pill" href="./recon-back-box/">Recon Back Box Control</a><button type="button" id="pwa-install" hidden>Install app</button><span class="pill" id="pwa-state">Web app</span><span class="pill">READ-ONLY · PUBLIC API</span></div></header>
