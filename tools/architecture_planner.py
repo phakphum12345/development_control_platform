@@ -33,7 +33,8 @@ def plan_implementation(assessment: dict[str, Any], task_description: str) -> di
     topics = []
     for topic, terms in {
         "testing": ("test", "coverage", "quality", "verify"),
-        "security": ("security", "auth", "permission", "credential", "secret"),
+        "security": ("security", "secure", "auth", "permission", "credential", "secret",
+                     "authorization", "authentication", "privacy", "policy", "threat"),
         "runner": ("runner", "build agent", "execution environment", "ci"),
         "api": ("api", "endpoint", "service", "gateway"),
         "dashboard": ("dashboard", "ui", "interface", "control panel"),
@@ -106,3 +107,4 @@ def plan_implementation(assessment: dict[str, Any], task_description: str) -> di
         },
         "evidence_policy": "Only current, inspectable evidence bound to the exact full commit SHA can satisfy a verification gate.",
     }
+}
