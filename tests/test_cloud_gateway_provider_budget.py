@@ -1,6 +1,7 @@
 """Provider-scoped budget isolation tests; no live provider calls."""
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from tools.cloud_gateway.budget_guard import AzureBudgetGuard, ProviderBudgetGuard
@@ -15,9 +16,10 @@ REPOSITORY = "phakphum12345/generated-A4-pdf"
 
 
 class Snapshot:
-    def __init__(self, provider, permitted=True):
+    def __init__(self, provider, permitted=True, observed_at=None):
         self.provider = provider
         self.permitted = permitted
+        self.observed_at = observed_at or datetime.now(timezone.utc).isoformat()
 
     def permits(self, projected):
         return self.permitted and projected >= 0
@@ -94,6 +96,19 @@ class ProviderBudgetGuardTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(PolicyDenied, "unavailable"):
             wrong_source.authorize(0)
+
+    def test_provider_guard_rejects_stale_or_timezone_naive_snapshots(self):
+        stale = Snapshot(
+            "orka", observed_at=(
+                datetime.now(timezone.utc) - timedelta(minutes=10)
+            ).isoformat()
+        )
+        with self.assertRaisesRegex(PolicyDenied, "unavailable"):
+            ProviderBudgetGuard("orka", Reader(stale), 1).authorize(0)
+
+        naive = Snapshot("orka", observed_at="2026-11-04T01:00:00")
+        with self.assertRaisesRegex(PolicyDenied, "unavailable"):
+            ProviderBudgetGuard("orka", Reader(naive), 1).authorize(0)
 
     def test_provider_guard_fails_closed_on_reader_error_and_budget_denial(self):
         unavailable = ProviderBudgetGuard(
