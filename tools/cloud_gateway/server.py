@@ -20,6 +20,7 @@ from .policy import GatewaySettings, PolicyDenied
 from .service import GatewayService
 from .provider_router import ProviderRouter
 from .store import LifecycleConflict, RunnerStore
+from .github_app_runtime import build_github_app_runtime
 
 
 class DisabledProvider:
@@ -405,7 +406,11 @@ def main():
     if proxy_secret and (len(proxy_secret) < 32 or not public_origin.startswith("https://")):
         raise SystemExit("Trusted proxy API requires a 32+ character HMAC secret and HTTPS DCP_PUBLIC_ORIGIN")
     store = RunnerStore(os.getenv("DCP_GATEWAY_DATABASE", "dcp-gateway.sqlite3"))
-    service = GatewayService(settings, store, ProviderRouter(DisabledProvider(), DisabledProvider()), _budget_guard_from_env(settings))
+    _, _, runner_cleanup = build_github_app_runtime(settings)
+    service = GatewayService(
+        settings, store, ProviderRouter(DisabledProvider(), DisabledProvider()),
+        _budget_guard_from_env(settings), runner_cleanup=runner_cleanup,
+    )
     _start_expiry_reconciler(service, int(os.getenv("DCP_GATEWAY_RECONCILE_SECONDS", "30")))
     ThreadingHTTPServer(
         (host, port), make_handler(service, settings.api_token, proxy_secret, public_origin)
