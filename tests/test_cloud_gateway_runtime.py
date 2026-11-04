@@ -50,6 +50,7 @@ class RuntimeCompositionTests(unittest.TestCase):
             reader.return_value.get_secret.return_value = "key"
             app, _, cleanup = github_app_runtime.build_github_app_runtime(self.settings, self.env)
         app.find_runner.return_value = {"id": 42, "status": "offline"}
+        app.remove_runner.return_value = True
         self.assertEqual(cleanup(
             {"repository": "owner/repo", "provider_id": "azure:dcp-1-abcd1234"}, None
         ), "removed")
