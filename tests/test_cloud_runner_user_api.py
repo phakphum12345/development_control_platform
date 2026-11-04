@@ -54,8 +54,8 @@ class AuthenticatedControlAPITests(unittest.TestCase):
         self.thread.join(timeout=2)
         self.temp.cleanup()
 
-    def request(self, method, path, nonce, extra=None, body=None):
-        headers = signed_headers(method, path, nonce)
+    def request(self, method, path, nonce, extra=None, body=None, role="operator"):
+        headers = signed_headers(method, path, nonce, role=role)
         headers.update(extra or {})
         data = None if body is None else json.dumps(body).encode()
         return Request(self.base + path, data=data, method=method, headers=headers)
@@ -282,7 +282,10 @@ class AuthenticatedControlAPITests(unittest.TestCase):
             "Content-Type": "application/json", "Origin": ORIGIN,
             "X-CSRF-Token": csrf, "Idempotency-Key": "api-test-key-0002",
         }
-        req = self.request("POST", "/api/cloud-runners", "nonce_post_safe_000001", headers, payload)
+        req = self.request(
+            "POST", "/api/cloud-runners", "nonce_post_safe_000001",
+            headers, payload, role="owner",
+        )
         with self.assertRaises(HTTPError) as error:
             urlopen(req)
         self.assertEqual(error.exception.code, 503)
