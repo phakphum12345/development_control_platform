@@ -76,7 +76,4 @@ Partial configuration causes startup to fail closed. Cleanup checks the exact
 allowlisted repository and runner name, refuses deregistration unless GitHub reports
 the runner offline, and treats an absent runner as already cleaned up.
 
-This composition does not enable VM provisioning: the server continues to use
-`DisabledProvider` until the provider bootstrap, independent online verification,
-network policy checks, and provider-specific budget gates are completed and reviewed.
-No Azure or Orka resources are created by this runtime wiring or its tests.
+The GitHub App token/runner lifecycle integration and protected Azure bootstrap factory now exist, alongside mock-tested Azure VM and Orka adapters. The production server still uses `DisabledProvider`: Azure effective egress policy and guest login profile are not verified; Orka has no authoritative provider-specific budget reader or protected macOS User Data bootstrap. Provider composition and provisioning must remain disabled until those checks and live runner/job/teardown acceptance are completed and reviewed. No Azure or Orka resources are created by unit/contract tests.
