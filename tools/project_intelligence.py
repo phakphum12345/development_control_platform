@@ -50,6 +50,8 @@ class DiscoveryError(ValueError):
 
 def _safe_root(root: str | os.PathLike[str]) -> Path:
     path = Path(root).expanduser()
+    if path.is_symlink():
+        raise DiscoveryError("Workspace root must not be a symbolic link")
     try:
         resolved = path.resolve(strict=True)
     except (OSError, RuntimeError) as exc:
