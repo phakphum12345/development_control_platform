@@ -108,7 +108,7 @@ def inspect_environment(env: Mapping[str, str] | None = None) -> dict:
     github_valid = (
         github_present
         and _https_origin(vault_url)
-        and len(vault_host.split(".")) == 3
+        and len(vault_host.split(".")) == 4
         and vault_host.endswith(".vault.azure.net")
         and bool(re.fullmatch(r"[0-9]{1,20}", values.get("DCP_GITHUB_APP_ID", "")))
         and bool(re.fullmatch(r"[0-9]{1,20}", values.get("DCP_GITHUB_APP_INSTALLATION_ID", "")))
