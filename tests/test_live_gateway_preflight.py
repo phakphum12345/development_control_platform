@@ -1,6 +1,7 @@
 """Contract tests for the opt-in live Gateway read-only smoke probe."""
 import json
 import unittest
+from pathlib import Path
 from urllib.error import HTTPError
 
 from live_gateway_preflight import run_readonly_preflight, validate_gateway_origin
@@ -81,6 +82,20 @@ class LiveGatewayPreflightTests(unittest.TestCase):
                 "https://gateway.example.test", "test-token", opener
             )
         self.assertEqual(calls, ["GET"])
+
+    def test_live_workflow_is_manual_opt_in_and_read_only(self):
+        workflow = Path(
+            ".github/workflows/cloud-gateway-live-smoke.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("default: false", workflow)
+        self.assertIn("enable_live_readonly_smoke == true", workflow)
+        self.assertIn("DCP_LIVE_GATEWAY_URL", workflow)
+        self.assertIn("DCP_LIVE_GATEWAY_API_TOKEN", workflow)
+        self.assertIn("python tests/live_gateway_preflight.py", workflow)
+        self.assertNotIn("\\n  pull_request:", workflow)
+        self.assertNotIn("\\n  push:", workflow)
+        self.assertIn("permissions:\\n  contents: read", workflow)
 
     def test_rejects_empty_bearer_token_before_network(self):
         calls = []
