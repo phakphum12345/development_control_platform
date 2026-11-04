@@ -107,4 +107,3 @@ def plan_implementation(assessment: dict[str, Any], task_description: str) -> di
         },
         "evidence_policy": "Only current, inspectable evidence bound to the exact full commit SHA can satisfy a verification gate.",
     }
-}
