@@ -1,0 +1,33 @@
+name: Cloud Gateway Live Read-only Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      enable_live_readonly_smoke:
+        description: Run GET-only health and bearer-authentication checks against the configured live Gateway. Provisioning must be disabled.
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  live-gateway-readonly-smoke:
+    if: ${{ inputs.enable_live_readonly_smoke == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify live Gateway using GET-only requests
+        env:
+          DCP_LIVE_GATEWAY_URL: ${{ secrets.DCP_LIVE_GATEWAY_URL }}
+          DCP_LIVE_GATEWAY_API_TOKEN: ${{ secrets.DCP_LIVE_GATEWAY_API_TOKEN }}
+        run: python tests/live_gateway_preflight.py
