@@ -279,6 +279,8 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
                     return self.send_json(403, {"error": "same-origin request required"})
                 if not self.csrf_valid(identity):
                     return self.send_json(403, {"error": "CSRF validation failed"})
+                if identity.get("role") != "owner":
+                    return self.send_json(403, {"error": "owner role required"})
                 if path != "/api/cloud-runners":
                     return self.send_json(404, {"error": "not found"})
                 try:
@@ -328,6 +330,8 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
                     return self.send_json(403, {"error": "same-origin request required"})
                 if not self.csrf_valid(identity):
                     return self.send_json(403, {"error": "CSRF validation failed"})
+                if identity.get("role") != "owner":
+                    return self.send_json(403, {"error": "owner role required"})
                 rid = unquote(path[len("/api/cloud-runners/"):])
                 if not rid or "/" in rid:
                     return self.send_json(400, {"error": "invalid runner id"})
