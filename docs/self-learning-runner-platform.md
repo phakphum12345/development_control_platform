@@ -5,19 +5,16 @@
 Turn DCP into a project-aware development control plane that can inspect a
 repository, infer its technology stack and architecture signals, propose a
 task plan, generate a runner profile, and later orchestrate approved isolated
-build/test workflows. The system must distinguish inferred information from
-verified evidence.
+build/test workflows. Inferred information must remain distinct from verified
+evidence.
 
 ## Existing capabilities to reuse
 
-- \`tools/cloud_runner\` and \`tools/runner_backend\`: cloud runner request and
-  provider abstractions.
-- \`tools/cloud_gateway\`: provider routing, budget guards, policy, bootstrap,
-  lifecycle and cleanup.
-- \`tools/mcp_engine\`: bounded read-only source inspection.
-- \`tools/dev_environment.py\`: local toolchain and emulator inventory.
-- \`schemas/project-state.schema.json\`, project registry and gate tests:
-  SHA-bound project state and evidence contracts.
+- tools/cloud_runner and tools/runner_backend: cloud runner request and provider abstractions.
+- tools/cloud_gateway: provider routing, budget guards, policy, bootstrap, lifecycle and cleanup.
+- tools/mcp_engine: bounded read-only source inspection.
+- tools/dev_environment.py: local toolchain and emulator inventory.
+- schemas/project-state.schema.json, project registry and gate tests: SHA-bound project state and evidence contracts.
 
 Do not create a parallel cloud provisioning API. Extend the existing gateway
 only after its current contract and tests are understood.
@@ -44,22 +41,19 @@ only after its current contract and tests are understood.
    self-approve/merge/deploy.
 7. **Learning & Evidence** — retain structured outcomes, failure categories,
    remediation effectiveness and profile compatibility. Do not convert model
-  suggestions or prior PASS results into current evidence.
+   suggestions or prior PASS results into current evidence.
 
 ## Current implementation slice
 
 The first implementation slice provides:
-- \`tools/project_intelligence.py\`: bounded read-only discovery and stack
-  analysis. It does not execute project code.
-- \`tools/dcp_project_intelligence.py\`: JSON CLI.
-- \`tools/universal_runner_factory.py\`: deterministic runner profile preview.
-- \`tests/test_project_intelligence.py\`: behavior and safety contract tests.
+- tools/project_intelligence.py: bounded read-only discovery and stack analysis.
+- tools/dcp_project_intelligence.py: JSON command-line interface.
+- tools/universal_runner_factory.py: deterministic runner profile preview.
+- tests/test_project_intelligence.py: behavior and safety contract tests.
 
-Example:
+Example invocation (PowerShell):
 
-\`\`\`powershell
-python -m tools.dcp_project_intelligence C:\\path\\to\\repo --task "Add API tests"
-\`\`\`
+    python -m tools.dcp_project_intelligence C:\path\to\repo --task "Add API tests"
 
 The command emits a JSON assessment. A completed inventory is not proof that
 the project builds or tests pass. The generated profile is a proposal only.
