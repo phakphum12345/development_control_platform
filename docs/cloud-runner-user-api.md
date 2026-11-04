@@ -51,7 +51,7 @@ The current browser API role gate permits owner/operator. The Gateway still inde
 
 ## Readiness and current limits
 
-The API intentionally reports `bootstrap_ready: false` and all platform providers `ready: false` until GitHub App installation-token/runner-registration bootstrap, secure provider-side token delivery, online confirmation, and cleanup are implemented and tested. The current runtime uses `DisabledProvider`; therefore create requests remain blocked even if a user is authenticated.
+The API intentionally reports provider readiness as false while production composition remains on `DisabledProvider`. GitHub App installation-token/runner-registration code, protected Azure bootstrap payloads, provider adapters, and lifecycle cleanup modules exist with mock-backed tests. Azure still lacks independently verified effective egress policy and a deployment-specific guest login profile; Orka still lacks an authoritative provider-specific budget source and protected macOS User Data bootstrap. Live runner-online, job execution, teardown, and post-delete evidence are also required. Create requests therefore remain blocked even for authenticated owners.
 
 This PR does not configure an OIDC tenant, deploy a reverse proxy, set production secrets, activate Azure/Orka, or create cloud resources. Those require explicit operator setup and a separately reviewed deployment. Never put the proxy HMAC secret, Gateway bearer token, Azure credential, Orka token, GitHub App private key, or runner registration token in the dashboard, query string, browser storage, logs, or Git history.
 
