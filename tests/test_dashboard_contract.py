@@ -231,6 +231,57 @@ class LocalResearchOSApiContractTests(unittest.TestCase):
                 self.assertIn(expected, HTML)
 
 
+
+class DashboardControlCenterV2Tests(unittest.TestCase):
+    def test_colorful_control_center_and_quick_navigation_contract(self):
+        for expected in (
+            'id="dcp-control-center-v2"',
+            'id="dcp-nav-search"',
+            'id="dcp-nav-count"',
+            'id="dcp-selfcheck"',
+            'id="dcp-selfcheck-run"',
+            'id="dcp-nav-reset"',
+            'data-quick-tab="repo"',
+            'data-quick-tab="pr"',
+            'data-quick-tab="evidence"',
+            'data-quick-tab="gates"',
+            'data-quick-tab="audit"',
+            'Control Center',
+            'START', 'IDENTITY', 'DEVELOPMENT', 'DESIGN & SIMULATION',
+            'INTEGRATIONS', 'GITHUB', 'ASSURANCE',
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, HTML)
+
+    def test_control_center_self_check_is_structural_and_preserves_read_only(self):
+        for expected in (
+            "Duplicate ID:",
+            "Missing tab target:",
+            "Expected exactly one active navigation item",
+            "READ-ONLY indicator missing",
+            "UI self-check: PASS",
+            "does not prove backend, OAuth, CI, or every external integration",
+            "No push, branch creation, approval, merge or deployment is available",
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, HTML)
+
+    def test_control_center_accessibility_responsiveness_and_keyboard_shortcuts(self):
+        for expected in (
+            'aria-label="Dashboard control center"',
+            'aria-live="polite"',
+            'role="status"',
+            "focus-visible",
+            "prefers-reduced-motion:reduce",
+            "@media(max-width:900px)",
+            "@media(max-width:600px)",
+            "event.ctrlKey||event.metaKey",
+            "event.key.toLowerCase()==='k'",
+            "event.key==='/'",
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, HTML)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 
