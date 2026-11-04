@@ -301,14 +301,25 @@ jobs:
             exit 1
           fi
   windows-runner-smoke-test:
+    name: Windows runner acceptance (${{ matrix.runner_name }})
     if: github.event_name == 'workflow_dispatch'
-    runs-on: [self-hosted, Windows, X64, local-dev]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner_name: PHAKPHUM-LOCAL-DEV
+            runner_label: local-dev
+          - runner_name: PHAKPHUMWIR
+            runner_label: windows-local-2
+    runs-on: [self-hosted, Windows, X64, "${{ matrix.runner_label }}"]
     steps:
       - name: Checkout repository for workspace test
         uses: actions/checkout@v4
 
       - name: Verify Windows runner identity
         shell: pwsh
+        env:
+          EXPECTED_RUNNER_NAME: ${{ matrix.runner_name }}
         run: |
           $ErrorActionPreference = "Stop"
 
@@ -316,8 +327,8 @@ jobs:
             throw "Expected Windows runner; got '$env:RUNNER_OS'"
           }
 
-          if ($env:RUNNER_NAME -ne "PHAKPHUMWIR") {
-            throw "Unexpected runner name: '$env:RUNNER_NAME'"
+          if ($env:RUNNER_NAME -ne $env:EXPECTED_RUNNER_NAME) {
+            throw "Unexpected runner name: '$env:RUNNER_NAME'; expected '$env:EXPECTED_RUNNER_NAME'"
           }
 
           Write-Host "RUNNER_OS=$env:RUNNER_OS"
@@ -328,28 +339,17 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-
           $testDir = Join-Path $env:RUNNER_TEMP "dcp-runner-rw-test"
           $testFile = Join-Path $testDir "read-write-check.txt"
           $expected = "runner-read-write-ok"
-
           New-Item -ItemType Directory -Path $testDir -Force | Out-Null
           Set-Content -LiteralPath $testFile -Value $expected -Encoding utf8
-
-          if (-not (Test-Path -LiteralPath $testFile -PathType Leaf)) {
-            throw "WRITE FAILED: test file was not created."
-          }
-
+          if (-not (Test-Path -LiteralPath $testFile -PathType Leaf)) { throw "WRITE FAILED: test file was not created." }
           $actual = (Get-Content -LiteralPath $testFile -Raw).Trim()
-
-          if ($actual -ne $expected) {
-            throw "READ/WRITE FAILED: content mismatch."
-          }
-
+          if ($actual -ne $expected) { throw "READ/WRITE FAILED: content mismatch." }
           Write-Host "WRITE PASS: test file created."
           Write-Host "READ PASS: content matches."
           Write-Host "Path: $testFile"
-
           Remove-Item -LiteralPath $testFile -Force
           Write-Host "CLEANUP PASS: temporary test file removed."
 
@@ -357,45 +357,21 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-
           $workspace = $env:GITHUB_WORKSPACE
-          if ([string]::IsNullOrWhiteSpace($workspace) -or
-              -not (Test-Path -LiteralPath $workspace -PathType Container)) {
-            throw "Workspace is missing or inaccessible."
-          }
-
+          if ([string]::IsNullOrWhiteSpace($workspace) -or -not (Test-Path -LiteralPath $workspace -PathType Container)) { throw "Workspace is missing or inaccessible." }
           $fileName = ".runner-rw-check-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT.txt"
           $testFile = Join-Path $workspace $fileName
           $expected = "repository-workspace-read-write-ok"
-
-          if (Test-Path -LiteralPath $testFile) {
-            throw "Test file already exists; refusing to overwrite it."
-          }
-
+          if (Test-Path -LiteralPath $testFile) { throw "Test file already exists; refusing to overwrite it." }
           try {
             Set-Content -LiteralPath $testFile -Value $expected -Encoding utf8
-
-            if (-not (Test-Path -LiteralPath $testFile -PathType Leaf)) {
-              throw "WORKSPACE WRITE FAILED: file was not created."
-            }
-
+            if (-not (Test-Path -LiteralPath $testFile -PathType Leaf)) { throw "WORKSPACE WRITE FAILED: file was not created." }
             $actual = (Get-Content -LiteralPath $testFile -Raw).Trim()
-            if ($actual -ne $expected) {
-              throw "WORKSPACE READ/WRITE FAILED: content mismatch."
-            }
-
+            if ($actual -ne $expected) { throw "WORKSPACE READ/WRITE FAILED: content mismatch." }
             Write-Host "WORKSPACE WRITE PASS"
             Write-Host "WORKSPACE READ PASS"
             Write-Host "Workspace: $workspace"
           }
-          finally {
-            if (Test-Path -LiteralPath $testFile -PathType Leaf) {
-              Remove-Item -LiteralPath $testFile -Force
-            }
-          }
-
-          if (Test-Path -LiteralPath $testFile) {
-            throw "WORKSPACE CLEANUP FAILED: test file remains."
-          }
-
+          finally { if (Test-Path -LiteralPath $testFile -PathType Leaf) { Remove-Item -LiteralPath $testFile -Force } }
+          if (Test-Path -LiteralPath $testFile) { throw "WORKSPACE CLEANUP FAILED: test file remains." }
           Write-Host "WORKSPACE CLEANUP PASS"
