@@ -302,7 +302,7 @@ jobs:
           fi
   windows-runner-smoke-test:
     if: github.event_name == 'workflow_dispatch'
-    runs-on: [self-hosted, Windows, X64, local-dev]
+    runs-on: [self-hosted, Windows, X64, windows-local-2]
     steps:
       - name: Checkout repository for workspace test
         uses: actions/checkout@v4
