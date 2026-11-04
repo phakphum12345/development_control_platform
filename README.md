@@ -8,7 +8,7 @@ The DCP includes a provider-neutral backend for requesting ephemeral macOS cloud
 
 ## Cloud Runner user control
 
-The dashboard includes a mobile-friendly Cloud Runner Control view for Azure Linux/Windows and Orka macOS. Browser requests use the authenticated same-origin API contract documented in [docs/cloud-runner-user-api.md](docs/cloud-runner-user-api.md). The browser never receives Gateway or provider credentials. Deploy the dashboard and API behind one HTTPS origin and a trusted OIDC reverse proxy; GitHub Pages alone cannot host the API. The current server deliberately uses `DisabledProvider` and reports every platform NOT READY until GitHub runner bootstrap and online verification are implemented. No cloud provisioning is enabled by this UI-only/API integration.
+The dashboard includes a mobile-friendly Cloud Runner Control view for Azure Linux/Windows and Orka macOS. Browser requests use the authenticated same-origin API contract documented in [docs/cloud-runner-user-api.md](docs/cloud-runner-user-api.md). The browser never receives Gateway or provider credentials. Deploy the dashboard and API behind one HTTPS origin and a trusted OIDC reverse proxy; GitHub Pages alone cannot host the API. The repository now contains GitHub App runner registration, protected Azure bootstrap payloads, Azure VM/Orka provider adapters, budget guards, and lifecycle cleanup modules with mock-backed tests. The Gateway runtime still deliberately uses `DisabledProvider`: provider composition is blocked until Azure guest login and effective egress policy are verified, Orka has a provider-specific budget and protected macOS bootstrap, and live runner/job/teardown acceptance passes. No cloud resources are created by CI.
 
 ## Interactive dashboard toolkit
 

@@ -52,6 +52,4 @@ Tests decode the protected payloads locally and verify checksum pinning,
 ephemeral flags, OS-specific extension contracts, and secret placement. Tests
 use a fake GitHub App and do not contact GitHub, Key Vault, Azure, or create VMs.
 
-The Gateway startup still uses `DisabledProvider`. This factory alone does not
-make any platform READY and does not enable provisioning. Live Azure acceptance
-requires a separately approved deployment and budget.
+The GitHub App adapter, protected bootstrap factory, Azure VM adapter, Azure budget reader, and cleanup callback exist and have mock-backed tests. They are not yet composed into the production Gateway runtime. The runtime intentionally remains on `DisabledProvider` because an independently verifiable effective egress policy and a production guest-login profile are still required. Live Azure acceptance also requires an approved subscription, budget ceiling, and runner-online/job/teardown evidence. No VM is created by these tests.
