@@ -93,9 +93,9 @@ class LiveGatewayPreflightTests(unittest.TestCase):
         self.assertIn("DCP_LIVE_GATEWAY_URL", workflow)
         self.assertIn("DCP_LIVE_GATEWAY_API_TOKEN", workflow)
         self.assertIn("python tests/live_gateway_preflight.py", workflow)
-        self.assertNotIn("\\n  pull_request:", workflow)
-        self.assertNotIn("\\n  push:", workflow)
-        self.assertIn("permissions:\\n  contents: read", workflow)
+        self.assertNotIn("\n  pull_request:", workflow)
+        self.assertNotIn("\n  push:", workflow)
+        self.assertIn("permissions:\n  contents: read", workflow)
 
     def test_rejects_empty_bearer_token_before_network(self):
         calls = []
