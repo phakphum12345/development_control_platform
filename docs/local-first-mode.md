@@ -60,6 +60,42 @@ an available port. The selected port is reported after binding. A fixed port is
 not required. Keep the default bind address on loopback unless a separately
 reviewed deployment explicitly needs another interface.
 
+## Start the fail-closed local Gateway
+
+The API can be run locally without any provider account. It still uses
+`DisabledProvider`, so runner creation is denied; this is useful for checking
+health and the HTTP service boundary without provisioning anything.
+
+PowerShell (Windows):
+
+```powershell
+$rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+$bytes = New-Object byte[] 32
+$rng.GetBytes($bytes)
+$env:DCP_GATEWAY_API_TOKEN = [Convert]::ToBase64String($bytes)
+$rng.Dispose()
+$env:DCP_GATEWAY_PROVISIONING_ENABLED = "false"
+$env:DCP_GATEWAY_PORT = "0"
+$env:DCP_GATEWAY_DATABASE = Join-Path $env:TEMP "dcp-gateway-local.sqlite3"
+python -m tools.cloud_gateway.server
+```
+
+The token is generated in process memory and is not printed. The server binds
+to loopback and prints the OS-assigned port. Open the printed `/healthz` URL
+locally to confirm health. Stop it with Ctrl+C. The local database contains
+lifecycle/audit records only; do not commit it.
+
+For macOS/Linux, generate the token directly into the current shell environment
+without echoing it:
+
+```sh
+export DCP_GATEWAY_API_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+export DCP_GATEWAY_PROVISIONING_ENABLED=false
+export DCP_GATEWAY_PORT=0
+export DCP_GATEWAY_DATABASE="${TMPDIR:-/tmp}/dcp-gateway-local.sqlite3"
+python -m tools.cloud_gateway.server
+```
+
 ## What remains intentionally unproven
 
 Local mode does not claim that cloud infrastructure is ready. Azure VM
