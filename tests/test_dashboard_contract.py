@@ -261,7 +261,7 @@ class DashboardControlCenterV2Tests(unittest.TestCase):
             "READ-ONLY indicator missing",
             "UI self-check: PASS",
             "does not prove backend, OAuth, CI, or every external integration",
-            "No push, branch creation, approval, merge or deployment is available",
+            "No token, private repository access, push, branch creation, approval, merge or deployment is available",
         ):
             with self.subTest(expected=expected):
                 self.assertIn(expected, HTML)
