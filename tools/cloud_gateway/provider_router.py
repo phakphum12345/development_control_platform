@@ -8,6 +8,7 @@ from .policy import PROFILES
 class ProviderRouter:
     """Route by approved OS profile and namespace provider IDs across restarts."""
 
+    requires_budget_guard = True
     requires_runner_cleanup = True
     _PREFIXES = {"azure": "azure:", "orka": "orka:"}
 
@@ -19,6 +20,10 @@ class ProviderRouter:
         if profile is None:
             raise ValueError("Unsupported runner OS")
         return profile["provider"]
+
+    def budget_provider_for_os(self, os_name):
+        """Return the provider key used to select an independent budget guard."""
+        return self._provider_name_for_os(os_name)
 
     def _unwrap(self, provider_id):
         if not isinstance(provider_id, str):

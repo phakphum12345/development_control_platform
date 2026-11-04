@@ -21,7 +21,7 @@ The default provider adapter is intentionally disabled. This phase does not cont
 ## Evidence semantics
 HTTP 202 means accepted/provisioning only. Online requires a provider status observation; terminated requires provider teardown confirmation. A provisioning response is not evidence of an online runner or passing build.
 
-Azure Managed Identity, Key Vault, Azure Budget API integration, Azure VM provisioners, Orka integration, and live-provider acceptance tests are separate phases. Real provider validation remains SKIPPED until provider accounts and an explicit budget approval are supplied.
+Azure Managed Identity, Key Vault, Azure Budget API integration, Azure VM provisioners, Orka integration, and live-provider acceptance tests are separate phases. Budget guards are selected by the routed provider key; an Azure budget snapshot can never authorize an Orka request. The generic provider guard requires a matching provider identity in the snapshot and fails closed on missing, stale/unavailable, or denied data. Real provider validation remains SKIPPED until provider accounts and an explicit budget approval are supplied.
 
 ## Browser control-plane role boundary
 

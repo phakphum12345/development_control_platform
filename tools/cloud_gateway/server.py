@@ -235,6 +235,7 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
             # registration/bootstrap and independent online checks are wired.
             readiness = getattr(service.provider, "readiness", None)
             providers = {}
+            provider_budget_gates = {}
             for os_name, description in (
                 ("linux", "Azure Linux"), ("windows", "Azure Windows"),
                 ("macos", "Orka macOS"),
@@ -248,9 +249,26 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
                     result.get("message", "Provider bootstrap not configured")
                     if isinstance(result, dict) else description + " bootstrap not configured"
                 )
-                if ready and getattr(service.provider, "requires_budget_guard", False) and service.budget_guard is None:
-                    ready = False
-                    message = "Live budget guard is not configured"
+                provider_guard = service.budget_guard_for_os(os_name)
+                if provider_guard is None:
+                    provider_budget_gates[os_name] = "UNKNOWN"
+                else:
+                    try:
+                        snapshot = provider_guard.inspect()
+                        active = service.store.active_count()
+                        projected = provider_guard.projected_run_cost_usd * (active + 1)
+                        provider_budget_gates[os_name] = (
+                            "PASS" if snapshot.permits(projected) else "FAIL"
+                        )
+                    except Exception:
+                        provider_budget_gates[os_name] = "UNKNOWN"
+                if ready and getattr(service.provider, "requires_budget_guard", False):
+                    if provider_guard is None:
+                        ready = False
+                        message = "Provider-specific live budget guard is not configured"
+                    elif provider_budget_gates[os_name] != "PASS":
+                        ready = False
+                        message = "Provider-specific budget gate is not PASS"
                 if ready and getattr(service.provider, "requires_runner_cleanup", False) and service.runner_cleanup is None:
                     ready = False
                     message = "GitHub runner deregistration is not configured"
@@ -262,6 +280,7 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
                 "provisioning_enabled": service.settings.provisioning_enabled,
                 "budget_gate": budget_state,
                 "budget_message": budget_message,
+                "provider_budget_gates": provider_budget_gates,
                 "active_runners": service.store.active_count(),
                 "lifecycle": service.store.lifecycle_summary(),
                 "bootstrap_ready": bootstrap_ready,
