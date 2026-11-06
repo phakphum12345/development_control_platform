@@ -10,6 +10,23 @@ The DCP includes a provider-neutral backend for requesting ephemeral macOS cloud
 
 The dashboard includes a mobile-friendly Cloud Runner Control view for Azure Linux/Windows and Orka macOS. Browser requests use the authenticated same-origin API contract documented in [docs/cloud-runner-user-api.md](docs/cloud-runner-user-api.md). The browser never receives Gateway or provider credentials. Deploy the dashboard and API behind one HTTPS origin and a trusted OIDC reverse proxy; GitHub Pages alone cannot host the API. The repository now contains GitHub App runner registration, protected Azure bootstrap payloads, Azure VM/Orka provider adapters, budget guards, and lifecycle cleanup modules with mock-backed tests. The Gateway runtime still deliberately uses `DisabledProvider`: provider composition is blocked until Azure guest login and effective egress policy are verified, Orka has a provider-specific budget and protected macOS bootstrap, and live runner/job/teardown acceptance passes. No cloud resources are created by CI.
 
+## Local-first development (zero-cost by default)
+
+DCP development does not require paid cloud resources. Start with the
+read-only local environment doctor:
+
+```sh
+python -m tools.cloud_gateway.local_mode
+python -m unittest discover -s tests -v
+```
+
+See [docs/local-first-mode.md](docs/local-first-mode.md) for the no-cost
+workflow and evidence limits. The doctor never opens ports, contacts providers,
+reads secret values, or installs software. The Gateway supports
+`DCP_GATEWAY_PORT=0` to request an operating-system-assigned local port.
+Cloud provisioning stays disabled by default; Azure/Orka mock tests do not
+claim live VM or runner acceptance.
+
 ## Interactive dashboard toolkit
 
 Open dashboard/index.html in a modern browser. Current tools:
