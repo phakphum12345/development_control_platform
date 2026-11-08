@@ -462,8 +462,11 @@ def main():
         raise SystemExit(str(exc)) from exc
     proxy_secret = os.getenv("DCP_TRUSTED_PROXY_HMAC_SECRET", "")
     public_origin = os.getenv("DCP_PUBLIC_ORIGIN", "")
-    if proxy_secret and (len(proxy_secret) < 32 or not public_origin.startswith("https://")):
-        raise SystemExit("Trusted proxy API requires a 32+ character HMAC secret and HTTPS DCP_PUBLIC_ORIGIN")
+    if proxy_secret:
+        origin = urlparse(public_origin)
+        local_http = origin.scheme == "http" and origin.hostname in ("127.0.0.1", "localhost")
+        if len(proxy_secret) < 32 or not (public_origin.startswith("https://") or local_http):
+            raise SystemExit("Trusted proxy API requires a 32+ character HMAC secret and HTTPS origin (HTTP is allowed only on loopback)")
     store = RunnerStore(os.getenv("DCP_GATEWAY_DATABASE", "dcp-gateway.sqlite3"))
     _, _, runner_cleanup = build_github_app_runtime(settings)
     service = GatewayService(
