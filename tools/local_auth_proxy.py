@@ -58,12 +58,11 @@ def load_or_create_credentials(path: Path = CREDENTIALS) -> dict:
         try:
             record = json.loads(path.read_text(encoding="utf-8"))
             if (not isinstance(record, dict) or not isinstance(record.get("username"), str)
-                    or not record["username"] or not verify_password(record, record["username"], "invalid-check")):
-                # Validate the record's shape without accepting a password.
-                if (record.get("algorithm") != "pbkdf2_sha256" or len(bytes.fromhex(record["salt"])) != 32
-                        or len(bytes.fromhex(record["password_hash"])) != 32
-                        or int(record["rounds"]) < 300_000):
-                    raise ValueError("invalid credential record")
+                    or not record["username"] or record.get("algorithm") != "pbkdf2_sha256"
+                    or len(bytes.fromhex(record["salt"])) != 32
+                    or len(bytes.fromhex(record["password_hash"])) != 32
+                    or int(record["rounds"]) < 300_000):
+                raise ValueError("invalid credential record")
             return record
         except Exception as exc:
             raise RuntimeError(f"Owner credential file is invalid; preserve it and inspect {path}") from exc
