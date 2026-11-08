@@ -21,7 +21,8 @@ class CloudRunnerDashboardContractTests(unittest.TestCase):
     def test_start_is_disabled_until_server_side_gates_pass(self):
         for expected in (
             'disabled>Start ephemeral runner', 'function runnerCanCreate()',
-            's.budget_gate==="PASS"', 's.owner_approved===true',
+            '(s.provider_budget_gates||{})[runnerUI.os]', 'budgetGate==="PASS"',
+            's.owner_approved===true',
             's.bootstrap_ready===true', 'p.ready===true',
             'credentials:"same-origin"', '"X-CSRF-Token"',
         ):
