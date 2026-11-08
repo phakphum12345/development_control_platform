@@ -685,7 +685,7 @@ async function initPasswordAuth(){
    csrfToken=data.csrfToken;
    if(data.authenticated===true){show(status,"Authentication backend connected.","ready");show(session,"Signed in"+(data.user&&data.user.displayName?" as "+data.user.displayName:"")+".","ready");logout.disabled=false;}
    else{show(status,"Authentication backend connected; sign-in required.","ready");show(session,"Session: NOT AUTHENTICATED.","unknown");submit.disabled=false;}
-  }catch(e){show(status,"Authentication backend unavailable. No password login will be simulated. Deploy the server-side /api/auth endpoints over HTTPS first.","error");show(session,"Session: UNKNOWN — "+e.message,"unknown");}
+  }catch(e){show(status,"Local authentication service unavailable. Start the integrated stack with Start-DCP-Local.cmd and keep its PowerShell window open.","error");show(session,"Session: UNKNOWN — "+e.message,"unknown");}
  }
  form.addEventListener("submit",async e=>{
   e.preventDefault();submit.disabled=true;show(session,"Signing in…","unknown");
