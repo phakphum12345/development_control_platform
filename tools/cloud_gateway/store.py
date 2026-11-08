@@ -2,6 +2,7 @@
 import json
 import sqlite3
 import threading
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -49,10 +50,16 @@ class RunnerStore:
                 nonce TEXT PRIMARY KEY,expires_at REAL NOT NULL
             );""")
 
+    @contextmanager
     def db(self):
+        """Open a SQLite connection and always close it after use."""
         c = sqlite3.connect(self.path, timeout=10, isolation_level=None)
         c.row_factory = sqlite3.Row
-        return c
+        try:
+            with c:
+                yield c
+        finally:
+            c.close()
 
     def active_count(self):
         with self.lock, self.db() as c:
