@@ -29,7 +29,7 @@ Start-Process -FilePath 'powershell.exe' -ArgumentList @(
 ) | Out-Null
 
 $ready = $false
-for ($i = 0; $i -lt 60; $i++) {
+for ($i = 0; $i -lt 180; $i++) {
     Start-Sleep -Milliseconds 500
     try {
         $health = Invoke-RestMethod -Uri 'http://127.0.0.1:8789/healthz' -TimeoutSec 2
