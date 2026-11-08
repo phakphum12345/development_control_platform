@@ -197,6 +197,7 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
             self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'")
             if cookie:
@@ -358,9 +359,7 @@ def main():
         "DCP_GATEWAY_DATABASE": str(CREDENTIALS.parent / "gateway.sqlite3"),
     })
     gateway = subprocess.Popen([sys.executable, "-m", "tools.cloud_gateway.server"], env=env)
-    app = LocalAuthProxy(credentials, gateway_token, proxy_secret, GATEWAY_PORT)
-    server = ThreadingHTTPServer((HOST, PORT), make_handler(app, Path(__file__).resolve().parents[2] / "dashboard"))
-    server.daemon_threads = True
+    server = None
     print(f"Dashboard + Local Auth Proxy: http://{HOST}:{PORT}/", flush=True)
     print(f"Gateway: http://{HOST}:{GATEWAY_PORT}/ (loopback only; provisioning disabled)", flush=True)
     try:
@@ -368,15 +367,26 @@ def main():
             if gateway.poll() is not None:
                 raise SystemExit(f"Gateway exited during startup with code {gateway.returncode}")
             try:
-                with urlopen(f"http://{HOST}:{GATEWAY_PORT}/healthz", timeout=1):
-                    break
+                with urlopen(f"http://{HOST}:{GATEWAY_PORT}/healthz", timeout=1) as response:
+                    health = json.loads(response.read().decode("utf-8"))
+                if health.get("status") != "ok" or health.get("provisioning_enabled") is not False:
+                    raise SystemExit("Gateway health or safe-default contract failed")
+                break
+            except SystemExit:
+                raise
             except Exception:
                 time.sleep(0.25)
         else:
             raise SystemExit("Gateway health check timed out")
+        app = LocalAuthProxy(credentials, gateway_token, proxy_secret, GATEWAY_PORT)
+        server = ThreadingHTTPServer(
+            (HOST, PORT), make_handler(app, Path(__file__).resolve().parents[1] / "dashboard")
+        )
+        server.daemon_threads = True
         server.serve_forever()
     finally:
-        server.server_close()
+        if server is not None:
+            server.server_close()
         gateway.terminate()
         try:
             gateway.wait(timeout=10)
