@@ -28,7 +28,7 @@ class NativeMCPServerTests(unittest.IsolatedAsyncioTestCase):
     async def test_stdio_server_exposes_only_read_only_tools(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            (root / "one.txt").write_text("alpha\nbeta\n", encoding="utf-8")
+            (root / "one.txt").write_bytes(b"alpha\nbeta\n")
             (root / "two.txt").write_text("alpha\ngamma\n", encoding="utf-8")
             outside = root.parent / f"dcp-mcp-outside-{root.name}.txt"
             outside.write_text("outside", encoding="utf-8")

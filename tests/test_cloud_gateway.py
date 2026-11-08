@@ -74,7 +74,10 @@ class HTTPTests(unittest.TestCase):
   with urlopen(self.url+"/healthz") as r: self.assertEqual(r.status,200)
   req=Request(self.url+"/v1/runners",data=json.dumps(payload()).encode(),method="POST",headers={"Idempotency-Key":"http-key-001"})
   with self.assertRaises(HTTPError) as e: urlopen(req)
-  self.assertEqual(e.exception.code,401)
+  try:
+   self.assertEqual(e.exception.code,401)
+  finally:
+   e.exception.close()
  def test_authenticated_post_and_replay(self):
   req=Request(self.url+"/v1/runners",data=json.dumps(payload()).encode(),method="POST",headers={"Authorization":"Bearer test-secret","Idempotency-Key":"http-key-002"})
   with urlopen(req) as r: self.assertEqual(r.status,202); first=json.loads(r.read())

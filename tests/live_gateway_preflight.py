@@ -54,7 +54,12 @@ def run_readonly_preflight(base_url: str, bearer_token: str, opener=None) -> dic
             if response.status != 200:
                 raise RuntimeError("Gateway health endpoint returned an unexpected status")
             raw = response.read(4097)
-    except (HTTPError, URLError, TimeoutError) as exc:
+    except HTTPError as exc:
+        try:
+            raise RuntimeError("Gateway health request failed: " + type(exc).__name__) from exc
+        finally:
+            exc.close()
+    except (URLError, TimeoutError) as exc:
         raise RuntimeError("Gateway health request failed: " + type(exc).__name__) from exc
     if len(raw) > 4096:
         raise RuntimeError("Gateway health response exceeded the size limit")
@@ -86,11 +91,14 @@ def run_readonly_preflight(base_url: str, bearer_token: str, opener=None) -> dic
                 + str(response.status)
             )
     except HTTPError as exc:
-        if exc.code != 404:
-            raise RuntimeError(
-                "Gateway bearer-authenticated sentinel lookup failed with HTTP "
-                + str(exc.code)
-            ) from exc
+        try:
+            if exc.code != 404:
+                raise RuntimeError(
+                    "Gateway bearer-authenticated sentinel lookup failed with HTTP "
+                    + str(exc.code)
+                ) from exc
+        finally:
+            exc.close()
     except (URLError, TimeoutError) as exc:
         raise RuntimeError("Gateway authenticated lookup failed: " + type(exc).__name__) from exc
 

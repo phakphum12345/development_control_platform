@@ -128,7 +128,10 @@ class GitHubAppRunnerBootstrap:
                 raise GitHubAppError("GitHub API response exceeded size limit")
             data = json.loads(raw.decode("utf-8")) if raw else {}
         except HTTPError as exc:
-            raise GitHubAppError("GitHub API returned HTTP " + str(exc.code)) from exc
+            try:
+                raise GitHubAppError("GitHub API returned HTTP " + str(exc.code)) from exc
+            finally:
+                exc.close()
         except (URLError, TimeoutError) as exc:
             raise GitHubAppError("GitHub API request failed: " + type(exc).__name__) from exc
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:

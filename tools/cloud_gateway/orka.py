@@ -27,8 +27,11 @@ class OrkaProvider:
   try:
    with urlopen(req,timeout=self.timeout) as response: raw=response.read(65537)
   except HTTPError as exc:
-   if allow_missing and exc.code==404: return None
-   raise OrkaError("Orka API request failed with HTTP "+str(exc.code)) from exc
+   try:
+    if allow_missing and exc.code==404: return None
+    raise OrkaError("Orka API request failed with HTTP "+str(exc.code)) from exc
+   finally:
+    exc.close()
   except (URLError,TimeoutError) as exc: raise OrkaError("Orka API request failed: "+type(exc).__name__) from exc
   if len(raw)>65536: raise OrkaError("Orka response exceeded size limit")
   if not raw: return {}
