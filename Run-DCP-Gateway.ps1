@@ -9,7 +9,7 @@ if (-not $python) { throw 'Python Launcher (py.exe) was not found. Run Setup-DCP
 $dataDir = Join-Path $env:LOCALAPPDATA 'DCP'
 New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
 $env:DCP_LOCAL_PORT = '8789'
-$env:DCP_GATEWAY_PORT = '8790'
+$env:DCP_GATEWAY_PORT = '18790'
 $env:DCP_GATEWAY_PROVISIONING_ENABLED = 'false'
 $env:DCP_GATEWAY_OWNER_APPROVED = 'false'
 
