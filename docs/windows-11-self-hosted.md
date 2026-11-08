@@ -58,7 +58,12 @@ The launcher serves only the static Dashboard on `127.0.0.1` and chooses an avai
 Open a second PowerShell window in the repository root. Generate a temporary API token in that PowerShell process and start the Gateway:
 
 ```powershell
-$env:DCP_GATEWAY_API_TOKEN = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+$rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+$tokenBytes = New-Object byte[] 32
+$rng.GetBytes($tokenBytes)
+$env:DCP_GATEWAY_API_TOKEN = [Convert]::ToBase64String($tokenBytes)
+[Array]::Clear($tokenBytes, 0, $tokenBytes.Length)
+$rng.Dispose()
 $env:DCP_GATEWAY_HOST = "127.0.0.1"
 $env:DCP_GATEWAY_PORT = "8789"
 $env:DCP_GATEWAY_PROVISIONING_ENABLED = "false"
