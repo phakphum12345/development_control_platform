@@ -28,7 +28,7 @@ PBKDF2_ROUNDS = 600_000
 COOKIE = "DCP_LOCAL_SESSION"
 MAX_BODY = 32_768
 ALLOWED_GET = ("/api/cloud-runners/status", "/api/cloud-runners")
-CREDENTIALS = Path(os.getenv("LOCALAPPDATA", str(Path.home()))) / "DCP" / "owner-auth.json"
+CREDENTIALS = Path(os.getenv("DCP_LOCAL_AUTH_CREDENTIAL_FILE", str(Path(os.getenv("LOCALAPPDATA", str(Path.home()))) / "DCP" / "owner-auth.json"))
 
 
 def password_record(username: str, password: str, salt: bytes | None = None) -> dict:
