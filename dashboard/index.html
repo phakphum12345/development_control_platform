@@ -193,7 +193,7 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
 </section>
 <section class="view" id="account">
 <div class="panel"><h2>Password Login</h2>
-<p>Client integration is fail-closed. Passwords are sent only to the same-origin authentication API over HTTPS; they are never stored in localStorage/sessionStorage. A real login requires a deployed backend that verifies passwords and issues Secure, HttpOnly, SameSite session cookies.</p>
+<p>Local-first sign-in: password is sent only to this machine at 127.0.0.1. The local proxy verifies a salted PBKDF2 hash and issues an HttpOnly, SameSite=Strict session cookie. Gateway credentials never enter the browser. Loopback HTTP is restricted to this computer; do not expose this port to a network.</p>
 <div id="auth-backend-status" class="auth-status" data-state="unknown" role="status" aria-live="polite">Checking authentication backend…</div>
 <form id="auth-login-form" autocomplete="on">
 <div class="grid"><div class="field"><label for="auth-username">Email or username</label><input id="auth-username" name="username" autocomplete="username" required maxlength="254"></div>
@@ -201,7 +201,7 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
 <div class="actions"><button class="primary" id="auth-submit" type="submit" disabled>Sign in</button><button id="auth-logout" type="button" disabled>Sign out</button></div>
 </form>
 <div id="auth-session-status" class="output" role="status" aria-live="polite">Session: UNKNOWN — not authenticated.</div>
-<p class="small muted">Backend contract: <code>GET /api/auth/session</code>, <code>POST /api/auth/login</code>, <code>POST /api/auth/logout</code>. No local/demo password or client-side authentication fallback is provided. GitHub Pages is static hosting and cannot itself validate passwords or issue server-side sessions.</p>
+<p class="small muted">Backend contract: <code>GET /api/auth/session</code>, <code>POST /api/auth/login</code>, <code>POST /api/auth/logout</code>. The local stack validates passwords server-side. GitHub Pages remains static-only and does not provide this authentication service.</p>
 </div></section>
 <section class="view" id="cloud-runners">
 <div class="panel">
