@@ -73,9 +73,9 @@ def reset_owner_password(path: Path, password: str, confirmation: str) -> Path:
     shutil.copy2(path, backup)
     try:
         _restrict_file(backup)
-        with temporary.open("x", encoding="utf-8", newline="\\n") as handle:
+        with temporary.open("x", encoding="utf-8", newline="\n") as handle:
             json.dump(new_record, handle, separators=(",", ":"))
-            handle.write("\\n")
+            handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
         _restrict_file(temporary)
