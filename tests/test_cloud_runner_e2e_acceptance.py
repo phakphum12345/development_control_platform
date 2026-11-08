@@ -82,8 +82,11 @@ class FakeProvider:
         self.runner_name = None
         self.labels = ()
 
+    def budget_provider_for_os(self, os_name):
+        return "orka" if os_name == "macos" else "azure"
+
     def readiness(self, os_name):
-        return {"ready": os_name == "linux", "message": "mock provider ready"}
+        return {"ready": os_name in ("linux", "macos"), "message": "mock provider ready"}
 
     def provision(self, payload):
         self.runner_name = "dcp-12345-abcdef12"
@@ -212,6 +215,38 @@ class CloudRunnerEndToEndAcceptanceTests(unittest.TestCase):
         summary = self.store.lifecycle_summary()
         self.assertEqual(summary["cleanup_pending"], 0)
         self.assertEqual(summary["cleanup_confirmed"], 1)
+
+    def test_orka_uses_its_own_budget_when_azure_budget_is_unavailable(self):
+        # The top-level budget_gate is the legacy Azure summary. A macOS
+        # request must use Orka's independent provider budget instead.
+        self.service.budget_guard = None
+        self.service.provider_budget_guards = {
+            "orka": AzureBudgetGuard(FakeBudgetReader(), 5),
+        }
+        payload = request_payload()
+        payload.update({
+            "target_os": "macos",
+            "image": "macos-15-arm64",
+            "labels": ["self-hosted", "macOS", "ARM64", "dcp-cloud-macos"],
+        })
+
+        status, session = self.request_json("GET", "/api/auth/session")
+        self.assertEqual(status, 200)
+        self.assertTrue(session["authenticated"])
+        csrf = session["csrfToken"]
+
+        status, readiness = self.request_json("GET", "/api/cloud-runners/status")
+        self.assertEqual(status, 200)
+        self.assertEqual(readiness["budget_gate"], "UNKNOWN")
+        self.assertEqual(readiness["provider_budget_gates"]["macos"], "PASS")
+        self.assertTrue(readiness["providers"]["macos"]["ready"])
+
+        status, created = self.request_json(
+            "POST", "/api/cloud-runners", payload, csrf,
+            "e2e-orka-budget-key-0001",
+        )
+        self.assertEqual(status, 202)
+        self.assertEqual(created["state"], "provisioning")
 
     def test_signed_oidc_assertion_cannot_be_replayed(self):
         headers = self.signed_headers("GET", "/api/auth/session")
