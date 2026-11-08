@@ -725,9 +725,10 @@ function runnerGate(id,label,state,detail){
 function runnerText(id,value){const el=$(id);if(el)el.textContent=value}
 function runnerCanCreate(){
  const s=runnerUI.status||{},p=s.providers&&s.providers[runnerUI.os];
+ const budgetGate=(s.provider_budget_gates||{})[runnerUI.os]||"UNKNOWN";
  return runnerUI.session===true && s.gateway==="READY" &&
  s.owner_approved===true && s.provisioning_enabled===true &&
- s.budget_gate==="PASS" && s.bootstrap_ready===true &&
+ budgetGate==="PASS" && s.bootstrap_ready===true &&
  p && p.ready===true && s.circuit_breaker_tripped!==true;
 }
 function runnerRenderGate(){
@@ -741,12 +742,15 @@ function runnerRenderGate(){
  "BLOCKED — ต้องมี authenticated session, owner approval, live budget PASS, provisioning enabled และ provider bootstrap READY";
  runnerGate("runner-gate-session","User session",runnerUI.session?"pass":"fail",runnerUI.session?"Authenticated":"Sign in required");
  runnerGate("runner-gate-owner","Owner approval",s.owner_approved===true?"pass":"unknown",s.owner_approved===true?"Approved":"Not confirmed");
- runnerGate("runner-gate-budget","Live budget and forecast",s.budget_gate==="PASS"?"pass":s.budget_gate==="FAIL"?"fail":"unknown",s.budget_message||"No verified budget result");
+ const budgetGate=(s.provider_budget_gates||{})[runnerUI.os]||"UNKNOWN";
+ const budgetDetail=(s.provider_budget_messages||{})[runnerUI.os]||
+  (runnerUI.os==="macos"?"Orka provider-specific budget is not verified":s.budget_message||"No verified provider budget result");
+ runnerGate("runner-gate-budget","Selected provider budget and forecast",budgetGate==="PASS"?"pass":budgetGate==="FAIL"?"fail":"unknown",budgetDetail);
  runnerGate("runner-gate-bootstrap","Runner bootstrap",s.bootstrap_ready===true?"pass":"unknown",s.bootstrap_ready===true?"Ready":"Not verified");
  runnerGate("runner-gate-provider","Selected provider",p&&p.ready===true?"pass":p&&p.ready===false?"fail":"unknown",p&&p.message||"Not verified");
  runnerText("runner-gateway",s.gateway||"UNKNOWN");
  runnerText("runner-auth",runnerUI.session?"AUTHENTICATED":"UNKNOWN / SIGN-IN REQUIRED");
- runnerText("runner-budget",s.budget_gate||"UNKNOWN");
+ runnerText("runner-budget",(s.provider_budget_gates||{})[runnerUI.os]||"UNKNOWN");
  runnerText("runner-provisioning",s.provisioning_enabled===true?"ENABLED (GATED)":"DISABLED / UNKNOWN");
 }
 async function runnerJson(url,options={}){
