@@ -239,6 +239,7 @@ class CloudRunnerEndToEndAcceptanceTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(readiness["budget_gate"], "UNKNOWN")
         self.assertEqual(readiness["provider_budget_gates"]["macos"], "PASS")
+        self.assertIn("USD budget", readiness["provider_budget_messages"]["macos"])
         self.assertTrue(readiness["providers"]["macos"]["ready"])
 
         status, created = self.request_json(
