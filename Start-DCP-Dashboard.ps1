@@ -169,7 +169,6 @@ if ($oldRecord) {
     Write-Output "STALE_RECORD_BACKED_UP=$stalePath"
 }
 
-$pythonArgs = @()
 $python = 'C:\Program Files\Python314\python.exe'
 if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
     $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
@@ -177,15 +176,17 @@ if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
         $python = $pythonCommand.Source
     } else {
         $pyLauncher = Get-Command py.exe -ErrorAction Stop
-        $python = $pyLauncher.Source
-        $pythonArgs = @('-3')
+        $python = (& $pyLauncher.Source -3 -c 'import sys; print(sys.executable)' | Select-Object -Last 1).Trim()
+        if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
+            throw 'Python Launcher found, but it could not resolve a Python 3 executable.'
+        }
     }
 }
 
 $startedPid = 0
 $tempRecord = $null
 try {
-    $arguments = @($pythonArgs) + @(
+    $arguments = @(
         '-m', 'http.server', [string]$Port,
         '--bind', '127.0.0.1',
         '--directory', ('"{0}"' -f $dashboard)
