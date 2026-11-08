@@ -169,9 +169,17 @@ if ($oldRecord) {
     Write-Output "STALE_RECORD_BACKED_UP=$stalePath"
 }
 
+$pythonArgs = @()
 $python = 'C:\Program Files\Python314\python.exe'
 if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
-    $python = (Get-Command python.exe -ErrorAction Stop).Source
+    $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
+    if ($pythonCommand) {
+        $python = $pythonCommand.Source
+    } else {
+        $pyLauncher = Get-Command py.exe -ErrorAction Stop
+        $python = $pyLauncher.Source
+        $pythonArgs = @('-3')
+    }
 }
 
 $startedPid = 0
