@@ -172,8 +172,8 @@ class DashboardContractTests(unittest.TestCase):
             'id="account"', 'id="auth-login-form"',
             './api/auth/session', './api/auth/login', './api/auth/logout',
             'credentials:"same-origin"', 'X-CSRF-Token', 'csrfToken=null', 'data.csrfToken', 'Sign-in blocked: missing server-issued CSRF token', 'type="password"',
-            'GitHub Pages is static hosting',
-            'No password login will be simulated',
+            'GitHub Pages remains static-only',
+            'Start-DCP-Local.cmd',
         ):
             with self.subTest(expected=expected):
                 self.assertIn(expected, HTML)

@@ -41,13 +41,13 @@ The Gateway checks the signature, role, timestamp window (±60 seconds), and one
 All responses use `Cache-Control: no-store`. CORS is not enabled. Mutating requests require an exact `Origin` match with `DCP_PUBLIC_ORIGIN` and a session-bound CSRF token.
 
 - `GET /api/auth/session`: verifies the signed assertion and returns a CSRF token held in tab memory only. No session cookie or secret is returned by Gateway; the OIDC proxy owns the browser session.
-- `GET /api/cloud-runners/status`: returns Gateway, owner-approval, provisioning, live budget, bootstrap, and per-platform readiness. Missing budget data is UNKNOWN, never PASS.
+- `GET /api/cloud-runners/status`: returns Gateway, owner-approval, provisioning, live budget, bootstrap, and per-platform readiness. Missing budget data is UNKNOWN, never PASS. The top-level `budget_gate` is the legacy Azure summary; `provider_budget_gates[linux|windows|macos]` is authoritative for the selected platform.
 - `GET /api/cloud-runners`: lists recent runner metadata only; never returns request payloads or credentials.
 - `GET /api/cloud-runners/{id}`: reads a runner lifecycle state.
 - `POST /api/cloud-runners`: requires signed identity, exact Origin, CSRF token, and idempotency key.
 - `DELETE /api/cloud-runners/{id}`: requires signed identity, exact Origin, and CSRF token.
 
-The current browser API role gate permits owner/operator. The Gateway still independently enforces repository allowlist, owner approval, provisioning flag, live budget, concurrency, runtime, idempotency and provider readiness. A browser role is not a substitute for those policy checks.
+The current browser API role gate permits owner/operator. Runner creation checks the selected platform's own budget gate (Azure for Linux/Windows, Orka for macOS); an Azure budget PASS is never used as Orka budget evidence. The Gateway also independently enforces repository allowlist, owner approval, provisioning flag, the global safety ceiling, provider-specific budget authorization, concurrency, runtime, idempotency and provider readiness. A browser role is not a substitute for those policy checks.
 
 ## Readiness and current limits
 

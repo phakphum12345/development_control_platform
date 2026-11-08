@@ -236,6 +236,7 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
             readiness = getattr(service.provider, "readiness", None)
             providers = {}
             provider_budget_gates = {}
+            provider_budget_messages = {}
             for os_name, description in (
                 ("linux", "Azure Linux"), ("windows", "Azure Windows"),
                 ("macos", "Orka macOS"),
@@ -252,6 +253,9 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
                 provider_guard = service.budget_guard_for_os(os_name)
                 if provider_guard is None:
                     provider_budget_gates[os_name] = "UNKNOWN"
+                    provider_budget_messages[os_name] = (
+                        "Provider-specific live budget guard is not configured"
+                    )
                 else:
                     try:
                         snapshot = provider_guard.inspect()
@@ -260,8 +264,17 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
                         provider_budget_gates[os_name] = (
                             "PASS" if snapshot.permits(projected) else "FAIL"
                         )
+                        provider_budget_messages[os_name] = (
+                            f"{snapshot.currency} budget; current spend "
+                            f"{snapshot.current_spend:g}; forecast "
+                            f"{snapshot.forecast_spend if snapshot.forecast_spend is not None else 'unavailable'}; "
+                            f"projected {projected:g} for {active + 1} runner(s)"
+                        )
                     except Exception:
                         provider_budget_gates[os_name] = "UNKNOWN"
+                        provider_budget_messages[os_name] = (
+                            "Provider-specific budget read failed; provisioning remains blocked"
+                        )
                 if ready and getattr(service.provider, "requires_budget_guard", False):
                     if provider_guard is None:
                         ready = False
@@ -281,6 +294,7 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
                 "budget_gate": budget_state,
                 "budget_message": budget_message,
                 "provider_budget_gates": provider_budget_gates,
+                "provider_budget_messages": provider_budget_messages,
                 "active_runners": service.store.active_count(),
                 "lifecycle": service.store.lifecycle_summary(),
                 "bootstrap_ready": bootstrap_ready,
@@ -309,8 +323,14 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
                     provider_state = status["providers"].get(platform, {})
                     if not status["provisioning_enabled"] or not status["owner_approved"]:
                         return self.send_json(503, {"error": "owner approval or provisioning gate is not ready"})
-                    if status["budget_gate"] != "PASS":
-                        return self.send_json(503, {"error": "live budget gate is not PASS"})
+                    provider_budget_gate = status["provider_budget_gates"].get(
+                        platform, "UNKNOWN"
+                    )
+                    if provider_budget_gate != "PASS":
+                        return self.send_json(
+                            503,
+                            {"error": "selected provider budget gate is not PASS"},
+                        )
                     if status["circuit_breaker_tripped"] or not provider_state.get("ready"):
                         return self.send_json(503, {"error": "provider bootstrap is not ready"})
                     result, created = service.create(
@@ -442,8 +462,11 @@ def main():
         raise SystemExit(str(exc)) from exc
     proxy_secret = os.getenv("DCP_TRUSTED_PROXY_HMAC_SECRET", "")
     public_origin = os.getenv("DCP_PUBLIC_ORIGIN", "")
-    if proxy_secret and (len(proxy_secret) < 32 or not public_origin.startswith("https://")):
-        raise SystemExit("Trusted proxy API requires a 32+ character HMAC secret and HTTPS DCP_PUBLIC_ORIGIN")
+    if proxy_secret:
+        origin = urlparse(public_origin)
+        local_http = origin.scheme == "http" and origin.hostname in ("127.0.0.1", "localhost")
+        if len(proxy_secret) < 32 or not (public_origin.startswith("https://") or local_http):
+            raise SystemExit("Trusted proxy API requires a 32+ character HMAC secret and HTTPS origin (HTTP is allowed only on loopback)")
     store = RunnerStore(os.getenv("DCP_GATEWAY_DATABASE", "dcp-gateway.sqlite3"))
     _, _, runner_cleanup = build_github_app_runtime(settings)
     service = GatewayService(

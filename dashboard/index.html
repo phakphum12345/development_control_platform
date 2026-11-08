@@ -193,7 +193,7 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
 </section>
 <section class="view" id="account">
 <div class="panel"><h2>Password Login</h2>
-<p>Client integration is fail-closed. Passwords are sent only to the same-origin authentication API over HTTPS; they are never stored in localStorage/sessionStorage. A real login requires a deployed backend that verifies passwords and issues Secure, HttpOnly, SameSite session cookies.</p>
+<p>Local-first sign-in: password is sent only to this machine at 127.0.0.1. The local proxy verifies a salted PBKDF2 hash and issues an HttpOnly, SameSite=Strict session cookie. Gateway credentials never enter the browser. Loopback HTTP is restricted to this computer; do not expose this port to a network.</p>
 <div id="auth-backend-status" class="auth-status" data-state="unknown" role="status" aria-live="polite">Checking authentication backend…</div>
 <form id="auth-login-form" autocomplete="on">
 <div class="grid"><div class="field"><label for="auth-username">Email or username</label><input id="auth-username" name="username" autocomplete="username" required maxlength="254"></div>
@@ -201,7 +201,7 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
 <div class="actions"><button class="primary" id="auth-submit" type="submit" disabled>Sign in</button><button id="auth-logout" type="button" disabled>Sign out</button></div>
 </form>
 <div id="auth-session-status" class="output" role="status" aria-live="polite">Session: UNKNOWN — not authenticated.</div>
-<p class="small muted">Backend contract: <code>GET /api/auth/session</code>, <code>POST /api/auth/login</code>, <code>POST /api/auth/logout</code>. No local/demo password or client-side authentication fallback is provided. GitHub Pages is static hosting and cannot itself validate passwords or issue server-side sessions.</p>
+<p class="small muted">Backend contract: <code>GET /api/auth/session</code>, <code>POST /api/auth/login</code>, <code>POST /api/auth/logout</code>. The local stack validates passwords server-side. GitHub Pages remains static-only and does not provide this authentication service.</p>
 </div></section>
 <section class="view" id="cloud-runners">
 <div class="panel">
@@ -685,7 +685,7 @@ async function initPasswordAuth(){
    csrfToken=data.csrfToken;
    if(data.authenticated===true){show(status,"Authentication backend connected.","ready");show(session,"Signed in"+(data.user&&data.user.displayName?" as "+data.user.displayName:"")+".","ready");logout.disabled=false;}
    else{show(status,"Authentication backend connected; sign-in required.","ready");show(session,"Session: NOT AUTHENTICATED.","unknown");submit.disabled=false;}
-  }catch(e){show(status,"Authentication backend unavailable. No password login will be simulated. Deploy the server-side /api/auth endpoints over HTTPS first.","error");show(session,"Session: UNKNOWN — "+e.message,"unknown");}
+  }catch(e){show(status,"Local authentication service unavailable. Start the integrated stack with Start-DCP-Local.cmd and keep its PowerShell window open.","error");show(session,"Session: UNKNOWN — "+e.message,"unknown");}
  }
  form.addEventListener("submit",async e=>{
   e.preventDefault();submit.disabled=true;show(session,"Signing in…","unknown");
@@ -725,9 +725,10 @@ function runnerGate(id,label,state,detail){
 function runnerText(id,value){const el=$(id);if(el)el.textContent=value}
 function runnerCanCreate(){
  const s=runnerUI.status||{},p=s.providers&&s.providers[runnerUI.os];
+ const budgetGate=(s.provider_budget_gates||{})[runnerUI.os]||"UNKNOWN";
  return runnerUI.session===true && s.gateway==="READY" &&
  s.owner_approved===true && s.provisioning_enabled===true &&
- s.budget_gate==="PASS" && s.bootstrap_ready===true &&
+ budgetGate==="PASS" && s.bootstrap_ready===true &&
  p && p.ready===true && s.circuit_breaker_tripped!==true;
 }
 function runnerRenderGate(){
@@ -741,12 +742,15 @@ function runnerRenderGate(){
  "BLOCKED — ต้องมี authenticated session, owner approval, live budget PASS, provisioning enabled และ provider bootstrap READY";
  runnerGate("runner-gate-session","User session",runnerUI.session?"pass":"fail",runnerUI.session?"Authenticated":"Sign in required");
  runnerGate("runner-gate-owner","Owner approval",s.owner_approved===true?"pass":"unknown",s.owner_approved===true?"Approved":"Not confirmed");
- runnerGate("runner-gate-budget","Live budget and forecast",s.budget_gate==="PASS"?"pass":s.budget_gate==="FAIL"?"fail":"unknown",s.budget_message||"No verified budget result");
+ const budgetGate=(s.provider_budget_gates||{})[runnerUI.os]||"UNKNOWN";
+ const budgetDetail=(s.provider_budget_messages||{})[runnerUI.os]||
+  (runnerUI.os==="macos"?"Orka provider-specific budget is not verified":s.budget_message||"No verified provider budget result");
+ runnerGate("runner-gate-budget","Selected provider budget and forecast",budgetGate==="PASS"?"pass":budgetGate==="FAIL"?"fail":"unknown",budgetDetail);
  runnerGate("runner-gate-bootstrap","Runner bootstrap",s.bootstrap_ready===true?"pass":"unknown",s.bootstrap_ready===true?"Ready":"Not verified");
  runnerGate("runner-gate-provider","Selected provider",p&&p.ready===true?"pass":p&&p.ready===false?"fail":"unknown",p&&p.message||"Not verified");
  runnerText("runner-gateway",s.gateway||"UNKNOWN");
  runnerText("runner-auth",runnerUI.session?"AUTHENTICATED":"UNKNOWN / SIGN-IN REQUIRED");
- runnerText("runner-budget",s.budget_gate||"UNKNOWN");
+ runnerText("runner-budget",(s.provider_budget_gates||{})[runnerUI.os]||"UNKNOWN");
  runnerText("runner-provisioning",s.provisioning_enabled===true?"ENABLED (GATED)":"DISABLED / UNKNOWN");
 }
 async function runnerJson(url,options={}){
