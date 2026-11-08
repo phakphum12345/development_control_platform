@@ -74,9 +74,9 @@ def load_or_create_credentials(path: Path = CREDENTIALS) -> dict:
     )):
         raise SystemExit("Username must be 1..64 ASCII letters, digits, dot, underscore, @, or hyphen.")
     while True:
-        password = getpass.getpass("Choose owner password (minimum 14 characters): ")
-        if len(password) < 14:
-            print("Password is too short.", flush=True)
+        password = getpass.getpass("Choose owner password (minimum 6 characters): ")
+        if len(password) < 6:
+            print("Password must contain at least 6 characters.", flush=True)
             continue
         confirmation = getpass.getpass("Confirm owner password: ")
         if not hmac.compare_digest(password, confirmation):
