@@ -309,8 +309,14 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
                     provider_state = status["providers"].get(platform, {})
                     if not status["provisioning_enabled"] or not status["owner_approved"]:
                         return self.send_json(503, {"error": "owner approval or provisioning gate is not ready"})
-                    if status["budget_gate"] != "PASS":
-                        return self.send_json(503, {"error": "live budget gate is not PASS"})
+                    provider_budget_gate = status["provider_budget_gates"].get(
+                        platform, "UNKNOWN"
+                    )
+                    if provider_budget_gate != "PASS":
+                        return self.send_json(
+                            503,
+                            {"error": "selected provider budget gate is not PASS"},
+                        )
                     if status["circuit_breaker_tripped"] or not provider_state.get("ready"):
                         return self.send_json(503, {"error": "provider bootstrap is not ready"})
                     result, created = service.create(
