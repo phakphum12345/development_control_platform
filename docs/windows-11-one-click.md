@@ -8,14 +8,14 @@ This starts the Dashboard, Local Auth Proxy, and Gateway on your own Windows 11 
 - Python 3.10+ and the Python Launcher (`py.exe`)
 - Git is optional
 
-The scripts do not install software or packages. Install the repository's Python requirements before launch if your environment doctor reports a missing dependency.
+The default local stack uses Python's standard library and does not require a pip install. Optional GitHub App/cloud integrations have separate dependencies and are not enabled by this local setup.
 
 ## First run
 
 1. Download or clone this repository to a folder you control.
 2. Double-click `Setup-DCP-Local.cmd` to run the read-only environment doctor.
 3. Double-click `Start-DCP-Local.cmd`.
-4. In the separate PowerShell window, choose an owner username and a password of at least 14 characters, then confirm the password. This happens only on first launch.
+4. In the separate PowerShell window, choose an owner username (1–64 ASCII letters, digits, dot, underscore, @, or hyphen) and a password of at least 14 characters, then confirm the password. This happens only on first launch.
 5. Open the Dashboard at `http://127.0.0.1:8789/` and sign in with that username and password.
 
 The owner password is stored as a salted PBKDF2-HMAC-SHA256 hash in `%LOCALAPPDATA%\DCP\owner-auth.json`, never as plaintext. The local Auth Proxy issues an HttpOnly, SameSite=Strict session cookie. Session state, the Gateway bearer token, and the trusted-proxy HMAC secret remain in process memory. The browser never receives Gateway credentials.
