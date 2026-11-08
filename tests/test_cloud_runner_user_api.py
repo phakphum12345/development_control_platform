@@ -100,12 +100,18 @@ class AuthenticatedControlAPITests(unittest.TestCase):
         req = Request(self.base + "/api/cloud-runners/status")
         with self.assertRaises(HTTPError) as error:
             urlopen(req)
-        self.assertEqual(error.exception.code, 401)
+        try:
+            self.assertEqual(error.exception.code, 401)
+        finally:
+            error.exception.close()
         headers = signed_headers("GET", "/api/cloud-runners/status", "nonce_forged_00001")
         headers["X-DCP-Auth-Signature"] = "0" * 64
         with self.assertRaises(HTTPError) as error:
             urlopen(Request(self.base + "/api/cloud-runners/status", headers=headers))
-        self.assertEqual(error.exception.code, 401)
+        try:
+            self.assertEqual(error.exception.code, 401)
+        finally:
+            error.exception.close()
 
     def test_oidc_verified_claims_map_to_signed_gateway_assertion(self):
         claims = {
@@ -240,13 +246,19 @@ class AuthenticatedControlAPITests(unittest.TestCase):
             self.assertEqual(response.status, 200)
         with self.assertRaises(HTTPError) as error:
             urlopen(req)
-        self.assertEqual(error.exception.code, 401)
+        try:
+            self.assertEqual(error.exception.code, 401)
+        finally:
+            error.exception.close()
 
     def test_viewer_role_is_not_authorized(self):
         headers = signed_headers("GET", "/api/cloud-runners/status", "nonce_viewer_000001", role="viewer")
         with self.assertRaises(HTTPError) as error:
             urlopen(Request(self.base + "/api/cloud-runners/status", headers=headers))
-        self.assertEqual(error.exception.code, 401)
+        try:
+            self.assertEqual(error.exception.code, 401)
+        finally:
+            error.exception.close()
 
     def test_mutation_requires_origin_and_csrf(self):
         session_req = self.request("GET", "/api/auth/session", "nonce_session_0002")
@@ -257,13 +269,19 @@ class AuthenticatedControlAPITests(unittest.TestCase):
         bad_csrf = self.request("POST", "/api/cloud-runners", "nonce_post_badcsrf_01", headers, body)
         with self.assertRaises(HTTPError) as error:
             urlopen(bad_csrf)
-        self.assertEqual(error.exception.code, 403)
+        try:
+            self.assertEqual(error.exception.code, 403)
+        finally:
+            error.exception.close()
         headers["X-CSRF-Token"] = csrf
         headers["Origin"] = "https://attacker.example"
         bad_origin = self.request("POST", "/api/cloud-runners", "nonce_post_badorigin1", headers, body)
         with self.assertRaises(HTTPError) as error:
             urlopen(bad_origin)
-        self.assertEqual(error.exception.code, 403)
+        try:
+            self.assertEqual(error.exception.code, 403)
+        finally:
+            error.exception.close()
 
     def test_valid_mutation_still_fails_closed_when_provisioning_disabled(self):
         session_req = self.request("GET", "/api/auth/session", "nonce_session_0003")
@@ -288,7 +306,10 @@ class AuthenticatedControlAPITests(unittest.TestCase):
         )
         with self.assertRaises(HTTPError) as error:
             urlopen(req)
-        self.assertEqual(error.exception.code, 503)
+        try:
+            self.assertEqual(error.exception.code, 503)
+        finally:
+            error.exception.close()
         self.assertEqual(self.store.active_count(), 0)
 
 
