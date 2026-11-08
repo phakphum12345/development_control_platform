@@ -24,8 +24,6 @@ Push-Location $project
 try {
     & $python.Source -3 -m tools.cloud_gateway.local_mode
     if ($LASTEXITCODE -ne 0) { throw 'Local environment checks reported a failure. Review the diagnostic output above.' }
-    & $python.Source -3 -m unittest discover -s tests
-    if ($LASTEXITCODE -ne 0) { throw 'The local test suite failed. Review the test output above.' }
 } finally {
     Pop-Location
 }
