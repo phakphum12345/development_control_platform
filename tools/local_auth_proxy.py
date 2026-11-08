@@ -45,7 +45,7 @@ def verify_password(record: dict, username: str, password: str) -> bool:
         candidate = hashlib.pbkdf2_hmac(
             "sha256", password.encode("utf-8"), bytes.fromhex(record["salt"]), int(record["rounds"])
         ).hex()
-        return hmac.compare_digest(str(record["username"]), username) and hmac.compare_digest(
+        return hmac.compare_digest(str(record["username"]).encode("utf-8"), username.encode("utf-8")) and hmac.compare_digest(
             candidate, str(record["password_hash"])
         )
     except (KeyError, TypeError, ValueError):
@@ -69,8 +69,10 @@ def load_or_create_credentials(path: Path = CREDENTIALS) -> dict:
 
     print("DCP first-time owner setup (credentials are stored as a salted PBKDF2 hash).", flush=True)
     username = input("Choose owner username: ").strip()
-    if not username or len(username) > 254 or any(ord(c) < 33 for c in username):
-        raise SystemExit("Username must be 1..254 visible characters.")
+    if (not username or len(username) > 64 or not all(
+            c.isascii() and (c.isalnum() or c in "._@-") for c in username
+    )):
+        raise SystemExit("Username must be 1..64 ASCII letters, digits, dot, underscore, @, or hyphen.")
     while True:
         password = getpass.getpass("Choose owner password (minimum 14 characters): ")
         if len(password) < 14:
