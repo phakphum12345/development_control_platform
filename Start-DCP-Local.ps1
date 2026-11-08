@@ -13,7 +13,7 @@ if (-not $SkipPreflight) {
     if ($LASTEXITCODE -ne 0) { throw 'DCP local preflight did not complete successfully.' }
 }
 
-foreach ($port in @(8789, 8790)) {
+foreach ($port in @(8789, 18790)) {
     $existing = @(Get-NetTCPConnection -LocalAddress '127.0.0.1' -LocalPort $port -State Listen -ErrorAction SilentlyContinue)
     if ($existing.Count -gt 0) {
         throw "127.0.0.1:$port is already in use. No existing process was stopped. Inspect the listener before retrying."
