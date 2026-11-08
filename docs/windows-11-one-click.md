@@ -1,42 +1,48 @@
 # Windows 11 one-click local startup
 
-This is the simplest way to run the current DCP local development stack on your own Windows 11 PC. It uses local CPU, memory, and disk only. It does not require Azure, Orka, Docker, a paid cloud account, or a public IP address.
+This starts the Dashboard, Local Auth Proxy, and Gateway on your own Windows 11 PC. The services use local CPU, memory, and disk only; no Azure, Orka, Docker, paid cloud account, public IP, or inbound firewall rule is required.
 
 ## Requirements
 
 - Windows 11 x64
-- Python 3.10+ and the Python Launcher (\`py.exe\`)
-- Git is optional for running the application
+- Python 3.10+ and the Python Launcher (`py.exe`)
+- Git is optional
 
-The scripts do not install software or packages. They create only \`%LOCALAPPDATA%\DCP\` and its log directory. The Gateway currently uses Python's standard library and SQLite.
+The scripts do not install software or packages. Install the repository's Python requirements before launch if your environment doctor reports a missing dependency.
 
 ## First run
 
 1. Download or clone this repository to a folder you control.
-2. Double-click \`Setup-DCP-Local.cmd\`. This runs the read-only environment doctor. It does not start services or contact cloud providers.
-3. Double-click \`Start-DCP-Local.cmd\`.
-4. A separate PowerShell window starts the Gateway. Keep that window open. The Dashboard opens in your browser.
+2. Double-click `Setup-DCP-Local.cmd` to run the read-only environment doctor.
+3. Double-click `Start-DCP-Local.cmd`.
+4. In the separate PowerShell window, choose an owner username and a password of at least 14 characters, then confirm the password. This happens only on first launch.
+5. Open the Dashboard at `http://127.0.0.1:8789/` and sign in with that username and password.
 
-The startup launcher checks \`http://127.0.0.1:8789/healthz\` and refuses to proceed unless the Gateway reports healthy with cloud provisioning disabled. The Dashboard binds only to \`127.0.0.1\` and chooses an available port. If the Gateway port is occupied, the launcher stops and leaves the existing process untouched.
+The owner password is stored as a salted PBKDF2-HMAC-SHA256 hash in `%LOCALAPPDATA%\DCP\owner-auth.json`, never as plaintext. The local Auth Proxy issues an HttpOnly, SameSite=Strict session cookie. Session state, the Gateway bearer token, and the trusted-proxy HMAC secret remain in process memory. The browser never receives Gateway credentials.
+
+## Local service layout
+
+- Dashboard + Auth Proxy: `127.0.0.1:8789`
+- Gateway: `127.0.0.1:8790`
+- SQLite data: `%LOCALAPPDATA%\DCP\gateway.sqlite3`
+- Owner credential hash: `%LOCALAPPDATA%\DCP\owner-auth.json`
+
+The Auth Proxy serves the Dashboard, validates the owner password, manages sessions and CSRF, then signs short-lived HMAC identity assertions when forwarding allowlisted API requests to the Gateway. The Gateway independently verifies the signature and replay nonce. The API token and HMAC secret are never exposed to browser JavaScript.
+
+This is an HTTP service bound exclusively to loopback. Do not change the bind address to `0.0.0.0`, expose the ports to the LAN/internet, or use it as a remote multi-user login service. The cookie is HttpOnly and SameSite=Strict; loopback HTTP is used because this stack is local-only and does not configure a local TLS certificate.
 
 ## Stop
 
-Press \`Ctrl+C\` in the PowerShell window running the Gateway. To stop the Dashboard, close its browser tab and use the Dashboard's existing ownership-aware stop procedure or restart Windows; do not kill an unverified process by port number.
+Press `Ctrl+C` in the PowerShell window running the integrated stack. It stops both the Auth Proxy and its Gateway child process.
 
-## Data and security
+## Safety and capability boundary
 
-- SQLite data: \`%LOCALAPPDATA%\DCP\gateway.sqlite3\`
-- Gateway address: \`127.0.0.1:8789\`
-- Dashboard address: \`127.0.0.1:<automatically-selected-port>\`
-- \`DCP_GATEWAY_PROVISIONING_ENABLED=false\`
-- \`DCP_GATEWAY_OWNER_APPROVED=false\`
-- The Gateway API token is generated in the Gateway process memory and is not printed or written to disk.
-- No inbound firewall rule, router port-forward, public listener, cloud API, or cloud resource is configured.
+- `DCP_GATEWAY_PROVISIONING_ENABLED=false`
+- `DCP_GATEWAY_OWNER_APPROVED=false`
+- Cloud provisioning remains disabled. No runner is created or deleted by this local integration.
+- The Gateway still uses fail-closed disabled provider adapters; this does not create local VMs, containers, or ephemeral DCP-managed runners.
+- The optional manually registered GitHub Actions self-hosted runner is a separate GitHub feature.
 
-Keep the Gateway PowerShell window private. Do not change the Gateway host to \`0.0.0.0\` or expose it to the LAN/internet.
+The automated Linux and Windows emulator workflows exercise login, session issuance, signed Gateway API access, CSRF/origin enforcement, logout/revocation, and safe provisioning defaults. They do not replace a final test on your own Windows 11 computer.
 
-## Capability boundary
-
-This launcher starts the existing local Dashboard and fail-closed Gateway. The Gateway still composes \`DisabledProvider\`; it does not create local VMs, containers, or ephemeral DCP-managed runners. The optional manually registered GitHub Actions self-hosted runner is a separate GitHub feature. Browser-to-Gateway OIDC/session integration and production-grade multi-user access are not implemented by this launcher.
-
-For details and limitations, see [Windows 11 self-hosted deployment](windows-11-self-hosted.md).
+For broader deployment limitations, see [Windows 11 self-hosted deployment](windows-11-self-hosted.md).
