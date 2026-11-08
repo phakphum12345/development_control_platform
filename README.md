@@ -12,6 +12,10 @@ Azure deployment preparation is documented in [docs/azure-production-deployment.
 
 The dashboard includes a mobile-friendly Cloud Runner Control view for Azure Linux/Windows and Orka macOS. Browser requests use the authenticated same-origin API contract documented in [docs/cloud-runner-user-api.md](docs/cloud-runner-user-api.md). The browser never receives Gateway or provider credentials. Deploy the dashboard and API behind one HTTPS origin and a trusted OIDC reverse proxy; GitHub Pages alone cannot host the API. The repository now contains GitHub App runner registration, protected Azure bootstrap payloads, Azure VM/Orka provider adapters, budget guards, and lifecycle cleanup modules with mock-backed tests. The Gateway runtime still deliberately uses `DisabledProvider`: provider composition is blocked until Azure guest login and effective egress policy are verified, Orka has a provider-specific budget and protected macOS bootstrap, and live runner/job/teardown acceptance passes. No cloud resources are created by CI.
 
+## Windows 11 self-hosted setup
+
+Use your own Windows 11 PC as the local host without Azure or paid cloud resources. The guide covers the local Dashboard and fail-closed Gateway, prerequisites, safe loopback binding, local data storage, and the optional manually registered GitHub Actions self-hosted runner: [docs/windows-11-self-hosted.md](docs/windows-11-self-hosted.md). The current Gateway still uses `DisabledProvider`; this setup does not claim dynamic runner provisioning or production-ready browser authentication.
+
 ## Local-first development (zero-cost by default)
 
 DCP development does not require paid cloud resources. Start with the
