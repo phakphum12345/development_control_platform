@@ -10,7 +10,7 @@ import time
 import unittest
 from pathlib import Path
 from urllib.error import HTTPError
-from urllib.request import Request, build_opener, urlopen
+from urllib.request import HTTPCookieProcessor, Request, build_opener, urlopen
 
 from tools import local_auth_proxy as auth
 
@@ -68,7 +68,8 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
         cls.thread = threading.Thread(target=cls.httpd.serve_forever, daemon=True)
         cls.thread.start()
         cls.base = f"http://127.0.0.1:{cls.local_port}"
-        cls.opener = build_opener(http.cookiejar.CookieJar())
+        cls.cookie_jar = http.cookiejar.CookieJar()
+        cls.opener = build_opener(HTTPCookieProcessor(cls.cookie_jar))
 
     @classmethod
     def tearDownClass(cls):
