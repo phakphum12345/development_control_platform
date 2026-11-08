@@ -1,117 +1,82 @@
 # Windows 11 self-hosted deployment (local resources)
 
-**Status:** local-host setup guide. This does not claim production readiness, authenticated browser-to-Gateway integration, or dynamic runner provisioning.
+**Status:** local development and owner-authenticated Dashboard/Gateway stack. Cloud runner provisioning and remote production deployment remain disabled.
 
-This deployment uses the Windows 11 PC's own CPU, memory, and disk. It does not create Azure resources or require a paid cloud subscription. Electricity, internet access, and any optional third-party software remain the owner's responsibility.
+This deployment runs on the Windows 11 PC's own CPU, memory, and disk. It does not require Azure, Orka, Docker, a paid cloud subscription, a public IP, or an inbound firewall rule.
 
-## 1. What runs on this PC
+## 1. Recommended: integrated local stack
 
-| Component | Local behavior | Current limitation |
+Use this path for normal local operation. It starts the Dashboard, password-authenticated Local Auth Proxy, and Gateway together.
+
+### Requirements
+
+- Windows 11 x64
+- Python 3.10+ and the Python Launcher (`py.exe`)
+- Git is optional for running the stack
+- Node.js/Playwright are optional and needed only for browser smoke tests
+
+The default stack uses Python's standard library. No pip installation is required for the local Dashboard/Auth Proxy/Gateway path.
+
+### First startup
+
+1. Download or clone this repository to a folder you control.
+2. Double-click `Setup-DCP-Local.cmd` once for the read-only preflight.
+3. Double-click `Start-DCP-Local.cmd`.
+4. In the separate PowerShell window, create an owner username and password when prompted. The password must be at least 14 characters and is entered twice.
+5. Open `http://127.0.0.1:8789/` and sign in.
+
+The owner credential record is stored at `%LOCALAPPDATA%\DCP\owner-auth.json` as a salted PBKDF2-HMAC-SHA256 hash (600,000 rounds), not plaintext. The file is restricted to the current Windows account. The Gateway database is `%LOCALAPPDATA%\DCP\gateway.sqlite3`.
+
+### Service and security boundaries
+
+| Component | Address / storage | Behavior |
 | --- | --- | --- |
-| Dashboard | Static web UI served on loopback by `Start-DCP-Dashboard.ps1` | It is not a secured public website. |
-| Gateway | Python HTTP service on loopback; SQLite lifecycle/audit store | Production provider composition is still `DisabledProvider`; runner creation is intentionally unavailable. |
-| Local tests | Python unit/contract tests; optional Node.js/Playwright browser smoke tests | Mock tests do not prove a real runner is online. |
-| Self-hosted GitHub Actions runner | Optional GitHub runner process on this PC | It executes workflows only after you register it with GitHub. It is not the DCP cloud-runner provider. |
+| Dashboard + Local Auth Proxy | `127.0.0.1:8789` | Serves the Dashboard, verifies owner password, manages HttpOnly/SameSite session and CSRF |
+| Gateway | `127.0.0.1:8790` | Independently verifies signed proxy identity assertions and replay nonces |
+| Owner credential hash | `%LOCALAPPDATA%\DCP\owner-auth.json` | Salted PBKDF2 hash; no plaintext password |
+| Gateway database | `%LOCALAPPDATA%\DCP\gateway.sqlite3` | Local lifecycle and audit data |
 
-The current Dashboard does not yet have a complete local OIDC/session edge that securely connects its browser controls to the Gateway's `/api/*` routes. Do not put a Gateway bearer token in browser JavaScript or browser storage. The Gateway's token-protected `/v1/*` API is for trusted local/service clients only.
+The Gateway bearer token and trusted-proxy HMAC secret are generated in memory at startup and are not sent to browser JavaScript or persisted. Sessions are held in memory and are revoked when the process restarts. The integrated stack binds only to loopback and uses HTTP because it is local-only; it is not a remote or multi-user internet login service.
 
-## 2. Windows 11 prerequisites
+Do not change either service bind address to `0.0.0.0`, expose the ports to a LAN or the internet, add router port forwarding, or disable Windows Defender Firewall.
 
-- Windows 11 x64 with a supported PowerShell.
-- Python 3.10 or newer (Python 3.12+ is recommended for the full validation workflow).
-- Git for Windows.
-- Optional: Node.js LTS and npm for Playwright browser smoke tests.
-- Optional: Docker Desktop with the WSL 2 backend, only if a future local workload specifically needs containers. The current local Gateway does not require Docker.
+### Stop and port conflicts
 
-Open PowerShell in the repository root. Confirm the tools:
+Keep the stack PowerShell window open. Press Ctrl+C in that window to stop the Auth Proxy and its Gateway child process.
 
-```powershell
-py --version
-git --version
-node --version   # optional
-docker version   # optional; may require Docker Desktop to be running
-```
+If port 8789 or 8790 is already occupied, startup stops and reports the conflict. It does not terminate the existing listener. Inspect the process owner before taking any action; do not stop an unverified process.
 
-Do not install Docker solely to run the Gateway or unit tests.
+## 2. Optional: standalone static Dashboard
 
-## 3. Check the local environment
+`Start-DCP-Dashboard.ps1 -OpenBrowser` starts the static Dashboard only, usually on an automatically selected local port. It does not start the Gateway and is not the authenticated integrated stack. Use `Start-DCP-Local.cmd` for the complete owner-authenticated experience.
+
+## 3. Local validation
+
+From the repository root:
 
 ```powershell
 py -3 -m tools.cloud_gateway.local_mode
 py -3 -m unittest discover -s tests -v
 ```
 
-The environment doctor is read-only. It does not install software, start services, open ports, or contact Azure/Orka. A missing optional Docker/Podman executable is not a blocker for the local Gateway.
+For browser smoke tests, install the optional Node.js/Playwright dependencies as described in the repository validation instructions. GitHub Actions additionally runs the Windows launcher/Auth Proxy/Gateway integration and Linux Gateway tests. CI uses hosted runners; it is not a substitute for a final run on your own PC.
 
-## 4. Start the Dashboard
+## 4. Optional: GitHub Actions self-hosted runner
 
-Double-click `Open-DCP-Dashboard.cmd`, or run:
+A GitHub Actions self-hosted runner is a separate GitHub worker process. It is not the DCP Gateway and does not enable DCP-managed ephemeral runner provisioning.
 
-```powershell
-.\Start-DCP-Dashboard.ps1 -OpenBrowser
-```
+1. In the repository, open **Settings → Actions → Runners → New self-hosted runner**.
+2. Select Windows and x64.
+3. Follow the exact, short-lived registration commands shown by GitHub in a local PowerShell window. Never paste the registration token into ChatGPT, a commit, an issue, or a log.
+4. Start interactively first. Configure a Windows service only after reviewing workflow permissions and deciding that the machine may execute jobs unattended.
+5. Prefer a dedicated Windows account and a workspace with no personal secrets. Do not run untrusted pull-request code on a self-hosted runner that can access private files or credentials.
 
-The launcher serves only the static Dashboard on `127.0.0.1` and chooses an available port. It does not start the Gateway or authenticate a user.
+## 5. What is not enabled
 
-## 5. Start the fail-closed local Gateway
+- `DCP_GATEWAY_PROVISIONING_ENABLED=false`
+- `DCP_GATEWAY_OWNER_APPROVED=false`
+- The runtime provider remains `DisabledProvider`; DCP cannot create or terminate Azure/Orka/local ephemeral runners.
+- Provider adapters, mock tests, or a successful CI run do not prove a real VM or GitHub runner is online.
+- Remote access, multi-user authorization, TLS termination, production identity federation, and production security review are not supplied by this local-only setup.
 
-Open a second PowerShell window in the repository root. Generate a temporary API token in that PowerShell process and start the Gateway:
-
-```powershell
-$rng = [Security.Cryptography.RandomNumberGenerator]::Create()
-$tokenBytes = New-Object byte[] 32
-$rng.GetBytes($tokenBytes)
-$env:DCP_GATEWAY_API_TOKEN = [Convert]::ToBase64String($tokenBytes)
-[Array]::Clear($tokenBytes, 0, $tokenBytes.Length)
-$rng.Dispose()
-$env:DCP_GATEWAY_HOST = "127.0.0.1"
-$env:DCP_GATEWAY_PORT = "8789"
-$env:DCP_GATEWAY_PROVISIONING_ENABLED = "false"
-$env:DCP_GATEWAY_OWNER_APPROVED = "false"
-$env:DCP_GATEWAY_DATABASE = Join-Path $env:LOCALAPPDATA "DCP\gateway.sqlite3"
-python -m tools.cloud_gateway.server
-```
-
-Keep this PowerShell window open while the Gateway is running. The token is not printed; it exists only in that process environment. Stop the Gateway with Ctrl+C. The SQLite file is stored outside the Git repository under your Windows user profile.
-
-In another PowerShell window, check the health endpoint:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:8789/healthz
-```
-
-The Gateway binds to loopback only. Do not change the host to `0.0.0.0`, add a router port-forward, or expose this service to the internet as part of this local setup.
-
-## 6. Optional: use this PC as a GitHub Actions self-hosted runner
-
-A GitHub Actions self-hosted runner lets GitHub send eligible workflow jobs to this PC. It is separate from the DCP Gateway and does not make DCP capable of creating or managing ephemeral runners.
-
-1. Open the repository on GitHub.
-2. Go to **Settings → Actions → Runners → New self-hosted runner**.
-3. Select **Windows** and **x64**.
-4. Follow the exact setup commands shown by GitHub in a local PowerShell window. The registration token is short-lived; never paste it into ChatGPT, a commit, an issue, or a log.
-5. Start with the runner in interactive mode. Configure it as a Windows service only after reviewing the repository workflows and deciding that the machine may execute them unattended.
-6. Use a dedicated Windows account and a machine/workspace that contains no personal secrets. Do not run untrusted pull-request code on a self-hosted runner with access to private files or credentials.
-
-Do not add broad labels or enable privileged workflows without reviewing their permissions and triggers.
-
-## 7. Data, backups, and safe operation
-
-- Repository source remains in the Git working tree.
-- Gateway lifecycle/audit data is in `%LOCALAPPDATA%\DCP\gateway.sqlite3`.
-- Back up the SQLite database only after stopping the Gateway, or use a SQLite-consistent backup method.
-- Keep Windows Defender Firewall enabled. Loopback-only binding is the default boundary.
-- Keep cloud provisioning and owner approval false. Do not set either to true in a local-only installation.
-- Do not commit database files, local tokens, runner registration tokens, or environment dumps.
-
-## 8. What is not yet production-ready
-
-This local installation is useful for development, local health checks, contract testing, and optionally running GitHub Actions jobs on your own PC. It is **not** a completed production control plane yet. In particular:
-
-- Dashboard OIDC login/session service and trusted same-origin edge are not implemented here.
-- Browser-facing `/api/*` routes require trusted proxy identity assertions and CSRF protection; do not bypass that boundary.
-- The Gateway still uses `DisabledProvider`, so DCP cannot provision Azure/Orka runners or dynamically create local VMs.
-- A self-hosted GitHub Actions runner is a manually registered GitHub worker, not a DCP-managed ephemeral runner.
-- Remote access, multi-user authorization, TLS, durable backup/restore automation, and security review are not supplied by this local-only guide.
-
-Keep the machine private and local until those items have been implemented and independently tested.
+Keep the deployment private and local until those separate production gates are implemented and independently accepted.
