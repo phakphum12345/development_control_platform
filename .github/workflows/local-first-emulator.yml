@@ -20,6 +20,10 @@ jobs:
           python-version: "3.12"
       - name: Install Gateway runtime dependency
         run: python -m pip install --disable-pip-version-check -r requirements-cloud-gateway.txt
+      - name: Install test dependencies
+        run: |
+          python -m pip install --disable-pip-version-check PyYAML
+          python -m pip install --disable-pip-version-check -r requirements-mcp.txt
       - name: Run local diagnostics and unit tests
         env:
           DCP_GATEWAY_PROVISIONING_ENABLED: "false"
