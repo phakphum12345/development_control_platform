@@ -83,7 +83,7 @@ jobs:
           PY
 
   windows-11-launcher-emulator:
-    name: Windows PowerShell launcher integration
+    name: Windows 11 local Auth Proxy + Gateway end-to-end
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -100,54 +100,51 @@ jobs:
           foreach ($file in $files) {
             $tokens = $null
             $errors = $null
-            [System.Management.Automation.Language.Parser]::ParseFile(
-              (Join-Path $PWD $file), [ref]$tokens, [ref]$errors
-            ) | Out-Null
-            if ($errors.Count -gt 0) {
-              $errors | Format-List | Out-String | Write-Error
-              throw "PowerShell parse failed: $file"
-            }
+            [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $file), [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Error; throw "PowerShell parse failed: $file" }
             Write-Host "PASS: $file"
           }
       - name: Run setup preflight
         shell: pwsh
         run: ./Setup-DCP-Local.ps1
-      - name: Start local stack and verify Gateway and Dashboard
+      - name: Start local stack and verify browser-to-Gateway authentication end to end
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $gatewayPort = 8789
-          $dashboardRecord = Join-Path $env:LOCALAPPDATA 'DCP/dashboard-server.json'
+          $env:DCP_LOCAL_AUTH_CREDENTIAL_FILE = Join-Path $env:RUNNER_TEMP 'dcp-owner-auth.json'
+          $env:DCP_SKIP_OPEN_BROWSER = '1'
+          @'
+          import json, os
+          from pathlib import Path
+          from tools.local_auth_proxy import password_record
+          Path(os.environ["DCP_LOCAL_AUTH_CREDENTIAL_FILE"]).write_text(json.dumps(password_record("ci-owner", "ci-only-password-2026!")), encoding="utf-8")
+          '@ | python -
           try {
             ./Start-DCP-Local.ps1
-            $health = Invoke-RestMethod -Uri "http://127.0.0.1:$gatewayPort/healthz" -TimeoutSec 5
-            if ($health.status -ne 'ok' -or $health.provisioning_enabled -ne $false) {
-              throw "Gateway health contract failed: $($health | ConvertTo-Json -Compress)"
-            }
-            if (-not (Test-Path -LiteralPath $dashboardRecord -PathType Leaf)) {
-              throw 'Dashboard ownership record was not created.'
-            }
-            $record = Get-Content -LiteralPath $dashboardRecord -Raw | ConvertFrom-Json
-            $dashboardUrl = "http://127.0.0.1:$($record.port)/"
-            $response = Invoke-WebRequest -Uri $dashboardUrl -UseBasicParsing -TimeoutSec 5
-            if ($response.StatusCode -ne 200 -or $response.Content -notmatch 'DCP') {
-              throw 'Dashboard HTTP/content verification failed.'
-            }
-            Write-Host 'PASS: Windows local launcher, Gateway health, and Dashboard HTTP response.'
-          }
-          finally {
-            if (Test-Path -LiteralPath $dashboardRecord -PathType Leaf) {
-              $record = Get-Content -LiteralPath $dashboardRecord -Raw | ConvertFrom-Json
-              $pidToStop = [int]$record.pid
-              $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $pidToStop" -ErrorAction SilentlyContinue
-              if ($proc -and $proc.CommandLine -match '(?i)-m\s+http\.server\s+') {
-                Stop-Process -Id $pidToStop -Force -ErrorAction SilentlyContinue
-              }
-              Remove-Item -LiteralPath $dashboardRecord -Force -ErrorAction SilentlyContinue
-            }
-            $gateway = Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" -ErrorAction SilentlyContinue |
-              Where-Object { $_.CommandLine -match '(?i)-m\s+tools\.cloud_gateway\.server' }
-            foreach ($proc in $gateway) {
-              Stop-Process -Id ([int]$proc.ProcessId) -Force -ErrorAction SilentlyContinue
-            }
+            $base = 'http://127.0.0.1:8789'
+            $health = Invoke-RestMethod -Uri "$base/healthz" -TimeoutSec 5
+            if ($health.status -ne 'ok' -or $health.auth_proxy -ne 'ready' -or $health.provisioning_enabled -ne $false) { throw 'Local stack health contract failed.' }
+            $dashboard = Invoke-WebRequest -Uri "$base/" -UseBasicParsing -TimeoutSec 5
+            if ($dashboard.StatusCode -ne 200 -or $dashboard.Content -notmatch 'auth-login-form') { throw 'Dashboard was not served by the local auth proxy.' }
+            $web = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+            $preauth = Invoke-RestMethod -Uri "$base/api/auth/session" -WebSession $web -TimeoutSec 5
+            if ($preauth.authenticated -ne $false -or $preauth.csrfToken.Length -lt 32) { throw 'Pre-auth session/CSRF challenge missing.' }
+            $originHeaders = @{ Origin = $base; 'X-CSRF-Token' = $preauth.csrfToken }
+            $loginBody = @{ username = 'ci-owner'; password = 'ci-only-password-2026!' } | ConvertTo-Json -Compress
+            $login = Invoke-RestMethod -Uri "$base/api/auth/login" -Method Post -WebSession $web -Headers $originHeaders -ContentType 'application/json' -Body $loginBody -TimeoutSec 10
+            if ($login.authenticated -ne $true) { throw 'Local password login failed.' }
+            $session = Invoke-RestMethod -Uri "$base/api/auth/session" -WebSession $web -TimeoutSec 5
+            if ($session.authenticated -ne $true -or $session.user.role -ne 'owner') { throw 'Owner session was not established.' }
+            $status = Invoke-RestMethod -Uri "$base/api/cloud-runners/status" -WebSession $web -TimeoutSec 5
+            if ($status.gateway -ne 'READY' -or $status.provisioning_enabled -ne $false) { throw 'Signed browser-session to Gateway API request failed or safe defaults changed.' }
+            $logoutHeaders = @{ Origin = $base; 'X-CSRF-Token' = $session.csrfToken }
+            $logout = Invoke-RestMethod -Uri "$base/api/auth/logout" -Method Post -WebSession $web -Headers $logoutHeaders -TimeoutSec 5
+            if ($logout.authenticated -ne $false) { throw 'Logout did not revoke the local session.' }
+            $denied = $false
+            try { Invoke-WebRequest -Uri "$base/api/cloud-runners/status" -WebSession $web -UseBasicParsing -TimeoutSec 5 | Out-Null } catch { $code = [int]$_.Exception.Response.StatusCode; if ($code -eq 401) { $denied = $true } else { throw } }
+            if (-not $denied) { throw 'Gateway API remained accessible after logout.' }
+            Write-Host 'PASS: Windows Dashboard -> password login -> HttpOnly session -> signed HMAC Gateway API -> logout/revocation.'
+          } finally {
+            $stackProcesses = Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match '(?i)-m\s+tools\.(local_auth_proxy|cloud_gateway\.server)' }
+            foreach ($proc in $stackProcesses) { Stop-Process -Id ([int]$proc.ProcessId) -Force -ErrorAction SilentlyContinue }
           }
