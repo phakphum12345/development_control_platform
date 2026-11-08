@@ -22,7 +22,7 @@ from urllib.request import Request, urlopen
 
 HOST = "127.0.0.1"
 PORT = int(os.getenv("DCP_LOCAL_PORT", "8789"))
-GATEWAY_PORT = int(os.getenv("DCP_GATEWAY_PORT", "8790"))
+GATEWAY_PORT = int(os.getenv("DCP_GATEWAY_PORT", "18790"))
 SESSION_TTL = 12 * 60 * 60
 PBKDF2_ROUNDS = 600_000
 COOKIE = "DCP_LOCAL_SESSION"
