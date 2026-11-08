@@ -177,7 +177,7 @@ if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
 $startedPid = 0
 $tempRecord = $null
 try {
-    $arguments = @(
+    $arguments = @($pythonArgs) + @(
         '-m', 'http.server', [string]$Port,
         '--bind', '127.0.0.1',
         '--directory', ('"{0}"' -f $dashboard)
