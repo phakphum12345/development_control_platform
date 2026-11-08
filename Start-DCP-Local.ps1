@@ -47,8 +47,8 @@ if (-not $ready) {
 }
 
 Write-Host 'Local Auth Proxy: PASS; Gateway: PASS; cloud provisioning: DISABLED' -ForegroundColor Green
-try { Start-Process 'http://127.0.0.1:8789/' } catch {
+if ($env:DCP_SKIP_OPEN_BROWSER -ne '1') { try { Start-Process 'http://127.0.0.1:8789/' } catch {
     Write-Warning "Stack is ready at http://127.0.0.1:8789/; browser could not be opened automatically."
-}
+} }
 Write-Host 'Dashboard URL: http://127.0.0.1:8789/'
 Write-Host 'Keep the stack PowerShell window open. Close it or press Ctrl+C there to stop all local services.'
