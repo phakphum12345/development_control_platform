@@ -356,6 +356,108 @@ class GitHubAppRunnerBootstrap:
             raise GitHubAppError("GitHub commit response did not match the requested SHA")
         return {"commit_sha": resolved.lower()}
 
+    def inspect_repository_project(self, repository: str, commit_sha: str) -> dict:
+        """Inspect bounded Git tree metadata; never download or execute project code."""
+        if not isinstance(commit_sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", commit_sha):
+            raise GitHubAppError("Commit SHA must be 40 hexadecimal characters")
+        token = self._repository_contents_token(repository)
+        owner, name = repository.split("/", 1)
+        commit = self._request(
+            "GET",
+            "/repos/{}/{}/commits/{}".format(owner, name, commit_sha),
+            token,
+        )
+        if not isinstance(commit, dict):
+            raise GitHubAppError("GitHub commit response is invalid")
+        resolved = commit.get("sha")
+        commit_data = commit.get("commit")
+        tree_data = commit_data.get("tree") if isinstance(commit_data, dict) else None
+        tree_sha = tree_data.get("sha") if isinstance(tree_data, dict) else None
+        if (not isinstance(resolved, str) or resolved.lower() != commit_sha.lower()
+                or not isinstance(tree_sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", tree_sha)):
+            raise GitHubAppError("GitHub commit tree identity is invalid")
+        tree = self._request(
+            "GET",
+            "/repos/{}/{}/git/trees/{}?recursive=1".format(owner, name, tree_sha),
+            token,
+        )
+        if not isinstance(tree, dict) or not isinstance(tree.get("tree"), list):
+            raise GitHubAppError("GitHub repository tree response is invalid")
+        entries = tree["tree"]
+        truncated = tree.get("truncated")
+        if not isinstance(truncated, bool) or any(not isinstance(item, dict) for item in entries):
+            raise GitHubAppError("GitHub repository tree metadata is malformed")
+        if len(entries) > 20000:
+            truncated = True
+        paths = set()
+        for item in entries[:20000]:
+            path = item.get("path")
+            if (not isinstance(path, str) or not path or path.startswith("/")
+                    or any(part in ("", ".", "..") for part in path.split("/"))):
+                raise GitHubAppError("GitHub repository tree contains an unsafe path")
+            # Symlinks and submodules are not treated as project source files.
+            if item.get("type") == "blob" and item.get("mode") != "120000":
+                paths.add(path)
+
+        pubspecs = sorted(path for path in paths if path.rsplit("/", 1)[-1] == "pubspec.yaml")
+        package_roots = [path.rsplit("/", 1)[0] if "/" in path else "" for path in pubspecs]
+        macos_projects = []
+        for root in package_roots:
+            prefix = root + "/" if root else ""
+            project = prefix + "macos/Runner.xcodeproj/project.pbxproj"
+            info = prefix + "macos/Runner/Info.plist"
+            if project in paths and info in paths:
+                macos_projects.append(project)
+        macos_supported = bool(macos_projects)
+        if truncated:
+            status = "unknown"
+            macos_supported_result = None
+        elif pubspecs and macos_supported:
+            status = "ready"
+            macos_supported_result = True
+        elif pubspecs:
+            status = "needs_setup"
+            macos_supported_result = False
+        else:
+            status = "detected"
+            macos_supported_result = False
+
+        project_types = set()
+        for path in paths:
+            filename = path.rsplit("/", 1)[-1].lower()
+            if filename == "pubspec.yaml":
+                project_types.add("flutter")
+            elif filename in ("pyproject.toml", "requirements.txt", "setup.py", "pipfile"):
+                project_types.add("python")
+            elif filename in ("package.json", "pnpm-lock.yaml", "yarn.lock", "package-lock.json"):
+                project_types.add("node")
+            elif filename == "cargo.toml":
+                project_types.add("rust")
+            elif filename == "go.mod":
+                project_types.add("go")
+            elif filename in ("pom.xml", "build.gradle", "build.gradle.kts"):
+                project_types.add("java")
+
+        return {
+            "repository": repository,
+            "commit_sha": resolved.lower(),
+            "status": status,
+            "project_types": sorted(project_types),
+            "file_count": len(paths),
+            "truncated": truncated,
+            "flutter": {
+                "detected": bool(pubspecs),
+                "package_manifests": pubspecs,
+                "macos_supported": macos_supported_result,
+                "macos_runner_projects": macos_projects if not truncated else [],
+            },
+            "notes": [
+                "Inspection uses repository tree metadata only; no source files are executed.",
+                "A Flutter macOS target is detected only when its Runner Xcode project and Info.plist are present.",
+                "A truncated tree is UNKNOWN and is never treated as proof that a target is absent.",
+            ],
+        }
+
     def create_registration_token(self, repository: str) -> RunnerRegistrationCredential:
         installation_token = self._installation_token(repository, "write")
         owner, name = repository.split("/", 1)
