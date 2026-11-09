@@ -48,7 +48,7 @@ def build_github_app_runtime(settings, env=None):
     def cleanup(row, instance):
         repository = row.get("repository")
         provider_id = row.get("provider_id")
-        if not app.is_repository_accessible(repository) or not isinstance(provider_id, str):
+        if not app.is_repository_accessible(repository, refresh=True) or not isinstance(provider_id, str):
             raise RuntimeError("Runner cleanup identity is not allowlisted")
         runner_name = provider_id.split(":", 1)[-1]
         runner = app.find_runner(repository, runner_name)
