@@ -77,6 +77,29 @@ class AuthenticatedControlAPITests(unittest.TestCase):
         with urlopen(self.request("GET", "/api/cloud-runners", "nonce_list_000001")) as response:
             self.assertEqual(json.loads(response.read()), {"runners": []})
 
+    def test_authenticated_repository_catalog_endpoint_returns_safe_metadata(self):
+        self.service.repository_catalog = lambda: [
+            {
+                "full_name": "example/private-app",
+                "private": True,
+                "default_branch": "main",
+                "permissions": {"push": True, "pull": True},
+            }
+        ]
+        with urlopen(self.request("GET", "/api/github/repositories", "nonce_repo_catalog_0001")) as response:
+            payload = json.loads(response.read())
+            self.assertEqual(response.status, 200)
+            self.assertEqual(payload["repositories"][0]["full_name"], "example/private-app")
+            self.assertTrue(payload["repositories"][0]["private"])
+
+    def test_repository_catalog_endpoint_fails_closed_when_not_configured(self):
+        with self.assertRaises(HTTPError) as error:
+            urlopen(self.request("GET", "/api/github/repositories", "nonce_repo_catalog_0002"))
+        try:
+            self.assertEqual(error.exception.code, 503)
+        finally:
+            error.exception.close()
+
     def test_status_projects_budget_for_all_active_runners(self):
         self.store.create("seed-runner", "seed-budget-key", "seed-fingerprint", {"repository":"phakphum12345/generated-A4-pdf","workflow_run_id":1,"commit_sha":"a"*40,"target_os":"linux"}, "2999-01-01T00:00:00+00:00")
         self.store.transition("seed-runner", "online", "provider-seed")
