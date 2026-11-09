@@ -238,7 +238,7 @@ class GitHubAppRunnerBootstrap:
         self._repository_catalog_cache_until = now + 60.0
         return [dict(item) for item in catalog]
 
-    def is_repository_accessible(self, repository: str) -> bool:
+    def is_repository_accessible(self, repository: str, refresh: bool = False) -> bool:
         if not isinstance(repository, str) or not re.fullmatch(
             r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}", repository
         ):
@@ -247,11 +247,11 @@ class GitHubAppRunnerBootstrap:
             return repository in self.allowed_repositories
         return any(
             item["full_name"].lower() == repository.lower()
-            for item in self.list_installation_repositories()
+            for item in self.list_installation_repositories(refresh=refresh)
         )
 
     def _installation_token(self, repository: str, administration: str) -> str:
-        if not self.is_repository_accessible(repository):
+        if not self.is_repository_accessible(repository, refresh=True):
             raise GitHubAppError("Repository is not accessible to the DCP GitHub App installation")
         if administration not in ("read", "write"):
             raise ValueError("Unsupported GitHub repository administration scope")
@@ -350,7 +350,7 @@ class GitHubAppRunnerBootstrap:
     def remove_runner(self, repository: str, runner_id: int) -> bool:
         if isinstance(runner_id, bool) or not isinstance(runner_id, int) or runner_id < 1:
             raise GitHubAppError("Invalid GitHub runner ID")
-        owner, name = repository.split("/", 1) if self.is_repository_accessible(repository) else ("", "")
+        owner, name = repository.split("/", 1) if self.is_repository_accessible(repository, refresh=True) else ("", "")
         if not owner:
             raise GitHubAppError("Repository is not accessible to the DCP GitHub App installation")
         runners = self._list_runners(repository)
