@@ -192,11 +192,24 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
                 repository_refs_prefix = "/api/github/repositories/"
                 if path.startswith(repository_refs_prefix):
                     parts = path[len(repository_refs_prefix):].split("/")
-                    if len(parts) != 3 or parts[2] != "refs":
+                    if len(parts) not in (3, 4):
                         return self.send_json(404, {"error": "not found"})
                     repository = unquote(parts[0]) + "/" + unquote(parts[1])
                     if not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}", repository):
                         return self.send_json(400, {"error": "invalid repository"})
+                    if len(parts) == 4 and parts[2] == "commits":
+                        commit_sha = unquote(parts[3])
+                        if not re.fullmatch(r"[0-9a-fA-F]{40}", commit_sha):
+                            return self.send_json(400, {"error": "commit SHA must be 40 hexadecimal characters"})
+                        try:
+                            commit = service.resolve_repository_commit(repository, commit_sha)
+                        except PermissionError:
+                            return self.send_json(403, {"error": "repository is not accessible"})
+                        except Exception:
+                            return self.send_json(503, {"error": "GitHub commit verification unavailable"})
+                        return self.send_json(200, {"repository": repository, **commit})
+                    if len(parts) != 3 or parts[2] != "refs":
+                        return self.send_json(404, {"error": "not found"})
                     query = parse_qs(urlparse(self.path).query, keep_blank_values=True)
                     kinds = query.get("kind", ["branches"])
                     if len(kinds) != 1 or kinds[0] not in ("branches", "tags"):
@@ -500,6 +513,7 @@ def main():
         repository_catalog=github_app.list_installation_repositories if github_app else None,
         repository_authorizer=(lambda repository: github_app.is_repository_accessible(repository, refresh=True)) if github_app else None,
         repository_ref_catalog=github_app.list_repository_refs if github_app else None,
+        repository_commit_resolver=github_app.resolve_repository_commit if github_app else None,
     )
     _start_expiry_reconciler(service, int(os.getenv("DCP_GATEWAY_RECONCILE_SECONDS", "30")))
     server = ThreadingHTTPServer(
