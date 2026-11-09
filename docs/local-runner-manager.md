@@ -6,7 +6,7 @@
 
 Run the manager with an exact private repository. It checks Windows, GitHub CLI authentication, repository identity, and repository-admin permission. It then downloads the official latest Windows x64 GitHub Actions runner, creates a new isolated directory under %LOCALAPPDATA%\DCP\local-runners, obtains a short-lived registration token through the already-authenticated GitHub CLI, and registers a uniquely named **ephemeral** runner.
 
-After a job completes, GitHub removes the ephemeral runner registration and the supervisor creates a fresh isolated instance. If GitHub reports the runner offline and not busy for three consecutive health checks, the supervisor restarts only its own child process. An API outage is treated as UNKNOWN and does not authorize a restart. Ctrl+C stops only the process launched by this supervisor. Existing runner folders, Windows services, registrations, workspaces, and ports are not inspected for termination or modified.
+After a job completes, GitHub removes the ephemeral runner registration and the supervisor creates a fresh isolated instance. If GitHub reports the runner offline and not busy for three consecutive health checks, the supervisor restarts only its own child process. An API outage is treated as UNKNOWN and does not authorize a restart. Ctrl+C stops only the process tree created by this supervisor (scoped to its exact PID). Each completed or failed managed instance has its own temporary workspace removed; its runner log is retained under the managed root. Existing runner folders, Windows services, registrations, workspaces, and ports are not inspected for termination or modified.
 
 ## Prerequisites
 
@@ -35,7 +35,8 @@ The doctor command is read-only. Start creates a new runner; it never adopts or 
 - Runner is registered with --ephemeral and --disableupdate; it deregisters after one job.
 - Labels are dcp-managed, windows, and x64.
 - Repository identity and privacy are checked through the authenticated GitHub API before provisioning.
-- Only the exact process created by this supervisor is monitored. No taskkill, broad process-name termination, service modification, firewall rule, fixed port, or port reservation is used.
+- Only the exact process tree created by this supervisor is monitored or stopped, using its PID rather than a shared process name. No service modification, firewall rule, fixed port, or port reservation is used.
+- Temporary workspaces belonging to this manager are removed after the runner exits; audit logs remain under the managed root. Cleanup refuses paths outside the managed root.
 - Runner downloads are limited to 512 MiB and ZIP extraction rejects path traversal.
 - Restart count is bounded; the manager stops rather than retrying forever.
 - A successful gh auth status is not proof that a runner is online. Verify the new runner in Repository Settings > Actions > Runners and confirm a real workflow job is assigned to its labels.
