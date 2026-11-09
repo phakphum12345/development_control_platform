@@ -7,7 +7,7 @@ The canonical architecture, API boundaries, repository trust model, provider con
 | Phase | Work package | Exit evidence | Status |
 |---|---|---|---|
 | 0 | Baseline and safety | Work on feature branch; main untouched; Cloud Provisioning disabled; existing workflows and tests inventoried | In progress |
-| 1 | Repository Manager hardening | Installation catalog pagination, private/public metadata, authenticated API, server-side membership revalidation, branch/tag/SHA resolution, project detection | Existing catalog/API implemented; scale regression fix added; full verification pending |
+| 1 | Repository Manager hardening | Installation catalog pagination, private/public metadata, authenticated API, server-side membership revalidation, branch/tag/SHA resolution, project detection | Installation catalog, authenticated branch/tag API, repository-scoped Contents-read tokens, and commit verification implemented on feature branch; project detection and test execution pending |
 | 2 | DCP Core and Job Control Plane | Stable Job API, durable state transitions, idempotency, cancellation, timeout, audit events, queue contract | Existing Gateway lifecycle is a starting point; scheduler/queue work pending |
 | 3 | DCP Runner Engine | Local runner agent, authenticated claim/heartbeat/report protocol, isolated workspace, logs, cancellation and cleanup reconciliation | Pending |
 | 4 | DCP Provisioning Engine | Provider-neutral capabilities/readiness/create/inspect/stop/delete; local no-cost simulation; host-specific adapters only after validation | Existing Azure/Orka routing is legacy adapter work; DCP-owned provider manager pending |
@@ -20,10 +20,13 @@ The canonical architecture, API boundaries, repository trust model, provider con
 Branch: `feature/selectable-github-repositories`
 
 Changes made in this slice:
-- Added an authenticated GitHub App repository catalog API contract to the Dashboard documentation.
+- Added an authenticated GitHub App installation repository catalog API and Dashboard selector.
 - Raised the GitHub App API response limit from 64 KiB to a strict 2 MiB, allowing normal installation repository pages with up to 100 repository records.
-- Added regression tests for a valid response larger than 64 KiB and rejection above the 2 MiB cap.
-- Added this execution tracker.
+- Added authenticated branch/tag discovery using a short-lived token scoped to the selected repository with Contents: read.
+- Added full commit SHA verification against the selected repository, including a second server-side check before accepting a runner request.
+- Added Dashboard Branch/Tag selection and explicit verification for manually entered commit SHAs.
+- Added regression tests for large response limits, ref pagination, token scope, repository authorization, and commit verification.
+- Added the architecture/API contract and this execution tracker.
 
 ## Verification still required
 
@@ -50,6 +53,6 @@ Also verify the exact branch head in CI before opening a draft PR. Do not treat 
 
 1. Run the focused GitHub App and authenticated repository API tests on this branch head.
 2. Review the complete diff against the branch base and resolve any stale or duplicate repository-selection paths in the Dashboard.
-3. Add authenticated branch/tag/ref discovery with the minimum GitHub App permissions needed; if the App installation lacks those permissions, report NOT_READY rather than falling back to unauthenticated public metadata.
-4. Add repository project detection for Flutter and native macOS support.
+3. Complete project detection for Flutter and native macOS support, with explicit unsupported/needs-setup results.
+4. Add contract tests for project detection and ensure unsupported targets fail before runner provisioning.
 5. Define and test the Job API/queue contract before introducing Redis or PostgreSQL migrations.
