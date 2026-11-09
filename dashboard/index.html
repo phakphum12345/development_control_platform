@@ -778,7 +778,7 @@ async function runnerRefresh(){
   runnerRenderGate();
   await runnerLoadList();
  }catch(error){
-  runnerUI.status=null;runnerUI.session=false;runnerUI.csrf=null;runnerUI.repositories=[];
+  runnerUI.status=null;runnerUI.session=false;runnerUI.csrf=null;runnerUI.repositories=[];runnerUI.project=null;runnerUI.projectRequestId++;
   $("runner-repository").innerHTML='<option value="">Authentication / API unavailable</option>';$("runner-repository").disabled=true;
   runnerText("runner-repositories-status","Repository catalog: UNKNOWN — authenticated API unavailable");
   runnerText("runner-last-check","ตรวจสอบไม่สำเร็จ — "+error.message);
@@ -806,7 +806,7 @@ async function runnerLoadRepositories(){
   if(rows.some(r=>r.full_name===previous))select.value=previous;
   status.textContent="Installation catalog: "+rows.length+" repositories · membership verified by backend";
  }catch(error){
-  runnerUI.repositories=[];select.innerHTML='<option value="">Repository catalog unavailable</option>';select.disabled=true;
+  runnerUI.repositories=[];runnerUI.project=null;runnerUI.projectRequestId++;select.innerHTML='<option value="">Repository catalog unavailable</option>';select.disabled=true;
   status.textContent="Repository catalog: UNKNOWN — "+error.message;
  }
 }
@@ -898,8 +898,9 @@ async function runnerVerifyCommit(){
   runnerText("runner-commit-status","Commit: VERIFIED in "+repository);
   await runnerInspectProject(repository,runnerUI.verifiedCommit);
  }catch(error){
-  runnerUI.verifiedCommit=null;
+  runnerUI.verifiedCommit=null;runnerUI.project=null;runnerUI.projectRequestId++;
   runnerText("runner-commit-status","Commit: NOT VERIFIED — "+error.message);
+  runnerText("runner-project-status","Project: UNKNOWN — commit verification failed");
  }finally{button.disabled=false}
 }
 async function runnerCreate(){
