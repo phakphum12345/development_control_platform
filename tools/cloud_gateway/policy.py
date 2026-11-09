@@ -42,16 +42,14 @@ def validate_runner_request(payload,settings,repository_authorizer=None):
  if not isinstance(payload,dict) or set(payload)!=FIELDS: raise PolicyDenied("Request fields do not match contract",400)
  repo=payload["repository"]
  if not isinstance(repo,str) or not REPO.fullmatch(repo): raise PolicyDenied("Invalid owner/name repository",400)
- if settings.allowed_repositories:
-  if repo not in settings.allowed_repositories: raise PolicyDenied("Repository is not allowlisted",403)
- elif not callable(repository_authorizer):
-  raise PolicyDenied("Dynamic repository authorization is not configured",403)
  if callable(repository_authorizer):
   try:
    allowed=repository_authorizer(repo)
   except Exception:
    raise PolicyDenied("Repository installation membership could not be verified",503)
   if allowed is not True: raise PolicyDenied("Repository is not accessible to the DCP GitHub App installation",403)
+ elif repo not in settings.allowed_repositories:
+  raise PolicyDenied("Repository is not allowlisted and dynamic installation authorization is unavailable",403)
  run=payload["workflow_run_id"]
  if isinstance(run,bool) or not isinstance(run,int) or run<1: raise PolicyDenied("workflow_run_id must be positive",400)
  if not isinstance(payload["commit_sha"],str) or not SHA.fullmatch(payload["commit_sha"]): raise PolicyDenied("commit_sha must be lowercase 40-character SHA",400)
