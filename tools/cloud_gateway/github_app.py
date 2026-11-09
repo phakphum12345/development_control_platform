@@ -350,7 +350,7 @@ class GitHubAppRunnerBootstrap:
     def remove_runner(self, repository: str, runner_id: int) -> bool:
         if isinstance(runner_id, bool) or not isinstance(runner_id, int) or runner_id < 1:
             raise GitHubAppError("Invalid GitHub runner ID")
-        owner, name = repository.split("/", 1) if repository in self.allowed_repositories else ("", "")
+        owner, name = repository.split("/", 1) if self.is_repository_accessible(repository) else ("", "")
         if not owner:
             raise GitHubAppError("Repository is not allowlisted for runner administration")
         runners = self._list_runners(repository)
