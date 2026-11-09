@@ -420,7 +420,9 @@ class GitHubAppRunnerBootstrap:
             macos_supported_result = False
         else:
             status = "detected"
-            macos_supported_result = False
+            # A non-Flutter repository is not evidence that a Flutter macOS
+            # target is unsupported; this field is not applicable.
+            macos_supported_result = None
 
         project_types = set()
         for path in paths:
