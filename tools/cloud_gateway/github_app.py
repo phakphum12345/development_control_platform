@@ -7,6 +7,7 @@ only through a provider's protected bootstrap channel.
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 import re
 import time
@@ -420,8 +421,11 @@ class GitHubAppRunnerBootstrap:
                 continue
             try:
                 manifest_bytes = base64.b64decode(re.sub(r"\s+", "", encoded), validate=True)
+                if len(manifest_bytes) != size:
+                    manifest_scan_incomplete = True
+                    continue
                 manifest_text = manifest_bytes.decode("utf-8")
-            except (ValueError, UnicodeDecodeError):
+            except (ValueError, UnicodeDecodeError, binascii.Error):
                 manifest_scan_incomplete = True
                 continue
             if re.search(r"(?m)^\s*flutter\s*:", manifest_text):
