@@ -482,7 +482,7 @@ class GitHubAppBootstrapTests(unittest.TestCase):
         app._app_jwt = lambda: "app-jwt"
         app._request = request
         result = app.inspect_repository_project("example/flutter-app", sha)
-        self.assertEqual(result["status"], "ready")
+        self.assertEqual(result["status"], "target_detected")
         self.assertEqual(result["project_types"], ["flutter"])
         self.assertTrue(result["flutter"]["macos_supported"])
         self.assertIn("/git/trees/" + tree_sha + "?recursive=1", calls[-1][1])
