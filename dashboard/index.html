@@ -229,7 +229,7 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
    <div class="field"><label for="runner-ref-kind">Ref type</label><select id="runner-ref-kind"><option value="branches">Branch</option><option value="tags">Tag</option></select></div>
    <div class="field"><label for="runner-ref-value">Branch / Tag</label><select id="runner-ref-value" disabled><option value="">Select a repository first</option></select><span class="small muted" id="runner-refs-status">Refs: UNKNOWN</span></div>
    <div class="field"><label for="runner-workflow-id">GitHub Actions run ID</label><input id="runner-workflow-id" inputmode="numeric" placeholder="เช่น 123456789" maxlength="20"></div>
-   <div class="field"><label for="runner-commit-sha">Resolved commit SHA (40 characters)</label><input id="runner-commit-sha" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="Select a branch/tag or enter SHA" maxlength="40"></div>
+   <div class="field"><label for="runner-commit-sha">Resolved commit SHA (40 characters)</label><input id="runner-commit-sha" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="Select a branch/tag or enter SHA" maxlength="40"><button type="button" id="runner-commit-verify">Verify commit SHA</button><span class="small muted" id="runner-commit-status">Commit: UNKNOWN</span></div>
    <div class="field"><label for="runner-runtime">Maximum runtime</label><select id="runner-runtime"><option value="15">15 minutes</option><option value="30" selected>30 minutes</option><option value="60">60 minutes</option><option value="120">120 minutes</option><option value="180">180 minutes</option></select></div>
   </div>
   <div class="runner-gate" data-state="unknown" id="runner-create-gate">Provisioning gate: UNKNOWN — กด Refresh เพื่อตรวจสอบ backend และ budget ก่อน</div>
@@ -713,7 +713,7 @@ async function initPasswordAuth(){
 
 
 /* Cloud Runner Control — fail closed; all secrets remain server-side. */
-const runnerUI={os:"linux",session:false,csrf:null,status:null,ready:false,repositories:[]};
+const runnerUI={os:"linux",session:false,csrf:null,status:null,ready:false,repositories:[],verifiedCommit:null};
 const runnerProfiles={
  linux:{image:"ubuntu-24.04-x64",labels:["self-hosted","Linux","X64","dcp-cloud-linux"]},
  windows:{image:"windows-2025-x64",labels:["self-hosted","Windows","X64","dcp-cloud-windows"]},
@@ -817,6 +817,8 @@ async function runnerLoadRepositoryRefs(){
  select.innerHTML='<option value="">Loading refs…</option>';
  select.disabled=true;
  runnerText("runner-commit-sha","");
+ runnerUI.verifiedCommit=null;
+ runnerText("runner-commit-status","Commit: UNKNOWN");
  if(!repository||!runnerUI.repositories.some(r=>r.full_name===repository)){
   select.innerHTML='<option value="">Select an installed repository first</option>';
   status.textContent="Refs: repository not selected";
@@ -852,6 +854,25 @@ async function runnerLoadList(){
   $("runner-list").querySelectorAll("[data-runner-stop]").forEach(button=>button.addEventListener("click",()=>runnerStop(button.dataset.runnerStop)));
  }catch(error){$("runner-list").innerHTML='<div class="empty">UNKNOWN — '+runnerEsc(error.message)+'</div>'}
 }
+async function runnerVerifyCommit(){
+ const repository=$("runner-repository").value;
+ const sha=$("runner-commit-sha").value.trim();
+ if(!runnerUI.repositories.some(r=>r.full_name===repository)){runnerText("runner-commit-status","Commit: BLOCKED — choose an installed repository");return}
+ if(!/^[a-fA-F0-9]{40}$/.test(sha)){runnerText("runner-commit-status","Commit: INVALID — enter a full 40-character SHA");return}
+ const parts=repository.split("/");
+ runnerText("runner-commit-status","Commit: verifying against GitHub…");
+ const button=$("runner-commit-verify");button.disabled=true;
+ try{
+  const data=await runnerJson("./api/github/repositories/"+encodeURIComponent(parts[0])+"/"+encodeURIComponent(parts[1])+"/commits/"+encodeURIComponent(sha));
+  if(data.repository!==repository||typeof data.commit_sha!=="string"||data.commit_sha.toLowerCase()!==sha.toLowerCase())throw new Error("Commit does not match selected repository");
+  runnerUI.verifiedCommit=data.commit_sha.toLowerCase();
+  $("runner-commit-sha").value=runnerUI.verifiedCommit;
+  runnerText("runner-commit-status","Commit: VERIFIED in "+repository);
+ }catch(error){
+  runnerUI.verifiedCommit=null;
+  runnerText("runner-commit-status","Commit: NOT VERIFIED — "+error.message);
+ }finally{button.disabled=false}
+}
 async function runnerCreate(){
  if(!runnerCanCreate()){runnerText("runner-create-result","BLOCKED: readiness gates are not all PASS.");return}
  const repository=$("runner-repository").value,runId=Number($("runner-workflow-id").value),sha=$("runner-commit-sha").value.trim(),runtime=Number($("runner-runtime").value);
@@ -885,8 +906,13 @@ $("runner-ref-kind").addEventListener("change",runnerLoadRepositoryRefs);
 $("runner-ref-value").addEventListener("change",()=>{
  const selected=$("runner-ref-value").selectedOptions[0];
  const sha=selected&&selected.dataset.sha||"";
- if(sha) $("runner-commit-sha").value=sha;
+ if(sha){$("runner-commit-sha").value=sha;runnerUI.verifiedCommit=sha;runnerText("runner-commit-status","Commit: VERIFIED from selected "+$("runner-ref-kind").value.slice(0,-1));}
 });
+$("runner-commit-sha").addEventListener("input",()=>{
+ runnerUI.verifiedCommit=null;
+ runnerText("runner-commit-status","Commit: UNKNOWN — verify before submitting");
+});
+$("runner-commit-verify").addEventListener("click",runnerVerifyCommit);
 document.querySelectorAll("[data-runner-os]").forEach(button=>button.addEventListener("click",()=>{
  runnerUI.os=button.dataset.runnerOs;
  document.querySelectorAll("[data-runner-os]").forEach(b=>b.setAttribute("aria-pressed",String(b===button)));
