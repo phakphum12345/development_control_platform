@@ -12,6 +12,7 @@ class GatewayService:
         self, settings, store, provider, budget_guard=None, runner_cleanup=None,
         provider_budget_guards=None, repository_catalog=None, repository_authorizer=None,
         repository_ref_catalog=None, repository_commit_resolver=None,
+        repository_project_inspector=None,
     ):
         self.settings = settings
         self.store = store
@@ -27,6 +28,7 @@ class GatewayService:
         self.repository_authorizer = repository_authorizer
         self.repository_ref_catalog = repository_ref_catalog
         self.repository_commit_resolver = repository_commit_resolver
+        self.repository_project_inspector = repository_project_inspector
         self.create_lock = threading.Lock()
 
     def budget_provider_for_os(self, os_name):
@@ -144,6 +146,18 @@ class GatewayService:
         if self.repository_authorizer(repository) is not True:
             raise PermissionError("Repository is not accessible to the DCP GitHub App installation")
         return self.repository_commit_resolver(repository, commit_sha)
+
+    def inspect_repository_project(self, repository, commit_sha):
+        if not callable(self.repository_project_inspector):
+            raise RuntimeError("GitHub App repository project inspector is not configured")
+        if not callable(self.repository_authorizer):
+            raise RuntimeError("GitHub App repository authorization is not configured")
+        if self.repository_authorizer(repository) is not True:
+            raise PermissionError("Repository is not accessible to the DCP GitHub App installation")
+        result = self.repository_project_inspector(repository, commit_sha)
+        if not isinstance(result, dict) or result.get("repository") != repository:
+            raise RuntimeError("GitHub App repository project inspector returned an invalid response")
+        return result
 
     def list_recent(self, limit=50):
         return [self.public(row) for row in self.store.list_recent(limit)]
