@@ -68,6 +68,1566 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Runner not found. }
+  /api/jobs:
+    get:
+      operationId: listDashboardJobs
+      summary: List recent jobs for an authenticated dashboard user
+      security:
+        - TrustedProxyAssertion: []
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200': { description: Recent job records. }
+        '401': { description: Authenticated owner/operator session required. }
+        '403': { description: Dashboard role is not authorized. }
+        '503': { description: Job database unavailable. }
+    post:
+      operationId: createDashboardJob
+      summary: Queue a repository job without executing it in the API process
+      description: Requires trusted proxy identity, same-origin request, CSRF token, and idempotency key. Only repository, immutable commit SHA, and allowlisted target are accepted.
+      security:
+        - TrustedProxyAssertion: []
+      parameters:
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: { type: string, minLength: 64, maxLength: 64 }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 200 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JobCreateRequest' }
+      responses:
+        '202': { description: Job queued. }
+        '200': { description: Existing idempotent job returned. }
+        '400': { description: Invalid payload or idempotency key. }
+        '401': { description: Authenticated owner/operator session required. }
+        '403': { description: Origin, CSRF, or role validation failed. }
+        '409': { description: Idempotency key conflict. }
+        '503': { description: Job database unavailable. }
+  /api/jobs/{id}:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    get:
+      operationId: getDashboardJob
+      summary: Read a job record
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200': { description: Job state and immutable source selection. }
+        '401': { description: Authenticated owner/operator session required. }
+        '404': { description: Job not found. }
+  /api/jobs/{id}/events:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    get:
+      operationId: listDashboardJobEvents
+      summary: Read append-only job lifecycle events
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200': { description: Ordered lifecycle events. }
+        '401': { description: Authenticated owner/operator session required. }
+        '404': { description: Job not found. }
+  /api/jobs/{id}/logs:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    get:
+      operationId: listDashboardJobLogs
+      summary: Read paginated runner logs
+      security:
+        - TrustedProxyAssertion: []
+      parameters:
+        - name: after_id
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 500 }
+      responses:
+        '200': { description: Ordered log page. }
+        '401': { description: Authenticated owner/operator session required. }
+        '404': { description: Job not found. }
+  /api/jobs/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    post:
+      operationId: cancelDashboardJob
+      summary: Request cancellation of a queued or running job
+      description: Requires owner role, same-origin request, and CSRF token.
+      security:
+        - TrustedProxyAssertion: []
+      parameters:
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: { type: string, minLength: 64, maxLength: 64 }
+      responses:
+        '200': { description: Cancellation accepted or completed. }
+        '401': { description: Authenticated owner session required. }
+        '403': { description: Owner role, Origin, or CSRF validation failed. }
+        '404': { description: Job not found. }
+  /v1/runner/claim:
+    post:
+      operationId: claimRunnerJob
+      summary: Atomically claim one queued job for the authenticated worker
+      description: Runner identity is derived from its dedicated credential mapping, never from the request body.
+      security:
+        - RunnerBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                lease_seconds: { type: integer, minimum: 5, maximum: 300, default: 30 }
+      responses:
+        '200': { description: Claimed job, or null when the queue is empty. }
+        '401': { description: Dedicated runner credential required. }
+        '503': { description: Job queue unavailable. }
+  /v1/runner/{id}/heartbeat:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    post:
+      operationId: heartbeatRunnerJob
+      summary: Renew the authenticated worker's active job lease
+      security:
+        - RunnerBearerAuth: []
+      responses:
+        '200': { description: Updated job lease. }
+        '401': { description: Dedicated runner credential required. }
+        '404': { description: Job not found. }
+        '409': { description: Worker does not own an active lease. }
+  /v1/runner/{id}/logs:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    post:
+      operationId: appendRunnerJobLog
+      summary: Append a bounded log message for the authenticated worker's job
+      security:
+        - RunnerBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [message]
+              properties:
+                message: { type: string, minLength: 1, maxLength: 8192 }
+                stream: { type: string, enum: [stdout, stderr, system], default: stdout }
+      responses:
+        '202': { description: Log accepted. }
+        '401': { description: Dedicated runner credential required. }
+        '404': { description: Job not found. }
+        '409': { description: Worker does not own an active lease. }
+  /v1/runner/{id}/finish:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    post:
+      operationId: finishRunnerJob
+      summary: Complete a job owned by the authenticated worker
+      security:
+        - RunnerBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [outcome]
+              properties:
+                outcome: { type: string, enum: [succeeded, failed, cancelled] }
+                result: { type: object }
+                error_code: { type: string, pattern: '^[A-Z0-9_]{1,64}    get:
+      operationId: listGitHubAppRepositories
+      summary: List repositories available to the DCP GitHub App installation
+      description: |
+        Requires a trusted-proxy authenticated browser session. Returns only
+        normalized repository metadata from the DCP GitHub App installation;
+        it does not list unrelated repositories from the user's GitHub account.
+        Installation tokens and App credentials remain server-side.
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Installation repository catalog.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [repositories]
+                properties:
+                  repositories:
+                    type: array
+                    items:
+                      type: object
+                      required: [full_name, private, default_branch, permissions]
+                      properties:
+                        full_name:
+                          type: string
+                          pattern: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+                        private: { type: boolean }
+                        default_branch: { type: string }
+                        permissions:
+                          type: object
+                          additionalProperties: { type: boolean }
+        '401': { description: Missing or invalid trusted-proxy identity. }
+        '503': { description: GitHub App installation catalog is unavailable. }
+  /api/github/repositories/{owner}/{repo}/refs:
+    parameters:
+      - name: owner
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: repo
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+    get:
+      operationId: listGitHubRepositoryRefs
+      summary: List branches or tags and their resolved commit SHAs
+      description: |
+        Requires a trusted-proxy authenticated browser session. The backend
+        revalidates DCP GitHub App installation membership and uses a
+        short-lived token scoped to the selected repository with Contents: read.
+        If the App installation lacks that permission, the request fails closed.
+      security:
+        - TrustedProxyAssertion: []
+      parameters:
+        - name: kind
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [branches, tags]
+            default: branches
+      responses:
+        '200':
+          description: Branch or tag metadata with full commit SHA.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [repository, kind, refs]
+                properties:
+                  repository: { type: string }
+                  kind: { type: string, enum: [branches, tags] }
+                  refs:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, commit_sha]
+                      properties:
+                        name: { type: string }
+                        commit_sha:
+                          type: string
+                          pattern: '^[0-9a-f]{40}$'
+        '400': { description: Invalid repository or ref kind. }
+        '401': { description: Missing or invalid trusted-proxy identity. }
+        '403': { description: Repository is outside the DCP GitHub App installation. }
+        '503': { description: GitHub App Contents read permission or repository ref API is unavailable. }
+  /api/github/repositories/{owner}/{repo}/commits/{sha}:
+    parameters:
+      - name: owner
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: repo
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: sha
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Fa-f0-9]{40}$'
+    get:
+      operationId: verifyGitHubRepositoryCommit
+      summary: Verify that a full commit SHA belongs to the selected repository
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: The exact commit SHA resolved inside the selected repository.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [repository, commit_sha]
+                properties:
+                  repository: { type: string }
+                  commit_sha:
+                    type: string
+                    pattern: '^[0-9a-f]{40}$'
+        '400': { description: Invalid full commit SHA. }
+        '401': { description: Missing or invalid trusted-proxy identity. }
+        '403': { description: Repository is outside the DCP GitHub App installation. }
+        '503': { description: GitHub App Contents read permission or commit lookup is unavailable. }
+  /api/github/repositories/{owner}/{repo}/projects/{sha}:
+    parameters:
+      - name: owner
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: repo
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: sha
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Fa-f0-9]{40}$'
+    get:
+      operationId: inspectGitHubRepositoryProject
+      summary: Detect project type and supported build targets at an immutable commit
+      description: |
+        Uses a repository-scoped Contents: read token to inspect Git tree paths and
+        bounded pubspec.yaml manifest contents only. It never downloads application
+        source files or executes project code. A truncated inventory returns UNKNOWN;
+        absence of macOS files is not asserted when the inventory is incomplete.
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Bounded project and build-target assessment.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [repository, commit_sha, status, project_types, file_count, truncated, flutter]
+                properties:
+                  repository: { type: string }
+                  commit_sha: { type: string, pattern: '^[0-9a-f]{40}$' }
+                  status: { type: string, enum: [target_detected, needs_setup, detected, unknown] }
+                  project_types:
+                    type: array
+                    items: { type: string }
+                  file_count: { type: integer, minimum: 0 }
+                  truncated: { type: boolean }
+                  flutter:
+                    type: object
+                    required: [detected, package_manifests, macos_supported, macos_runner_projects]
+                    properties:
+                      detected: { type: boolean }
+                      package_manifests:
+                        type: array
+                        items: { type: string }
+                      macos_supported:
+                        type: [boolean, 'null']
+                      macos_runner_projects:
+                        type: array
+                        items: { type: string }
+                  notes:
+                    type: array
+                    items: { type: string }
+        '400': { description: Invalid repository or full commit SHA. }
+        '401': { description: Missing or invalid trusted-proxy identity. }
+        '403': { description: Repository is outside the DCP GitHub App installation. }
+        '503': { description: GitHub App Contents read permission or project inspection is unavailable. }
+  /api/auth/session:
+    get:
+      operationId: getBrowserSession
+      summary: Verify trusted reverse-proxy identity and issue a session-bound CSRF token
+      description: Requires all signed X-DCP identity headers. The signature is generated only by the trusted OIDC reverse proxy.
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Authenticated session and CSRF token held in browser memory.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [authenticated, csrfToken, user]
+                properties:
+                  authenticated: { type: boolean, const: true }
+                  csrfToken: { type: string, minLength: 64, maxLength: 64 }
+                  user:
+                    type: object
+                    properties:
+                      displayName: { type: string }
+                      role: { type: string, enum: [owner, operator] }
+        '401': { description: Missing, invalid, expired, or replayed proxy identity. }
+  /api/cloud-runners/status:
+    get:
+      operationId: getBrowserControlStatus
+      summary: Read readiness gates for the browser control panel
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Current server-side gates. Unknown readiness must never be treated as pass.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [gateway, owner_approved, provisioning_enabled, budget_gate, bootstrap_ready, providers]
+                properties:
+                  gateway: { type: string, enum: [READY] }
+                  owner_approved: { type: boolean }
+                  provisioning_enabled: { type: boolean }
+                  budget_gate: { type: string, enum: [PASS, FAIL, UNKNOWN] }
+                  budget_message: { type: string }
+                  bootstrap_ready: { type: boolean }
+                  circuit_breaker_tripped: { type: boolean }
+                  providers: { type: object, additionalProperties: true }
+        '401': { description: Authenticated proxy assertion required. }
+  /api/cloud-runners:
+    get:
+      operationId: listBrowserRunners
+      summary: List recent runner metadata
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Recent runner records without request payloads or credentials.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [runners]
+                properties:
+                  runners:
+                    type: array
+                    items: { $ref: '#/components/schemas/Runner' }
+        '401': { description: Authenticated proxy assertion required. }
+    post:
+      operationId: createBrowserRunner
+      summary: Request an ephemeral runner through the guarded UI API
+      description: Requires trusted proxy identity, exact Origin, session-bound CSRF, owner approval, provisioning enabled, live budget PASS, and selected provider bootstrap readiness.
+      security:
+        - TrustedProxyAssertion: []
+      parameters:
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: { type: string, minLength: 64, maxLength: 64 }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 200 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RunnerCreateRequest' }
+      responses:
+        '202':
+          description: Request accepted; runner online state remains unverified.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Runner' }
+        '401': { description: Authenticated proxy assertion required. }
+        '403': { description: Origin or CSRF validation failed. }
+        '409': { description: Idempotency conflict. }
+        '429': { description: Budget, concurrency, or rate limit denied. }
+        '503': { description: Owner, budget, provisioning, or provider bootstrap gate is not ready. }
+  /api/cloud-runners/{id}:
+    parameters:
+      - $ref: '#/components/parameters/RunnerId'
+    get:
+      operationId: getBrowserRunner
+      summary: Read a runner through the authenticated browser API
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Current lifecycle state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Runner' }
+        '401': { description: Authenticated proxy assertion required. }
+        '404': { description: Runner not found. }
+    delete:
+      operationId: stopBrowserRunner
+      summary: Request runner cleanup from the authenticated browser API
+      security:
+        - TrustedProxyAssertion: []
+      parameters:
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: { type: string, minLength: 64, maxLength: 64 }
+      responses:
+        '200':
+          description: Termination accepted or completed; verify terminal state separately.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Runner' }
+        '401': { description: Authenticated proxy assertion required. }
+        '403': { description: Origin or CSRF validation failed. }
+        '404': { description: Runner not found. }
+components:
+  securitySchemes:
+    TrustedProxyAssertion:
+      type: apiKey
+      in: header
+      name: X-DCP-Auth-Signature
+      description: Signature for the full X-DCP identity assertion. Proxy must also provide user, role, session, timestamp and nonce headers.
+    GatewayBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+    RunnerBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: Dedicated worker credential mapped to one immutable worker identity; not interchangeable with GatewayBearerAuth.
+  parameters:
+    JobId:
+      name: id
+      in: path
+      required: true
+      description: Opaque job UUID.
+      schema: { type: string, format: uuid }
+    RunnerId:
+      name: id
+      in: path
+      required: true
+      description: Opaque gateway ID; URL-encode as one path segment.
+      schema: { type: string, minLength: 1, maxLength: 200 }
+  schemas:
+    JobCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [repository, commit_sha]
+      properties:
+        repository: { type: string, pattern: '^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}      type: object
+      additionalProperties: false
+      required: [repository, workflow_run_id, commit_sha, target_os, image, labels, ephemeral, max_runtime_minutes, network_policy, registration_token_handling]
+      properties:
+        repository:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+        workflow_run_id: { type: integer, minimum: 1 }
+        commit_sha: { type: string, pattern: '^[0-9a-f]{40}$' }
+        target_os:
+          type: string
+          enum: [linux, windows, macos]
+        image:
+          type: string
+          enum: [ubuntu-24.04-x64, windows-2025-x64, macos-15-arm64]
+          description: Must match the approved image for target_os; gateway enforces the mapping.
+        labels:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string }
+          description: Must exactly match the server-side platform profile.
+        ephemeral: { type: boolean, const: true }
+        max_runtime_minutes: { type: integer, minimum: 5, maximum: 180 }
+        network_policy: { type: string, const: restricted-egress }
+        registration_token_handling: { type: string, const: provider-side-only }
+    Runner:
+      type: object
+      additionalProperties: true
+      required: [id, state]
+      properties:
+        id: { type: string, minLength: 1 }
+        state:
+          type: string
+          minLength: 1
+          description: provisioning, online, terminating, terminated, or failed.
+        runner_name: { type: string }
+        labels:
+          type: array
+          items: { type: string }
+        detail: { type: string }
+    Error:
+      type: object
+      additionalProperties: true
+      properties:
+        error: { type: string }
+        detail: { type: string }
+  responses:
+    BadRequest:
+      description: Invalid request.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized: { description: Missing or invalid gateway bearer token. }
+    Forbidden: { description: Caller or repository is not authorized. }
+ }
+      responses:
+        '200': { description: Job reached a terminal state. }
+        '400': { description: Invalid terminal outcome or result. }
+        '401': { description: Dedicated runner credential required. }
+        '404': { description: Job not found. }
+        '409': { description: Worker does not own an active lease or cancellation must be acknowledged. }
+  /api/github/repositories:
+    get:
+      operationId: listGitHubAppRepositories
+      summary: List repositories available to the DCP GitHub App installation
+      description: |
+        Requires a trusted-proxy authenticated browser session. Returns only
+        normalized repository metadata from the DCP GitHub App installation;
+        it does not list unrelated repositories from the user's GitHub account.
+        Installation tokens and App credentials remain server-side.
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Installation repository catalog.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [repositories]
+                properties:
+                  repositories:
+                    type: array
+                    items:
+                      type: object
+                      required: [full_name, private, default_branch, permissions]
+                      properties:
+                        full_name:
+                          type: string
+                          pattern: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+                        private: { type: boolean }
+                        default_branch: { type: string }
+                        permissions:
+                          type: object
+                          additionalProperties: { type: boolean }
+        '401': { description: Missing or invalid trusted-proxy identity. }
+        '503': { description: GitHub App installation catalog is unavailable. }
+  /api/github/repositories/{owner}/{repo}/refs:
+    parameters:
+      - name: owner
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: repo
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+    get:
+      operationId: listGitHubRepositoryRefs
+      summary: List branches or tags and their resolved commit SHAs
+      description: |
+        Requires a trusted-proxy authenticated browser session. The backend
+        revalidates DCP GitHub App installation membership and uses a
+        short-lived token scoped to the selected repository with Contents: read.
+        If the App installation lacks that permission, the request fails closed.
+      security:
+        - TrustedProxyAssertion: []
+      parameters:
+        - name: kind
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [branches, tags]
+            default: branches
+      responses:
+        '200':
+          description: Branch or tag metadata with full commit SHA.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [repository, kind, refs]
+                properties:
+                  repository: { type: string }
+                  kind: { type: string, enum: [branches, tags] }
+                  refs:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, commit_sha]
+                      properties:
+                        name: { type: string }
+                        commit_sha:
+                          type: string
+                          pattern: '^[0-9a-f]{40}$'
+        '400': { description: Invalid repository or ref kind. }
+        '401': { description: Missing or invalid trusted-proxy identity. }
+        '403': { description: Repository is outside the DCP GitHub App installation. }
+        '503': { description: GitHub App Contents read permission or repository ref API is unavailable. }
+  /api/github/repositories/{owner}/{repo}/commits/{sha}:
+    parameters:
+      - name: owner
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: repo
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: sha
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Fa-f0-9]{40}$'
+    get:
+      operationId: verifyGitHubRepositoryCommit
+      summary: Verify that a full commit SHA belongs to the selected repository
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: The exact commit SHA resolved inside the selected repository.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [repository, commit_sha]
+                properties:
+                  repository: { type: string }
+                  commit_sha:
+                    type: string
+                    pattern: '^[0-9a-f]{40}$'
+        '400': { description: Invalid full commit SHA. }
+        '401': { description: Missing or invalid trusted-proxy identity. }
+        '403': { description: Repository is outside the DCP GitHub App installation. }
+        '503': { description: GitHub App Contents read permission or commit lookup is unavailable. }
+  /api/github/repositories/{owner}/{repo}/projects/{sha}:
+    parameters:
+      - name: owner
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: repo
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: sha
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Fa-f0-9]{40}$'
+    get:
+      operationId: inspectGitHubRepositoryProject
+      summary: Detect project type and supported build targets at an immutable commit
+      description: |
+        Uses a repository-scoped Contents: read token to inspect Git tree paths and
+        bounded pubspec.yaml manifest contents only. It never downloads application
+        source files or executes project code. A truncated inventory returns UNKNOWN;
+        absence of macOS files is not asserted when the inventory is incomplete.
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Bounded project and build-target assessment.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [repository, commit_sha, status, project_types, file_count, truncated, flutter]
+                properties:
+                  repository: { type: string }
+                  commit_sha: { type: string, pattern: '^[0-9a-f]{40}$' }
+                  status: { type: string, enum: [target_detected, needs_setup, detected, unknown] }
+                  project_types:
+                    type: array
+                    items: { type: string }
+                  file_count: { type: integer, minimum: 0 }
+                  truncated: { type: boolean }
+                  flutter:
+                    type: object
+                    required: [detected, package_manifests, macos_supported, macos_runner_projects]
+                    properties:
+                      detected: { type: boolean }
+                      package_manifests:
+                        type: array
+                        items: { type: string }
+                      macos_supported:
+                        type: [boolean, 'null']
+                      macos_runner_projects:
+                        type: array
+                        items: { type: string }
+                  notes:
+                    type: array
+                    items: { type: string }
+        '400': { description: Invalid repository or full commit SHA. }
+        '401': { description: Missing or invalid trusted-proxy identity. }
+        '403': { description: Repository is outside the DCP GitHub App installation. }
+        '503': { description: GitHub App Contents read permission or project inspection is unavailable. }
+  /api/auth/session:
+    get:
+      operationId: getBrowserSession
+      summary: Verify trusted reverse-proxy identity and issue a session-bound CSRF token
+      description: Requires all signed X-DCP identity headers. The signature is generated only by the trusted OIDC reverse proxy.
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Authenticated session and CSRF token held in browser memory.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [authenticated, csrfToken, user]
+                properties:
+                  authenticated: { type: boolean, const: true }
+                  csrfToken: { type: string, minLength: 64, maxLength: 64 }
+                  user:
+                    type: object
+                    properties:
+                      displayName: { type: string }
+                      role: { type: string, enum: [owner, operator] }
+        '401': { description: Missing, invalid, expired, or replayed proxy identity. }
+  /api/cloud-runners/status:
+    get:
+      operationId: getBrowserControlStatus
+      summary: Read readiness gates for the browser control panel
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Current server-side gates. Unknown readiness must never be treated as pass.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [gateway, owner_approved, provisioning_enabled, budget_gate, bootstrap_ready, providers]
+                properties:
+                  gateway: { type: string, enum: [READY] }
+                  owner_approved: { type: boolean }
+                  provisioning_enabled: { type: boolean }
+                  budget_gate: { type: string, enum: [PASS, FAIL, UNKNOWN] }
+                  budget_message: { type: string }
+                  bootstrap_ready: { type: boolean }
+                  circuit_breaker_tripped: { type: boolean }
+                  providers: { type: object, additionalProperties: true }
+        '401': { description: Authenticated proxy assertion required. }
+  /api/cloud-runners:
+    get:
+      operationId: listBrowserRunners
+      summary: List recent runner metadata
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Recent runner records without request payloads or credentials.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [runners]
+                properties:
+                  runners:
+                    type: array
+                    items: { $ref: '#/components/schemas/Runner' }
+        '401': { description: Authenticated proxy assertion required. }
+    post:
+      operationId: createBrowserRunner
+      summary: Request an ephemeral runner through the guarded UI API
+      description: Requires trusted proxy identity, exact Origin, session-bound CSRF, owner approval, provisioning enabled, live budget PASS, and selected provider bootstrap readiness.
+      security:
+        - TrustedProxyAssertion: []
+      parameters:
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: { type: string, minLength: 64, maxLength: 64 }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 200 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RunnerCreateRequest' }
+      responses:
+        '202':
+          description: Request accepted; runner online state remains unverified.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Runner' }
+        '401': { description: Authenticated proxy assertion required. }
+        '403': { description: Origin or CSRF validation failed. }
+        '409': { description: Idempotency conflict. }
+        '429': { description: Budget, concurrency, or rate limit denied. }
+        '503': { description: Owner, budget, provisioning, or provider bootstrap gate is not ready. }
+  /api/cloud-runners/{id}:
+    parameters:
+      - $ref: '#/components/parameters/RunnerId'
+    get:
+      operationId: getBrowserRunner
+      summary: Read a runner through the authenticated browser API
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Current lifecycle state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Runner' }
+        '401': { description: Authenticated proxy assertion required. }
+        '404': { description: Runner not found. }
+    delete:
+      operationId: stopBrowserRunner
+      summary: Request runner cleanup from the authenticated browser API
+      security:
+        - TrustedProxyAssertion: []
+      parameters:
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: { type: string, minLength: 64, maxLength: 64 }
+      responses:
+        '200':
+          description: Termination accepted or completed; verify terminal state separately.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Runner' }
+        '401': { description: Authenticated proxy assertion required. }
+        '403': { description: Origin or CSRF validation failed. }
+        '404': { description: Runner not found. }
+components:
+  securitySchemes:
+    TrustedProxyAssertion:
+      type: apiKey
+      in: header
+      name: X-DCP-Auth-Signature
+      description: Signature for the full X-DCP identity assertion. Proxy must also provide user, role, session, timestamp and nonce headers.
+    GatewayBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+  parameters:
+    RunnerId:
+      name: id
+      in: path
+      required: true
+      description: Opaque gateway ID; URL-encode as one path segment.
+      schema: { type: string, minLength: 1, maxLength: 200 }
+  schemas:
+    RunnerCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [repository, workflow_run_id, commit_sha, target_os, image, labels, ephemeral, max_runtime_minutes, network_policy, registration_token_handling]
+      properties:
+        repository:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+        workflow_run_id: { type: integer, minimum: 1 }
+        commit_sha: { type: string, pattern: '^[0-9a-f]{40}$' }
+        target_os:
+          type: string
+          enum: [linux, windows, macos]
+        image:
+          type: string
+          enum: [ubuntu-24.04-x64, windows-2025-x64, macos-15-arm64]
+          description: Must match the approved image for target_os; gateway enforces the mapping.
+        labels:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string }
+          description: Must exactly match the server-side platform profile.
+        ephemeral: { type: boolean, const: true }
+        max_runtime_minutes: { type: integer, minimum: 5, maximum: 180 }
+        network_policy: { type: string, const: restricted-egress }
+        registration_token_handling: { type: string, const: provider-side-only }
+    Runner:
+      type: object
+      additionalProperties: true
+      required: [id, state]
+      properties:
+        id: { type: string, minLength: 1 }
+        state:
+          type: string
+          minLength: 1
+          description: provisioning, online, terminating, terminated, or failed.
+        runner_name: { type: string }
+        labels:
+          type: array
+          items: { type: string }
+        detail: { type: string }
+    Error:
+      type: object
+      additionalProperties: true
+      properties:
+        error: { type: string }
+        detail: { type: string }
+  responses:
+    BadRequest:
+      description: Invalid request.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized: { description: Missing or invalid gateway bearer token. }
+    Forbidden: { description: Caller or repository is not authorized. }
+ }
+        commit_sha: { type: string, pattern: '^[0-9a-f]{40}      type: object
+      additionalProperties: false
+      required: [repository, workflow_run_id, commit_sha, target_os, image, labels, ephemeral, max_runtime_minutes, network_policy, registration_token_handling]
+      properties:
+        repository:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+        workflow_run_id: { type: integer, minimum: 1 }
+        commit_sha: { type: string, pattern: '^[0-9a-f]{40}$' }
+        target_os:
+          type: string
+          enum: [linux, windows, macos]
+        image:
+          type: string
+          enum: [ubuntu-24.04-x64, windows-2025-x64, macos-15-arm64]
+          description: Must match the approved image for target_os; gateway enforces the mapping.
+        labels:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string }
+          description: Must exactly match the server-side platform profile.
+        ephemeral: { type: boolean, const: true }
+        max_runtime_minutes: { type: integer, minimum: 5, maximum: 180 }
+        network_policy: { type: string, const: restricted-egress }
+        registration_token_handling: { type: string, const: provider-side-only }
+    Runner:
+      type: object
+      additionalProperties: true
+      required: [id, state]
+      properties:
+        id: { type: string, minLength: 1 }
+        state:
+          type: string
+          minLength: 1
+          description: provisioning, online, terminating, terminated, or failed.
+        runner_name: { type: string }
+        labels:
+          type: array
+          items: { type: string }
+        detail: { type: string }
+    Error:
+      type: object
+      additionalProperties: true
+      properties:
+        error: { type: string }
+        detail: { type: string }
+  responses:
+    BadRequest:
+      description: Invalid request.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized: { description: Missing or invalid gateway bearer token. }
+    Forbidden: { description: Caller or repository is not authorized. }
+ }
+      responses:
+        '200': { description: Job reached a terminal state. }
+        '400': { description: Invalid terminal outcome or result. }
+        '401': { description: Dedicated runner credential required. }
+        '404': { description: Job not found. }
+        '409': { description: Worker does not own an active lease or cancellation must be acknowledged. }
+  /api/github/repositories:
+    get:
+      operationId: listGitHubAppRepositories
+      summary: List repositories available to the DCP GitHub App installation
+      description: |
+        Requires a trusted-proxy authenticated browser session. Returns only
+        normalized repository metadata from the DCP GitHub App installation;
+        it does not list unrelated repositories from the user's GitHub account.
+        Installation tokens and App credentials remain server-side.
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Installation repository catalog.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [repositories]
+                properties:
+                  repositories:
+                    type: array
+                    items:
+                      type: object
+                      required: [full_name, private, default_branch, permissions]
+                      properties:
+                        full_name:
+                          type: string
+                          pattern: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+                        private: { type: boolean }
+                        default_branch: { type: string }
+                        permissions:
+                          type: object
+                          additionalProperties: { type: boolean }
+        '401': { description: Missing or invalid trusted-proxy identity. }
+        '503': { description: GitHub App installation catalog is unavailable. }
+  /api/github/repositories/{owner}/{repo}/refs:
+    parameters:
+      - name: owner
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: repo
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+    get:
+      operationId: listGitHubRepositoryRefs
+      summary: List branches or tags and their resolved commit SHAs
+      description: |
+        Requires a trusted-proxy authenticated browser session. The backend
+        revalidates DCP GitHub App installation membership and uses a
+        short-lived token scoped to the selected repository with Contents: read.
+        If the App installation lacks that permission, the request fails closed.
+      security:
+        - TrustedProxyAssertion: []
+      parameters:
+        - name: kind
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [branches, tags]
+            default: branches
+      responses:
+        '200':
+          description: Branch or tag metadata with full commit SHA.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [repository, kind, refs]
+                properties:
+                  repository: { type: string }
+                  kind: { type: string, enum: [branches, tags] }
+                  refs:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, commit_sha]
+                      properties:
+                        name: { type: string }
+                        commit_sha:
+                          type: string
+                          pattern: '^[0-9a-f]{40}$'
+        '400': { description: Invalid repository or ref kind. }
+        '401': { description: Missing or invalid trusted-proxy identity. }
+        '403': { description: Repository is outside the DCP GitHub App installation. }
+        '503': { description: GitHub App Contents read permission or repository ref API is unavailable. }
+  /api/github/repositories/{owner}/{repo}/commits/{sha}:
+    parameters:
+      - name: owner
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: repo
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: sha
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Fa-f0-9]{40}$'
+    get:
+      operationId: verifyGitHubRepositoryCommit
+      summary: Verify that a full commit SHA belongs to the selected repository
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: The exact commit SHA resolved inside the selected repository.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [repository, commit_sha]
+                properties:
+                  repository: { type: string }
+                  commit_sha:
+                    type: string
+                    pattern: '^[0-9a-f]{40}$'
+        '400': { description: Invalid full commit SHA. }
+        '401': { description: Missing or invalid trusted-proxy identity. }
+        '403': { description: Repository is outside the DCP GitHub App installation. }
+        '503': { description: GitHub App Contents read permission or commit lookup is unavailable. }
+  /api/github/repositories/{owner}/{repo}/projects/{sha}:
+    parameters:
+      - name: owner
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: repo
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: sha
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Fa-f0-9]{40}$'
+    get:
+      operationId: inspectGitHubRepositoryProject
+      summary: Detect project type and supported build targets at an immutable commit
+      description: |
+        Uses a repository-scoped Contents: read token to inspect Git tree paths and
+        bounded pubspec.yaml manifest contents only. It never downloads application
+        source files or executes project code. A truncated inventory returns UNKNOWN;
+        absence of macOS files is not asserted when the inventory is incomplete.
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Bounded project and build-target assessment.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [repository, commit_sha, status, project_types, file_count, truncated, flutter]
+                properties:
+                  repository: { type: string }
+                  commit_sha: { type: string, pattern: '^[0-9a-f]{40}$' }
+                  status: { type: string, enum: [target_detected, needs_setup, detected, unknown] }
+                  project_types:
+                    type: array
+                    items: { type: string }
+                  file_count: { type: integer, minimum: 0 }
+                  truncated: { type: boolean }
+                  flutter:
+                    type: object
+                    required: [detected, package_manifests, macos_supported, macos_runner_projects]
+                    properties:
+                      detected: { type: boolean }
+                      package_manifests:
+                        type: array
+                        items: { type: string }
+                      macos_supported:
+                        type: [boolean, 'null']
+                      macos_runner_projects:
+                        type: array
+                        items: { type: string }
+                  notes:
+                    type: array
+                    items: { type: string }
+        '400': { description: Invalid repository or full commit SHA. }
+        '401': { description: Missing or invalid trusted-proxy identity. }
+        '403': { description: Repository is outside the DCP GitHub App installation. }
+        '503': { description: GitHub App Contents read permission or project inspection is unavailable. }
+  /api/auth/session:
+    get:
+      operationId: getBrowserSession
+      summary: Verify trusted reverse-proxy identity and issue a session-bound CSRF token
+      description: Requires all signed X-DCP identity headers. The signature is generated only by the trusted OIDC reverse proxy.
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Authenticated session and CSRF token held in browser memory.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [authenticated, csrfToken, user]
+                properties:
+                  authenticated: { type: boolean, const: true }
+                  csrfToken: { type: string, minLength: 64, maxLength: 64 }
+                  user:
+                    type: object
+                    properties:
+                      displayName: { type: string }
+                      role: { type: string, enum: [owner, operator] }
+        '401': { description: Missing, invalid, expired, or replayed proxy identity. }
+  /api/cloud-runners/status:
+    get:
+      operationId: getBrowserControlStatus
+      summary: Read readiness gates for the browser control panel
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Current server-side gates. Unknown readiness must never be treated as pass.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [gateway, owner_approved, provisioning_enabled, budget_gate, bootstrap_ready, providers]
+                properties:
+                  gateway: { type: string, enum: [READY] }
+                  owner_approved: { type: boolean }
+                  provisioning_enabled: { type: boolean }
+                  budget_gate: { type: string, enum: [PASS, FAIL, UNKNOWN] }
+                  budget_message: { type: string }
+                  bootstrap_ready: { type: boolean }
+                  circuit_breaker_tripped: { type: boolean }
+                  providers: { type: object, additionalProperties: true }
+        '401': { description: Authenticated proxy assertion required. }
+  /api/cloud-runners:
+    get:
+      operationId: listBrowserRunners
+      summary: List recent runner metadata
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Recent runner records without request payloads or credentials.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [runners]
+                properties:
+                  runners:
+                    type: array
+                    items: { $ref: '#/components/schemas/Runner' }
+        '401': { description: Authenticated proxy assertion required. }
+    post:
+      operationId: createBrowserRunner
+      summary: Request an ephemeral runner through the guarded UI API
+      description: Requires trusted proxy identity, exact Origin, session-bound CSRF, owner approval, provisioning enabled, live budget PASS, and selected provider bootstrap readiness.
+      security:
+        - TrustedProxyAssertion: []
+      parameters:
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: { type: string, minLength: 64, maxLength: 64 }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 200 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RunnerCreateRequest' }
+      responses:
+        '202':
+          description: Request accepted; runner online state remains unverified.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Runner' }
+        '401': { description: Authenticated proxy assertion required. }
+        '403': { description: Origin or CSRF validation failed. }
+        '409': { description: Idempotency conflict. }
+        '429': { description: Budget, concurrency, or rate limit denied. }
+        '503': { description: Owner, budget, provisioning, or provider bootstrap gate is not ready. }
+  /api/cloud-runners/{id}:
+    parameters:
+      - $ref: '#/components/parameters/RunnerId'
+    get:
+      operationId: getBrowserRunner
+      summary: Read a runner through the authenticated browser API
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Current lifecycle state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Runner' }
+        '401': { description: Authenticated proxy assertion required. }
+        '404': { description: Runner not found. }
+    delete:
+      operationId: stopBrowserRunner
+      summary: Request runner cleanup from the authenticated browser API
+      security:
+        - TrustedProxyAssertion: []
+      parameters:
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: { type: string, minLength: 64, maxLength: 64 }
+      responses:
+        '200':
+          description: Termination accepted or completed; verify terminal state separately.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Runner' }
+        '401': { description: Authenticated proxy assertion required. }
+        '403': { description: Origin or CSRF validation failed. }
+        '404': { description: Runner not found. }
+components:
+  securitySchemes:
+    TrustedProxyAssertion:
+      type: apiKey
+      in: header
+      name: X-DCP-Auth-Signature
+      description: Signature for the full X-DCP identity assertion. Proxy must also provide user, role, session, timestamp and nonce headers.
+    GatewayBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+  parameters:
+    RunnerId:
+      name: id
+      in: path
+      required: true
+      description: Opaque gateway ID; URL-encode as one path segment.
+      schema: { type: string, minLength: 1, maxLength: 200 }
+  schemas:
+    RunnerCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [repository, workflow_run_id, commit_sha, target_os, image, labels, ephemeral, max_runtime_minutes, network_policy, registration_token_handling]
+      properties:
+        repository:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+        workflow_run_id: { type: integer, minimum: 1 }
+        commit_sha: { type: string, pattern: '^[0-9a-f]{40}$' }
+        target_os:
+          type: string
+          enum: [linux, windows, macos]
+        image:
+          type: string
+          enum: [ubuntu-24.04-x64, windows-2025-x64, macos-15-arm64]
+          description: Must match the approved image for target_os; gateway enforces the mapping.
+        labels:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string }
+          description: Must exactly match the server-side platform profile.
+        ephemeral: { type: boolean, const: true }
+        max_runtime_minutes: { type: integer, minimum: 5, maximum: 180 }
+        network_policy: { type: string, const: restricted-egress }
+        registration_token_handling: { type: string, const: provider-side-only }
+    Runner:
+      type: object
+      additionalProperties: true
+      required: [id, state]
+      properties:
+        id: { type: string, minLength: 1 }
+        state:
+          type: string
+          minLength: 1
+          description: provisioning, online, terminating, terminated, or failed.
+        runner_name: { type: string }
+        labels:
+          type: array
+          items: { type: string }
+        detail: { type: string }
+    Error:
+      type: object
+      additionalProperties: true
+      properties:
+        error: { type: string }
+        detail: { type: string }
+  responses:
+    BadRequest:
+      description: Invalid request.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized: { description: Missing or invalid gateway bearer token. }
+    Forbidden: { description: Caller or repository is not authorized. }
+ }
+        target: { type: string, enum: [test, build, package], default: test }
+    RunnerCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [repository, workflow_run_id, commit_sha, target_os, image, labels, ephemeral, max_runtime_minutes, network_policy, registration_token_handling]
+      properties:
+        repository:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+        workflow_run_id: { type: integer, minimum: 1 }
+        commit_sha: { type: string, pattern: '^[0-9a-f]{40}$' }
+        target_os:
+          type: string
+          enum: [linux, windows, macos]
+        image:
+          type: string
+          enum: [ubuntu-24.04-x64, windows-2025-x64, macos-15-arm64]
+          description: Must match the approved image for target_os; gateway enforces the mapping.
+        labels:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string }
+          description: Must exactly match the server-side platform profile.
+        ephemeral: { type: boolean, const: true }
+        max_runtime_minutes: { type: integer, minimum: 5, maximum: 180 }
+        network_policy: { type: string, const: restricted-egress }
+        registration_token_handling: { type: string, const: provider-side-only }
+    Runner:
+      type: object
+      additionalProperties: true
+      required: [id, state]
+      properties:
+        id: { type: string, minLength: 1 }
+        state:
+          type: string
+          minLength: 1
+          description: provisioning, online, terminating, terminated, or failed.
+        runner_name: { type: string }
+        labels:
+          type: array
+          items: { type: string }
+        detail: { type: string }
+    Error:
+      type: object
+      additionalProperties: true
+      properties:
+        error: { type: string }
+        detail: { type: string }
+  responses:
+    BadRequest:
+      description: Invalid request.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized: { description: Missing or invalid gateway bearer token. }
+    Forbidden: { description: Caller or repository is not authorized. }
+ }
+      responses:
+        '200': { description: Job reached a terminal state. }
+        '400': { description: Invalid terminal outcome or result. }
+        '401': { description: Dedicated runner credential required. }
+        '404': { description: Job not found. }
+        '409': { description: Worker does not own an active lease or cancellation must be acknowledged. }
   /api/github/repositories:
     get:
       operationId: listGitHubAppRepositories
