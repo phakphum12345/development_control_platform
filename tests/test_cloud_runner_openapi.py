@@ -37,6 +37,18 @@ class CloudRunnerOpenAPITests(unittest.TestCase):
         self.assertIn("TrustedProxyAssertion", refs["security"][0])
         commit = paths["/api/github/repositories/{owner}/{repo}/commits/{sha}"]["get"]
         self.assertIn("TrustedProxyAssertion", commit["security"][0])
+    def test_job_control_plane_routes_use_separate_dashboard_and_runner_auth(self):
+        paths = self.spec["paths"]
+        for route in ("/api/jobs", "/api/jobs/{id}", "/api/jobs/{id}/events",
+                      "/api/jobs/{id}/logs", "/api/jobs/{id}/cancel"):
+            self.assertIn(route, paths)
+        for route in ("/v1/runner/claim", "/v1/runner/{id}/heartbeat",
+                      "/v1/runner/{id}/logs", "/v1/runner/{id}/finish"):
+            self.assertIn(route, paths)
+        self.assertIn("TrustedProxyAssertion", paths["/api/jobs"]["post"]["security"][0])
+        self.assertIn("RunnerBearerAuth", paths["/v1/runner/claim"]["post"]["security"][0])
+        self.assertIn("RunnerBearerAuth", self.spec["components"]["securitySchemes"])
+
     def test_responses_and_gateway_lifecycle_requirements(self):
         responses=self.spec["paths"]["/v1/runners"]["post"]["responses"]
         for code in ("202","400","401","403","409","429","503"): self.assertIn(code,responses)
