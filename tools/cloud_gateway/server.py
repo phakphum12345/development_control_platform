@@ -197,6 +197,17 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
                     repository = unquote(parts[0]) + "/" + unquote(parts[1])
                     if not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}", repository):
                         return self.send_json(400, {"error": "invalid repository"})
+                    if len(parts) == 4 and parts[2] == "projects":
+                        commit_sha = unquote(parts[3])
+                        if not re.fullmatch(r"[0-9a-fA-F]{40}", commit_sha):
+                            return self.send_json(400, {"error": "commit SHA must be 40 hexadecimal characters"})
+                        try:
+                            project = service.inspect_repository_project(repository, commit_sha)
+                        except PermissionError:
+                            return self.send_json(403, {"error": "repository is not accessible"})
+                        except Exception:
+                            return self.send_json(503, {"error": "GitHub repository project inspection unavailable"})
+                        return self.send_json(200, project)
                     if len(parts) == 4 and parts[2] == "commits":
                         commit_sha = unquote(parts[3])
                         if not re.fullmatch(r"[0-9a-fA-F]{40}", commit_sha):
@@ -514,6 +525,7 @@ def main():
         repository_authorizer=(lambda repository: github_app.is_repository_accessible(repository, refresh=True)) if github_app else None,
         repository_ref_catalog=github_app.list_repository_refs if github_app else None,
         repository_commit_resolver=github_app.resolve_repository_commit if github_app else None,
+        repository_project_inspector=github_app.inspect_repository_project if github_app else None,
     )
     _start_expiry_reconciler(service, int(os.getenv("DCP_GATEWAY_RECONCILE_SECONDS", "30")))
     server = ThreadingHTTPServer(
