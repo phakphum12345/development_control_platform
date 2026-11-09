@@ -623,7 +623,20 @@ components:
       additionalProperties: false
       required: [repository, commit_sha]
       properties:
-        repository: { type: string, pattern: '^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}      type: object
+        repository:
+          type: string
+          minLength: 3
+          maxLength: 201
+        commit_sha:
+          type: string
+          minLength: 40
+          maxLength: 40
+        target:
+          type: string
+          enum: [test, build, package]
+          default: test
+    RunnerCreateRequest:
+      type: object
       additionalProperties: false
       required: [repository, workflow_run_id, commit_sha, target_os, image, labels, ephemeral, max_runtime_minutes, network_policy, registration_token_handling]
       properties:
