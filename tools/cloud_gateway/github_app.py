@@ -413,7 +413,7 @@ class GitHubAppRunnerBootstrap:
             status = "unknown"
             macos_supported_result = None
         elif pubspecs and macos_supported:
-            status = "ready"
+            status = "target_detected"
             macos_supported_result = True
         elif pubspecs:
             status = "needs_setup"
