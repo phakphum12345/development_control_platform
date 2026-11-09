@@ -68,6 +68,19 @@ DCP must not expose provider credentials, GitHub App private keys, installation 
 - A repository outside the installation must be denied even if a client submits its name manually.
 - Empty, stale, malformed, or unavailable repository catalogs fail closed.
 
+## Repository catalog API contract
+
+The first implementation exposes `GET /api/github/repositories` on the authenticated same-origin DCP API.
+
+- Requires the existing trusted-proxy authenticated session.
+- Returns only the DCP GitHub App installation catalog.
+- Response shape: `{ "repositories": [{ "full_name", "private", "default_branch", "permissions" }] }`.
+- The backend keeps the installation token server-side and returns only normalized metadata.
+- The catalog is cached for at most 60 seconds; build/provision requests revalidate installation membership through the backend.
+- Catalog failures return a generic `503` response and the UI remains disabled/UNKNOWN.
+- In GitHub App mode, the installation catalog is authoritative; a legacy static allowlist must not silently hide other repositories installed for DCP.
+- Without a configured GitHub App, the endpoint is unavailable and the existing static allowlist path remains a legacy compatibility mode.
+
 ## Provider contract
 
 Every provider adapter should implement the same lifecycle contract:
