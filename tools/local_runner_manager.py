@@ -103,6 +103,9 @@ def prepare_instance(repository: str, root: Path) -> tuple[Path, str]:
     try:
         download_runner(latest_runner_asset(), archive)
         safe_extract(archive, instance)
+    except Exception:
+        shutil.rmtree(instance, ignore_errors=True)
+        raise
     finally:
         archive.unlink(missing_ok=True)
     return instance, f"DCP-{platform.node()[:16]}-{instance_id}"
@@ -126,10 +129,40 @@ def runner_status(repository: str, runner_name: str) -> tuple[str, bool] | None:
             return str(runner.get("status", "offline")), bool(runner.get("busy", False))
     return None
 
-def supervise_instance(instance: Path, repository: str, runner_name: str) -> int:
+def stop_owned_process_tree(process: subprocess.Popen) -> None:
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        # PID-scoped tree termination: never target a process by a shared name.
+        try:
+            subprocess.run(["taskkill.exe", "/PID", str(process.pid), "/T", "/F"],
+                           capture_output=True, text=True, timeout=20, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=15)
+
+
+def cleanup_instance(instance: Path, root: Path) -> None:
+    resolved_root = root.resolve()
+    resolved_instance = instance.resolve()
+    if resolved_root not in resolved_instance.parents:
+        raise RunnerError("Refusing to clean a runner directory outside the managed root")
+    if len(instance.name) != 12 or any(ch not in "0123456789abcdef" for ch in instance.name):
+        raise RunnerError("Refusing to clean a directory without a managed instance ID")
+    shutil.rmtree(resolved_instance)
+
+
+def supervise_instance(instance: Path, repository: str, runner_name: str, log_dir: Path) -> int:
     runner_script = instance / "run.cmd"
     if not runner_script.is_file(): raise RunnerError("Configured runner is missing run.cmd")
-    with (instance / "runner.log").open("a", encoding="utf-8") as log:
+    log_dir.mkdir(parents=True, exist_ok=True)
+    with (log_dir / f"{runner_name}.log").open("a", encoding="utf-8") as log:
         log.write(f"\nDCP supervisor starting {runner_name} at {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\n")
         process = subprocess.Popen(["cmd.exe", "/d", "/c", "call", str(runner_script)], cwd=instance,
             stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, shell=False,
@@ -147,17 +180,10 @@ def supervise_instance(instance: Path, repository: str, runner_name: str) -> int
                 if status is None or (status[0] == "offline" and not status[1]): offline_samples += 1
                 else: offline_samples = 0
                 if offline_samples >= 3:
-                    process.terminate()
-                    try: return process.wait(timeout=15)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                        return process.wait(timeout=15)
+                    stop_owned_process_tree(process)
+                    return int(process.returncode or 1)
         except KeyboardInterrupt:
-            process.terminate()
-            try: process.wait(timeout=15)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=15)
+            stop_owned_process_tree(process)
             raise
         return int(process.wait())
 
@@ -166,17 +192,22 @@ def run_supervisor(repository: str, root: Path, max_restarts: int, backoff: int)
     if isinstance(max_restarts, bool) or not 0 <= max_restarts <= 20: raise RunnerError("max-restarts must be between 0 and 20")
     if isinstance(backoff, bool) or not 1 <= backoff <= 300: raise RunnerError("backoff-seconds must be between 1 and 300")
     root.mkdir(parents=True, exist_ok=True)
+    log_dir = root / "logs"
     attempts = 0
     while True:
+        instance = None
         try:
             instance, runner_name = prepare_instance(repository, root)
             configure_instance(instance, repository, runner_name)
-            exit_code = supervise_instance(instance, repository, runner_name)
+            exit_code = supervise_instance(instance, repository, runner_name, log_dir)
             attempts = 0 if exit_code == 0 else attempts + 1
         except KeyboardInterrupt:
             raise
         except RunnerError:
             attempts += 1
+        finally:
+            if instance is not None and instance.exists():
+                cleanup_instance(instance, root)
         if attempts > max_restarts: raise RunnerError("Runner restart limit reached; inspect the local instance logs")
         time.sleep(min(backoff * (2 ** max(0, attempts - 1)), 300))
 
