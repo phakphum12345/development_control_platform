@@ -251,7 +251,10 @@ paths:
                 result: { type: object }
                 error_code:
                   type: string
-                  pattern: '^[A-Z0-9_]{1,64}
+                  pattern: '^[A-Z0-9_]{1,64}'
+  /api/github/repositories:
+    get:
+      operationId: listGitHubAppRepositories
       summary: List repositories available to the DCP GitHub App installation
       description: |
         Requires a trusted-proxy authenticated browser session. Returns only
