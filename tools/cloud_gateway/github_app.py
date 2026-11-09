@@ -404,7 +404,7 @@ class GitHubAppRunnerBootstrap:
         pubspecs = sorted(path for path in paths if path.rsplit("/", 1)[-1] == "pubspec.yaml")
         flutter_pubspecs = []
         manifest_scan_incomplete = len(pubspecs) > 20
-        for pubspec in pubspecs[:20]:
+        for pubspec in ([] if truncated else pubspecs[:20]):
             manifest = self._request(
                 "GET",
                 "/repos/{}/{}/contents/{}?ref={}".format(
