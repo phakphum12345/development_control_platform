@@ -461,7 +461,7 @@ class GitHubAppBootstrapTests(unittest.TestCase):
 
     def test_repository_project_inspection_detects_flutter_macos_runner(self):
         app = self.make()
-        app.is_repository_accessible = lambda repository, refresh=False: repository == "phakph12345/flutter-app"
+        app.is_repository_accessible = lambda repository, refresh=False: repository == "example/flutter-app"
         future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
         sha = "e" * 40
         tree_sha = "f" * 40
@@ -481,7 +481,7 @@ class GitHubAppBootstrapTests(unittest.TestCase):
             ]}
         app._app_jwt = lambda: "app-jwt"
         app._request = request
-        result = app.inspect_repository_project("phakph12345/flutter-app", sha)
+        result = app.inspect_repository_project("example/flutter-app", sha)
         self.assertEqual(result["status"], "ready")
         self.assertEqual(result["project_types"], ["flutter"])
         self.assertTrue(result["flutter"]["macos_supported"])
@@ -507,6 +507,25 @@ class GitHubAppBootstrapTests(unittest.TestCase):
         result = app.inspect_repository_project("owner/repo", sha)
         self.assertEqual(result["status"], "needs_setup")
         self.assertFalse(result["flutter"]["macos_supported"])
+
+    def test_repository_project_inspection_rejects_unsafe_tree_paths(self):
+        app = self.make()
+        app.is_repository_accessible = lambda repository, refresh=False: True
+        future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
+        sha = "e" * 40
+        def request(method, path, token, payload=None):
+            if method == "POST":
+                return {"token": "contents-token", "expires_at": future,
+                        "permissions": {"contents": "read"}}
+            if "/commits/" in path:
+                return {"sha": sha, "commit": {"tree": {"sha": "f" * 40}}}
+            return {"truncated": False, "tree": [
+                {"path": "../pubspec.yaml", "type": "blob", "mode": "100644"},
+            ]}
+        app._app_jwt = lambda: "app-jwt"
+        app._request = request
+        with self.assertRaisesRegex(GitHubAppError, "unsafe path"):
+            app.inspect_repository_project("owner/repo", sha)
 
     def test_repository_project_inspection_treats_truncated_tree_as_unknown(self):
         app = self.make()
