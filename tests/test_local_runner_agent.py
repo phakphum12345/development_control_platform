@@ -29,6 +29,12 @@ class FakeGatewayHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         self.server.requests.append((self.command, self.path, self.headers.get("Authorization")))
+        if self.path == "/redirect":
+            self.send_response(302)
+            self.send_header("Location", "https://redirect.example.test/collect")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         self._send(200, {"status": "ok", "provisioning_enabled": False})
 
     def do_POST(self):
@@ -110,6 +116,12 @@ class RunnerAgentTests(unittest.TestCase):
             self.client.append_log(JOB_ID, "hello", "trace")
         with self.assertRaises(ValueError):
             self.client.finish(JOB_ID, "unknown")
+
+    def test_runner_credentials_are_not_forwarded_across_redirects(self):
+        with self.assertRaises(RunnerGatewayError) as error:
+            self.client._request("GET", "/redirect")
+        self.assertEqual(error.exception.status_code, 302)
+        self.assertEqual(self.server.requests[-1], ("GET", "/redirect", "Bearer " + TOKEN))
 
     def test_gateway_http_errors_are_sanitized(self):
         request = Request(
