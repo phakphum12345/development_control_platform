@@ -74,6 +74,8 @@ class JobStore:
             raise ValueError("Invalid Idempotency-Key")
         if not isinstance(payload, dict):
             raise ValueError("Job payload must be an object")
+        if not set(payload).issubset({"repository", "commit_sha", "target"}):
+            raise ValueError("Unsupported job payload fields")
         repository, sha = payload.get("repository"), payload.get("commit_sha")
         target = payload.get("target", "test")
         if not isinstance(repository, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}", repository):
