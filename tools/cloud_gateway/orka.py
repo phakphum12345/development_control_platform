@@ -71,10 +71,12 @@ class OrkaProvider:
    raise OrkaError("Invalid VM config name")
   if not isinstance(image,str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,127}",image):
    raise OrkaError("Invalid VM image name")
-  for field in ("cpu","memory"):
-   value=config.get(field)
-   if isinstance(value,bool) or not isinstance(value,(int,float)) or value<=0:
-    raise OrkaError("VM config "+field+" must be positive")
+  cpu=config.get("cpu")
+  if isinstance(cpu,bool) or not isinstance(cpu,int) or cpu<=0:
+   raise OrkaError("VM config cpu must be a positive integer")
+  memory=config.get("memory")
+  if isinstance(memory,bool) or not isinstance(memory,(int,float)) or memory<=0:
+   raise OrkaError("VM config memory must be positive")
   existing=self.list_vm_configs()
   if any(item.get("name")==name for item in existing):
    raise OrkaError("VM config already exists; refusing to overwrite")
@@ -109,7 +111,6 @@ class OrkaProvider:
     error.provider_id=name
     raise error
    raise OrkaError("Orka did not confirm the requested VM identity")
-  # A running VM is not proof that the GitHub runner has registered.
   return RunnerInstance(vm_name,"provisioning",vm_name,tuple(payload["labels"]),"VM accepted; runner registration pending")
  def _rollback_partial_vm(self,path):
   try:
@@ -142,5 +143,4 @@ class OrkaProvider:
   path="/api/v1/namespaces/"+quote(self.namespace,safe="")+"/vms/"+quote(provider_id,safe="")
   result=self._request("DELETE",path,allow_missing=True)
   if result is None: return RunnerInstance(provider_id,"terminated")
-  # DELETE acceptance is not proof that the VM has disappeared; status() confirms 404.
   return RunnerInstance(provider_id,"terminating")
