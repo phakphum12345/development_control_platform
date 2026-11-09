@@ -7,7 +7,7 @@ The canonical architecture, API boundaries, repository trust model, provider con
 | Phase | Work package | Exit evidence | Status |
 |---|---|---|---|
 | 0 | Baseline and safety | Work on feature branch; main untouched; Cloud Provisioning disabled; existing workflows and tests inventoried | In progress |
-| 1 | Repository Manager hardening | Installation catalog pagination, private/public metadata, authenticated API, server-side membership revalidation, branch/tag/SHA resolution, project detection | Installation catalog, authenticated branch/tag API, repository-scoped Contents-read tokens, and commit verification implemented on feature branch; project detection and test execution pending |
+| 1 | Repository Manager hardening | Installation catalog pagination, private/public metadata, authenticated API, server-side membership revalidation, branch/tag/SHA resolution, project detection | Installation catalog, branch/tag API, repository-scoped Contents-read tokens, commit verification, and bounded Flutter/macOS tree detection implemented on feature branch; latest project-detection tests pending |
 | 2 | DCP Core and Job Control Plane | Stable Job API, durable state transitions, idempotency, cancellation, timeout, audit events, queue contract | Existing Gateway lifecycle is a starting point; scheduler/queue work pending |
 | 3 | DCP Runner Engine | Local runner agent, authenticated claim/heartbeat/report protocol, isolated workspace, logs, cancellation and cleanup reconciliation | Pending |
 | 4 | DCP Provisioning Engine | Provider-neutral capabilities/readiness/create/inspect/stop/delete; local no-cost simulation; host-specific adapters only after validation | Existing Azure/Orka routing is legacy adapter work; DCP-owned provider manager pending |
@@ -24,8 +24,9 @@ Changes made in this slice:
 - Raised the GitHub App API response limit from 64 KiB to a strict 2 MiB, allowing normal installation repository pages with up to 100 repository records.
 - Added authenticated branch/tag discovery using a short-lived token scoped to the selected repository with Contents: read.
 - Added full commit SHA verification against the selected repository, including a second server-side check before accepting a runner request.
-- Added Dashboard Branch/Tag selection and explicit verification for manually entered commit SHAs.
-- Added regression tests for large response limits, ref pagination, token scope, repository authorization, and commit verification.
+- Added Dashboard Branch/Tag selection, explicit verification for manually entered commit SHAs, and project/build-target detection display.
+- Added read-only recursive Git tree inspection at the selected immutable commit; Flutter macOS support is reported only when the Runner Xcode project and Info.plist are present. Truncated inventories return UNKNOWN.
+- Added regression tests for large response limits, ref pagination, token scope, repository authorization, commit verification, and Flutter/macOS detection.
 - Added the architecture/API contract and this execution tracker.
 
 ## Verification still required
