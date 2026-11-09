@@ -459,6 +459,75 @@ class GitHubAppBootstrapTests(unittest.TestCase):
         with self.assertRaisesRegex(GitHubAppError, "duplicates"):
             app.list_repository_refs("phakphum12345/generated-A4-pdf", "branches")
 
+    def test_repository_project_inspection_detects_flutter_macos_runner(self):
+        app = self.make()
+        app.is_repository_accessible = lambda repository, refresh=False: repository == "phakph12345/flutter-app"
+        future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
+        sha = "e" * 40
+        tree_sha = "f" * 40
+        calls = []
+        def request(method, path, token, payload=None):
+            calls.append((method, path, token, payload))
+            if method == "POST":
+                return {"token": "contents-token", "expires_at": future,
+                        "permissions": {"contents": "read"}}
+            if "/commits/" in path:
+                return {"sha": sha, "commit": {"tree": {"sha": tree_sha}}}
+            return {"truncated": False, "tree": [
+                {"path": "pubspec.yaml", "type": "blob", "mode": "100644"},
+                {"path": "lib/main.dart", "type": "blob", "mode": "100644"},
+                {"path": "macos/Runner.xcodeproj/project.pbxproj", "type": "blob", "mode": "100644"},
+                {"path": "macos/Runner/Info.plist", "type": "blob", "mode": "100644"},
+            ]}
+        app._app_jwt = lambda: "app-jwt"
+        app._request = request
+        result = app.inspect_repository_project("phakph12345/flutter-app", sha)
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(result["project_types"], ["flutter"])
+        self.assertTrue(result["flutter"]["macos_supported"])
+        self.assertIn("/git/trees/" + tree_sha + "?recursive=1", calls[-1][1])
+
+    def test_repository_project_inspection_reports_flutter_macos_setup_needed(self):
+        app = self.make()
+        app.is_repository_accessible = lambda repository, refresh=False: True
+        future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
+        sha = "e" * 40
+        def request(method, path, token, payload=None):
+            if method == "POST":
+                return {"token": "contents-token", "expires_at": future,
+                        "permissions": {"contents": "read"}}
+            if "/commits/" in path:
+                return {"sha": sha, "commit": {"tree": {"sha": "f" * 40}}}
+            return {"truncated": False, "tree": [
+                {"path": "pubspec.yaml", "type": "blob", "mode": "100644"},
+                {"path": "lib/main.dart", "type": "blob", "mode": "100644"},
+            ]}
+        app._app_jwt = lambda: "app-jwt"
+        app._request = request
+        result = app.inspect_repository_project("owner/repo", sha)
+        self.assertEqual(result["status"], "needs_setup")
+        self.assertFalse(result["flutter"]["macos_supported"])
+
+    def test_repository_project_inspection_treats_truncated_tree_as_unknown(self):
+        app = self.make()
+        app.is_repository_accessible = lambda repository, refresh=False: True
+        future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
+        sha = "e" * 40
+        def request(method, path, token, payload=None):
+            if method == "POST":
+                return {"token": "contents-token", "expires_at": future,
+                        "permissions": {"contents": "read"}}
+            if "/commits/" in path:
+                return {"sha": sha, "commit": {"tree": {"sha": "f" * 40}}}
+            return {"truncated": True, "tree": [
+                {"path": "pubspec.yaml", "type": "blob", "mode": "100644"},
+            ]}
+        app._app_jwt = lambda: "app-jwt"
+        app._request = request
+        result = app.inspect_repository_project("owner/repo", sha)
+        self.assertEqual(result["status"], "unknown")
+        self.assertIsNone(result["flutter"]["macos_supported"])
+
     def test_resolve_repository_commit_uses_scoped_contents_token(self):
         app = self.make()
         future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
