@@ -375,6 +375,70 @@ class GitHubAppBootstrapTests(unittest.TestCase):
             app._request("GET", "/installation/repositories", "catalog-token")
 
 
+    def test_repository_branch_catalog_uses_scoped_contents_read_token(self):
+        app = self.make()
+        calls = []
+        future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
+        def request(method, path, token, payload=None):
+            calls.append((method, path, token, payload))
+            if method == "POST":
+                return {
+                    "token": "contents-read-token",
+                    "expires_at": future,
+                    "permissions": {"contents": "read"},
+                }
+            return [{
+                "name": "feature/example",
+                "commit": {"sha": "A" * 40},
+            }]
+        app._app_jwt = lambda: "app-jwt"
+        app._request = request
+        refs = app.list_repository_refs("phakphum12345/generated-A4-pdf", "branches")
+        self.assertEqual(refs, [{"name": "feature/example", "commit_sha": "a" * 40}])
+        self.assertEqual(calls[0][3], {
+            "repositories": ["phakphum12345/generated-A4-pdf"],
+            "permissions": {"contents": "read"},
+        })
+        self.assertIn("/branches?per_page=100&page=1", calls[1][1])
+        self.assertEqual(calls[1][2], "contents-read-token")
+
+    def test_repository_ref_catalog_paginates_and_rejects_duplicate_refs(self):
+        app = self.make()
+        future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
+        calls = []
+        def request(method, path, token, payload=None):
+            calls.append(path)
+            if method == "POST":
+                return {"token": "contents-token", "expires_at": future,
+                        "permissions": {"contents": "read"}}
+            if path.endswith("page=1"):
+                return [{"name": "branch-" + str(i), "commit": {"sha": ("%040x" % (i + 1))}}
+                        for i in range(100)]
+            return [{"name": "branch-100", "commit": {"sha": "f" * 40}}]
+        app._app_jwt = lambda: "app-jwt"
+        app._request = request
+        refs = app.list_repository_refs("phakphum12345/generated-A4-pdf", "branches")
+        self.assertEqual(len(refs), 101)
+        self.assertEqual(len([path for path in calls if "branches?" in path]), 2)
+
+    def test_repository_ref_catalog_rejects_unsupported_kind_before_network(self):
+        app = self.make()
+        app._request = lambda *args, **kwargs: self.fail("network must not be called")
+        with self.assertRaisesRegex(GitHubAppError, "Unsupported"):
+            app.list_repository_refs("phakphum12345/generated-A4-pdf", "commits")
+
+    def test_repository_ref_catalog_fails_closed_without_contents_permission(self):
+        app = self.make()
+        app._app_jwt = lambda: "app-jwt"
+        app._request = lambda *args, **kwargs: {
+            "token": "metadata-only",
+            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat(),
+            "permissions": {"metadata": "read"},
+        }
+        with self.assertRaisesRegex(GitHubAppError, "Contents read"):
+            app.list_repository_refs("phakphum12345/generated-A4-pdf", "tags")
+
+
 
 if __name__ == "__main__":
     unittest.main()
