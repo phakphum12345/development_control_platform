@@ -205,7 +205,7 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
 </div></section>
 <section class="view" id="cloud-runners">
 <div class="panel">
- <div class="row"><div><h2>Cloud Runner Control</h2><p>ควบคุม Ephemeral Runner สำหรับ Azure Linux / Windows และ Orka macOS ผ่าน Gateway ที่ได้รับอนุญาต</p></div><span class="pill" id="runner-mode">SAFE MODE · UNKNOWN</span></div>
+ <div class="row"><div><h2>Cloud Runner Control</h2><p>ควบคุม Ephemeral Runner ผ่าน DCP Gateway และ Provider Adapter (Azure / Orka เป็นตัวเลือกปัจจุบัน ไม่ใช่ศูนย์กลางควบคุม)</p></div><span class="pill" id="runner-mode">SAFE MODE · UNKNOWN</span></div>
  <div class="warn"><b>Safety lock:</b> หน้านี้ไม่เก็บ Gateway token ใน browser และไม่เรียก Azure/Orka โดยตรง คำสั่งจะผ่าน authenticated same-origin API เท่านั้น หาก backend, owner approval, provider bootstrap หรือ budget gate ไม่พร้อม ปุ่มเริ่มงานจะถูกปิดไว้</div>
  <div class="runner-toolbar"><button class="primary" id="runner-refresh" type="button">ตรวจสอบระบบ / Refresh</button><span class="small muted" id="runner-last-check">ยังไม่มีหลักฐานการตรวจสอบ</span></div>
 </div>
@@ -775,7 +775,9 @@ async function runnerRefresh(){
   runnerRenderGate();
   await runnerLoadList();
  }catch(error){
-  runnerUI.status=null;runnerUI.session=false;runnerUI.csrf=null;
+  runnerUI.status=null;runnerUI.session=false;runnerUI.csrf=null;runnerUI.repositories=[];
+  $("runner-repository").innerHTML='<option value="">Authentication / API unavailable</option>';$("runner-repository").disabled=true;
+  runnerText("runner-repositories-status","Repository catalog: UNKNOWN — authenticated API unavailable");
   runnerText("runner-last-check","ตรวจสอบไม่สำเร็จ — "+error.message);
   runnerRenderGate();
   runnerGate("runner-gate-budget","Live budget and forecast","unknown","API unavailable");
