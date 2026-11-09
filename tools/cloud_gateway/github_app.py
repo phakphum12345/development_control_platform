@@ -483,7 +483,7 @@ class GitHubAppRunnerBootstrap:
             "file_count": len(paths),
             "truncated": truncated,
             "flutter": {
-                "detected": bool(pubspecs),
+                "detected": bool(flutter_pubspecs),
                 "package_manifests": flutter_pubspecs,
                 "macos_supported": macos_supported_result,
                 "macos_runner_projects": macos_projects if not truncated else [],
