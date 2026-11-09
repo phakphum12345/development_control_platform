@@ -43,11 +43,16 @@ class GitHubAppRunnerBootstrap:
     """Mint narrowly scoped registration tokens using a GitHub App installation.
 
     The App private key should be read from a server-side secret store (for
-    example Key Vault) and passed in memory. The installation token is scoped
-    to the one allowlisted repository and is never returned to callers.
+    example Key Vault) and passed in memory. Installation tokens used for
+    runner administration are scoped to one verified repository and are never
+    returned to callers.
     """
 
     API_ORIGIN = "https://api.github.com"
+    # Installation catalog pages can contain 100 full repository objects. A
+    # 64 KiB cap rejects legitimate accounts with many repositories; retain a
+    # strict bound while allowing normal GitHub pagination responses.
+    MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 
     def __init__(
         self,
@@ -125,8 +130,8 @@ class GitHubAppRunnerBootstrap:
         request.add_unredirected_header("Authorization", "Bearer " + token)
         try:
             with self.opener(request, timeout=self.timeout) as response:
-                raw = response.read(65537)
-            if len(raw) > 65536:
+                raw = response.read(self.MAX_RESPONSE_BYTES + 1)
+            if len(raw) > self.MAX_RESPONSE_BYTES:
                 raise GitHubAppError("GitHub API response exceeded size limit")
             data = json.loads(raw.decode("utf-8")) if raw else {}
         except HTTPError as exc:
