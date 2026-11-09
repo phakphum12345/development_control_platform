@@ -45,6 +45,22 @@ class LocalRunnerManagerTests(unittest.TestCase):
                 manager.cleanup_instance(outside, root)
             self.assertTrue(outside.exists())
 
+    def test_deregister_removes_only_matching_offline_runner(self):
+        payload = {"runners": [
+            {"id": 10, "name": "unrelated", "status": "offline", "busy": False},
+            {"id": 11, "name": "managed", "status": "offline", "busy": False},
+        ]}
+        with patch.object(manager, "gh_json", return_value=payload), patch.object(manager, "run_command", return_value="") as command:
+            self.assertTrue(manager.deregister_if_offline("owner/project", "managed"))
+            command.assert_called_once_with(["gh", "api", "repos/owner/project/actions/runners/11", "--method", "DELETE"])
+
+    def test_deregister_never_removes_busy_runner(self):
+        with patch.object(manager, "gh_json", return_value={"runners": [
+            {"id": 11, "name": "managed", "status": "online", "busy": True}
+        ]}), patch.object(manager, "run_command") as command:
+            self.assertFalse(manager.deregister_if_offline("owner/project", "managed"))
+            command.assert_not_called()
+
     def test_runner_status_matches_exact_runner_name(self):
         with patch.object(manager,"gh_json",return_value={"runners":[{"name":"old","status":"online","busy":True},{"name":"new","status":"offline","busy":False}]}):
             self.assertEqual(manager.runner_status("owner/project","new"),("offline",False))
