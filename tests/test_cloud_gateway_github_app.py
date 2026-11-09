@@ -245,6 +245,26 @@ class GitHubAppBootstrapTests(unittest.TestCase):
             app.remove_runner("phakphum12345/generated-A4-pdf", 42)
 
 
+    def test_catalog_token_is_limited_to_metadata_read(self):
+        app = GitHubAppRunnerBootstrap("123456", 987654, self.pem, [])
+        app._app_jwt = lambda: "app-jwt"
+        calls = []
+
+        def request(method, path, token, payload=None):
+            calls.append((method, path, token, payload))
+            return {
+                "token": "catalog-token",
+                "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat(),
+                "permissions": {"metadata": "read"},
+            }
+
+        app._request = request
+        self.assertEqual(app._installation_catalog_token(), "catalog-token")
+        self.assertEqual(calls[0][0:3], (
+            "POST", "/app/installations/987654/access_tokens", "app-jwt"
+        ))
+        self.assertEqual(calls[0][3], {"permissions": {"metadata": "read"}})
+
     def test_dynamic_installation_catalog_lists_only_installed_repositories(self):
         app = GitHubAppRunnerBootstrap(
             "123456", 987654, self.pem, [],
