@@ -479,7 +479,7 @@ def main():
         settings, store, ProviderRouter(DisabledProvider(), DisabledProvider()),
         _budget_guard_from_env(settings), runner_cleanup=runner_cleanup,
         repository_catalog=github_app.list_installation_repositories if github_app else None,
-        repository_authorizer=github_app.is_repository_accessible if github_app else None,
+        repository_authorizer=(lambda repository: github_app.is_repository_accessible(repository, refresh=True)) if github_app else None,
     )
     _start_expiry_reconciler(service, int(os.getenv("DCP_GATEWAY_RECONCILE_SECONDS", "30")))
     server = ThreadingHTTPServer(
