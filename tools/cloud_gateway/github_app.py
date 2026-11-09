@@ -352,7 +352,7 @@ class GitHubAppRunnerBootstrap:
             raise GitHubAppError("Invalid GitHub runner ID")
         owner, name = repository.split("/", 1) if self.is_repository_accessible(repository) else ("", "")
         if not owner:
-            raise GitHubAppError("Repository is not allowlisted for runner administration")
+            raise GitHubAppError("Repository is not accessible to the DCP GitHub App installation")
         runners = self._list_runners(repository)
         matches = [runner for runner in runners if isinstance(runner, dict) and runner.get("id") == runner_id]
         if not matches:
