@@ -118,9 +118,14 @@ class RunnerAgentTests(unittest.TestCase):
             headers={"Authorization": "Bearer wrong-token"},
             method="POST",
         )
+        bad_config = RunnerAgentConfig(
+            self.config.gateway_url, self.config.worker_id, "x" * 32
+        )
         with self.assertRaises(RunnerGatewayError) as error:
-            self.client._request("POST", "/v1/runner/claim", {"lease_seconds": 30})
-        self.assertIsNone(error.exception.status_code)
+            GatewayClient(bad_config)._request(
+                "POST", "/v1/runner/claim", {"lease_seconds": 30}
+            )
+        self.assertEqual(error.exception.status_code, 401)
         with self.assertRaises(HTTPError):
             urlopen(request)
 
