@@ -160,7 +160,7 @@ class GitHubAppRunnerBootstrap:
             "POST",
             "/app/installations/{}/access_tokens".format(self.installation_id),
             self._app_jwt(),
-            {},
+            {"permissions": {"metadata": "read"}},
         )
         token = installation.get("token")
         if not isinstance(token, str) or not token:
