@@ -39,6 +39,49 @@ class OrkaProvider:
   except (UnicodeDecodeError,json.JSONDecodeError) as exc: raise OrkaError("Orka returned malformed JSON") from exc
   if not isinstance(data,dict): raise OrkaError("Orka returned an invalid response shape")
   return data
+ def _namespace_path(self,resource):
+  return "/api/v1/namespaces/"+quote(self.namespace,safe="")+"/"+resource
+ def _list_items(self,resource):
+  data=self._request("GET",self._namespace_path(resource))
+  items=data.get("items")
+  if not isinstance(items,list) or any(not isinstance(item,dict) for item in items):
+   raise OrkaError("Orka returned an invalid "+resource+" inventory")
+  return items
+ def list_images(self):
+  """Read-only inventory; does not create or modify Orka resources."""
+  return self._list_items("images")
+ def list_vm_configs(self):
+  """Read-only VM-config inventory; does not create or modify resources."""
+  return self._list_items("vmconfigs")
+ def create_vm_config(self,config,*,approved=False):
+  """Create a VM config only after an explicit caller-side approval.
+
+  This creates configuration metadata, not a VM. Existing names are rejected
+  to avoid accidental replacement or ambiguity.
+  """
+  if approved is not True:
+   raise OrkaError("VM config creation requires explicit approval")
+  if not isinstance(config,dict):
+   raise OrkaError("VM config must be an object")
+  allowed={"cpu","displayDPI","displayHeight","displayWidth","gpuPassthrough","image","iso","legacyIO","memory","name","netBoost","nodeName","scheduler","systemSerial","tag","tagRequired","vncConsole"}
+  if set(config)-allowed:
+   raise OrkaError("VM config contains unsupported fields")
+  name=config.get("name"); image=config.get("image")
+  if not isinstance(name,str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,63}",name):
+   raise OrkaError("Invalid VM config name")
+  if not isinstance(image,str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,127}",image):
+   raise OrkaError("Invalid VM image name")
+  for field in ("cpu","memory"):
+   value=config.get(field)
+   if isinstance(value,bool) or not isinstance(value,(int,float)) or value<=0:
+    raise OrkaError("VM config "+field+" must be positive")
+  existing=self.list_vm_configs()
+  if any(item.get("name")==name for item in existing):
+   raise OrkaError("VM config already exists; refusing to overwrite")
+  result=self._request("POST",self._namespace_path("vmconfigs"),config)
+  if result.get("name")!=name:
+   raise OrkaError("Orka did not confirm the created VM config")
+  return result
  def readiness(self,os_name):
   if os_name!="macos": return {"ready":False,"message":"Orka supports only the approved macOS profile"}
   if self.online is None: return {"ready":False,"message":"Independent GitHub runner-online verification is not configured"}
