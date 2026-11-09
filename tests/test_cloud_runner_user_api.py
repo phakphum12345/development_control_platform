@@ -18,6 +18,7 @@ from tools.cloud_gateway.budget_guard import AzureBudgetGuard
 from tools.cloud_gateway.service import GatewayService
 from tools.cloud_gateway.store import RunnerStore
 from tools.cloud_gateway.job_control import JobStore
+from tools.local_runner_agent.client import GatewayClient, RunnerAgentConfig
 
 SECRET = "test-proxy-secret-that-is-at-least-32-bytes-long"
 ORIGIN = "https://dcp.example.test"
@@ -436,6 +437,43 @@ class AuthenticatedControlAPITests(unittest.TestCase):
             self.assertEqual(error.exception.code, 409)
         finally:
             error.exception.close()
+
+    def test_local_runner_agent_end_to_end_job_receive_status_and_dashboard_visibility(self):
+        job, created = self.job_store.create(
+            {"repository": "example/private-app", "commit_sha": "e" * 40, "target": "test"},
+            "agent-e2e-job-key-001",
+        )
+        self.assertTrue(created)
+        agent = GatewayClient(RunnerAgentConfig(
+            self.base, "worker-test-01", self.runner_token
+        ))
+        health = agent.health()
+        self.assertEqual(health["status"], "ok")
+        claimed = agent.claim(lease_seconds=60)
+        self.assertEqual(claimed["id"], job["id"])
+        self.assertEqual(claimed["worker"], "worker-test-01")
+        heartbeat = agent.heartbeat(job["id"], lease_seconds=60)
+        self.assertEqual(heartbeat["state"], "running")
+        self.assertTrue(agent.append_log(job["id"], "agent handshake complete")["accepted"])
+        completed = agent.finish(
+            job["id"], "cancelled",
+            {"execution_started": False, "mode": "handshake-test"},
+        )
+        self.assertEqual(completed["state"], "cancelled")
+
+        with urlopen(self.request("GET", "/api/jobs/" + job["id"],
+                                  "nonce_agent_e2e_job_0001")) as response:
+            dashboard_job = json.loads(response.read())
+        self.assertEqual(dashboard_job["state"], "cancelled")
+        with urlopen(self.request("GET", "/api/jobs/" + job["id"] + "/logs",
+                                  "nonce_agent_e2e_logs_0001")) as response:
+            dashboard_logs = json.loads(response.read())["logs"]
+        self.assertEqual(dashboard_logs[0]["message"], "agent handshake complete")
+        with urlopen(self.request("GET", "/api/jobs/" + job["id"] + "/events",
+                                  "nonce_agent_e2e_events_01")) as response:
+            event_types = [event["event_type"] for event in json.loads(response.read())["events"]]
+        self.assertIn("claimed", event_types)
+        self.assertIn("cancelled", event_types)
 
     def test_authenticated_repository_refs_endpoint_returns_scoped_branch_metadata(self):
         self.service.repository_authorizer = lambda repository: repository == "example/private-app"
