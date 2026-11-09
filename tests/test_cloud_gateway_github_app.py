@@ -375,6 +375,28 @@ class GitHubAppBootstrapTests(unittest.TestCase):
             app._request("GET", "/installation/repositories", "catalog-token")
 
 
+    def test_request_accepts_github_array_response(self):
+        app = self.make()
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self, limit): return b'[{"name":"main"}]'
+        app.opener = lambda request, timeout: Response()
+        self.assertEqual(app._request("GET", "/repos/example/repo/branches", "token"), [{"name": "main"}])
+
+    def test_resolve_repository_commit_rejects_mismatched_response_sha(self):
+        app = self.make()
+        future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
+        def request(method, path, token, payload=None):
+            if method == "POST":
+                return {"token": "contents-token", "expires_at": future,
+                        "permissions": {"contents": "read"}}
+            return {"sha": "c" * 40}
+        app._app_jwt = lambda: "app-jwt"
+        app._request = request
+        with self.assertRaisesRegex(GitHubAppError, "did not match"):
+            app.resolve_repository_commit("phakphum12345/generated-A4-pdf", "b" * 40)
+
     def test_repository_branch_catalog_uses_scoped_contents_read_token(self):
         app = self.make()
         calls = []
