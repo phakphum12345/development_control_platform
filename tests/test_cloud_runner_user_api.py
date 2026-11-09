@@ -369,7 +369,7 @@ class AuthenticatedControlAPITests(unittest.TestCase):
         self.service.repository_project_inspector = lambda repository, sha: {
             "repository": repository,
             "commit_sha": sha,
-            "status": "ready",
+            "status": "target_detected",
             "project_types": ["flutter"],
             "file_count": 4,
             "truncated": False,
@@ -386,7 +386,7 @@ class AuthenticatedControlAPITests(unittest.TestCase):
         headers = signed_headers("GET", path, "nonce_repo_project_001")
         with urlopen(Request(self.base + path, headers=headers)) as response:
             payload = json.loads(response.read())
-        self.assertEqual(payload["status"], "ready")
+        self.assertEqual(payload["status"], "target_detected")
         self.assertTrue(payload["flutter"]["macos_supported"])
 
     def test_repository_project_endpoint_rejects_repository_outside_installation(self):
