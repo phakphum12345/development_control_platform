@@ -336,5 +336,44 @@ class AuthenticatedControlAPITests(unittest.TestCase):
         self.assertEqual(self.store.active_count(), 0)
 
 
+    def test_authenticated_repository_refs_endpoint_returns_scoped_branch_metadata(self):
+        self.service.repository_authorizer = lambda repository: repository == "example/private-app"
+        self.service.repository_ref_catalog = lambda repository, kind: [
+            {"name": "feature/one", "commit_sha": "a" * 40}
+        ]
+        path = "/api/github/repositories/example/private-app/refs"
+        headers = signed_headers("GET", path, "nonce_repo_refs_000001")
+        request = Request(self.base + path + "?kind=branches", headers=headers)
+        with urlopen(request) as response:
+            payload = json.loads(response.read())
+        self.assertEqual(payload, {
+            "repository": "example/private-app",
+            "kind": "branches",
+            "refs": [{"name": "feature/one", "commit_sha": "a" * 40}],
+        })
+
+    def test_repository_refs_endpoint_rejects_repository_outside_installation(self):
+        self.service.repository_authorizer = lambda repository: False
+        self.service.repository_ref_catalog = lambda *args: self.fail("ref API must not be called")
+        path = "/api/github/repositories/attacker/repo/refs"
+        headers = signed_headers("GET", path, "nonce_repo_refs_000002")
+        with self.assertRaises(HTTPError) as error:
+            urlopen(Request(self.base + path + "?kind=tags", headers=headers))
+        try:
+            self.assertEqual(error.exception.code, 403)
+        finally:
+            error.exception.close()
+
+    def test_repository_refs_endpoint_rejects_unknown_ref_kind(self):
+        path = "/api/github/repositories/example/private-app/refs"
+        headers = signed_headers("GET", path, "nonce_repo_refs_000003")
+        with self.assertRaises(HTTPError) as error:
+            urlopen(Request(self.base + path + "?kind=commits", headers=headers))
+        try:
+            self.assertEqual(error.exception.code, 400)
+        finally:
+            error.exception.close()
+
+
 if __name__ == "__main__":
     unittest.main()
