@@ -21,6 +21,7 @@ from .service import GatewayService
 from .provider_router import ProviderRouter
 from .store import LifecycleConflict, RunnerStore
 from .github_app_runtime import build_github_app_runtime
+from .job_control import JobConflict, JobNotFound, JobStore
 
 
 class DisabledProvider:
@@ -109,7 +110,12 @@ class ProxyIdentityVerifier:
         return hmac.new(self.secret, message.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
-def make_handler(service, token, proxy_secret=None, public_origin=None):
+def make_handler(service, token, proxy_secret=None, public_origin=None, runner_tokens=None):
+    runner_tokens = dict(runner_tokens or {})
+    for worker, secret in runner_tokens.items():
+        if (not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", worker)
+                or not isinstance(secret, str) or len(secret) < 32):
+            raise ValueError("Runner credentials require valid worker IDs and 32+ character tokens")
     verifier = ProxyIdentityVerifier(proxy_secret, nonce_store=service.store) if proxy_secret else None
 
     class Handler(BaseHTTPRequestHandler):
@@ -136,6 +142,27 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
             header = self.headers.get("Authorization", "")
             supplied = header[7:] if header.startswith("Bearer ") else ""
             return bool(token) and hmac.compare_digest(supplied, token)
+
+        def runner_identity(self):
+            header = self.headers.get("Authorization", "")
+            supplied = header[7:] if header.startswith("Bearer ") else ""
+            if not supplied:
+                return None
+            matched = None
+            for worker, secret in runner_tokens.items():
+                if hmac.compare_digest(supplied, secret):
+                    matched = worker
+            return matched
+
+        def job_store(self):
+            return getattr(service, "job_store", None)
+
+        @staticmethod
+        def public_job(row):
+            keys = ("id", "repository", "commit_sha", "target", "state",
+                    "created_at", "updated_at", "worker", "lease_until",
+                    "cancel_at", "result", "error_code")
+            return {key: row.get(key) for key in keys}
 
         def proxy_identity(self):
             return verifier.verify(self) if verifier else None
@@ -173,6 +200,41 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
                     "status": "ok",
                     "provisioning_enabled": service.settings.provisioning_enabled,
                 })
+            if path == "/api/jobs" or path.startswith("/api/jobs/"):
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if identity.get("role") not in ("owner", "operator"):
+                    return self.send_json(403, {"error": "dashboard role required"})
+                jobs = self.job_store()
+                if jobs is None:
+                    return self.send_json(503, {"error": "job control plane unavailable"})
+                if path == "/api/jobs":
+                    query = parse_qs(urlparse(self.path).query)
+                    try:
+                        limit = int(query.get("limit", ["50"])[0])
+                        return self.send_json(200, {"jobs": [self.public_job(row) for row in jobs.list_recent(limit)]})
+                    except (ValueError, TypeError):
+                        return self.send_json(400, {"error": "invalid limit"})
+                parts = path[len("/api/jobs/"):].split("/")
+                if not parts[0] or not re.fullmatch(r"[0-9a-f-]{36}", parts[0]):
+                    return self.send_json(400, {"error": "invalid job id"})
+                try:
+                    if len(parts) == 1:
+                        row = jobs.get(parts[0])
+                        return self.send_json(200, self.public_job(row)) if row else self.send_json(404, {"error": "not found"})
+                    if len(parts) == 2 and parts[1] == "events":
+                        return self.send_json(200, {"events": jobs.events(parts[0])})
+                    if len(parts) == 2 and parts[1] == "logs":
+                        query = parse_qs(urlparse(self.path).query)
+                        after_id = int(query.get("after_id", ["0"])[0])
+                        limit = int(query.get("limit", ["500"])[0])
+                        return self.send_json(200, {"logs": jobs.logs(parts[0], after_id, limit)})
+                except JobNotFound:
+                    return self.send_json(404, {"error": "not found"})
+                except ValueError:
+                    return self.send_json(400, {"error": "invalid pagination"})
+                return self.send_json(404, {"error": "not found"})
             if path.startswith("/api/"):
                 identity = self.proxy_identity()
                 if not identity:
@@ -353,6 +415,79 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
 
         def do_POST(self):
             path = urlparse(self.path).path
+            if path == "/api/jobs" or path.startswith("/api/jobs/"):
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if identity.get("role") not in ("owner", "operator"):
+                    return self.send_json(403, {"error": "dashboard role required"})
+                if not self.same_origin():
+                    return self.send_json(403, {"error": "same-origin request required"})
+                if not self.csrf_valid(identity):
+                    return self.send_json(403, {"error": "CSRF validation failed"})
+                jobs = self.job_store()
+                if jobs is None:
+                    return self.send_json(503, {"error": "job control plane unavailable"})
+                try:
+                    if path == "/api/jobs":
+                        row, created = jobs.create(self.body(), self.headers.get("Idempotency-Key", ""))
+                        return self.send_json(202 if created else 200, self.public_job(row))
+                    suffix = path[len("/api/jobs/"):]
+                    if not suffix.endswith("/cancel"):
+                        return self.send_json(404, {"error": "not found"})
+                    if identity.get("role") != "owner":
+                        return self.send_json(403, {"error": "owner role required to cancel jobs"})
+                    job_id = suffix[:-7].rstrip("/")
+                    if not re.fullmatch(r"[0-9a-f-]{36}", job_id):
+                        return self.send_json(400, {"error": "invalid job id"})
+                    row = jobs.cancel(job_id)
+                    return self.send_json(200, self.public_job(row))
+                except JobNotFound:
+                    return self.send_json(404, {"error": "not found"})
+                except JobConflict as exc:
+                    return self.send_json(409, {"error": str(exc)})
+                except ValueError as exc:
+                    return self.send_json(400, {"error": str(exc)})
+                except PolicyDenied as exc:
+                    return self.send_json(exc.status_code, {"error": str(exc)})
+            if path.startswith("/v1/runner/"):
+                worker = self.runner_identity()
+                if not worker:
+                    return self.send_json(401, {"error": "runner credentials required"})
+                jobs = self.job_store()
+                if jobs is None:
+                    return self.send_json(503, {"error": "job control plane unavailable"})
+                try:
+                    if path == "/v1/runner/claim":
+                        payload = self.body()
+                        lease = payload.get("lease_seconds", 30)
+                        jobs.recover_expired_leases()
+                        row = jobs.claim(worker, lease)
+                        return self.send_json(200, {"job": self.public_job(row) if row else None})
+                    parts = path[len("/v1/runner/"):].split("/")
+                    if len(parts) != 2 or not re.fullmatch(r"[0-9a-f-]{36}", parts[0]):
+                        return self.send_json(404, {"error": "not found"})
+                    job_id, action = parts
+                    payload = self.body()
+                    if action == "heartbeat":
+                        row = jobs.heartbeat(job_id, worker, payload.get("lease_seconds", 30))
+                        return self.send_json(200, self.public_job(row))
+                    if action == "logs":
+                        jobs.append_log(job_id, worker, payload.get("message"), payload.get("stream", "stdout"))
+                        return self.send_json(202, {"accepted": True})
+                    if action == "finish":
+                        row = jobs.finish(job_id, worker, payload.get("outcome"),
+                                          payload.get("result"), payload.get("error_code"))
+                        return self.send_json(200, self.public_job(row))
+                    return self.send_json(404, {"error": "not found"})
+                except JobNotFound:
+                    return self.send_json(404, {"error": "not found"})
+                except JobConflict as exc:
+                    return self.send_json(409, {"error": str(exc)})
+                except ValueError as exc:
+                    return self.send_json(400, {"error": str(exc)})
+                except PolicyDenied as exc:
+                    return self.send_json(exc.status_code, {"error": str(exc)})
             if path.startswith("/api/"):
                 identity = self.proxy_identity()
                 if not identity:
@@ -516,7 +651,15 @@ def main():
         local_http = origin.scheme == "http" and origin.hostname in ("127.0.0.1", "localhost")
         if len(proxy_secret) < 32 or not (public_origin.startswith("https://") or local_http):
             raise SystemExit("Trusted proxy API requires a 32+ character HMAC secret and HTTPS origin (HTTP is allowed only on loopback)")
-    store = RunnerStore(os.getenv("DCP_GATEWAY_DATABASE", "dcp-gateway.sqlite3"))
+    database_path = os.getenv("DCP_GATEWAY_DATABASE", "dcp-gateway.sqlite3")
+    store = RunnerStore(database_path)
+    jobs_store = JobStore(os.getenv("DCP_GATEWAY_JOBS_DATABASE", database_path + ".jobs"))
+    try:
+        runner_tokens = json.loads(os.getenv("DCP_RUNNER_TOKENS", "{}"))
+    except json.JSONDecodeError as exc:
+        raise SystemExit("DCP_RUNNER_TOKENS must be a JSON object") from exc
+    if not isinstance(runner_tokens, dict):
+        raise SystemExit("DCP_RUNNER_TOKENS must be a JSON object")
     github_app, _, runner_cleanup = build_github_app_runtime(settings)
     service = GatewayService(
         settings, store, ProviderRouter(DisabledProvider(), DisabledProvider()),
@@ -527,9 +670,10 @@ def main():
         repository_commit_resolver=github_app.resolve_repository_commit if github_app else None,
         repository_project_inspector=github_app.inspect_repository_project if github_app else None,
     )
+    service.job_store = jobs_store
     _start_expiry_reconciler(service, int(os.getenv("DCP_GATEWAY_RECONCILE_SECONDS", "30")))
     server = ThreadingHTTPServer(
-        (host, port), make_handler(service, settings.api_token, proxy_secret, public_origin)
+        (host, port), make_handler(service, settings.api_token, proxy_secret, public_origin, runner_tokens)
     )
     bound_host, bound_port = server.server_address[:2]
     print(f"DCP Gateway listening on http://{bound_host}:{bound_port}", flush=True)
