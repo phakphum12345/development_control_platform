@@ -31,6 +31,7 @@ class CloudRunnerOpenAPITests(unittest.TestCase):
         self.assertIn("/api/github/repositories", paths)
         self.assertIn("/api/github/repositories/{owner}/{repo}/refs", paths)
         self.assertIn("/api/github/repositories/{owner}/{repo}/commits/{sha}", paths)
+        self.assertIn("/api/github/repositories/{owner}/{repo}/projects/{sha}", paths)
         refs = paths["/api/github/repositories/{owner}/{repo}/refs"]["get"]
         self.assertEqual(refs["parameters"][-1]["schema"]["enum"], ["branches", "tags"])
         self.assertIn("TrustedProxyAssertion", refs["security"][0])
