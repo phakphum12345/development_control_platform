@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: DCP Cloud Runner Gateway API
-  version: 1.1.0
+  version: 1.2.0
   description: |
     Provider-neutral contract. Azure is the control plane and Linux/Windows VM
     provider; macOS capacity is supplied by Apple-hardware infrastructure such
@@ -17,8 +17,8 @@ paths:
       operationId: createEphemeralRunner
       summary: Request an ephemeral Linux, Windows, or macOS runner
       description: |
-        The gateway independently authenticates the caller, enforces repository
-        allowlisting, idempotency, approved platform/image mappings, concurrency
+        The gateway independently authenticates the caller, enforces GitHub App installation
+        membership (or a legacy explicit allowlist), idempotency, approved platform/image mappings, concurrency
         and billing limits, creates the isolated runner, registers a short-lived
         GitHub runner, and arranges teardown on completion, cancellation, or TTL.
         A 202 response means accepted/provisioning only; it is not evidence that
@@ -68,6 +68,141 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Runner not found. }
+  /api/github/repositories:
+    get:
+      operationId: listGitHubAppRepositories
+      summary: List repositories available to the DCP GitHub App installation
+      description: |
+        Requires a trusted-proxy authenticated browser session. Returns only
+        normalized repository metadata from the DCP GitHub App installation;
+        it does not list unrelated repositories from the user's GitHub account.
+        Installation tokens and App credentials remain server-side.
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Installation repository catalog.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [repositories]
+                properties:
+                  repositories:
+                    type: array
+                    items:
+                      type: object
+                      required: [full_name, private, default_branch, permissions]
+                      properties:
+                        full_name:
+                          type: string
+                          pattern: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+                        private: { type: boolean }
+                        default_branch: { type: string }
+                        permissions:
+                          type: object
+                          additionalProperties: { type: boolean }
+        '401': { description: Missing or invalid trusted-proxy identity. }
+        '503': { description: GitHub App installation catalog is unavailable. }
+  /api/github/repositories/{owner}/{repo}/refs:
+    parameters:
+      - name: owner
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: repo
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+    get:
+      operationId: listGitHubRepositoryRefs
+      summary: List branches or tags and their resolved commit SHAs
+      description: |
+        Requires a trusted-proxy authenticated browser session. The backend
+        revalidates DCP GitHub App installation membership and uses a
+        short-lived token scoped to the selected repository with Contents: read.
+        If the App installation lacks that permission, the request fails closed.
+      security:
+        - TrustedProxyAssertion: []
+      parameters:
+        - name: kind
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [branches, tags]
+            default: branches
+      responses:
+        '200':
+          description: Branch or tag metadata with full commit SHA.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [repository, kind, refs]
+                properties:
+                  repository: { type: string }
+                  kind: { type: string, enum: [branches, tags] }
+                  refs:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, commit_sha]
+                      properties:
+                        name: { type: string }
+                        commit_sha:
+                          type: string
+                          pattern: '^[0-9a-f]{40}$'
+        '400': { description: Invalid repository or ref kind. }
+        '401': { description: Missing or invalid trusted-proxy identity. }
+        '403': { description: Repository is outside the DCP GitHub App installation. }
+        '503': { description: GitHub App Contents read permission or repository ref API is unavailable. }
+  /api/github/repositories/{owner}/{repo}/commits/{sha}:
+    parameters:
+      - name: owner
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: repo
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: sha
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Fa-f0-9]{40}$'
+    get:
+      operationId: verifyGitHubRepositoryCommit
+      summary: Verify that a full commit SHA belongs to the selected repository
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: The exact commit SHA resolved inside the selected repository.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [repository, commit_sha]
+                properties:
+                  repository: { type: string }
+                  commit_sha:
+                    type: string
+                    pattern: '^[0-9a-f]{40}$'
+        '400': { description: Invalid full commit SHA. }
+        '401': { description: Missing or invalid trusted-proxy identity. }
+        '403': { description: Repository is outside the DCP GitHub App installation. }
+        '503': { description: GitHub App Contents read permission or commit lookup is unavailable. }
   /api/auth/session:
     get:
       operationId: getBrowserSession
