@@ -183,6 +183,12 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
                         "csrfToken": verifier.csrf_token(identity),
                         "user": {"displayName": identity["subject"], "role": identity["role"]},
                     })
+                if path == "/api/github/repositories":
+                    try:
+                        repositories = service.list_repositories()
+                    except Exception:
+                        return self.send_json(503, {"error": "GitHub App repository catalog unavailable"})
+                    return self.send_json(200, {"repositories": repositories})
                 if path == "/api/cloud-runners/status":
                     return self.send_json(200, self.control_status())
                 if path == "/api/cloud-runners":
@@ -468,10 +474,12 @@ def main():
         if len(proxy_secret) < 32 or not (public_origin.startswith("https://") or local_http):
             raise SystemExit("Trusted proxy API requires a 32+ character HMAC secret and HTTPS origin (HTTP is allowed only on loopback)")
     store = RunnerStore(os.getenv("DCP_GATEWAY_DATABASE", "dcp-gateway.sqlite3"))
-    _, _, runner_cleanup = build_github_app_runtime(settings)
+    github_app, _, runner_cleanup = build_github_app_runtime(settings)
     service = GatewayService(
         settings, store, ProviderRouter(DisabledProvider(), DisabledProvider()),
         _budget_guard_from_env(settings), runner_cleanup=runner_cleanup,
+        repository_catalog=github_app.list_installation_repositories if github_app else None,
+        repository_authorizer=github_app.is_repository_accessible if github_app else None,
     )
     _start_expiry_reconciler(service, int(os.getenv("DCP_GATEWAY_RECONCILE_SECONDS", "30")))
     server = ThreadingHTTPServer(
