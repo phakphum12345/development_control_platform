@@ -27,3 +27,25 @@ The jobs database defaults to `DCP_GATEWAY_DATABASE + ".jobs"`; override with `D
 ## Safety boundary
 
 Expired leases are recovered before a claim. Old workers are fenced by the lease checks in the store. The API accepts no shell command, arbitrary environment, filesystem path, or provider selection. The local agent, workspace isolation, command policy, process-tree termination, resource limits, build execution, artifacts, VM creation, and Cloud Provisioning are not enabled in this milestone.
+
+
+## M3 — Local Runner Agent bootstrap
+
+The first Agent increment is a control-plane-only client. It can validate configuration, read Gateway health, and call the authenticated claim/heartbeat/log/finish contracts. It does not poll continuously, clone repositories, create workspaces, spawn subprocesses, or execute build commands.
+
+Required environment:
+- `DCP_GATEWAY_URL` — HTTPS Gateway origin; HTTP is accepted only for loopback development.
+- `DCP_RUNNER_WORKER_ID` — worker identity registered by the Gateway credential map.
+- `DCP_RUNNER_TOKEN` — dedicated worker token (32+ characters); never pass it as a command-line argument or print it.
+- `DCP_RUNNER_TIMEOUT_SECONDS` — optional request timeout (1–60; default 20).
+
+Safe connectivity check:
+
+```powershell
+$env:DCP_GATEWAY_URL = "http://127.0.0.1:8789"
+$env:DCP_RUNNER_WORKER_ID = "local-worker-01"
+$env:DCP_RUNNER_TOKEN = "<dedicated-worker-token>"
+python -m tools.local_runner_agent --check
+```
+
+The check reads only `/healthz`; it does not claim a job. The client uses Python's standard HTTPS certificate validation for remote Gateway origins. Job execution remains disabled until workspace isolation, command policy, cancellation, and resource limits are implemented and tested.
