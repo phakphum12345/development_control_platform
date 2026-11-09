@@ -8,11 +8,18 @@ from dataclasses import dataclass, field
 from typing import Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
 _WORKER_ID = re.compile(r"^[A-Za-z0-9_.:-]{1,100}$")
 _ERROR_CODE = re.compile(r"^[A-Z0-9_]{1,64}$")
+
+
+class _NoRedirect(HTTPRedirectHandler):
+    """Never forward a Runner credential to a redirected origin."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 class RunnerGatewayError(RuntimeError):
@@ -99,7 +106,9 @@ class GatewayClient:
             headers["Authorization"] = "Bearer " + self.config.token
         request = Request(self.base_url + path, data=data, headers=headers, method=method)
         try:
-            with urlopen(request, timeout=self.config.timeout_seconds) as response:
+            with build_opener(_NoRedirect).open(
+                request, timeout=self.config.timeout_seconds
+            ) as response:
                 raw = response.read(32769)
                 if len(raw) > 32768:
                     raise RunnerGatewayError("Gateway response exceeded the 32 KiB limit")
