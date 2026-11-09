@@ -473,6 +473,9 @@ class GitHubAppBootstrapTests(unittest.TestCase):
                         "permissions": {"contents": "read"}}
             if "/commits/" in path:
                 return {"sha": sha, "commit": {"tree": {"sha": tree_sha}}}
+            if "/contents/" in path:
+                raw = b"dependencies:\\n  flutter:\\n    sdk: flutter\\n"
+                return {"encoding": "base64", "content": base64.b64encode(raw).decode(), "size": len(raw)}
             return {"truncated": False, "tree": [
                 {"path": "pubspec.yaml", "type": "blob", "mode": "100644"},
                 {"path": "lib/main.dart", "type": "blob", "mode": "100644"},
@@ -485,7 +488,7 @@ class GitHubAppBootstrapTests(unittest.TestCase):
         self.assertEqual(result["status"], "target_detected")
         self.assertEqual(result["project_types"], ["flutter"])
         self.assertTrue(result["flutter"]["macos_supported"])
-        self.assertIn("/git/trees/" + tree_sha + "?recursive=1", calls[-1][1])
+        self.assertTrue(any("/git/trees/" + tree_sha + "?recursive=1" in call[1] for call in calls))
 
     def test_repository_project_inspection_reports_flutter_macos_setup_needed(self):
         app = self.make()
@@ -498,6 +501,9 @@ class GitHubAppBootstrapTests(unittest.TestCase):
                         "permissions": {"contents": "read"}}
             if "/commits/" in path:
                 return {"sha": sha, "commit": {"tree": {"sha": "f" * 40}}}
+            if "/contents/" in path:
+                raw = b"dependencies:\\n  flutter:\\n    sdk: flutter\\n"
+                return {"encoding": "base64", "content": base64.b64encode(raw).decode(), "size": len(raw)}
             return {"truncated": False, "tree": [
                 {"path": "pubspec.yaml", "type": "blob", "mode": "100644"},
                 {"path": "lib/main.dart", "type": "blob", "mode": "100644"},
