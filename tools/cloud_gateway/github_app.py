@@ -392,13 +392,20 @@ class GitHubAppRunnerBootstrap:
         if len(entries) > 20000:
             truncated = True
         paths = set()
+        ignored_parts = {
+            ".git", ".venv", "venv", "node_modules", "__pycache__", ".dart_tool",
+            "build", "dist", "target", "coverage", "pods", "deriveddata", ".gradle",
+        }
         for item in entries[:20000]:
             path = item.get("path")
             if (not isinstance(path, str) or not path or path.startswith("/")
                     or any(part in ("", ".", "..") for part in path.split("/"))):
                 raise GitHubAppError("GitHub repository tree contains an unsafe path")
-            # Symlinks and submodules are not treated as project source files.
-            if item.get("type") == "blob" and item.get("mode") != "120000":
+            # Symlinks, submodules, and generated dependency/build trees are not
+            # treated as project manifests or source files.
+            parts = path.split("/")
+            if (item.get("type") == "blob" and item.get("mode") != "120000"
+                    and not any(part.lower() in ignored_parts for part in parts)):
                 paths.add(path)
 
         pubspecs = sorted(path for path in paths if path.rsplit("/", 1)[-1] == "pubspec.yaml")
