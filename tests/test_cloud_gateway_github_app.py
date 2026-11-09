@@ -526,7 +526,7 @@ class GitHubAppBootstrapTests(unittest.TestCase):
             if "/commits/" in path:
                 return {"sha": sha, "commit": {"tree": {"sha": "f" * 40}}}
             if "/contents/" in path:
-                raw = b"name: pure_dart\\n"
+                raw = b"name: pure_dart\n"
                 return {"encoding": "base64", "content": base64.b64encode(raw).decode(), "size": len(raw)}
             return {"truncated": False, "tree": [
                 {"path": "pubspec.yaml", "type": "blob", "mode": "100644"},
