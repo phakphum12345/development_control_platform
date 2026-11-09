@@ -508,6 +508,27 @@ class GitHubAppBootstrapTests(unittest.TestCase):
         self.assertEqual(result["status"], "needs_setup")
         self.assertFalse(result["flutter"]["macos_supported"])
 
+    def test_repository_project_inspection_marks_flutter_support_not_applicable_for_other_stacks(self):
+        app = self.make()
+        app.is_repository_accessible = lambda repository, refresh=False: True
+        future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
+        sha = "e" * 40
+        def request(method, path, token, payload=None):
+            if method == "POST":
+                return {"token": "contents-token", "expires_at": future,
+                        "permissions": {"contents": "read"}}
+            if "/commits/" in path:
+                return {"sha": sha, "commit": {"tree": {"sha": "f" * 40}}}
+            return {"truncated": False, "tree": [
+                {"path": "package.json", "type": "blob", "mode": "100644"},
+                {"path": "src/index.js", "type": "blob", "mode": "100644"},
+            ]}
+        app._app_jwt = lambda: "app-jwt"
+        app._request = request
+        result = app.inspect_repository_project("owner/repo", sha)
+        self.assertEqual(result["project_types"], ["node"])
+        self.assertIsNone(result["flutter"]["macos_supported"])
+
     def test_repository_project_inspection_rejects_unsafe_tree_paths(self):
         app = self.make()
         app.is_repository_accessible = lambda repository, refresh=False: True
