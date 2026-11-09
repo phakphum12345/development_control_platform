@@ -17,6 +17,7 @@ from tools.cloud_gateway.oidc_assertion import OIDCAssertionError, sign_verified
 from tools.cloud_gateway.budget_guard import AzureBudgetGuard
 from tools.cloud_gateway.service import GatewayService
 from tools.cloud_gateway.store import RunnerStore
+from tools.cloud_gateway.job_control import JobStore
 
 SECRET = "test-proxy-secret-that-is-at-least-32-bytes-long"
 ORIGIN = "https://dcp.example.test"
@@ -40,9 +41,13 @@ class AuthenticatedControlAPITests(unittest.TestCase):
         self.store = RunnerStore(str(Path(self.temp.name) / "gateway.sqlite"))
         self.settings = GatewaySettings(allowed_repositories=("phakphum12345/generated-A4-pdf",))
         self.service = GatewayService(self.settings, self.store, DisabledProvider())
+        self.job_store = JobStore(str(Path(self.temp.name) / "jobs.sqlite"))
+        self.service.job_store = self.job_store
+        self.runner_token = "runner-token-for-test-that-is-at-least-32-bytes"
         self.server = ThreadingHTTPServer(
             ("127.0.0.1", 0),
-            make_handler(self.service, "internal-gateway-token", SECRET, ORIGIN),
+            make_handler(self.service, "internal-gateway-token", SECRET, ORIGIN,
+                         {"worker-test-01": self.runner_token}),
         )
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -335,6 +340,102 @@ class AuthenticatedControlAPITests(unittest.TestCase):
             error.exception.close()
         self.assertEqual(self.store.active_count(), 0)
 
+
+    def _csrf(self, nonce="nonce_job_session_0001"):
+        with urlopen(self.request("GET", "/api/auth/session", nonce)) as response:
+            return json.loads(response.read())["csrfToken"]
+
+    def _dashboard_post(self, path, nonce, body, role="owner", key=None, csrf=None):
+        headers = {"Content-Type": "application/json", "Origin": ORIGIN,
+                   "X-CSRF-Token": csrf or self._csrf(nonce + "_session"),
+                   "Idempotency-Key": key or "job-api-key-00001"}
+        return self.request("POST", path, nonce, headers, body, role=role)
+
+    def test_dashboard_job_api_create_list_get_cancel_and_role_guards(self):
+        payload = {"repository": "example/private-app", "commit_sha": "a" * 40, "target": "test"}
+        with urlopen(self._dashboard_post("/api/jobs", "nonce_job_create_0001", payload)) as response:
+            created = json.loads(response.read())
+            self.assertEqual(response.status, 202)
+            self.assertEqual(created["state"], "queued")
+        job_id = created["id"]
+        with urlopen(self.request("GET", "/api/jobs", "nonce_job_list_00001")) as response:
+            self.assertEqual(json.loads(response.read())["jobs"][0]["id"], job_id)
+        with urlopen(self.request("GET", "/api/jobs/" + job_id, "nonce_job_get_000001")) as response:
+            self.assertEqual(json.loads(response.read())["id"], job_id)
+        csrf = self._csrf("nonce_job_session_owner")
+        with self.assertRaises(HTTPError) as error:
+            urlopen(self._dashboard_post("/api/jobs/" + job_id + "/cancel",
+                                         "nonce_job_cancel_operator", {}, role="operator", csrf=csrf))
+        try:
+            self.assertEqual(error.exception.code, 403)
+        finally:
+            error.exception.close()
+        with urlopen(self._dashboard_post("/api/jobs/" + job_id + "/cancel",
+                                          "nonce_job_cancel_owner", {}, csrf=csrf)) as response:
+            self.assertEqual(json.loads(response.read())["state"], "cancelled")
+
+    def test_dashboard_job_create_requires_csrf_and_same_origin(self):
+        payload = {"repository": "example/private-app", "commit_sha": "b" * 40, "target": "build"}
+        headers = {"Content-Type": "application/json", "Origin": ORIGIN,
+                   "Idempotency-Key": "job-api-key-00002"}
+        with self.assertRaises(HTTPError) as error:
+            urlopen(self.request("POST", "/api/jobs", "nonce_job_no_csrf_01", headers, payload, role="owner"))
+        try:
+            self.assertEqual(error.exception.code, 403)
+        finally:
+            error.exception.close()
+
+    def test_runner_api_uses_dedicated_identity_and_enforces_worker_ownership(self):
+        job, _ = self.job_store.create(
+            {"repository": "example/private-app", "commit_sha": "c" * 40, "target": "test"},
+            "runner-job-key-0001",
+        )
+        def runner_request(path, body):
+            data = json.dumps(body).encode()
+            return Request(self.base + path, data=data, method="POST", headers={
+                "Authorization": "Bearer " + self.runner_token,
+                "Content-Type": "application/json",
+            })
+        with urlopen(runner_request("/v1/runner/claim", {"lease_seconds": 60})) as response:
+            claimed = json.loads(response.read())["job"]
+        self.assertEqual(claimed["id"], job["id"])
+        self.assertEqual(claimed["worker"], "worker-test-01")
+        with urlopen(runner_request("/v1/runner/" + job["id"] + "/heartbeat", {})) as response:
+            self.assertEqual(json.loads(response.read())["state"], "running")
+        with urlopen(runner_request("/v1/runner/" + job["id"] + "/logs",
+                                    {"message": "runner connected", "stream": "system"})) as response:
+            self.assertEqual(response.status, 202)
+        with urlopen(runner_request("/v1/runner/" + job["id"] + "/finish",
+                                    {"outcome": "succeeded", "result": {"exit_code": 0}})) as response:
+            self.assertEqual(json.loads(response.read())["state"], "succeeded")
+        self.assertEqual(self.job_store.logs(job["id"])[0]["message"], "runner connected")
+
+    def test_runner_api_rejects_dashboard_token(self):
+        request = Request(self.base + "/v1/runner/claim", data=b"{}",
+                          method="POST", headers={"Authorization": "Bearer internal-gateway-token"})
+        with self.assertRaises(HTTPError) as error:
+            urlopen(request)
+        try:
+            self.assertEqual(error.exception.code, 401)
+        finally:
+            error.exception.close()
+
+    def test_runner_cannot_finish_another_workers_job(self):
+        job, _ = self.job_store.create(
+            {"repository": "example/private-app", "commit_sha": "d" * 40, "target": "test"},
+            "runner-job-key-0002",
+        )
+        self.job_store.claim("worker-other")
+        data = json.dumps({"outcome": "succeeded"}).encode()
+        request = Request(self.base + "/v1/runner/" + job["id"] + "/finish", data=data,
+                          method="POST", headers={"Authorization": "Bearer " + self.runner_token,
+                          "Content-Type": "application/json"})
+        with self.assertRaises(HTTPError) as error:
+            urlopen(request)
+        try:
+            self.assertEqual(error.exception.code, 409)
+        finally:
+            error.exception.close()
 
     def test_authenticated_repository_refs_endpoint_returns_scoped_branch_metadata(self):
         self.service.repository_authorizer = lambda repository: repository == "example/private-app"
