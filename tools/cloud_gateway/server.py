@@ -448,10 +448,10 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                     return self.send_json(404, {"error": "not found"})
                 except JobConflict as exc:
                     return self.send_json(409, {"error": str(exc)})
-                except ValueError as exc:
-                    return self.send_json(400, {"error": str(exc)})
                 except PolicyDenied as exc:
                     return self.send_json(exc.status_code, {"error": str(exc)})
+                except ValueError as exc:
+                    return self.send_json(400, {"error": str(exc)})
             if path.startswith("/v1/runner/"):
                 worker = self.runner_identity()
                 if not worker:
