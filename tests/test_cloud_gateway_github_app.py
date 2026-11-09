@@ -514,6 +514,32 @@ class GitHubAppBootstrapTests(unittest.TestCase):
         self.assertEqual(result["status"], "needs_setup")
         self.assertFalse(result["flutter"]["macos_supported"])
 
+    def test_repository_project_inspection_does_not_misclassify_dart_package_as_flutter(self):
+        app = self.make()
+        app.is_repository_accessible = lambda repository, refresh=False: True
+        future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
+        sha = "e" * 40
+        def request(method, path, token, payload=None):
+            if method == "POST":
+                return {"token": "contents-token", "expires_at": future,
+                        "permissions": {"contents": "read"}}
+            if "/commits/" in path:
+                return {"sha": sha, "commit": {"tree": {"sha": "f" * 40}}}
+            if "/contents/" in path:
+                raw = b"name: pure_dart\\n"
+                return {"encoding": "base64", "content": base64.b64encode(raw).decode(), "size": len(raw)}
+            return {"truncated": False, "tree": [
+                {"path": "pubspec.yaml", "type": "blob", "mode": "100644"},
+                {"path": "lib/main.dart", "type": "blob", "mode": "100644"},
+            ]}
+        app._app_jwt = lambda: "app-jwt"
+        app._request = request
+        result = app.inspect_repository_project("owner/repo", sha)
+        self.assertEqual(result["status"], "detected")
+        self.assertEqual(result["project_types"], ["dart"])
+        self.assertFalse(result["flutter"]["detected"])
+        self.assertIsNone(result["flutter"]["macos_supported"])
+
     def test_repository_project_inspection_marks_flutter_support_not_applicable_for_other_stacks(self):
         app = self.make()
         app.is_repository_accessible = lambda repository, refresh=False: True
