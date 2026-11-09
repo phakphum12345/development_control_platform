@@ -40,6 +40,12 @@ python -m unittest discover -s tests -v
 
 Also verify the exact branch head in CI before opening a draft PR. Do not treat existing CI results from another commit as evidence for this branch head.
 
+## CI findings and corrective work
+
+The first PR validation attempt exposed three stale expectations in runtime/OpenAPI tests after moving from a static repository allowlist to the GitHub App installation catalog. Those expectations were updated to assert installation membership and the new empty legacy allowlist in App mode. The same run also exposed an incomplete OpenAPI path insertion; the repository refs and commit-verification paths were rewritten as a complete YAML block and documented with focused contract tests.
+
+The latest corrected branch head still requires a fresh CI result. Do not treat the earlier failed runs as a pass, and do not merge until both Ubuntu-based PR workflows complete successfully on the exact latest SHA.
+
 ## Safety and merge gates
 
 - Keep `DCP_GATEWAY_PROVISIONING_ENABLED=false`.
