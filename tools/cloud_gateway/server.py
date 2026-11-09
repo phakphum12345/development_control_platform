@@ -14,7 +14,7 @@ import re
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from .policy import GatewaySettings, PolicyDenied
 from .service import GatewayService
@@ -189,6 +189,25 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
                     except Exception:
                         return self.send_json(503, {"error": "GitHub App repository catalog unavailable"})
                     return self.send_json(200, {"repositories": repositories})
+                repository_refs_prefix = "/api/github/repositories/"
+                if path.startswith(repository_refs_prefix):
+                    parts = path[len(repository_refs_prefix):].split("/")
+                    if len(parts) != 3 or parts[2] != "refs":
+                        return self.send_json(404, {"error": "not found"})
+                    repository = unquote(parts[0]) + "/" + unquote(parts[1])
+                    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}", repository):
+                        return self.send_json(400, {"error": "invalid repository"})
+                    query = parse_qs(urlparse(self.path).query, keep_blank_values=True)
+                    kinds = query.get("kind", ["branches"])
+                    if len(kinds) != 1 or kinds[0] not in ("branches", "tags"):
+                        return self.send_json(400, {"error": "kind must be branches or tags"})
+                    try:
+                        refs = service.list_repository_refs(repository, kinds[0])
+                    except PermissionError:
+                        return self.send_json(403, {"error": "repository is not accessible"})
+                    except Exception:
+                        return self.send_json(503, {"error": "GitHub repository refs unavailable"})
+                    return self.send_json(200, {"repository": repository, "kind": kinds[0], "refs": refs})
                 if path == "/api/cloud-runners/status":
                     return self.send_json(200, self.control_status())
                 if path == "/api/cloud-runners":
@@ -480,6 +499,7 @@ def main():
         _budget_guard_from_env(settings), runner_cleanup=runner_cleanup,
         repository_catalog=github_app.list_installation_repositories if github_app else None,
         repository_authorizer=(lambda repository: github_app.is_repository_accessible(repository, refresh=True)) if github_app else None,
+        repository_ref_catalog=github_app.list_repository_refs if github_app else None,
     )
     _start_expiry_reconciler(service, int(os.getenv("DCP_GATEWAY_RECONCILE_SECONDS", "30")))
     server = ThreadingHTTPServer(
