@@ -10,7 +10,7 @@ from .store import LifecycleConflict
 class GatewayService:
     def __init__(
         self, settings, store, provider, budget_guard=None, runner_cleanup=None,
-        provider_budget_guards=None,
+        provider_budget_guards=None, repository_catalog=None, repository_authorizer=None,
     ):
         self.settings = settings
         self.store = store
@@ -22,6 +22,8 @@ class GatewayService:
             self.provider_budget_guards.setdefault("azure", budget_guard)
         self.budget_guard = self.provider_budget_guards.get("azure")
         self.runner_cleanup = runner_cleanup
+        self.repository_catalog = repository_catalog
+        self.repository_authorizer = repository_authorizer
         self.create_lock = threading.Lock()
 
     def budget_provider_for_os(self, os_name):
@@ -43,7 +45,7 @@ class GatewayService:
     def create(self, payload, key):
         if not isinstance(key, str) or not 8 <= len(key) <= 200:
             raise PolicyDenied("Idempotency-Key must be 8..200 characters", 400)
-        request = validate_runner_request(payload, self.settings)
+        request = validate_runner_request(payload, self.settings, self.repository_authorizer)
         fingerprint = idempotency_fingerprint(request)
         # Reserve capacity before releasing the lock to provision. The durable
         # provisioning row is counted by the next request, preventing local races.
@@ -69,7 +71,7 @@ class GatewayService:
                 if not isinstance(ready, dict) or ready.get("ready") is not True:
                     raise PolicyDenied("Selected runner provider is not ready", 503)
             active_count = self.store.active_count()
-            self.settings.authorize_provisioning(active_count)
+            self.settings.authorize_provisioning(active_count, dynamic_repository_authorization=callable(self.repository_authorizer))
             if budget_guard is not None:
                 budget_guard.authorize(active_count)
             rid = str(uuid.uuid4())
@@ -101,6 +103,14 @@ class GatewayService:
                     pass
             raise
         return self.public(row), True
+
+    def list_repositories(self):
+        if not callable(self.repository_catalog):
+            raise RuntimeError("GitHub App repository catalog is not configured")
+        repositories = self.repository_catalog()
+        if not isinstance(repositories, list):
+            raise RuntimeError("GitHub App repository catalog returned an invalid response")
+        return repositories
 
     def list_recent(self, limit=50):
         return [self.public(row) for row in self.store.list_recent(limit)]
