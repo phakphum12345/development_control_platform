@@ -64,6 +64,15 @@ class LifecycleTests(unittest.TestCase):
   self.assertEqual(self.service.terminate(row["id"])["state"],"terminated")
   self.assertEqual([x[0] for x in self.provider.calls],["create","status","delete"])
   self.assertGreaterEqual(len(self.store.audit_events(row["id"])),3)
+ def test_service_revalidates_dynamic_installation_membership(self):
+  service=GatewayService(
+   settings(allowed_repositories=()),self.store,self.provider,
+   repository_authorizer=lambda repository: repository==REPO,
+  )
+  row,created=service.create(payload(),"idem-key-dynamic")
+  self.assertTrue(created)
+  self.assertEqual(row["state"],"provisioning")
+  self.assertEqual(len(self.provider.calls),1)
  def test_replay_and_conflict(self):
   a,new=self.service.create(payload(),"idem-key-002"); b,replay=self.service.create(payload(),"idem-key-002")
   self.assertTrue(new); self.assertFalse(replay); self.assertEqual(a["id"],b["id"]); self.assertEqual(len(self.provider.calls),1)
