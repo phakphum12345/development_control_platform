@@ -42,6 +42,8 @@ class PolicyTests(unittest.TestCase):
    validate_runner_request(payload(),dynamic_settings,lambda repository: repository==REPO)["repository"],
    REPO,
   )
+  legacy_restricted=settings(allowed_repositories=("another/repo",))
+  self.assertEqual(validate_runner_request(payload(),legacy_restricted,lambda repository: repository==REPO)["repository"],REPO)
   with self.assertRaises(PolicyDenied) as denied:
    validate_runner_request(payload(),dynamic_settings,lambda repository: False)
   self.assertEqual(denied.exception.status_code,403)
