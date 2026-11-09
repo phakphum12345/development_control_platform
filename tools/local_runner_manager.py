@@ -158,6 +158,21 @@ def cleanup_instance(instance: Path, root: Path) -> None:
     shutil.rmtree(resolved_instance)
 
 
+def deregister_if_offline(repository: str, runner_name: str) -> bool:
+    payload = gh_json([f"repos/{repository}/actions/runners", "--paginate"])
+    for runner in payload.get("runners", []):
+        if runner.get("name") != runner_name:
+            continue
+        if runner.get("status") != "offline" or runner.get("busy") is True:
+            return False
+        runner_id = runner.get("id")
+        if isinstance(runner_id, bool) or not isinstance(runner_id, int) or runner_id <= 0:
+            return False
+        run_command(["gh", "api", f"repos/{repository}/actions/runners/{runner_id}", "--method", "DELETE"])
+        return True
+    # Ephemeral runner already deregistered itself after its job.
+    return True
+
 def supervise_instance(instance: Path, repository: str, runner_name: str, log_dir: Path) -> int:
     runner_script = instance / "run.cmd"
     if not runner_script.is_file(): raise RunnerError("Configured runner is missing run.cmd")
@@ -200,6 +215,11 @@ def run_supervisor(repository: str, root: Path, max_restarts: int, backoff: int)
             instance, runner_name = prepare_instance(repository, root)
             configure_instance(instance, repository, runner_name)
             exit_code = supervise_instance(instance, repository, runner_name, log_dir)
+            try:
+                deregister_if_offline(repository, runner_name)
+            except RunnerError:
+                # Unknown cleanup state must not trigger deletion or block local cleanup.
+                pass
             attempts = 0 if exit_code == 0 else attempts + 1
         except KeyboardInterrupt:
             raise
