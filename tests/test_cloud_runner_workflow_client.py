@@ -1,5 +1,8 @@
 """Tests proving the DCP workflow client uses the multi-platform gateway contract."""
 import unittest
+from pathlib import Path
+
+import yaml
 from unittest.mock import patch
 from tools.cloud_runner.backend import ProvisionRequest, RunnerSettings, request_provisioning
 from tools.runner_backend.manager import PLATFORM_PROFILES
@@ -97,12 +100,7 @@ class CloudRunnerWorkflowClientTests(unittest.TestCase):
         with self.assertRaises(ValueError): RunnerSettings("https://gateway.example.test", "secret", timeout_seconds=0)
 
     def test_github_actions_workflow_requires_explicit_dual_opt_in(self):
-        workflow_path = (
-            __import__("pathlib").Path(__file__).parents[1]
-            / ".github" / "workflows" / "macos-cloud-runner.yml"
-        )
-        import yaml
-
+        workflow_path = Path(__file__).parents[1] / ".github" / "workflows" / "macos-cloud-runner.yml"
         workflow = yaml.load(workflow_path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
         dispatch = workflow["on"]["workflow_dispatch"]
         input_gate = dispatch["inputs"]["enable_cloud_runner_provisioning"]
