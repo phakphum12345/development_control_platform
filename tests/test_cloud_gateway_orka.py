@@ -57,7 +57,6 @@ class OrkaTests(unittest.TestCase):
   with patch("tools.cloud_gateway.orka.urlopen",side_effect=HTTPError("url",401,"denied",{},None)):
    with self.assertRaises(OrkaError) as caught: p.provision(request())
   self.assertNotIn("mock-bearer",str(caught.exception))
-
  def test_lists_images_and_vm_configs_using_documented_read_only_endpoints(self):
   p=self.make()
   with patch("tools.cloud_gateway.orka.urlopen",side_effect=[response({"items":[{"name":"ventura-arm64","type":"arm64"}]}),response({"items":[{"name":"macos15-arm64","image":"ventura-arm64"}]})]) as call:
@@ -66,8 +65,7 @@ class OrkaTests(unittest.TestCase):
   self.assertTrue(call.call_args_list[0].args[0].full_url.endswith("/api/v1/namespaces/dcp/images"))
   self.assertTrue(call.call_args_list[1].args[0].full_url.endswith("/api/v1/namespaces/dcp/vmconfigs"))
  def test_vm_config_creation_requires_approval_and_never_overwrites(self):
-  p=self.make()
-  config={"name":"dcp-macos15-test","image":"ventura-arm64","cpu":4,"memory":16}
+  p=self.make(); config={"name":"dcp-macos15-test","image":"ventura-arm64","cpu":4,"memory":16}
   with self.assertRaises(OrkaError): p.create_vm_config(config)
   with patch("tools.cloud_gateway.orka.urlopen",return_value=response({"items":[{"name":"dcp-macos15-test"}]})):
    with self.assertRaises(OrkaError): p.create_vm_config(config,approved=True)
@@ -82,5 +80,8 @@ class OrkaTests(unittest.TestCase):
  def test_vm_config_rejects_untrusted_fields_and_invalid_resources(self):
   p=self.make()
   with self.assertRaises(OrkaError): p.create_vm_config({"name":"x","image":"y","cpu":2,"memory":8,"customMetadata":{"token":"x"}},approved=True)
-
+ def test_vm_config_rejects_fractional_cpu(self):
+  p=self.make()
+  with self.assertRaises(OrkaError):
+   p.create_vm_config({"name":"dcp-macos15-fractional","image":"ventura-arm64","cpu":2.5,"memory":8},approved=True)
 if __name__=="__main__": unittest.main()
