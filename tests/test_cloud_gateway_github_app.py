@@ -421,6 +421,30 @@ class GitHubAppBootstrapTests(unittest.TestCase):
         self.assertEqual(len(refs), 101)
         self.assertEqual(len([path for path in calls if "branches?" in path]), 2)
 
+    def test_resolve_repository_commit_uses_scoped_contents_token(self):
+        app = self.make()
+        future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
+        calls = []
+        def request(method, path, token, payload=None):
+            calls.append((method, path, token, payload))
+            if method == "POST":
+                return {"token": "contents-token", "expires_at": future,
+                        "permissions": {"contents": "read"}}
+            return {"sha": "b" * 40}
+        app._app_jwt = lambda: "app-jwt"
+        app._request = request
+        result = app.resolve_repository_commit(
+            "phakphum12345/generated-A4-pdf", "b" * 40
+        )
+        self.assertEqual(result, {"commit_sha": "b" * 40})
+        self.assertIn("/commits/" + "b" * 40, calls[1][1])
+
+    def test_resolve_repository_commit_rejects_malformed_sha_before_network(self):
+        app = self.make()
+        app._request = lambda *args, **kwargs: self.fail("network must not be called")
+        with self.assertRaisesRegex(GitHubAppError, "40 hexadecimal"):
+            app.resolve_repository_commit("phakphum12345/generated-A4-pdf", "not-a-sha")
+
     def test_repository_ref_catalog_rejects_unsupported_kind_before_network(self):
         app = self.make()
         app._request = lambda *args, **kwargs: self.fail("network must not be called")
