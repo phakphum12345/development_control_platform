@@ -230,6 +230,7 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
    <div class="field"><label for="runner-ref-value">Branch / Tag</label><select id="runner-ref-value" disabled><option value="">Select a repository first</option></select><span class="small muted" id="runner-refs-status">Refs: UNKNOWN</span></div>
    <div class="field"><label for="runner-workflow-id">GitHub Actions run ID</label><input id="runner-workflow-id" inputmode="numeric" placeholder="เช่น 123456789" maxlength="20"></div>
    <div class="field"><label for="runner-commit-sha">Resolved commit SHA (40 characters)</label><input id="runner-commit-sha" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="Select a branch/tag or enter SHA" maxlength="40"><button type="button" id="runner-commit-verify">Verify commit SHA</button><span class="small muted" id="runner-commit-status">Commit: UNKNOWN</span></div>
+   <div class="field"><label>Project / Build Target Detection</label><span class="small muted" id="runner-project-status">Project: UNKNOWN — select a verified commit</span></div>
    <div class="field"><label for="runner-runtime">Maximum runtime</label><select id="runner-runtime"><option value="15">15 minutes</option><option value="30" selected>30 minutes</option><option value="60">60 minutes</option><option value="120">120 minutes</option><option value="180">180 minutes</option></select></div>
   </div>
   <div class="runner-gate" data-state="unknown" id="runner-create-gate">Provisioning gate: UNKNOWN — กด Refresh เพื่อตรวจสอบ backend และ budget ก่อน</div>
@@ -819,6 +820,7 @@ async function runnerLoadRepositoryRefs(){
  runnerText("runner-commit-sha","");
  runnerUI.verifiedCommit=null;
  runnerText("runner-commit-status","Commit: UNKNOWN");
+ runnerText("runner-project-status","Project: UNKNOWN — select a verified commit");
  if(!repository||!runnerUI.repositories.some(r=>r.full_name===repository)){
   select.innerHTML='<option value="">Select an installed repository first</option>';
   status.textContent="Refs: repository not selected";
@@ -854,6 +856,29 @@ async function runnerLoadList(){
   $("runner-list").querySelectorAll("[data-runner-stop]").forEach(button=>button.addEventListener("click",()=>runnerStop(button.dataset.runnerStop)));
  }catch(error){$("runner-list").innerHTML='<div class="empty">UNKNOWN — '+runnerEsc(error.message)+'</div>'}
 }
+async function runnerInspectProject(repository,sha){
+ const status=$("runner-project-status");
+ status.textContent="Project: inspecting repository tree at selected commit…";
+ const parts=repository.split("/");
+ try{
+  const data=await runnerJson("./api/github/repositories/"+encodeURIComponent(parts[0])+"/"+encodeURIComponent(parts[1])+"/projects/"+encodeURIComponent(sha));
+  if(data.repository!==repository||data.commit_sha!==sha)throw new Error("Project assessment does not match selected repository/commit");
+  runnerUI.project=data;
+  if(data.status==="unknown"||data.truncated){
+   status.textContent="Project: UNKNOWN — Git tree inventory is truncated; no build target is assumed";
+  }else if(data.flutter&&data.flutter.detected){
+   status.textContent=data.flutter.macos_supported===true
+    ?"Flutter detected · macOS Runner project is present"
+    :"Flutter detected · macOS Runner project needs setup";
+  }else{
+   const types=Array.isArray(data.project_types)&&data.project_types.length?data.project_types.join(", "):"no supported manifest detected";
+   status.textContent="Project: "+types+" · macOS target not inferred";
+  }
+ }catch(error){
+  runnerUI.project=null;
+  status.textContent="Project: UNKNOWN — "+error.message;
+ }
+}
 async function runnerVerifyCommit(){
  const repository=$("runner-repository").value;
  const sha=$("runner-commit-sha").value.trim();
@@ -868,6 +893,7 @@ async function runnerVerifyCommit(){
   runnerUI.verifiedCommit=data.commit_sha.toLowerCase();
   $("runner-commit-sha").value=runnerUI.verifiedCommit;
   runnerText("runner-commit-status","Commit: VERIFIED in "+repository);
+  await runnerInspectProject(repository,runnerUI.verifiedCommit);
  }catch(error){
   runnerUI.verifiedCommit=null;
   runnerText("runner-commit-status","Commit: NOT VERIFIED — "+error.message);
@@ -907,11 +933,12 @@ $("runner-ref-kind").addEventListener("change",runnerLoadRepositoryRefs);
 $("runner-ref-value").addEventListener("change",()=>{
  const selected=$("runner-ref-value").selectedOptions[0];
  const sha=selected&&selected.dataset.sha||"";
- if(sha){$("runner-commit-sha").value=sha;runnerUI.verifiedCommit=sha;runnerText("runner-commit-status","Commit: VERIFIED from selected "+$("runner-ref-kind").value.slice(0,-1));}
+ if(sha){$("runner-commit-sha").value=sha;runnerUI.verifiedCommit=sha;runnerText("runner-commit-status","Commit: VERIFIED from selected "+$("runner-ref-kind").value.slice(0,-1));runnerInspectProject($("runner-repository").value,sha);}
 });
 $("runner-commit-sha").addEventListener("input",()=>{
- runnerUI.verifiedCommit=null;
+ runnerUI.verifiedCommit=null;runnerUI.project=null;
  runnerText("runner-commit-status","Commit: UNKNOWN — verify before submitting");
+ runnerText("runner-project-status","Project: UNKNOWN — verify commit first");
 });
 $("runner-commit-verify").addEventListener("click",runnerVerifyCommit);
 document.querySelectorAll("[data-runner-os]").forEach(button=>button.addEventListener("click",()=>{
