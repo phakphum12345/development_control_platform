@@ -13,6 +13,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 
@@ -400,7 +401,35 @@ class GitHubAppRunnerBootstrap:
                 paths.add(path)
 
         pubspecs = sorted(path for path in paths if path.rsplit("/", 1)[-1] == "pubspec.yaml")
-        package_roots = [path.rsplit("/", 1)[0] if "/" in path else "" for path in pubspecs]
+        flutter_pubspecs = []
+        manifest_scan_incomplete = len(pubspecs) > 20
+        for pubspec in pubspecs[:20]:
+            manifest = self._request(
+                "GET",
+                "/repos/{}/{}/contents/{}?ref={}".format(
+                    owner, name, quote(pubspec, safe="/"), resolved
+                ),
+                token,
+            )
+            encoded = manifest.get("content") if isinstance(manifest, dict) else None
+            encoding = manifest.get("encoding") if isinstance(manifest, dict) else None
+            size = manifest.get("size") if isinstance(manifest, dict) else None
+            if (encoding != "base64" or not isinstance(encoded, str)
+                    or isinstance(size, bool) or not isinstance(size, int) or size > 256 * 1024):
+                manifest_scan_incomplete = True
+                continue
+            try:
+                manifest_bytes = base64.b64decode(re.sub(r"\\s+", "", encoded), validate=True)
+                manifest_text = manifest_bytes.decode("utf-8")
+            except (ValueError, UnicodeDecodeError):
+                manifest_scan_incomplete = True
+                continue
+            if re.search(r"(?m)^\\s*flutter\\s*:", manifest_text):
+                flutter_pubspecs.append(pubspec)
+
+        if manifest_scan_incomplete:
+            truncated = True
+        package_roots = [path.rsplit("/", 1)[0] if "/" in path else "" for path in flutter_pubspecs]
         macos_projects = []
         for root in package_roots:
             prefix = root + "/" if root else ""
@@ -412,10 +441,10 @@ class GitHubAppRunnerBootstrap:
         if truncated:
             status = "unknown"
             macos_supported_result = None
-        elif pubspecs and macos_supported:
+        elif flutter_pubspecs and macos_supported:
             status = "target_detected"
             macos_supported_result = True
-        elif pubspecs:
+        elif flutter_pubspecs:
             status = "needs_setup"
             macos_supported_result = False
         else:
@@ -425,11 +454,13 @@ class GitHubAppRunnerBootstrap:
             macos_supported_result = None
 
         project_types = set()
+        if pubspecs and not flutter_pubspecs and not truncated:
+            project_types.add("dart")
+        if flutter_pubspecs:
+            project_types.add("flutter")
         for path in paths:
             filename = path.rsplit("/", 1)[-1].lower()
-            if filename == "pubspec.yaml":
-                project_types.add("flutter")
-            elif filename in ("pyproject.toml", "requirements.txt", "setup.py", "pipfile"):
+            if filename in ("pyproject.toml", "requirements.txt", "setup.py", "pipfile"):
                 project_types.add("python")
             elif filename in ("package.json", "pnpm-lock.yaml", "yarn.lock", "package-lock.json"):
                 project_types.add("node")
@@ -449,12 +480,12 @@ class GitHubAppRunnerBootstrap:
             "truncated": truncated,
             "flutter": {
                 "detected": bool(pubspecs),
-                "package_manifests": pubspecs,
+                "package_manifests": flutter_pubspecs,
                 "macos_supported": macos_supported_result,
                 "macos_runner_projects": macos_projects if not truncated else [],
             },
             "notes": [
-                "Inspection uses repository tree metadata only; no source files are executed.",
+                "Inspection reads bounded pubspec manifest metadata and Git tree paths only; no source files are executed.",
                 "A Flutter macOS target is detected only when its Runner Xcode project and Info.plist are present.",
                 "A truncated tree is UNKNOWN and is never treated as proof that a target is absent.",
             ],
