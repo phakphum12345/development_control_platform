@@ -7,7 +7,7 @@ The canonical architecture, API boundaries, repository trust model, provider con
 | Phase | Work package | Exit evidence | Status |
 |---|---|---|---|
 | 0 | Baseline and safety | Work on feature branch; main untouched; Cloud Provisioning disabled; existing workflows and tests inventoried | In progress |
-| 1 | Repository Manager hardening | Installation catalog pagination, private/public metadata, authenticated API, server-side membership revalidation, branch/tag/SHA resolution, project detection | Installation catalog, branch/tag API, repository-scoped Contents-read tokens, commit verification, and bounded Flutter/macOS tree detection implemented on feature branch; latest project-detection tests pending |
+| 1 | Repository Manager hardening | Installation catalog pagination, private/public metadata, authenticated API, server-side membership revalidation, branch/tag/SHA resolution, project detection | Implemented and CI-verified on head `ab8c558`; installation catalog, branch/tag/commit APIs, bounded Flutter/macOS detection, and 273 Python tests pass |
 | 2 | DCP Core and Job Control Plane | Stable Job API, durable state transitions, idempotency, cancellation, timeout, audit events, queue contract | Existing Gateway lifecycle is a starting point; scheduler/queue work pending |
 | 3 | DCP Runner Engine | Local runner agent, authenticated claim/heartbeat/report protocol, isolated workspace, logs, cancellation and cleanup reconciliation | Pending |
 | 4 | DCP Provisioning Engine | Provider-neutral capabilities/readiness/create/inspect/stop/delete; local no-cost simulation; host-specific adapters only after validation | Existing Azure/Orka routing is legacy adapter work; DCP-owned provider manager pending |
@@ -25,13 +25,14 @@ Changes made in this slice:
 - Added authenticated branch/tag discovery using a short-lived token scoped to the selected repository with Contents: read.
 - Added full commit SHA verification against the selected repository, including a second server-side check before accepting a runner request.
 - Added Dashboard Branch/Tag selection, explicit verification for manually entered commit SHAs, and project/build-target detection display.
-- Added read-only recursive Git tree inspection at the selected immutable commit; Flutter macOS support is reported only when the Runner Xcode project and Info.plist are present. Truncated inventories return UNKNOWN.
-- Added regression tests for large response limits, ref pagination, token scope, repository authorization, commit verification, and Flutter/macOS detection.
+- Added read-only recursive Git tree and bounded pubspec manifest inspection at the selected immutable commit; Flutter macOS target presence is reported only when the Runner Xcode project and Info.plist are present. Truncated inventories return UNKNOWN.
+- Added regression tests for large response limits, ref pagination, token scope, repository authorization, commit verification, Flutter-vs-Dart classification, and Flutter/macOS detection.
+- Latest CI evidence: 273 Python tests, Local-first Minimal Emulator, Validate Control Plane, Dashboard browser smoke test, Windows local auth-proxy integration, and Windows dynamic-port launcher integration passed on head `ab8c558`.
 - Added the architecture/API contract and this execution tracker.
 
 ## Verification still required
 
-The code and test changes are committed, but this slice is **not yet marked test-passing**. Run the following from the repository root in the project environment:
+The latest tested head is **CI-passing**. Local execution on a developer workstation has not been performed from this chat. The following commands remain available for local reproduction:
 
 ```sh
 python -m unittest tests.test_cloud_gateway_github_app -v
@@ -45,7 +46,7 @@ Also verify the exact branch head in CI before opening a draft PR. Do not treat 
 
 The first PR validation attempt exposed three stale expectations in runtime/OpenAPI tests after moving from a static repository allowlist to the GitHub App installation catalog. Those expectations were updated to assert installation membership and the new empty legacy allowlist in App mode. The same run also exposed an incomplete OpenAPI path insertion; the repository refs and commit-verification paths were rewritten as a complete YAML block and documented with focused contract tests.
 
-The latest corrected branch head still requires a fresh CI result. Do not treat the earlier failed runs as a pass, and do not merge until both Ubuntu-based PR workflows complete successfully on the exact latest SHA.
+The corrected implementation passed both PR workflows on head `ab8c558ee4d82f940064fa4cc6597f9969d18740`. Earlier failed runs were superseded by this passing head. Re-run both workflows after any subsequent code change; do not merge until the exact current head is green.
 
 ## Safety and merge gates
 
@@ -60,6 +61,6 @@ The latest corrected branch head still requires a fresh CI result. Do not treat 
 
 1. Run the focused GitHub App and authenticated repository API tests on this branch head.
 2. Review the complete diff against the branch base and resolve any stale or duplicate repository-selection paths in the Dashboard.
-3. Complete project detection for Flutter and native macOS support, with explicit unsupported/needs-setup results.
-4. Add contract tests for project detection and ensure unsupported targets fail before runner provisioning.
-5. Define and test the Job API/queue contract before introducing Redis or PostgreSQL migrations.
+3. Define and test the DCP Job API/queue contract before introducing Redis or PostgreSQL migrations.
+4. Implement a local-only Runner Agent with authenticated claim, heartbeat, log, cancel, and result reporting.
+5. Add isolated workspace handling and artifact handoff for local jobs.
