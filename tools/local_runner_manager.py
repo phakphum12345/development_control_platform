@@ -211,6 +211,7 @@ def run_supervisor(repository: str, root: Path, max_restarts: int, backoff: int)
     attempts = 0
     while True:
         instance = None
+        runner_name = None
         try:
             instance, runner_name = prepare_instance(repository, root)
             configure_instance(instance, repository, runner_name)
@@ -225,6 +226,11 @@ def run_supervisor(repository: str, root: Path, max_restarts: int, backoff: int)
             raise
         except RunnerError:
             attempts += 1
+            if runner_name:
+                try:
+                    deregister_if_offline(repository, runner_name)
+                except RunnerError:
+                    pass
         finally:
             if instance is not None and instance.exists():
                 cleanup_instance(instance, root)
