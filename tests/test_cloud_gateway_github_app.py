@@ -245,5 +245,77 @@ class GitHubAppBootstrapTests(unittest.TestCase):
             app.remove_runner("phakphum12345/generated-A4-pdf", 42)
 
 
+    def test_dynamic_installation_catalog_lists_only_installed_repositories(self):
+        app = GitHubAppRunnerBootstrap(
+            "123456", 987654, self.pem, [],
+            clock=lambda: 1_800_000_000,
+        )
+        app._installation_catalog_token = lambda: "catalog-token"
+        calls = []
+
+        def request(method, path, token, payload=None):
+            calls.append((method, path, token))
+            return {
+                "total_count": 2,
+                "repositories": [
+                    {
+                        "full_name": "example/private-app",
+                        "private": True,
+                        "default_branch": "main",
+                        "permissions": {"admin": True, "push": True, "metadata": "read"},
+                        "html_url": "https://github.com/example/private-app",
+                    },
+                    {
+                        "full_name": "example/public-app",
+                        "private": False,
+                        "default_branch": "trunk",
+                        "permissions": {"pull": True, "push": False},
+                    },
+                ],
+            }
+
+        app._request = request
+        catalog = app.list_installation_repositories()
+        self.assertEqual([item["full_name"] for item in catalog], [
+            "example/private-app", "example/public-app"
+        ])
+        self.assertTrue(catalog[0]["private"])
+        self.assertEqual(catalog[0]["permissions"], {"admin": True, "push": True})
+        self.assertNotIn("html_url", catalog[0])
+        self.assertTrue(app.is_repository_accessible("example/private-app"))
+        self.assertFalse(app.is_repository_accessible("example/not-installed"))
+        self.assertEqual(len(calls), 1, "catalog should be cached for its short TTL")
+
+    def test_dynamic_installation_catalog_fails_closed_on_malformed_repository(self):
+        app = GitHubAppRunnerBootstrap(
+            "123456", 987654, self.pem, [],
+            clock=lambda: 1_800_000_000,
+        )
+        app._installation_catalog_token = lambda: "catalog-token"
+        app._request = lambda *args, **kwargs: {
+            "total_count": 1,
+            "repositories": [{"full_name": "invalid-name", "private": True}],
+        }
+        with self.assertRaisesRegex(GitHubAppError, "malformed"):
+            app.list_installation_repositories()
+
+    def test_dynamic_registration_refuses_repository_outside_installation(self):
+        app = GitHubAppRunnerBootstrap(
+            "123456", 987654, self.pem, [],
+            clock=lambda: 1_800_000_000,
+        )
+        app._installation_catalog_token = lambda: "catalog-token"
+        app._request = lambda method, path, token, payload=None: {
+            "total_count": 1,
+            "repositories": [{
+                "full_name": "example/installed",
+                "private": True,
+                "default_branch": "main",
+            }],
+        }
+        with self.assertRaisesRegex(GitHubAppError, "not accessible"):
+            app.create_registration_token("attacker/repo")
+
+
 if __name__ == "__main__":
     unittest.main()
