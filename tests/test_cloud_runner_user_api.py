@@ -364,6 +364,44 @@ class AuthenticatedControlAPITests(unittest.TestCase):
         finally:
             error.exception.close()
 
+    def test_authenticated_repository_project_endpoint_returns_build_capabilities(self):
+        self.service.repository_authorizer = lambda repository: repository == "example/flutter-app"
+        self.service.repository_project_inspector = lambda repository, sha: {
+            "repository": repository,
+            "commit_sha": sha,
+            "status": "ready",
+            "project_types": ["flutter"],
+            "file_count": 4,
+            "truncated": False,
+            "flutter": {
+                "detected": True,
+                "package_manifests": ["pubspec.yaml"],
+                "macos_supported": True,
+                "macos_runner_projects": ["macos/Runner.xcodeproj/project.pbxproj"],
+            },
+            "notes": ["read-only inspection"],
+        }
+        sha = "e" * 40
+        path = "/api/github/repositories/example/flutter-app/projects/" + sha
+        headers = signed_headers("GET", path, "nonce_repo_project_001")
+        with urlopen(Request(self.base + path, headers=headers)) as response:
+            payload = json.loads(response.read())
+        self.assertEqual(payload["status"], "ready")
+        self.assertTrue(payload["flutter"]["macos_supported"])
+
+    def test_repository_project_endpoint_rejects_repository_outside_installation(self):
+        self.service.repository_authorizer = lambda repository: False
+        self.service.repository_project_inspector = lambda *args: self.fail("project inspector must not be called")
+        sha = "e" * 40
+        path = "/api/github/repositories/attacker/repo/projects/" + sha
+        headers = signed_headers("GET", path, "nonce_repo_project_002")
+        with self.assertRaises(HTTPError) as error:
+            urlopen(Request(self.base + path, headers=headers))
+        try:
+            self.assertEqual(error.exception.code, 403)
+        finally:
+            error.exception.close()
+
     def test_authenticated_repository_commit_endpoint_verifies_full_sha(self):
         self.service.repository_authorizer = lambda repository: repository == "example/private-app"
         self.service.repository_commit_resolver = lambda repository, sha: {"commit_sha": sha.lower()}
