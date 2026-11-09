@@ -57,4 +57,30 @@ class OrkaTests(unittest.TestCase):
   with patch("tools.cloud_gateway.orka.urlopen",side_effect=HTTPError("url",401,"denied",{},None)):
    with self.assertRaises(OrkaError) as caught: p.provision(request())
   self.assertNotIn("mock-bearer",str(caught.exception))
+
+ def test_lists_images_and_vm_configs_using_documented_read_only_endpoints(self):
+  p=self.make()
+  with patch("tools.cloud_gateway.orka.urlopen",side_effect=[response({"items":[{"name":"ventura-arm64","type":"arm64"}]}),response({"items":[{"name":"macos15-arm64","image":"ventura-arm64"}]})]) as call:
+   self.assertEqual(p.list_images()[0]["name"],"ventura-arm64")
+   self.assertEqual(p.list_vm_configs()[0]["name"],"macos15-arm64")
+  self.assertTrue(call.call_args_list[0].args[0].full_url.endswith("/api/v1/namespaces/dcp/images"))
+  self.assertTrue(call.call_args_list[1].args[0].full_url.endswith("/api/v1/namespaces/dcp/vmconfigs"))
+ def test_vm_config_creation_requires_approval_and_never_overwrites(self):
+  p=self.make()
+  config={"name":"dcp-macos15-test","image":"ventura-arm64","cpu":4,"memory":16}
+  with self.assertRaises(OrkaError): p.create_vm_config(config)
+  with patch("tools.cloud_gateway.orka.urlopen",return_value=response({"items":[{"name":"dcp-macos15-test"}]})):
+   with self.assertRaises(OrkaError): p.create_vm_config(config,approved=True)
+ def test_vm_config_creation_posts_only_allowlisted_schema_after_approval(self):
+  p=self.make(); config={"name":"dcp-macos15-test","image":"ventura-arm64","cpu":4,"memory":16}
+  with patch("tools.cloud_gateway.orka.urlopen",side_effect=[response({"items":[]}),response(config)]) as call:
+   result=p.create_vm_config(config,approved=True)
+  self.assertEqual(result["name"],config["name"])
+  req=call.call_args_list[1].args[0]
+  self.assertEqual(req.get_method(),"POST")
+  self.assertEqual(json.loads(req.data),config)
+ def test_vm_config_rejects_untrusted_fields_and_invalid_resources(self):
+  p=self.make()
+  with self.assertRaises(OrkaError): p.create_vm_config({"name":"x","image":"y","cpu":2,"memory":8,"customMetadata":{"token":"x"}},approved=True)
+
 if __name__=="__main__": unittest.main()
