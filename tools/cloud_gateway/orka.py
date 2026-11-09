@@ -11,14 +11,14 @@ class OrkaProvider:
  budget_provider="orka"
  requires_runner_cleanup=True
  requires_budget_guard=True
- def __init__(self,base_url,namespace,vm_config,secret_reader,secret_name="orka-api-token",runner_online_checker=None,timeout=20):
+ def __init__(self,base_url,namespace,vm_config,secret_reader,secret_name="orka-api-token",runner_online_checker=None,runner_userdata_factory=None,timeout=20):
   parsed=urlparse(base_url)
   if parsed.scheme!="https" or not parsed.hostname or parsed.username is not None or parsed.password is not None or parsed.path not in ("","/") or parsed.query or parsed.fragment: raise ValueError("Orka endpoint must be an HTTPS origin")
   if not re.fullmatch(r"[a-z0-9]([-a-z0-9]*[a-z0-9])?",namespace): raise ValueError("Invalid Orka namespace")
   if not re.fullmatch(r"[A-Za-z0-9_.-]{1,63}",vm_config): raise ValueError("Invalid approved Orka VM config")
   if not re.fullmatch(r"[A-Za-z0-9-]{1,127}",secret_name): raise ValueError("Invalid Key Vault secret name")
   self.base=base_url.rstrip("/"); self.namespace=namespace; self.vm_config=vm_config
-  self.secret_reader=secret_reader; self.secret_name=secret_name; self.online=runner_online_checker; self.timeout=timeout
+  self.secret_reader=secret_reader; self.secret_name=secret_name; self.online=runner_online_checker; self.runner_userdata_factory=runner_userdata_factory; self.timeout=timeout
  def _request(self,method,path,payload=None,allow_missing=False):
   token=self.secret_reader.get_secret(self.secret_name)
   body=None if payload is None else json.dumps(payload,separators=(",",":")).encode()
@@ -87,13 +87,22 @@ class OrkaProvider:
  def readiness(self,os_name):
   if os_name!="macos": return {"ready":False,"message":"Orka supports only the approved macOS profile"}
   if self.online is None: return {"ready":False,"message":"Independent GitHub runner-online verification is not configured"}
-  return {"ready":False,"message":"Orka User Data bootstrap and provider-specific cost guard are not verified; macOS runner remains disabled"}
+  return {"ready":False,"message":"Orka User Data exposure controls and provider-specific cost guard are not verified; macOS runner remains disabled"}
  def provision(self,payload):
   if payload.get("target_os")!="macos" or payload.get("image")!="macos-15-arm64": raise OrkaError("Orka adapter accepts only the approved macOS 15 ARM64 profile")
   if payload.get("ephemeral") is not True or payload.get("network_policy")!="restricted-egress": raise OrkaError("Orka request violates ephemeral network policy")
   name="dcp-"+str(payload["workflow_run_id"])+"-"+uuid.uuid4().hex[:8]
   metadata={"managed-by":"dcp-cloud-runner","repository":payload["repository"],"workflow-run-id":str(payload["workflow_run_id"]),"commit-sha":payload["commit_sha"],"target-os":"macos"}
   body={"name":name,"vmConfig":self.vm_config,"shouldGenerateName":False,"customMetadata":metadata}
+  if self.runner_userdata_factory is None:
+   raise OrkaError("Orka first-boot User Data bootstrap is not configured")
+  try:
+   userdata=self.runner_userdata_factory(name,payload)
+  except Exception as exc:
+   raise OrkaError("Orka runner bootstrap payload could not be prepared") from exc
+  if not isinstance(userdata,str) or not userdata or len(userdata)>90000 or not re.fullmatch(r"[A-Za-z0-9+/]+={0,2}",userdata):
+   raise OrkaError("Orka runner bootstrap must return a bounded Base64 User Data script")
+  body["userdata"]=userdata
   path="/api/v1/namespaces/"+quote(self.namespace,safe="")+"/vms/"+quote(name,safe="")
   collection="/api/v1/namespaces/"+quote(self.namespace,safe="")+"/vms"
   try:
