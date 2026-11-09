@@ -337,5 +337,44 @@ class GitHubAppBootstrapTests(unittest.TestCase):
             app.create_registration_token("attacker/repo")
 
 
+    def test_request_accepts_repository_catalog_response_over_64_kib(self):
+        app = self.make()
+
+        class Response:
+            def __init__(self, body):
+                self.body = body
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+            def read(self, limit):
+                return self.body[:limit]
+
+        body = json.dumps({"repositories": [], "padding": "x" * 70000}).encode()
+        app.opener = lambda request, timeout: Response(body)
+        result = app._request("GET", "/installation/repositories", "catalog-token")
+        self.assertEqual(result["repositories"], [])
+        self.assertGreater(len(body), 65536)
+
+    def test_request_rejects_response_over_configured_limit(self):
+        app = self.make()
+
+        class Response:
+            def __init__(self, body):
+                self.body = body
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+            def read(self, limit):
+                return self.body[:limit]
+
+        body = json.dumps({"padding": "x" * (app.MAX_RESPONSE_BYTES + 1)}).encode()
+        app.opener = lambda request, timeout: Response(body)
+        with self.assertRaisesRegex(GitHubAppError, "size limit"):
+            app._request("GET", "/installation/repositories", "catalog-token")
+
+
+
 if __name__ == "__main__":
     unittest.main()
