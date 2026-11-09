@@ -474,7 +474,7 @@ class GitHubAppBootstrapTests(unittest.TestCase):
             if "/commits/" in path:
                 return {"sha": sha, "commit": {"tree": {"sha": tree_sha}}}
             if "/contents/" in path:
-                raw = b"dependencies:\\n  flutter:\\n    sdk: flutter\\n"
+                raw = b"dependencies:\n  flutter:\n    sdk: flutter\n"
                 return {"encoding": "base64", "content": base64.b64encode(raw).decode(), "size": len(raw)}
             return {"truncated": False, "tree": [
                 {"path": "pubspec.yaml", "type": "blob", "mode": "100644"},
@@ -502,7 +502,7 @@ class GitHubAppBootstrapTests(unittest.TestCase):
             if "/commits/" in path:
                 return {"sha": sha, "commit": {"tree": {"sha": "f" * 40}}}
             if "/contents/" in path:
-                raw = b"dependencies:\\n  flutter:\\n    sdk: flutter\\n"
+                raw = b"dependencies:\n  flutter:\n    sdk: flutter\n"
                 return {"encoding": "base64", "content": base64.b64encode(raw).decode(), "size": len(raw)}
             return {"truncated": False, "tree": [
                 {"path": "pubspec.yaml", "type": "blob", "mode": "100644"},
