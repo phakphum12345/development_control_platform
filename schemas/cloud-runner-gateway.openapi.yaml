@@ -243,7 +243,7 @@ paths:
                 properties:
                   repository: { type: string }
                   commit_sha: { type: string, pattern: '^[0-9a-f]{40}$' }
-                  status: { type: string, enum: [ready, needs_setup, detected, unknown] }
+                  status: { type: string, enum: [target_detected, needs_setup, detected, unknown] }
                   project_types:
                     type: array
                     items: { type: string }
