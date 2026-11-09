@@ -879,6 +879,7 @@ async function runnerCreate(){
  if(!runnerUI.repositories.some(r=>r.full_name===repository)){runnerText("runner-create-result","กรุณาเลือก Repository จาก GitHub App installation catalog");return}
  if(!Number.isSafeInteger(runId)||runId<1){runnerText("runner-create-result","GitHub Actions run ID ต้องเป็นจำนวนเต็มบวก");return}
  if(!/^[a-f0-9]{40}$/.test(sha)){runnerText("runner-create-result","Commit SHA ต้องเป็น lowercase 40-character SHA");return}
+ if(runnerUI.verifiedCommit!==sha){runnerText("runner-create-result","กรุณาเลือก Branch/Tag หรือกด Verify commit SHA ก่อน");return}
  if(!Number.isInteger(runtime)||runtime<5||runtime>180){runnerText("runner-create-result","Runtime ต้องอยู่ระหว่าง 5–180 นาที");return}
  const profile=runnerProfiles[runnerUI.os];
  const payload={repository,workflow_run_id:runId,commit_sha:sha,target_os:runnerUI.os,image:profile.image,labels:profile.labels,ephemeral:true,max_runtime_minutes:runtime,network_policy:"restricted-egress",registration_token_handling:"provider-side-only"};
