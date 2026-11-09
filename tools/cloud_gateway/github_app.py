@@ -336,6 +336,26 @@ class GitHubAppRunnerBootstrap:
                 return refs
         raise GitHubAppError("GitHub repository ref inventory exceeded the safe pagination limit")
 
+    def resolve_repository_commit(self, repository: str, commit_sha: str) -> dict:
+        """Verify that a full commit SHA resolves inside the selected installed repository."""
+        if not isinstance(commit_sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", commit_sha):
+            raise GitHubAppError("Commit SHA must be 40 hexadecimal characters")
+        token = self._repository_contents_token(repository)
+        owner, name = repository.split("/", 1)
+        data = self._request(
+            "GET",
+            "/repos/{}/{}/commits/{}".format(owner, name, commit_sha),
+            token,
+        )
+        if not isinstance(data, dict):
+            raise GitHubAppError("GitHub commit response is invalid")
+        resolved = data.get("sha")
+        if not isinstance(resolved, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", resolved):
+            raise GitHubAppError("GitHub commit response omitted a valid SHA")
+        if resolved.lower() != commit_sha.lower():
+            raise GitHubAppError("GitHub commit response did not match the requested SHA")
+        return {"commit_sha": resolved.lower()}
+
     def create_registration_token(self, repository: str) -> RunnerRegistrationCredential:
         installation_token = self._installation_token(repository, "write")
         owner, name = repository.split("/", 1)
