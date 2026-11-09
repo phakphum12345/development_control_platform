@@ -227,8 +227,9 @@ paths:
       operationId: inspectGitHubRepositoryProject
       summary: Detect project type and supported build targets at an immutable commit
       description: |
-        Uses a repository-scoped Contents: read token to inspect Git tree metadata only.
-        It never downloads or executes project code. A truncated tree returns UNKNOWN;
+        Uses a repository-scoped Contents: read token to inspect Git tree paths and
+        bounded pubspec.yaml manifest contents only. It never downloads application
+        source files or executes project code. A truncated inventory returns UNKNOWN;
         absence of macOS files is not asserted when the inventory is incomplete.
       security:
         - TrustedProxyAssertion: []
