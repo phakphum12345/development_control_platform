@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from tools.cloud_gateway.policy import GatewaySettings
+from tools.cloud_gateway.policy import GatewaySettings, PolicyDenied
 from tools.cloud_gateway.server import DisabledProvider, ProxyIdentityVerifier, make_handler
 from tools.cloud_gateway.oidc_assertion import OIDCAssertionError, sign_verified_oidc_assertion
 from tools.cloud_gateway.budget_guard import AzureBudgetGuard
@@ -363,6 +363,34 @@ class AuthenticatedControlAPITests(unittest.TestCase):
             self.assertEqual(error.exception.code, 403)
         finally:
             error.exception.close()
+
+    def test_authenticated_repository_commit_endpoint_verifies_full_sha(self):
+        self.service.repository_authorizer = lambda repository: repository == "example/private-app"
+        self.service.repository_commit_resolver = lambda repository, sha: {"commit_sha": sha.lower()}
+        sha = "c" * 40
+        path = "/api/github/repositories/example/private-app/commits/" + sha
+        headers = signed_headers("GET", path, "nonce_repo_commit_0001")
+        with urlopen(Request(self.base + path, headers=headers)) as response:
+            payload = json.loads(response.read())
+        self.assertEqual(payload, {"repository": "example/private-app", "commit_sha": sha})
+
+    def test_job_request_rejects_commit_not_resolved_in_selected_repository(self):
+        self.service.repository_authorizer = lambda repository: True
+        self.service.repository_commit_resolver = lambda repository, sha: {"commit_sha": "d" * 40}
+        payload = {
+            "repository": "phakphum12345/generated-A4-pdf",
+            "workflow_run_id": 123,
+            "commit_sha": "a" * 40,
+            "target_os": "linux",
+            "image": "ubuntu-24.04-x64",
+            "labels": ["self-hosted", "Linux", "X64", "dcp-cloud-linux"],
+            "ephemeral": True,
+            "max_runtime_minutes": 30,
+            "network_policy": "restricted-egress",
+            "registration_token_handling": "provider-side-only",
+        }
+        with self.assertRaisesRegex(PolicyDenied, "does not resolve"):
+            self.service.create(payload, "commit-check-key-001")
 
     def test_repository_refs_endpoint_rejects_unknown_ref_kind(self):
         path = "/api/github/repositories/example/private-app/refs"
