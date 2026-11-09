@@ -143,7 +143,7 @@ class GitHubAppRunnerBootstrap:
             raise GitHubAppError("GitHub API request failed: " + type(exc).__name__) from exc
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise GitHubAppError("GitHub API returned malformed JSON") from exc
-        if not isinstance(data, dict):
+        if not isinstance(data, (dict, list)):
             raise GitHubAppError("GitHub API returned an invalid response shape")
         return data
 
@@ -280,6 +280,61 @@ class GitHubAppRunnerBootstrap:
             raise GitHubAppError("GitHub App installation lacks required Administration permission")
         self._expiry(installation.get("expires_at"))
         return token
+
+    def _repository_contents_token(self, repository: str) -> str:
+        """Mint a repository-scoped, read-only token for branch/tag metadata."""
+        if not self.is_repository_accessible(repository, refresh=True):
+            raise GitHubAppError("Repository is not accessible to the DCP GitHub App installation")
+        installation = self._request(
+            "POST",
+            "/app/installations/{}/access_tokens".format(self.installation_id),
+            self._app_jwt(),
+            {
+                "repositories": [repository],
+                "permissions": {"contents": "read"},
+            },
+        )
+        token = installation.get("token")
+        if not isinstance(token, str) or not token:
+            raise GitHubAppError("GitHub repository contents token was not issued")
+        permissions = installation.get("permissions")
+        granted = permissions.get("contents") if isinstance(permissions, dict) else None
+        if granted not in ("read", "write"):
+            raise GitHubAppError("GitHub App installation lacks Contents read permission")
+        self._expiry(installation.get("expires_at"))
+        return token
+
+    def list_repository_refs(self, repository: str, kind: str = "branches") -> list[dict]:
+        """List branch or tag refs using a selected-repository Contents-read token."""
+        if kind not in ("branches", "tags"):
+            raise GitHubAppError("Unsupported repository ref kind")
+        token = self._repository_contents_token(repository)
+        owner, name = repository.split("/", 1)
+        refs = []
+        seen = set()
+        for page in range(1, 101):
+            data = self._request(
+                "GET",
+                "/repos/{}/{}/{}?per_page=100&page={}".format(owner, name, kind, page),
+                token,
+            )
+            if not isinstance(data, list) or any(not isinstance(item, dict) for item in data):
+                raise GitHubAppError("GitHub repository ref response is invalid")
+            for item in data:
+                ref_name = item.get("name")
+                commit = item.get("commit")
+                sha = commit.get("sha") if isinstance(commit, dict) else None
+                if (not isinstance(ref_name, str) or not 1 <= len(ref_name) <= 255
+                        or not isinstance(sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", sha)):
+                    raise GitHubAppError("GitHub repository ref metadata is malformed")
+                key = ref_name.casefold()
+                if key in seen:
+                    raise GitHubAppError("GitHub repository ref response contains duplicates")
+                seen.add(key)
+                refs.append({"name": ref_name, "commit_sha": sha.lower()})
+            if len(data) < 100:
+                return refs
+        raise GitHubAppError("GitHub repository ref inventory exceeded the safe pagination limit")
 
     def create_registration_token(self, repository: str) -> RunnerRegistrationCredential:
         installation_token = self._installation_token(repository, "write")
