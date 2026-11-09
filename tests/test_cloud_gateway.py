@@ -36,6 +36,18 @@ class PolicyTests(unittest.TestCase):
   for s,count,code in [(settings(owner_approved=False),0,403),(settings(circuit_breaker_tripped=True),0,503),(settings(budget_limit_usd=0),0,503),(settings(current_spend_usd=19),0,429),(settings(max_concurrent_runners=1),1,429)]:
    with self.subTest(code=code),self.assertRaises(PolicyDenied) as e: s.authorize_provisioning(count)
    self.assertEqual(e.exception.status_code,code)
+ def test_dynamic_repository_authorizer_replaces_static_allowlist(self):
+  dynamic_settings=settings(allowed_repositories=())
+  self.assertEqual(
+   validate_runner_request(payload(),dynamic_settings,lambda repository: repository==REPO)["repository"],
+   REPO,
+  )
+  with self.assertRaises(PolicyDenied) as denied:
+   validate_runner_request(payload(),dynamic_settings,lambda repository: False)
+  self.assertEqual(denied.exception.status_code,403)
+  with self.assertRaises(PolicyDenied) as unavailable:
+   validate_runner_request(payload(),dynamic_settings,lambda repository: (_ for _ in ()).throw(RuntimeError("offline")))
+  self.assertEqual(unavailable.exception.status_code,503)
  def test_runtime_network_and_token_policy(self):
   for key,value in [("max_runtime_minutes",181),("network_policy","public"),("registration_token_handling","client")]:
    bad=payload(); bad[key]=value
