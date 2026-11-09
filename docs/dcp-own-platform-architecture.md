@@ -81,6 +81,19 @@ The first implementation exposes `GET /api/github/repositories` on the authentic
 - In GitHub App mode, the installation catalog is authoritative; a legacy static allowlist must not silently hide other repositories installed for DCP.
 - Without a configured GitHub App, the endpoint is unavailable and the existing static allowlist path remains a legacy compatibility mode.
 
+## Repository refs and commit verification API
+
+Authenticated same-origin endpoints:
+- `GET /api/github/repositories/{owner}/{repo}/refs?kind=branches`
+- `GET /api/github/repositories/{owner}/{repo}/refs?kind=tags`
+- `GET /api/github/repositories/{owner}/{repo}/commits/{full_sha}`
+
+The backend revalidates installation membership for every request and mints a short-lived installation token scoped to the selected repository with Contents: read only. The token is never returned to the browser. Branch and tag responses contain only the ref name and resolved 40-character commit SHA. Commit lookup must return the exact requested SHA from that repository.
+
+GitHub App installation configuration therefore needs repository Contents: read permission in addition to the metadata and runner-administration permissions required by the other features. If the permission is absent, ref discovery and commit verification return NOT_READY/503; do not fall back to unauthenticated public API calls.
+
+The runner request path re-resolves the submitted commit against the selected repository when the GitHub App resolver is configured. A commit that cannot be verified or does not match is rejected before any provider operation.
+
 ## Provider contract
 
 Every provider adapter should implement the same lifecycle contract:
