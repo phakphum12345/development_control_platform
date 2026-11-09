@@ -96,4 +96,37 @@ class CloudRunnerWorkflowClientTests(unittest.TestCase):
             with self.subTest(endpoint=endpoint), self.assertRaises(ValueError): RunnerSettings(endpoint, "secret")
         with self.assertRaises(ValueError): RunnerSettings("https://gateway.example.test", "secret", timeout_seconds=0)
 
+    def test_github_actions_workflow_requires_explicit_dual_opt_in(self):
+        workflow_path = (
+            __import__("pathlib").Path(__file__).parents[1]
+            / ".github" / "workflows" / "macos-cloud-runner.yml"
+        )
+        import yaml
+
+        workflow = yaml.load(workflow_path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+        dispatch = workflow["on"]["workflow_dispatch"]
+        input_gate = dispatch["inputs"]["enable_cloud_runner_provisioning"]
+        self.assertEqual(input_gate["type"], "boolean")
+        self.assertEqual(input_gate["default"], "false")
+        self.assertEqual(input_gate["required"], "true")
+
+        self.assertEqual(set(workflow["jobs"]), {"request-cloud-runner"})
+        job = workflow["jobs"]["request-cloud-runner"]
+        self.assertEqual(
+            job["if"],
+            "${{ inputs.enable_cloud_runner_provisioning == true && vars.DCP_CLOUD_RUNNER_PROVISIONING_ENABLED == 'true' && vars.DCP_CLOUD_RUNNER_OWNER_APPROVED == 'true' }}",
+        )
+        dispatch_step = next(
+            step for step in job["steps"]
+            if step.get("run") == "python -m tools.cloud_runner"
+        )
+        self.assertEqual(
+            dispatch_step["env"]["DCP_CLOUD_RUNNER_PROVISIONING_ENABLED"],
+            "${{ vars.DCP_CLOUD_RUNNER_PROVISIONING_ENABLED }}",
+        )
+        self.assertEqual(
+            dispatch_step["env"]["DCP_CLOUD_RUNNER_OWNER_APPROVED"],
+            "${{ vars.DCP_CLOUD_RUNNER_OWNER_APPROVED }}",
+        )
+
 if __name__ == "__main__": unittest.main()
