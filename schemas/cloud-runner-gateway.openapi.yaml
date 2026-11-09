@@ -251,7 +251,8 @@ paths:
                 result: { type: object }
                 error_code:
                   type: string
-                  pattern: '^[A-Z0-9_]{1,64}'
+                  minLength: 1
+                  maxLength: 64'
   /api/github/repositories:
     get:
       operationId: listGitHubAppRepositories
