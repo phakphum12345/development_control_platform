@@ -40,7 +40,7 @@ class CloudRunnerOpenAPITests(unittest.TestCase):
         responses=self.spec["paths"]["/v1/runners"]["post"]["responses"]
         for code in ("202","400","401","403","409","429","503"): self.assertIn(code,responses)
         self.assertIn("not yet verified",responses["202"]["description"].lower())
-        desc=self.spec["paths"]["/v1/runners"]["post"]["description"].lower()
+        desc=" ".join(self.spec["paths"]["/v1/runners"]["post"]["description"].lower().split())
         for word in ("authenticate","installation membership","idempotency","billing","teardown","ttl","not evidence","server-side"):
             self.assertIn(word,desc)
 
