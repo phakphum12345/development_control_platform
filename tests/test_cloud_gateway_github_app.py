@@ -402,7 +402,7 @@ class GitHubAppBootstrapTests(unittest.TestCase):
         self.assertIn("/branches?per_page=100&page=1", calls[1][1])
         self.assertEqual(calls[1][2], "contents-read-token")
 
-    def test_repository_ref_catalog_paginates_and_rejects_duplicate_refs(self):
+    def test_repository_ref_catalog_paginates_across_pages(self):
         app = self.make()
         future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
         calls = []
@@ -420,6 +420,22 @@ class GitHubAppBootstrapTests(unittest.TestCase):
         refs = app.list_repository_refs("phakphum12345/generated-A4-pdf", "branches")
         self.assertEqual(len(refs), 101)
         self.assertEqual(len([path for path in calls if "branches?" in path]), 2)
+
+    def test_repository_ref_catalog_rejects_duplicate_names(self):
+        app = self.make()
+        future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
+        def request(method, path, token, payload=None):
+            if method == "POST":
+                return {"token": "contents-token", "expires_at": future,
+                        "permissions": {"contents": "read"}}
+            return [
+                {"name": "main", "commit": {"sha": "a" * 40}},
+                {"name": "main", "commit": {"sha": "b" * 40}},
+            ]
+        app._app_jwt = lambda: "app-jwt"
+        app._request = request
+        with self.assertRaisesRegex(GitHubAppError, "duplicates"):
+            app.list_repository_refs("phakphum12345/generated-A4-pdf", "branches")
 
     def test_resolve_repository_commit_uses_scoped_contents_token(self):
         app = self.make()
