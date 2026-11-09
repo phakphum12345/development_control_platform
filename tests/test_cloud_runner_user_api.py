@@ -402,6 +402,19 @@ class AuthenticatedControlAPITests(unittest.TestCase):
         finally:
             error.exception.close()
 
+    def test_repository_project_endpoint_rejects_repository_outside_installation(self):
+        self.service.repository_authorizer = lambda repository: False
+        self.service.repository_project_inspector = lambda *args: self.fail("project inspector must not be called")
+        sha = "e" * 40
+        path = "/api/github/repositories/attacker/repo/projects/" + sha
+        headers = signed_headers("GET", path, "nonce_repo_project_003")
+        with self.assertRaises(HTTPError) as error:
+            urlopen(Request(self.base + path, headers=headers))
+        try:
+            self.assertEqual(error.exception.code, 403)
+        finally:
+            error.exception.close()
+
     def test_authenticated_repository_commit_endpoint_verifies_full_sha(self):
         self.service.repository_authorizer = lambda repository: repository == "example/private-app"
         self.service.repository_commit_resolver = lambda repository, sha: {"commit_sha": sha.lower()}
