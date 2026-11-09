@@ -1,5 +1,8 @@
 # Development Control Platform
 
+> Platform architecture: [DCP Own Infrastructure Platform](docs/dcp-own-platform-architecture.md) — provider-neutral control plane, dynamic GitHub App repository catalog, local-first runner workflow, and guarded provisioning.
+
+
 An independent control plane for development phases, quality gates, commit-bound evidence, and resumable checkpoints.
 
 ## Cloud Runner Control Plane
