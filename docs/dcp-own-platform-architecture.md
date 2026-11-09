@@ -94,6 +94,15 @@ GitHub App installation configuration therefore needs repository Contents: read 
 
 The runner request path re-resolves the submitted commit against the selected repository when the GitHub App resolver is configured. A commit that cannot be verified or does not match is rejected before any provider operation.
 
+## Repository project detection
+
+Authenticated same-origin endpoint:
+- `GET /api/github/repositories/{owner}/{repo}/projects/{full_sha}`
+
+The endpoint resolves the selected commit, reads the recursive Git tree using a repository-scoped Contents: read token, and inspects path metadata only. It does not download or execute project files. The initial detector identifies common project manifests and Flutter packages.
+
+For each Flutter package, a macOS target is considered present only when both `macos/Runner.xcodeproj/project.pbxproj` and `macos/Runner/Info.plist` exist under that package root. A detected Flutter project without those files reports `needs_setup`; a truncated Git tree reports `unknown` and must never be interpreted as proof that macOS support is absent.
+
 ## Provider contract
 
 Every provider adapter should implement the same lifecycle contract:
