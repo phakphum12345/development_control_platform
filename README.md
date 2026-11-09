@@ -18,6 +18,19 @@ For the quickest local startup, run `Setup-DCP-Local.cmd` once and then double-c
 
 Use your own Windows 11 PC as the local host without Azure or paid cloud resources. The guide covers the local Dashboard and fail-closed Gateway, prerequisites, safe loopback binding, local data storage, and the optional manually registered GitHub Actions self-hosted runner: [docs/windows-11-self-hosted.md](docs/windows-11-self-hosted.md). The integrated local stack includes owner password authentication through the loopback-only Local Auth Proxy; it is not a remote, multi-user, or production identity service. The Gateway still uses `DisabledProvider`, so dynamic runner provisioning is not enabled.
 
+## Central local GitHub Runner manager
+
+The Windows local runner manager creates a separate, uniquely named ephemeral GitHub Actions runner for one exact private repository. It uses the existing authenticated GitHub CLI session to request a short-lived registration token at runtime, then supervises only the process and workspace it created. It does not modify or stop existing runner installations, services, registrations, ports, or workspaces. Public repositories are blocked. See [docs/local-runner-manager.md](docs/local-runner-manager.md).
+
+Run the read-only preflight and then start the supervisor:
+
+```powershell
+py -3 -m tools.local_runner_manager doctor --repository OWNER/PRIVATE-REPOSITORY
+py -3 -m tools.local_runner_manager start --repository OWNER/PRIVATE-REPOSITORY
+```
+
+The manager uses ephemeral runners, bounded restart attempts, GitHub online/busy status checks, and fail-safe behavior during GitHub API outages. This is a local Windows implementation; it does not enable cloud provisioning or rewrite workflow labels.
+
 ## Local-first development (zero-cost by default)
 
 DCP development does not require paid cloud resources. Start with the
