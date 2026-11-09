@@ -203,6 +203,72 @@ paths:
         '401': { description: Missing or invalid trusted-proxy identity. }
         '403': { description: Repository is outside the DCP GitHub App installation. }
         '503': { description: GitHub App Contents read permission or commit lookup is unavailable. }
+  /api/github/repositories/{owner}/{repo}/projects/{sha}:
+    parameters:
+      - name: owner
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: repo
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: sha
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Fa-f0-9]{40}$'
+    get:
+      operationId: inspectGitHubRepositoryProject
+      summary: Detect project type and supported build targets at an immutable commit
+      description: |
+        Uses a repository-scoped Contents: read token to inspect Git tree metadata only.
+        It never downloads or executes project code. A truncated tree returns UNKNOWN;
+        absence of macOS files is not asserted when the inventory is incomplete.
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Bounded project and build-target assessment.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [repository, commit_sha, status, project_types, file_count, truncated, flutter]
+                properties:
+                  repository: { type: string }
+                  commit_sha: { type: string, pattern: '^[0-9a-f]{40}$' }
+                  status: { type: string, enum: [ready, needs_setup, detected, unknown] }
+                  project_types:
+                    type: array
+                    items: { type: string }
+                  file_count: { type: integer, minimum: 0 }
+                  truncated: { type: boolean }
+                  flutter:
+                    type: object
+                    required: [detected, package_manifests, macos_supported, macos_runner_projects]
+                    properties:
+                      detected: { type: boolean }
+                      package_manifests:
+                        type: array
+                        items: { type: string }
+                      macos_supported:
+                        type: [boolean, 'null']
+                      macos_runner_projects:
+                        type: array
+                        items: { type: string }
+                  notes:
+                    type: array
+                    items: { type: string }
+        '400': { description: Invalid repository or full commit SHA. }
+        '401': { description: Missing or invalid trusted-proxy identity. }
+        '403': { description: Repository is outside the DCP GitHub App installation. }
+        '503': { description: GitHub App Contents read permission or project inspection is unavailable. }
   /api/auth/session:
     get:
       operationId: getBrowserSession
