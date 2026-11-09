@@ -27,6 +27,24 @@ class LocalRunnerManagerTests(unittest.TestCase):
             with zipfile.ZipFile(archive,"w") as bundle: bundle.writestr("config.cmd","echo safe")
             manager.safe_extract(archive,target)
             self.assertTrue((target/"config.cmd").is_file())
+    def test_cleanup_removes_only_managed_instance_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "managed"
+            instance = root / "owner-project" / "0123456789ab"
+            instance.mkdir(parents=True)
+            (instance / "work.txt").write_text("temporary", encoding="utf-8")
+            manager.cleanup_instance(instance, root)
+            self.assertFalse(instance.exists())
+
+    def test_cleanup_refuses_directory_outside_managed_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "managed"
+            outside = Path(tmp) / "owner-project" / "0123456789ab"
+            outside.mkdir(parents=True)
+            with self.assertRaises(manager.RunnerError):
+                manager.cleanup_instance(outside, root)
+            self.assertTrue(outside.exists())
+
     def test_runner_status_matches_exact_runner_name(self):
         with patch.object(manager,"gh_json",return_value={"runners":[{"name":"old","status":"online","busy":True},{"name":"new","status":"offline","busy":False}]}):
             self.assertEqual(manager.runner_status("owner/project","new"),("offline",False))
