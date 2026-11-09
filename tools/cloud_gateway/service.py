@@ -11,6 +11,7 @@ class GatewayService:
     def __init__(
         self, settings, store, provider, budget_guard=None, runner_cleanup=None,
         provider_budget_guards=None, repository_catalog=None, repository_authorizer=None,
+        repository_ref_catalog=None,
     ):
         self.settings = settings
         self.store = store
@@ -24,6 +25,7 @@ class GatewayService:
         self.runner_cleanup = runner_cleanup
         self.repository_catalog = repository_catalog
         self.repository_authorizer = repository_authorizer
+        self.repository_ref_catalog = repository_ref_catalog
         self.create_lock = threading.Lock()
 
     def budget_provider_for_os(self, os_name):
@@ -111,6 +113,18 @@ class GatewayService:
         if not isinstance(repositories, list):
             raise RuntimeError("GitHub App repository catalog returned an invalid response")
         return repositories
+
+    def list_repository_refs(self, repository, kind="branches"):
+        if not callable(self.repository_ref_catalog):
+            raise RuntimeError("GitHub App repository ref catalog is not configured")
+        if not callable(self.repository_authorizer):
+            raise RuntimeError("GitHub App repository authorization is not configured")
+        if self.repository_authorizer(repository) is not True:
+            raise PermissionError("Repository is not accessible to the DCP GitHub App installation")
+        refs = self.repository_ref_catalog(repository, kind)
+        if not isinstance(refs, list):
+            raise RuntimeError("GitHub App repository ref catalog returned an invalid response")
+        return refs
 
     def list_recent(self, limit=50):
         return [self.public(row) for row in self.store.list_recent(limit)]
