@@ -113,6 +113,31 @@ class JobStore:
             rows = db.execute("SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?", (limit,))
             return [self._decode(row) for row in rows]
 
+    def recover_expired_leases(self):
+        """Requeue abandoned work, or finalize abandoned cancellation requests."""
+        current = utcnow().isoformat()
+        recovered = []
+        with self.lock, self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            rows = db.execute(
+                "SELECT id,state FROM jobs WHERE state IN ('running','cancel_requested') "
+                "AND lease_until IS NOT NULL AND lease_until<=? ORDER BY lease_until,id",
+                (current,),
+            ).fetchall()
+            for row in rows:
+                if row["state"] == "cancel_requested":
+                    state, event = "cancelled", "cancelled_after_lease_expiry"
+                else:
+                    state, event = "queued", "lease_expired_requeued"
+                db.execute(
+                    "UPDATE jobs SET state=?,worker=NULL,lease_until=NULL,updated_at=? WHERE id=?",
+                    (state, current, row["id"]),
+                )
+                self._event(db, row["id"], event)
+                recovered.append({"id": row["id"], "state": state})
+            db.execute("COMMIT")
+        return recovered
+
     def claim(self, worker, lease_seconds=30):
         if not isinstance(worker, str) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", worker):
             raise ValueError("Invalid worker")
@@ -140,11 +165,12 @@ class JobStore:
     def heartbeat(self, job_id, worker, lease_seconds=30):
         if isinstance(lease_seconds, bool) or not isinstance(lease_seconds, int) or not 5 <= lease_seconds <= 300:
             raise ValueError("Invalid lease")
-        expiry = (utcnow() + timedelta(seconds=lease_seconds)).isoformat()
+        current = utcnow()
+        expiry = (current + timedelta(seconds=lease_seconds)).isoformat()
         with self.lock, self.db() as db:
             changed = db.execute(
-                "UPDATE jobs SET lease_until=?,updated_at=? WHERE id=? AND state IN ('running','cancel_requested') AND worker=?",
-                (expiry, utcnow().isoformat(), job_id, worker),
+                "UPDATE jobs SET lease_until=?,updated_at=? WHERE id=? AND state IN ('running','cancel_requested') AND worker=? AND lease_until>?",
+                (expiry, current.isoformat(), job_id, worker, current.isoformat()),
             ).rowcount
             if not changed:
                 raise JobConflict("Worker does not own active job lease")
@@ -178,8 +204,9 @@ class JobStore:
             row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
             if row is None:
                 raise JobNotFound(job_id)
-            if row["state"] not in ("running", "cancel_requested") or row["worker"] != worker:
-                raise JobConflict("Worker does not own job")
+            if (row["state"] not in ("running", "cancel_requested") or row["worker"] != worker
+                    or not row["lease_until"] or row["lease_until"] <= utcnow().isoformat()):
+                raise JobConflict("Worker does not own an active job lease")
             if row["state"] == "cancel_requested" and outcome == "succeeded":
                 raise JobConflict("Cancellation must be acknowledged")
             db.execute(
@@ -196,11 +223,12 @@ class JobStore:
         if not isinstance(message, str) or not message or len(message.encode("utf-8")) > 8192:
             raise ValueError("Log message must be 1..8192 bytes")
         with self.lock, self.db() as db:
-            row = db.execute("SELECT state,worker FROM jobs WHERE id=?", (job_id,)).fetchone()
+            row = db.execute("SELECT state,worker,lease_until FROM jobs WHERE id=?", (job_id,)).fetchone()
             if row is None:
                 raise JobNotFound(job_id)
-            if row["state"] not in ("running", "cancel_requested") or row["worker"] != worker:
-                raise JobConflict("Worker does not own job")
+            if (row["state"] not in ("running", "cancel_requested") or row["worker"] != worker
+                    or not row["lease_until"] or row["lease_until"] <= utcnow().isoformat()):
+                raise JobConflict("Worker does not own an active job lease")
             db.execute("INSERT INTO job_logs(job_id,stream,message,created_at) VALUES(?,?,?,?)",
                        (job_id, stream, message, utcnow().isoformat()))
 
