@@ -116,6 +116,8 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
         if (not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", worker)
                 or not isinstance(secret, str) or len(secret) < 32):
             raise ValueError("Runner credentials require valid worker IDs and 32+ character tokens")
+    if len(set(runner_tokens.values())) != len(runner_tokens):
+        raise ValueError("Each runner worker must have a unique credential")
     verifier = ProxyIdentityVerifier(proxy_secret, nonce_store=service.store) if proxy_secret else None
 
     class Handler(BaseHTTPRequestHandler):
@@ -488,6 +490,8 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                     return self.send_json(400, {"error": str(exc)})
                 except PolicyDenied as exc:
                     return self.send_json(exc.status_code, {"error": str(exc)})
+                except Exception:
+                    return self.send_json(503, {"error": "runner job operation unavailable"})
             if path.startswith("/api/"):
                 identity = self.proxy_identity()
                 if not identity:
