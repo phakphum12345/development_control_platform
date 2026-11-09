@@ -471,8 +471,8 @@ class AuthenticatedControlAPITests(unittest.TestCase):
         self.assertEqual(dashboard_logs[0]["message"], "agent handshake complete")
         with urlopen(self.request("GET", "/api/jobs/" + job["id"] + "/events",
                                   "nonce_agent_e2e_events_01")) as response:
-            event_types = [event["event_type"] for event in json.loads(response.read())["events"]]
-        self.assertIn("claimed", event_types)
+            event_types = [event["event"] for event in json.loads(response.read())["events"]]
+        self.assertIn("running", event_types)
         self.assertIn("cancelled", event_types)
 
     def test_authenticated_repository_refs_endpoint_returns_scoped_branch_metadata(self):
