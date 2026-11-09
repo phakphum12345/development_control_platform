@@ -225,7 +225,7 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
    <button type="button" class="runner-platform" data-runner-os="macos" aria-pressed="false">⌘ macOS<small>Orka · macOS 15 ARM64</small></button>
   </div></div>
   <div class="grid">
-   <div class="field"><label for="runner-repository">GitHub repository (owner/name)</label><input id="runner-repository" autocomplete="off" placeholder="owner/repository" maxlength="200"></div>
+   <div class="field"><label for="runner-repository">GitHub App installation repository</label><select id="runner-repository" disabled><option value="">Load installed repositories first</option></select><button type="button" id="runner-repositories-refresh">Load / Refresh repositories</button><span class="small muted" id="runner-repositories-status">Repository catalog: UNKNOWN</span></div>
    <div class="field"><label for="runner-workflow-id">GitHub Actions run ID</label><input id="runner-workflow-id" inputmode="numeric" placeholder="เช่น 123456789" maxlength="20"></div>
    <div class="field"><label for="runner-commit-sha">Commit SHA (40 characters)</label><input id="runner-commit-sha" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="40-character commit SHA" maxlength="40"></div>
    <div class="field"><label for="runner-runtime">Maximum runtime</label><select id="runner-runtime"><option value="15">15 minutes</option><option value="30" selected>30 minutes</option><option value="60">60 minutes</option><option value="120">120 minutes</option><option value="180">180 minutes</option></select></div>
@@ -711,7 +711,7 @@ async function initPasswordAuth(){
 
 
 /* Cloud Runner Control — fail closed; all secrets remain server-side. */
-const runnerUI={os:"linux",session:false,csrf:null,status:null,ready:false};
+const runnerUI={os:"linux",session:false,csrf:null,status:null,ready:false,repositories:[]};
 const runnerProfiles={
  linux:{image:"ubuntu-24.04-x64",labels:["self-hosted","Linux","X64","dcp-cloud-linux"]},
  windows:{image:"windows-2025-x64",labels:["self-hosted","Windows","X64","dcp-cloud-windows"]},
@@ -786,6 +786,25 @@ async function runnerRefresh(){
  }
 }
 function runnerEsc(value){return String(value==null?"":value).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+async function runnerLoadRepositories(){
+ const select=$("runner-repository"),status=$("runner-repositories-status");
+ if(!runnerUI.session){select.disabled=true;status.textContent="Repository catalog: authentication required";return}
+ status.textContent="Loading GitHub App installation repositories…";
+ try{
+  const data=await runnerJson("./api/github/repositories");
+  const rows=Array.isArray(data.repositories)?data.repositories:null;
+  if(!rows)throw new Error("Invalid repository catalog response");
+  runnerUI.repositories=rows;
+  const previous=select.value;
+  select.innerHTML='<option value="">Choose an installed repository…</option>'+rows.map(r=>'<option value="'+runnerEsc(r.full_name)+'">'+runnerEsc(r.full_name)+(r.private?" · private":" · public")+'</option>').join("");
+  select.disabled=!rows.length;
+  if(rows.some(r=>r.full_name===previous))select.value=previous;
+  status.textContent="Installation catalog: "+rows.length+" repositories · membership verified by backend";
+ }catch(error){
+  runnerUI.repositories=[];select.innerHTML='<option value="">Repository catalog unavailable</option>';select.disabled=true;
+  status.textContent="Repository catalog: UNKNOWN — "+error.message;
+ }
+}
 async function runnerLoadList(){
  try{
   const data=await runnerJson("./api/cloud-runners");
@@ -802,8 +821,8 @@ async function runnerLoadList(){
 }
 async function runnerCreate(){
  if(!runnerCanCreate()){runnerText("runner-create-result","BLOCKED: readiness gates are not all PASS.");return}
- const repository=$("runner-repository").value.trim(),runId=Number($("runner-workflow-id").value),sha=$("runner-commit-sha").value.trim(),runtime=Number($("runner-runtime").value);
- if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)||repository.includes("..")){runnerText("runner-create-result","กรุณาระบุ owner/repository ให้ถูกต้อง");return}
+ const repository=$("runner-repository").value,runId=Number($("runner-workflow-id").value),sha=$("runner-commit-sha").value.trim(),runtime=Number($("runner-runtime").value);
+ if(!runnerUI.repositories.some(r=>r.full_name===repository)){runnerText("runner-create-result","กรุณาเลือก Repository จาก GitHub App installation catalog");return}
  if(!Number.isSafeInteger(runId)||runId<1){runnerText("runner-create-result","GitHub Actions run ID ต้องเป็นจำนวนเต็มบวก");return}
  if(!/^[a-f0-9]{40}$/.test(sha)){runnerText("runner-create-result","Commit SHA ต้องเป็น lowercase 40-character SHA");return}
  if(!Number.isInteger(runtime)||runtime<5||runtime>180){runnerText("runner-create-result","Runtime ต้องอยู่ระหว่าง 5–180 นาที");return}
@@ -827,6 +846,7 @@ async function runnerStop(id){
  }catch(error){runnerText("runner-create-result","Termination incomplete: "+error.message)}
  await runnerLoadList();
 }
+$("runner-repositories-refresh").addEventListener("click",runnerLoadRepositories);
 document.querySelectorAll("[data-runner-os]").forEach(button=>button.addEventListener("click",()=>{
  runnerUI.os=button.dataset.runnerOs;
  document.querySelectorAll("[data-runner-os]").forEach(b=>b.setAttribute("aria-pressed",String(b===button)));
