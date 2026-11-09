@@ -714,7 +714,7 @@ async function initPasswordAuth(){
 
 
 /* Cloud Runner Control — fail closed; all secrets remain server-side. */
-const runnerUI={os:"linux",session:false,csrf:null,status:null,ready:false,repositories:[],verifiedCommit:null};
+const runnerUI={os:"linux",session:false,csrf:null,status:null,ready:false,repositories:[],verifiedCommit:null,project:null,projectRequestId:0};
 const runnerProfiles={
  linux:{image:"ubuntu-24.04-x64",labels:["self-hosted","Linux","X64","dcp-cloud-linux"]},
  windows:{image:"windows-2025-x64",labels:["self-hosted","Windows","X64","dcp-cloud-windows"]},
@@ -858,10 +858,12 @@ async function runnerLoadList(){
 }
 async function runnerInspectProject(repository,sha){
  const status=$("runner-project-status");
+ const requestId=++runnerUI.projectRequestId;
  status.textContent="Project: inspecting repository tree at selected commit…";
  const parts=repository.split("/");
  try{
   const data=await runnerJson("./api/github/repositories/"+encodeURIComponent(parts[0])+"/"+encodeURIComponent(parts[1])+"/projects/"+encodeURIComponent(sha));
+  if(requestId!==runnerUI.projectRequestId)return;
   if(data.repository!==repository||data.commit_sha!==sha)throw new Error("Project assessment does not match selected repository/commit");
   runnerUI.project=data;
   if(data.status==="unknown"||data.truncated){
@@ -875,6 +877,7 @@ async function runnerInspectProject(repository,sha){
    status.textContent="Project: "+types+" · macOS target not inferred";
   }
  }catch(error){
+  if(requestId!==runnerUI.projectRequestId)return;
   runnerUI.project=null;
   status.textContent="Project: UNKNOWN — "+error.message;
  }
@@ -936,7 +939,7 @@ $("runner-ref-value").addEventListener("change",()=>{
  if(sha){$("runner-commit-sha").value=sha;runnerUI.verifiedCommit=sha;runnerText("runner-commit-status","Commit: VERIFIED from selected "+$("runner-ref-kind").value.slice(0,-1));runnerInspectProject($("runner-repository").value,sha);}
 });
 $("runner-commit-sha").addEventListener("input",()=>{
- runnerUI.verifiedCommit=null;runnerUI.project=null;
+ runnerUI.verifiedCommit=null;runnerUI.project=null;runnerUI.projectRequestId++;
  runnerText("runner-commit-status","Commit: UNKNOWN — verify before submitting");
  runnerText("runner-project-status","Project: UNKNOWN — verify commit first");
 });
