@@ -115,7 +115,7 @@ class GitHubAppRunnerBootstrap:
         except Exception as exc:
             raise GitHubAppError("GitHub App JWT signing failed: " + type(exc).__name__) from exc
 
-    def _request(self, method: str, path: str, token: str, payload: dict | None = None) -> dict:
+    def _request(self, method: str, path: str, token: str, payload: dict | None = None) -> dict | list:
         if not path.startswith("/") or ".." in path.split("/"):
             raise GitHubAppError("Invalid GitHub API path")
         body = None if payload is None else json.dumps(payload, separators=(",", ":")).encode("utf-8")
@@ -327,7 +327,7 @@ class GitHubAppRunnerBootstrap:
                 if (not isinstance(ref_name, str) or not 1 <= len(ref_name) <= 255
                         or not isinstance(sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", sha)):
                     raise GitHubAppError("GitHub repository ref metadata is malformed")
-                key = ref_name.casefold()
+                key = ref_name
                 if key in seen:
                     raise GitHubAppError("GitHub repository ref response contains duplicates")
                 seen.add(key)
