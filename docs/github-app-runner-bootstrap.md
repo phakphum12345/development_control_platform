@@ -20,16 +20,17 @@ The implementation is deliberately fail-closed:
 ## Required GitHub App configuration
 
 Create/configure the GitHub App outside this repository and install it only on
-all intended repositories (choose **All repositories** if every repository should appear in DCP). Grant the minimum permission needed to
-create self-hosted runner registration tokens (Actions write / repository
-administration permission as required by GitHub's current App permission model).
+all intended repositories (choose **All repositories** if every repository should appear in DCP). Grant Contents: read for branch/tag discovery and commit verification, plus
+the minimum repository Administration permission needed to create and remove
+self-hosted runner registrations (Administration: write as required by
+GitHub's current App permission model).
 Do not grant organization-wide installation access unless separately reviewed.
 
 Server-side settings are expected to be supplied by the deployment environment:
 - `DCP_GITHUB_APP_ID`
 - `DCP_GITHUB_APP_INSTALLATION_ID`
 - `DCP_GITHUB_APP_PRIVATE_KEY_SECRET_NAME` (a Key Vault secret name, not key content)
-- `DCP_GATEWAY_ALLOWED_REPOSITORIES` (legacy static fallback; ignored as a narrowing filter when GitHub App installation discovery is active)
+- `DCP_GATEWAY_ALLOWED_REPOSITORIES` (legacy static fallback only when GitHub App installation discovery is not configured; ignored as a narrowing filter in GitHub App mode)
 
 The App private key must be retrieved server-side through the existing read-only
 Key Vault secret reader. Never put private key material, installation tokens,
@@ -38,12 +39,13 @@ strings, audit events, workflow logs, or Git history.
 
 ## Token flow
 
-1. Discover the installation repository catalog using a short-lived server-side installation token and validate the requested repository against that catalog.
-2. Sign a short-lived RS256 App JWT (issued-at skew, expiry under ten minutes).
-3. Exchange it for an installation access token scoped to one repository.
-4. Require repository Administration write permission in the returned installation permissions.
-5. Create that repository's Actions runner registration token.
-6. Return a redacted credential object to the provider-side bootstrap caller.
+1. Discover the installation repository catalog using a short-lived installation token with Metadata: read.
+2. For branch/tag listing and commit verification, revalidate installation membership and mint a short-lived token scoped to the selected repository with Contents: read only.
+3. For runner administration, revalidate installation membership and sign a short-lived RS256 App JWT (issued-at skew, expiry under ten minutes).
+4. Exchange it for an installation access token scoped to the selected repository.
+5. Require the repository Administration permission appropriate to the requested runner operation.
+6. Create that repository's Actions runner registration token.
+7. Return a redacted credential object to the provider-side bootstrap caller; Contents tokens and registration tokens never reach the browser.
 
 The registration token is a short-lived bootstrap credential, not a durable
 runner secret. The caller must pass it only through a protected provider
