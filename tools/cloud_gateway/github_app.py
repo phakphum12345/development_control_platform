@@ -419,12 +419,12 @@ class GitHubAppRunnerBootstrap:
                 manifest_scan_incomplete = True
                 continue
             try:
-                manifest_bytes = base64.b64decode(re.sub(r"\\s+", "", encoded), validate=True)
+                manifest_bytes = base64.b64decode(re.sub(r"\s+", "", encoded), validate=True)
                 manifest_text = manifest_bytes.decode("utf-8")
             except (ValueError, UnicodeDecodeError):
                 manifest_scan_incomplete = True
                 continue
-            if re.search(r"(?m)^\\s*flutter\\s*:", manifest_text):
+            if re.search(r"(?m)^\s*flutter\s*:", manifest_text):
                 flutter_pubspecs.append(pubspec)
 
         if manifest_scan_incomplete:
