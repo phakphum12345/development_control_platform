@@ -67,8 +67,8 @@ class GitHubAppRunnerBootstrap:
         if not isinstance(private_key_pem, str) or "BEGIN" not in private_key_pem:
             raise ValueError("GitHub App private key is required")
         repos = tuple(allowed_repositories)
-        if not repos or len(set(repos)) != len(repos):
-            raise ValueError("A non-empty unique repository allowlist is required")
+        if len(set(repos)) != len(repos):
+            raise ValueError("Repository allowlist entries must be unique")
         if any(not isinstance(repo, str) or not re.fullmatch(
             r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}", repo
         ) for repo in repos):
@@ -79,6 +79,8 @@ class GitHubAppRunnerBootstrap:
         self.installation_id = installation_id
         self.private_key_pem = private_key_pem
         self.allowed_repositories = frozenset(repos)
+        self._repository_catalog_cache = None
+        self._repository_catalog_cache_until = 0.0
         self.clock = clock
         self.timeout = timeout
         self.opener = opener or urlopen
@@ -152,9 +154,105 @@ class GitHubAppRunnerBootstrap:
             raise GitHubAppError("GitHub token is expired or has no timezone")
         return expiry.astimezone(timezone.utc)
 
+    def _installation_catalog_token(self) -> str:
+        """Mint an installation-wide metadata token for server-side catalog reads."""
+        installation = self._request(
+            "POST",
+            "/app/installations/{}/access_tokens".format(self.installation_id),
+            self._app_jwt(),
+            {},
+        )
+        token = installation.get("token")
+        if not isinstance(token, str) or not token:
+            raise GitHubAppError("GitHub installation catalog token was not issued")
+        self._expiry(installation.get("expires_at"))
+        permissions = installation.get("permissions")
+        metadata = permissions.get("metadata") if isinstance(permissions, dict) else None
+        if metadata not in ("read", "write"):
+            raise GitHubAppError("GitHub App installation lacks repository metadata access")
+        return token
+
+    def list_installation_repositories(self, refresh: bool = False) -> list[dict]:
+        """List repositories installed for DCP, never the user's unrelated repos."""
+        now = float(self.clock())
+        if (not refresh and self._repository_catalog_cache is not None
+                and now < self._repository_catalog_cache_until):
+            return [dict(item) for item in self._repository_catalog_cache]
+
+        token = self._installation_catalog_token()
+        catalog = []
+        seen = set()
+        expected_total = None
+        for page in range(1, 101):
+            data = self._request(
+                "GET",
+                "/installation/repositories?per_page=100&page={}".format(page),
+                token,
+            )
+            total = data.get("total_count")
+            batch = data.get("repositories")
+            if isinstance(total, bool) or not isinstance(total, int) or total < 0:
+                raise GitHubAppError("GitHub installation repository count is invalid")
+            if not isinstance(batch, list) or any(not isinstance(item, dict) for item in batch):
+                raise GitHubAppError("GitHub installation repository catalog is invalid")
+            if expected_total is None:
+                expected_total = total
+            elif total != expected_total:
+                raise GitHubAppError("GitHub installation repository catalog changed during pagination")
+            for item in batch:
+                full_name = item.get("full_name")
+                private = item.get("private")
+                default_branch = item.get("default_branch")
+                if (not isinstance(full_name, str)
+                        or not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}", full_name)
+                        or not isinstance(private, bool)
+                        or (default_branch is not None and not isinstance(default_branch, str))):
+                    raise GitHubAppError("GitHub installation repository metadata is malformed")
+                canonical = full_name.lower()
+                if canonical in seen:
+                    raise GitHubAppError("GitHub installation repository catalog contains duplicates")
+                seen.add(canonical)
+                permissions = item.get("permissions")
+                safe_permissions = {}
+                if isinstance(permissions, dict):
+                    for key in ("admin", "maintain", "push", "triage", "pull"):
+                        if isinstance(permissions.get(key), bool):
+                            safe_permissions[key] = permissions[key]
+                catalog.append({
+                    "full_name": full_name,
+                    "private": private,
+                    "default_branch": default_branch or "",
+                    "permissions": safe_permissions,
+                })
+            if len(catalog) >= expected_total:
+                if len(catalog) != expected_total:
+                    raise GitHubAppError("GitHub installation repository count did not match catalog")
+                break
+            if not batch:
+                raise GitHubAppError("GitHub installation repository pagination ended early")
+        else:
+            raise GitHubAppError("GitHub installation repository catalog exceeded pagination limit")
+
+        catalog.sort(key=lambda item: item["full_name"].lower())
+        self._repository_catalog_cache = tuple(dict(item) for item in catalog)
+        self._repository_catalog_cache_until = now + 60.0
+        return [dict(item) for item in catalog]
+
+    def is_repository_accessible(self, repository: str) -> bool:
+        if not isinstance(repository, str) or not re.fullmatch(
+            r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}", repository
+        ):
+            return False
+        if self.allowed_repositories:
+            return repository in self.allowed_repositories
+        return any(
+            item["full_name"].lower() == repository.lower()
+            for item in self.list_installation_repositories()
+        )
+
     def _installation_token(self, repository: str, administration: str) -> str:
-        if not isinstance(repository, str) or repository not in self.allowed_repositories:
-            raise GitHubAppError("Repository is not allowlisted for runner administration")
+        if not self.is_repository_accessible(repository):
+            raise GitHubAppError("Repository is not accessible to the DCP GitHub App installation")
         if administration not in ("read", "write"):
             raise ValueError("Unsupported GitHub repository administration scope")
         app_jwt = self._app_jwt()
