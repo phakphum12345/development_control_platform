@@ -36,6 +36,20 @@ class PolicyTests(unittest.TestCase):
   for s,count,code in [(settings(owner_approved=False),0,403),(settings(circuit_breaker_tripped=True),0,503),(settings(budget_limit_usd=0),0,503),(settings(current_spend_usd=19),0,429),(settings(max_concurrent_runners=1),1,429)]:
    with self.subTest(code=code),self.assertRaises(PolicyDenied) as e: s.authorize_provisioning(count)
    self.assertEqual(e.exception.status_code,code)
+ def test_dynamic_repository_authorizer_replaces_static_allowlist(self):
+  dynamic_settings=settings(allowed_repositories=())
+  self.assertEqual(
+   validate_runner_request(payload(),dynamic_settings,lambda repository: repository==REPO)["repository"],
+   REPO,
+  )
+  legacy_restricted=settings(allowed_repositories=("another/repo",))
+  self.assertEqual(validate_runner_request(payload(),legacy_restricted,lambda repository: repository==REPO)["repository"],REPO)
+  with self.assertRaises(PolicyDenied) as denied:
+   validate_runner_request(payload(),dynamic_settings,lambda repository: False)
+  self.assertEqual(denied.exception.status_code,403)
+  with self.assertRaises(PolicyDenied) as unavailable:
+   validate_runner_request(payload(),dynamic_settings,lambda repository: (_ for _ in ()).throw(RuntimeError("offline")))
+  self.assertEqual(unavailable.exception.status_code,503)
  def test_runtime_network_and_token_policy(self):
   for key,value in [("max_runtime_minutes",181),("network_policy","public"),("registration_token_handling","client")]:
    bad=payload(); bad[key]=value
@@ -50,6 +64,15 @@ class LifecycleTests(unittest.TestCase):
   self.assertEqual(self.service.terminate(row["id"])["state"],"terminated")
   self.assertEqual([x[0] for x in self.provider.calls],["create","status","delete"])
   self.assertGreaterEqual(len(self.store.audit_events(row["id"])),3)
+ def test_service_revalidates_dynamic_installation_membership(self):
+  service=GatewayService(
+   settings(allowed_repositories=()),self.store,self.provider,
+   repository_authorizer=lambda repository: repository==REPO,
+  )
+  row,created=service.create(payload(),"idem-key-dynamic")
+  self.assertTrue(created)
+  self.assertEqual(row["state"],"provisioning")
+  self.assertEqual(len(self.provider.calls),1)
  def test_replay_and_conflict(self):
   a,new=self.service.create(payload(),"idem-key-002"); b,replay=self.service.create(payload(),"idem-key-002")
   self.assertTrue(new); self.assertFalse(replay); self.assertEqual(a["id"],b["id"]); self.assertEqual(len(self.provider.calls),1)

@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from tools.cloud_gateway.policy import GatewaySettings
+from tools.cloud_gateway.policy import GatewaySettings, PolicyDenied
 from tools.cloud_gateway.server import DisabledProvider, ProxyIdentityVerifier, make_handler
 from tools.cloud_gateway.oidc_assertion import OIDCAssertionError, sign_verified_oidc_assertion
 from tools.cloud_gateway.budget_guard import AzureBudgetGuard
@@ -76,6 +76,29 @@ class AuthenticatedControlAPITests(unittest.TestCase):
             self.assertEqual(status["lifecycle"]["cleanup_retries"], 0)
         with urlopen(self.request("GET", "/api/cloud-runners", "nonce_list_000001")) as response:
             self.assertEqual(json.loads(response.read()), {"runners": []})
+
+    def test_authenticated_repository_catalog_endpoint_returns_safe_metadata(self):
+        self.service.repository_catalog = lambda: [
+            {
+                "full_name": "example/private-app",
+                "private": True,
+                "default_branch": "main",
+                "permissions": {"push": True, "pull": True},
+            }
+        ]
+        with urlopen(self.request("GET", "/api/github/repositories", "nonce_repo_catalog_0001")) as response:
+            payload = json.loads(response.read())
+            self.assertEqual(response.status, 200)
+            self.assertEqual(payload["repositories"][0]["full_name"], "example/private-app")
+            self.assertTrue(payload["repositories"][0]["private"])
+
+    def test_repository_catalog_endpoint_fails_closed_when_not_configured(self):
+        with self.assertRaises(HTTPError) as error:
+            urlopen(self.request("GET", "/api/github/repositories", "nonce_repo_catalog_0002"))
+        try:
+            self.assertEqual(error.exception.code, 503)
+        finally:
+            error.exception.close()
 
     def test_status_projects_budget_for_all_active_runners(self):
         self.store.create("seed-runner", "seed-budget-key", "seed-fingerprint", {"repository":"phakphum12345/generated-A4-pdf","workflow_run_id":1,"commit_sha":"a"*40,"target_os":"linux"}, "2999-01-01T00:00:00+00:00")
@@ -311,6 +334,124 @@ class AuthenticatedControlAPITests(unittest.TestCase):
         finally:
             error.exception.close()
         self.assertEqual(self.store.active_count(), 0)
+
+
+    def test_authenticated_repository_refs_endpoint_returns_scoped_branch_metadata(self):
+        self.service.repository_authorizer = lambda repository: repository == "example/private-app"
+        self.service.repository_ref_catalog = lambda repository, kind: [
+            {"name": "feature/one", "commit_sha": "a" * 40}
+        ]
+        path = "/api/github/repositories/example/private-app/refs"
+        headers = signed_headers("GET", path, "nonce_repo_refs_000001")
+        request = Request(self.base + path + "?kind=branches", headers=headers)
+        with urlopen(request) as response:
+            payload = json.loads(response.read())
+        self.assertEqual(payload, {
+            "repository": "example/private-app",
+            "kind": "branches",
+            "refs": [{"name": "feature/one", "commit_sha": "a" * 40}],
+        })
+
+    def test_repository_refs_endpoint_rejects_repository_outside_installation(self):
+        self.service.repository_authorizer = lambda repository: False
+        self.service.repository_ref_catalog = lambda *args: self.fail("ref API must not be called")
+        path = "/api/github/repositories/attacker/repo/refs"
+        headers = signed_headers("GET", path, "nonce_repo_refs_000002")
+        with self.assertRaises(HTTPError) as error:
+            urlopen(Request(self.base + path + "?kind=tags", headers=headers))
+        try:
+            self.assertEqual(error.exception.code, 403)
+        finally:
+            error.exception.close()
+
+    def test_authenticated_repository_project_endpoint_returns_build_capabilities(self):
+        self.service.repository_authorizer = lambda repository: repository == "example/flutter-app"
+        self.service.repository_project_inspector = lambda repository, sha: {
+            "repository": repository,
+            "commit_sha": sha,
+            "status": "target_detected",
+            "project_types": ["flutter"],
+            "file_count": 4,
+            "truncated": False,
+            "flutter": {
+                "detected": True,
+                "package_manifests": ["pubspec.yaml"],
+                "macos_supported": True,
+                "macos_runner_projects": ["macos/Runner.xcodeproj/project.pbxproj"],
+            },
+            "notes": ["read-only inspection"],
+        }
+        sha = "e" * 40
+        path = "/api/github/repositories/example/flutter-app/projects/" + sha
+        headers = signed_headers("GET", path, "nonce_repo_project_001")
+        with urlopen(Request(self.base + path, headers=headers)) as response:
+            payload = json.loads(response.read())
+        self.assertEqual(payload["status"], "target_detected")
+        self.assertTrue(payload["flutter"]["macos_supported"])
+
+    def test_repository_project_endpoint_rejects_repository_outside_installation(self):
+        self.service.repository_authorizer = lambda repository: False
+        self.service.repository_project_inspector = lambda *args: self.fail("project inspector must not be called")
+        sha = "e" * 40
+        path = "/api/github/repositories/attacker/repo/projects/" + sha
+        headers = signed_headers("GET", path, "nonce_repo_project_002")
+        with self.assertRaises(HTTPError) as error:
+            urlopen(Request(self.base + path, headers=headers))
+        try:
+            self.assertEqual(error.exception.code, 403)
+        finally:
+            error.exception.close()
+
+    def test_repository_project_endpoint_rejects_repository_outside_installation(self):
+        self.service.repository_authorizer = lambda repository: False
+        self.service.repository_project_inspector = lambda *args: self.fail("project inspector must not be called")
+        sha = "e" * 40
+        path = "/api/github/repositories/attacker/repo/projects/" + sha
+        headers = signed_headers("GET", path, "nonce_repo_project_003")
+        with self.assertRaises(HTTPError) as error:
+            urlopen(Request(self.base + path, headers=headers))
+        try:
+            self.assertEqual(error.exception.code, 403)
+        finally:
+            error.exception.close()
+
+    def test_authenticated_repository_commit_endpoint_verifies_full_sha(self):
+        self.service.repository_authorizer = lambda repository: repository == "example/private-app"
+        self.service.repository_commit_resolver = lambda repository, sha: {"commit_sha": sha.lower()}
+        sha = "c" * 40
+        path = "/api/github/repositories/example/private-app/commits/" + sha
+        headers = signed_headers("GET", path, "nonce_repo_commit_0001")
+        with urlopen(Request(self.base + path, headers=headers)) as response:
+            payload = json.loads(response.read())
+        self.assertEqual(payload, {"repository": "example/private-app", "commit_sha": sha})
+
+    def test_job_request_rejects_commit_not_resolved_in_selected_repository(self):
+        self.service.repository_authorizer = lambda repository: True
+        self.service.repository_commit_resolver = lambda repository, sha: {"commit_sha": "d" * 40}
+        payload = {
+            "repository": "phakphum12345/generated-A4-pdf",
+            "workflow_run_id": 123,
+            "commit_sha": "a" * 40,
+            "target_os": "linux",
+            "image": "ubuntu-24.04-x64",
+            "labels": ["self-hosted", "Linux", "X64", "dcp-cloud-linux"],
+            "ephemeral": True,
+            "max_runtime_minutes": 30,
+            "network_policy": "restricted-egress",
+            "registration_token_handling": "provider-side-only",
+        }
+        with self.assertRaisesRegex(PolicyDenied, "does not resolve"):
+            self.service.create(payload, "commit-check-key-001")
+
+    def test_repository_refs_endpoint_rejects_unknown_ref_kind(self):
+        path = "/api/github/repositories/example/private-app/refs"
+        headers = signed_headers("GET", path, "nonce_repo_refs_000003")
+        with self.assertRaises(HTTPError) as error:
+            urlopen(Request(self.base + path + "?kind=commits", headers=headers))
+        try:
+            self.assertEqual(error.exception.code, 400)
+        finally:
+            error.exception.close()
 
 
 if __name__ == "__main__":

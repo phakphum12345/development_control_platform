@@ -10,7 +10,9 @@ from .store import LifecycleConflict
 class GatewayService:
     def __init__(
         self, settings, store, provider, budget_guard=None, runner_cleanup=None,
-        provider_budget_guards=None,
+        provider_budget_guards=None, repository_catalog=None, repository_authorizer=None,
+        repository_ref_catalog=None, repository_commit_resolver=None,
+        repository_project_inspector=None,
     ):
         self.settings = settings
         self.store = store
@@ -22,6 +24,11 @@ class GatewayService:
             self.provider_budget_guards.setdefault("azure", budget_guard)
         self.budget_guard = self.provider_budget_guards.get("azure")
         self.runner_cleanup = runner_cleanup
+        self.repository_catalog = repository_catalog
+        self.repository_authorizer = repository_authorizer
+        self.repository_ref_catalog = repository_ref_catalog
+        self.repository_commit_resolver = repository_commit_resolver
+        self.repository_project_inspector = repository_project_inspector
         self.create_lock = threading.Lock()
 
     def budget_provider_for_os(self, os_name):
@@ -43,7 +50,16 @@ class GatewayService:
     def create(self, payload, key):
         if not isinstance(key, str) or not 8 <= len(key) <= 200:
             raise PolicyDenied("Idempotency-Key must be 8..200 characters", 400)
-        request = validate_runner_request(payload, self.settings)
+        request = validate_runner_request(payload, self.settings, self.repository_authorizer)
+        if callable(self.repository_commit_resolver):
+            try:
+                resolved = self.repository_commit_resolver(
+                    request["repository"], request["commit_sha"]
+                )
+            except Exception:
+                raise PolicyDenied("Commit could not be verified in the selected repository", 503)
+            if not isinstance(resolved, dict) or resolved.get("commit_sha") != request["commit_sha"]:
+                raise PolicyDenied("Commit SHA does not resolve in the selected repository", 403)
         fingerprint = idempotency_fingerprint(request)
         # Reserve capacity before releasing the lock to provision. The durable
         # provisioning row is counted by the next request, preventing local races.
@@ -69,7 +85,7 @@ class GatewayService:
                 if not isinstance(ready, dict) or ready.get("ready") is not True:
                     raise PolicyDenied("Selected runner provider is not ready", 503)
             active_count = self.store.active_count()
-            self.settings.authorize_provisioning(active_count)
+            self.settings.authorize_provisioning(active_count, dynamic_repository_authorization=callable(self.repository_authorizer))
             if budget_guard is not None:
                 budget_guard.authorize(active_count)
             rid = str(uuid.uuid4())
@@ -101,6 +117,47 @@ class GatewayService:
                     pass
             raise
         return self.public(row), True
+
+    def list_repositories(self):
+        if not callable(self.repository_catalog):
+            raise RuntimeError("GitHub App repository catalog is not configured")
+        repositories = self.repository_catalog()
+        if not isinstance(repositories, list):
+            raise RuntimeError("GitHub App repository catalog returned an invalid response")
+        return repositories
+
+    def list_repository_refs(self, repository, kind="branches"):
+        if not callable(self.repository_ref_catalog):
+            raise RuntimeError("GitHub App repository ref catalog is not configured")
+        if not callable(self.repository_authorizer):
+            raise RuntimeError("GitHub App repository authorization is not configured")
+        if self.repository_authorizer(repository) is not True:
+            raise PermissionError("Repository is not accessible to the DCP GitHub App installation")
+        refs = self.repository_ref_catalog(repository, kind)
+        if not isinstance(refs, list):
+            raise RuntimeError("GitHub App repository ref catalog returned an invalid response")
+        return refs
+
+    def resolve_repository_commit(self, repository, commit_sha):
+        if not callable(self.repository_commit_resolver):
+            raise RuntimeError("GitHub App repository commit resolver is not configured")
+        if not callable(self.repository_authorizer):
+            raise RuntimeError("GitHub App repository authorization is not configured")
+        if self.repository_authorizer(repository) is not True:
+            raise PermissionError("Repository is not accessible to the DCP GitHub App installation")
+        return self.repository_commit_resolver(repository, commit_sha)
+
+    def inspect_repository_project(self, repository, commit_sha):
+        if not callable(self.repository_project_inspector):
+            raise RuntimeError("GitHub App repository project inspector is not configured")
+        if not callable(self.repository_authorizer):
+            raise RuntimeError("GitHub App repository authorization is not configured")
+        if self.repository_authorizer(repository) is not True:
+            raise PermissionError("Repository is not accessible to the DCP GitHub App installation")
+        result = self.repository_project_inspector(repository, commit_sha)
+        if not isinstance(result, dict) or result.get("repository") != repository:
+            raise RuntimeError("GitHub App repository project inspector returned an invalid response")
+        return result
 
     def list_recent(self, limit=50):
         return [self.public(row) for row in self.store.list_recent(limit)]

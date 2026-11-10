@@ -1,10 +1,13 @@
 # Development Control Platform
 
+> Platform architecture: [DCP Own Infrastructure Platform](docs/dcp-own-platform-architecture.md) — provider-neutral control plane, dynamic GitHub App repository catalog, local-first runner workflow, and guarded provisioning.
+
+
 An independent control plane for development phases, quality gates, commit-bound evidence, and resumable checkpoints.
 
 ## Cloud Runner Control Plane
 
-The DCP includes a provider-neutral backend for requesting ephemeral macOS cloud runners for allowlisted repositories. See [docs/cloud-runner-control-plane.md](docs/cloud-runner-control-plane.md) for the canonical gateway API contract. The machine-readable [OpenAPI specification](schemas/cloud-runner-gateway.openapi.yaml) is validated by `tests/test_cloud_runner_openapi.py`. The historical [macOS runner design note](docs/macos-cloud-runner-control-plane.md) is retained as a legacy architecture record and is not the current adapter contract. The backend is opt-in and fail-closed: without provider HTTPS endpoint/token secrets it cannot provision anything. Dispatch acceptance is not runner-online or build-pass evidence. The initial allowlist contains only `phakphum12345/generated-A4-pdf`. No paid cloud provider is selected or activated automatically.
+The DCP includes a provider-neutral backend for requesting ephemeral runners. When a GitHub App is configured, repository discovery and authorization are based on the App installation catalog (all repositories installed for DCP), with repository-scoped runner registration tokens. The authenticated Dashboard can select Branches/Tags, verify a full commit SHA, and inspect Git tree paths plus bounded `pubspec.yaml` manifest contents to detect Flutter and macOS Runner project files without downloading or executing application source code. See [docs/cloud-runner-control-plane.md](docs/cloud-runner-control-plane.md) for the canonical gateway API contract. The machine-readable [OpenAPI specification](schemas/cloud-runner-gateway.openapi.yaml) is validated by `tests/test_cloud_runner_openapi.py`. The historical [macOS runner design note](docs/macos-cloud-runner-control-plane.md) is retained as a legacy architecture record and is not the current adapter contract. The backend is opt-in and fail-closed: without provider HTTPS endpoint/token secrets it cannot provision anything. Dispatch acceptance is not runner-online or build-pass evidence. A legacy static repository allowlist is used only when GitHub App installation discovery is not configured; it is not a narrowing filter in GitHub App mode. No paid cloud provider is selected or activated automatically.
 
 Azure deployment preparation is documented in [docs/azure-production-deployment.md](docs/azure-production-deployment.md). It defines a gated, non-provisioning-first Azure rollout; no cloud resources are created until subscription, domain, identity, cost, and live acceptance prerequisites are approved.
 

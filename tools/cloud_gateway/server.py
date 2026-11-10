@@ -14,7 +14,7 @@ import re
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from .policy import GatewaySettings, PolicyDenied
 from .service import GatewayService
@@ -183,6 +183,55 @@ def make_handler(service, token, proxy_secret=None, public_origin=None):
                         "csrfToken": verifier.csrf_token(identity),
                         "user": {"displayName": identity["subject"], "role": identity["role"]},
                     })
+                if path == "/api/github/repositories":
+                    try:
+                        repositories = service.list_repositories()
+                    except Exception:
+                        return self.send_json(503, {"error": "GitHub App repository catalog unavailable"})
+                    return self.send_json(200, {"repositories": repositories})
+                repository_refs_prefix = "/api/github/repositories/"
+                if path.startswith(repository_refs_prefix):
+                    parts = path[len(repository_refs_prefix):].split("/")
+                    if len(parts) not in (3, 4):
+                        return self.send_json(404, {"error": "not found"})
+                    repository = unquote(parts[0]) + "/" + unquote(parts[1])
+                    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}", repository):
+                        return self.send_json(400, {"error": "invalid repository"})
+                    if len(parts) == 4 and parts[2] == "projects":
+                        commit_sha = unquote(parts[3])
+                        if not re.fullmatch(r"[0-9a-fA-F]{40}", commit_sha):
+                            return self.send_json(400, {"error": "commit SHA must be 40 hexadecimal characters"})
+                        try:
+                            project = service.inspect_repository_project(repository, commit_sha)
+                        except PermissionError:
+                            return self.send_json(403, {"error": "repository is not accessible"})
+                        except Exception:
+                            return self.send_json(503, {"error": "GitHub repository project inspection unavailable"})
+                        return self.send_json(200, project)
+                    if len(parts) == 4 and parts[2] == "commits":
+                        commit_sha = unquote(parts[3])
+                        if not re.fullmatch(r"[0-9a-fA-F]{40}", commit_sha):
+                            return self.send_json(400, {"error": "commit SHA must be 40 hexadecimal characters"})
+                        try:
+                            commit = service.resolve_repository_commit(repository, commit_sha)
+                        except PermissionError:
+                            return self.send_json(403, {"error": "repository is not accessible"})
+                        except Exception:
+                            return self.send_json(503, {"error": "GitHub commit verification unavailable"})
+                        return self.send_json(200, {"repository": repository, **commit})
+                    if len(parts) != 3 or parts[2] != "refs":
+                        return self.send_json(404, {"error": "not found"})
+                    query = parse_qs(urlparse(self.path).query, keep_blank_values=True)
+                    kinds = query.get("kind", ["branches"])
+                    if len(kinds) != 1 or kinds[0] not in ("branches", "tags"):
+                        return self.send_json(400, {"error": "kind must be branches or tags"})
+                    try:
+                        refs = service.list_repository_refs(repository, kinds[0])
+                    except PermissionError:
+                        return self.send_json(403, {"error": "repository is not accessible"})
+                    except Exception:
+                        return self.send_json(503, {"error": "GitHub repository refs unavailable"})
+                    return self.send_json(200, {"repository": repository, "kind": kinds[0], "refs": refs})
                 if path == "/api/cloud-runners/status":
                     return self.send_json(200, self.control_status())
                 if path == "/api/cloud-runners":
@@ -468,10 +517,15 @@ def main():
         if len(proxy_secret) < 32 or not (public_origin.startswith("https://") or local_http):
             raise SystemExit("Trusted proxy API requires a 32+ character HMAC secret and HTTPS origin (HTTP is allowed only on loopback)")
     store = RunnerStore(os.getenv("DCP_GATEWAY_DATABASE", "dcp-gateway.sqlite3"))
-    _, _, runner_cleanup = build_github_app_runtime(settings)
+    github_app, _, runner_cleanup = build_github_app_runtime(settings)
     service = GatewayService(
         settings, store, ProviderRouter(DisabledProvider(), DisabledProvider()),
         _budget_guard_from_env(settings), runner_cleanup=runner_cleanup,
+        repository_catalog=github_app.list_installation_repositories if github_app else None,
+        repository_authorizer=(lambda repository: github_app.is_repository_accessible(repository, refresh=True)) if github_app else None,
+        repository_ref_catalog=github_app.list_repository_refs if github_app else None,
+        repository_commit_resolver=github_app.resolve_repository_commit if github_app else None,
+        repository_project_inspector=github_app.inspect_repository_project if github_app else None,
     )
     _start_expiry_reconciler(service, int(os.getenv("DCP_GATEWAY_RECONCILE_SECONDS", "30")))
     server = ThreadingHTTPServer(
