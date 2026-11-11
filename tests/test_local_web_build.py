@@ -27,12 +27,14 @@ class WebBuildExecutorTests(unittest.TestCase):
     def test_static_html_build_copies_real_files_without_execution(self):
         (self.source / "index.html").write_text("<h1>DCP</h1>", encoding="utf-8")
         (self.source / "app.js").write_text("window.test = true", encoding="utf-8")
+        (self.source / ".env").write_text("TOKEN=must-not-ship", encoding="utf-8")
         executor = WebBuildExecutor(self.manager, enabled=True)
         result = executor.run(self.job, self.worker, "build_static_web")
         self.assertEqual(result.outcome, "succeeded")
         self.assertEqual(result.return_code, 0)
         self.assertEqual((self.source / "dist" / "index.html").read_text(), "<h1>DCP</h1>")
         self.assertEqual((self.source / "dist" / "app.js").read_text(), "window.test = true")
+        self.assertFalse((self.source / "dist" / ".env").exists())
 
     def test_static_build_rejects_symlink_sources(self):
         (self.source / "index.html").write_text("ok", encoding="utf-8")
