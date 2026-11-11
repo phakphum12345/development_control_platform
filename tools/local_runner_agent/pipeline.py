@@ -11,6 +11,7 @@ from .checkout import CheckoutError
 from .execution import ExecutionError, FlutterBuildExecutor
 from .workspace import WorkspaceError, WorkspaceManager
 from .web_build import WebBuildExecutor, WebArtifactPackager
+from .browser_test import BrowserTestError, StaticWebPlaywrightTester
 
 
 class CheckoutProvider(Protocol):
@@ -37,6 +38,7 @@ class RunnerPipeline:
         web_artifact_packager: WebArtifactPackager | None = None,
         local_project_checkout=None,
         trusted_local_projects: set[str] | frozenset[str] = frozenset(),
+        browser_test_executor: StaticWebPlaywrightTester | None = None,
     ):
         if isinstance(heartbeat_interval_seconds, bool) or not isinstance(heartbeat_interval_seconds, int) or not 5 <= heartbeat_interval_seconds <= 60:
             raise ValueError("heartbeat interval must be between 5 and 60 seconds")
@@ -50,6 +52,7 @@ class RunnerPipeline:
         self.trusted_repositories = frozenset(trusted_repositories)
         self.local_project_checkout = local_project_checkout
         self.trusted_local_projects = frozenset(trusted_local_projects)
+        self.browser_test_executor = browser_test_executor
         self.artifact_packager = artifact_packager or FlutterArtifactPackager(workspaces)
         detected_os = "windows" if sys.platform == "win32" else "macos" if sys.platform == "darwin" else "linux"
         self.worker_os = worker_os or detected_os
@@ -125,14 +128,16 @@ class RunnerPipeline:
                 last_heartbeat = now
                 return current.get("state") == "cancel_requested"
 
-            selected_executor = self.web_executor if job["target"] in ("build_static_web", "build_vite") else self.executor
+            build_target = "build_static_web" if job["target"] == "test_static_web" else job["target"]
+            selected_executor = self.web_executor if build_target in ("build_static_web", "build_vite") else self.executor
             selected_executor.log = lambda stream, message: self.client.append_log(job_id, message, stream)
             build = selected_executor.run(
-                job_id, worker_id, job["target"],
+                job_id, worker_id, build_target,
                 cancel_requested=cancellation_requested,
             )
             outcome = build.outcome
             error_code = build.error_code
+            build_succeeded = outcome == "succeeded"
             result.update({
                 "command": list(build.command),
                 "return_code": build.return_code,
@@ -140,15 +145,31 @@ class RunnerPipeline:
                 "output_bytes": build.output_bytes,
                 "source_directory": str(source.relative_to(self.workspaces.get(job_id, worker_id))),
             })
+            if build_succeeded and job["target"] == "test_static_web":
+                if self.browser_test_executor is None:
+                    raise BrowserTestError("Playwright test capability is not configured on this Runner")
+                browser_result = self.browser_test_executor.run(job_id, worker_id)
+                result["browser_test"] = {
+                    key: value for key, value in browser_result.items()
+                    if key not in ("artifact_path",)
+                }
+                self.client.append_log(
+                    job_id,
+                    "Playwright static preview tests " + browser_result["status"],
+                    "system",
+                )
+                if browser_result["status"] != "PASS":
+                    outcome = "failed"
+                    error_code = "WEB_BROWSER_TESTS_FAILED"
             self.client.append_log(
                 job_id,
                 f"Build execution {outcome}; exit={build.return_code}; "
                 f"duration={build.duration_seconds}s; output={build.output_bytes} bytes",
                 "system",
             )
-            if outcome == "succeeded":
-                packager = self.web_artifact_packager if job["target"] in ("build_static_web", "build_vite") else self.artifact_packager
-                artifact = packager.package(job_id, worker_id, job["target"])
+            if build_succeeded:
+                packager = self.web_artifact_packager if build_target in ("build_static_web", "build_vite") else self.artifact_packager
+                artifact = packager.package(job_id, worker_id, build_target)
                 if artifact is not None:
                     artifact_path, artifact_name = artifact
                     metadata = self.client.upload_artifact(job_id, str(artifact_path), artifact_name)
@@ -156,15 +177,25 @@ class RunnerPipeline:
                     self.client.append_log(
                         job_id, f"Artifact stored: {artifact_name} ({metadata['size']} bytes)", "system"
                     )
-                if outcome == "succeeded" and job["target"] in ("build_static_web", "build_vite"):
+                if job["target"] == "test_static_web" and self.browser_test_executor is not None:
+                    test_artifact = result.get("browser_test")
+                    artifact_path = getattr(self.browser_test_executor, "last_artifact_path", None)
+                    if artifact_path is not None:
+                        metadata = self.client.upload_artifact(job_id, str(artifact_path), "web-test-results.zip")
+                        result["test_artifact"] = metadata
+                        self.client.append_log(
+                            job_id, f"Test evidence stored: web-test-results.zip ({metadata['size']} bytes)", "system"
+                        )
+                if job["target"] in ("build_static_web", "build_vite", "test_static_web"):
                     self.workspaces.retain_for_preview(job_id, worker_id, ttl_seconds=3600)
                     self.client.append_log(
                         job_id, "Successful web build workspace retained for a bounded local preview window", "system"
                     )
                     retained_for_preview = True
                     result["workspace_retained_for_preview"] = True
-                error_code = None
-        except (ArtifactPackageError, CheckoutError, ExecutionError, WorkspaceError) as exc:
+                if outcome == "succeeded":
+                    error_code = None
+        except (ArtifactPackageError, BrowserTestError, CheckoutError, ExecutionError, WorkspaceError) as exc:
             self.client.append_log(
                 job_id, f"Runner rejected job safely: {type(exc).__name__}", "stderr"
             )
