@@ -201,3 +201,17 @@ Owner-only, read-only Gateway endpoints:
 The Local Auth Proxy allowlists only these GET paths. The Gateway independently verifies the signed owner session and returns no absolute filesystem paths. Operators are denied. No browser-facing POST endpoint accepts a filesystem path; enrollment and project selection remain explicit local CLI actions until a safe local folder-picker/agent workflow is designed.
 
 The Gateway registry is opt-in through `DCP_LOCAL_PROJECT_REGISTRY`; a standalone Gateway with no configured registry does not create a registry in the user's home directory and reports the API unavailable. Registry updates are reloaded on each read so CLI enrollment becomes visible without restarting the Gateway.
+
+
+## M9 — Dashboard Project Import workspace
+
+The Dashboard now has a Project Import view with separate authenticated read-only source catalogs:
+
+- GitHub App installation repository list, branch/tag references, full commit SHA verification and bounded project inspection.
+- Local enrolled root labels and project IDs, relative paths and SHA-256 fingerprints.
+- Owner-session checks before catalog reads.
+- No browser-provided filesystem paths, source download, dependency installation, build, runtime launch or job creation from this view.
+- Public GitHub research remains a separate tokenless public API feature; private repository reads use the Local Auth Proxy and GitHub App server-side credentials.
+- GitHub App import catalog and ref/commit/project inspection routes are owner-only at the Gateway.
+
+The selected source evidence is currently a Dashboard view state only. It is not yet a persisted unified project record or an immutable job snapshot. That requires the next Project Snapshot/Import-to-Job workstream.

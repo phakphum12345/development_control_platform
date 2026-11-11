@@ -29,7 +29,7 @@ PBKDF2_ROUNDS = 600_000
 MIN_PASSWORD_LENGTH = 14
 COOKIE = "DCP_LOCAL_SESSION"
 MAX_BODY = 32_768
-ALLOWED_GET = ("/api/cloud-runners/status", "/api/cloud-runners", "/api/local-projects", "/api/local-projects/roots")
+ALLOWED_GET = ("/api/cloud-runners/status", "/api/cloud-runners", "/api/local-projects", "/api/local-projects/roots", "/api/github/repositories")
 CREDENTIALS = Path(os.getenv("DCP_LOCAL_AUTH_CREDENTIAL_FILE", str(Path(os.getenv("LOCALAPPDATA", str(Path.home()))) / "DCP" / "owner-auth.json")))
 
 
@@ -217,7 +217,7 @@ class LocalAuthProxy:
 
     def gateway_request(self, method: str, path: str, session: dict, body: bytes = b"",
                         csrf_token: str = "") -> tuple[int, bytes]:
-        headers = self.sign_gateway(method, path, session)
+        headers = self.sign_gateway(method, urlparse(path).path, session)
         if csrf_token:
             expected = hmac.new(
                 self.proxy_secret,
@@ -298,7 +298,8 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
             return bool(supplied) and hmac.compare_digest(supplied, expected)
 
         def do_GET(self):
-            path = urlparse(self.path).path
+            parsed = urlparse(self.path)
+            path = parsed.path
             if path == "/healthz":
                 return self.send_json(200, {"status": "ok", "auth_proxy": "ready",
                                             "gateway": "local", "provisioning_enabled": False})
@@ -318,11 +319,26 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                 session = self.require_session()
                 if not session:
                     return self.send_json(401, {"error": "authenticated session required"})
-                if path not in ALLOWED_GET and not (
-                    path.startswith("/api/cloud-runners/") and path.count("/") == 3
-                ) and not re.fullmatch(r"/api/local-projects/[0-9a-f-]{36}", path):
+                github_read_path = re.fullmatch(
+                    r"/api/github/repositories/[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}/(?:refs|commits/[0-9a-fA-F]{40}|projects/[0-9a-fA-F]{40})",
+                    path,
+                )
+                github_refs_path = re.fullmatch(
+                    r"/api/github/repositories/[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}/refs",
+                    path,
+                )
+                query_allowed = not parsed.query or (
+                    bool(github_refs_path) and parsed.query in ("kind=branches", "kind=tags")
+                )
+                if (not query_allowed or (
+                    path not in ALLOWED_GET and not (
+                        path.startswith("/api/cloud-runners/") and path.count("/") == 3
+                    ) and not re.fullmatch(r"/api/local-projects/[0-9a-f-]{36}", path)
+                    and not github_read_path
+                )):
                     return self.send_json(404, {"error": "not found"})
-                status, data = app.gateway_request("GET", path, session)
+                gateway_path = path + (("?" + parsed.query) if parsed.query else "")
+                status, data = app.gateway_request("GET", gateway_path, session)
                 return self.send_bytes(status, data)
             relative = "index.html" if path == "/" else unquote(path.lstrip("/"))
             target = (root / relative).resolve()

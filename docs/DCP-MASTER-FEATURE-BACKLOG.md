@@ -11,7 +11,7 @@ Status labels describe the initial source review only; revalidate against the ex
 | CORE-05 | Backend-enforced Cloud Provisioning OFF | PARTIAL/VERIFY | P0 | Inspect all API/provider paths; reject create requests server-side and persist OFF. |
 | CORE-06 | Backend-enforced VM Creation OFF | PARTIAL/VERIFY | P0 | Separate gate from Cloud Provisioning; tests prove no provider create call. |
 | IMP-01 | GitHub App repository/ref/SHA import | EXISTING/PARTIAL | P0 | Revalidate installation membership and immutable SHA at job acceptance. |
-| IMP-02 | Local Folder import via Local Agent | PARTIAL | P0 | Local registry, explicit CLI enrollment and owner-only read API exist; Dashboard picker and immutable job snapshot remain. |
+| IMP-02 | Local Folder import via Local Agent | PARTIAL | P0 | Local registry, explicit CLI enrollment, owner-only read APIs and Dashboard source selection exist; immutable job snapshot and source-to-job binding remain. |
 | IMP-03 | Framework/toolchain detection | PARTIAL | P0 | Detect from manifests and tool availability; unknown stays UNKNOWN. |
 | BUILD-01 | Flutter fixed-target executor | EXISTING/PARTIAL | P1 | Opt-in, trusted-repository allowlist, disabled by default; verify artifacts and cleanup. |
 | BUILD-02 | Generic web build adapters | MISSING | P0 | Start with static HTML/JS and Node/Vite stacks; no arbitrary shell command. |
@@ -51,3 +51,5 @@ A feature is complete only when implementation, unit/integration tests, security
 
 ## 2026-11-11 implementation status update
 - IMP-02 advanced from MISSING to PARTIAL: explicit root enrollment, local project IDs, bounded SHA-256 fingerprints, symlink/path containment checks, CLI registration and owner-only read APIs are implemented on feature branches and covered by focused tests. The full Dashboard import workflow and immutable per-job snapshot are not yet implemented.
+
+- Dashboard Project Import view now reads GitHub App repositories/refs/verified commits and enrolled Local Projects. This remains PARTIAL until selected sources can be materialized into immutable job snapshots and bound to build/test jobs.
