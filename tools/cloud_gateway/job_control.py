@@ -105,8 +105,8 @@ class JobStore:
                 raise ValueError("Local project ID must use canonical lowercase UUID form")
             if not isinstance(snapshot_sha, str) or not re.fullmatch(r"[0-9a-f]{64}", snapshot_sha):
                 raise ValueError("Invalid local project snapshot SHA-256")
-            if target not in ("build_static_web", "build_vite"):
-                raise ValueError("Local Folder jobs currently support only static web and Vite build targets")
+            if target != "build_static_web":
+                raise ValueError("Local Folder jobs currently support only static web builds; dependency-managed frameworks are deferred")
             repository = "local-folder/" + project_id
             sha = hashlib.sha1(("dcp-local-folder:" + project_id + ":" + snapshot_sha).encode("utf-8")).hexdigest()
             normalized = {
