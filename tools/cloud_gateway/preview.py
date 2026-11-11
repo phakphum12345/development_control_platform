@@ -57,6 +57,13 @@ class AuthenticatedPreviewManager:
             raise PreviewError("unsupported preview output")
         with self._lock:
             self._prune_stale()
+            try:
+                self.runtime_manager.workspaces.retain_for_preview(
+                    job_id, worker_id,
+                    ttl_seconds=min(86400, self.runtime_manager.session_ttl_seconds + 60),
+                )
+            except Exception:
+                raise PreviewError("job workspace is not retained for local preview") from None
             active_for_job = sum(1 for value in self._jobs.values() if value == job_id)
             if active_for_job:
                 raise PreviewError("a preview is already active for this job")
@@ -117,6 +124,12 @@ class AuthenticatedPreviewManager:
                     "expires_in_seconds": status["expires_in_seconds"],
                 })
             return rows
+
+    def reap_expired(self) -> int:
+        with self._lock:
+            self.runtime_manager.reap_expired()
+            self._prune_stale()
+            return self.runtime_manager.workspaces.cleanup_expired_preview_workspaces()
 
     def stop(self, runtime_id: str, job_id: str) -> dict:
         with self._lock:
