@@ -349,6 +349,40 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                         return self.send_json(200, {"jobs": [self.public_job(row) for row in jobs.list_recent(limit)]})
                     except (ValueError, TypeError):
                         return self.send_json(400, {"error": "invalid limit"})
+                preview_list = re.fullmatch(r"/api/jobs/([0-9a-f-]{36})/previews", path)
+                if preview_list:
+                    if identity.get("role") != "owner":
+                        return self.send_json(403, {"error": "owner role required"})
+                    job_id = preview_list.group(1)
+                    previews = getattr(service, "preview_manager", None)
+                    job = jobs.get(job_id)
+                    if not job or not previews:
+                        return self.send_json(404, {"error": "preview not found"})
+                    return self.send_json(200, {"previews": previews.list_for_job(job_id)})
+                preview_match = re.fullmatch(
+                    r"/api/jobs/([0-9a-f-]{36})/previews/([0-9a-f-]{36})(?:/content/(.*))?",
+                    path,
+                )
+                if preview_match:
+                    if identity.get("role") != "owner":
+                        return self.send_json(403, {"error": "owner role required"})
+                    job_id, runtime_id, relative_path = preview_match.groups()
+                    previews = getattr(service, "preview_manager", None)
+                    job = jobs.get(job_id)
+                    worker_id = (job.get("last_worker") or job.get("worker")) if job else None
+                    if not job or not previews or not worker_id:
+                        return self.send_json(404, {"error": "preview not found"})
+                    try:
+                        if relative_path is None:
+                            return self.send_json(200, previews.status(runtime_id, job_id))
+                        status, content_type, body = previews.get_content(runtime_id, job_id, relative_path)
+                        import base64
+                        return self.send_json(status, {
+                            "content_type": content_type,
+                            "body_base64": base64.b64encode(body).decode("ascii"),
+                        })
+                    except PreviewError as exc:
+                        return self.send_json(404, {"error": str(exc)})
                 parts = path[len("/api/jobs/"):].split("/")
                 if not parts[0] or not re.fullmatch(r"[0-9a-f-]{36}", parts[0]):
                     return self.send_json(400, {"error": "invalid job id"})
@@ -506,42 +540,6 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                     except Exception:
                         return self.send_json(503, {"error": "GitHub repository refs unavailable"})
                     return self.send_json(200, {"repository": repository, "kind": kinds[0], "refs": refs})
-                preview_list = re.fullmatch(r"/api/jobs/([0-9a-f-]{36})/previews", path)
-                if preview_list:
-                    if identity.get("role") != "owner":
-                        return self.send_json(403, {"error": "owner role required"})
-                    job_id = preview_list.group(1)
-                    jobs = self.job_store()
-                    previews = getattr(service, "preview_manager", None)
-                    job = jobs.get(job_id) if jobs is not None else None
-                    if not job or not previews:
-                        return self.send_json(404, {"error": "preview not found"})
-                    return self.send_json(200, {"previews": previews.list_for_job(job_id)})
-                preview_match = re.fullmatch(
-                    r"/api/jobs/([0-9a-f-]{36})/previews/([0-9a-f-]{36})(?:/content/(.*))?",
-                    path,
-                )
-                if preview_match:
-                    if identity.get("role") != "owner":
-                        return self.send_json(403, {"error": "owner role required"})
-                    job_id, runtime_id, relative_path = preview_match.groups()
-                    jobs = self.job_store()
-                    previews = getattr(service, "preview_manager", None)
-                    job = jobs.get(job_id) if jobs is not None else None
-                    worker_id = (job.get("last_worker") or job.get("worker")) if job else None
-                    if not job or not previews or not worker_id:
-                        return self.send_json(404, {"error": "preview not found"})
-                    try:
-                        if relative_path is None:
-                            return self.send_json(200, previews.status(runtime_id, job_id))
-                        status, content_type, body = previews.get_content(runtime_id, job_id, relative_path)
-                        import base64
-                        return self.send_json(status, {
-                            "content_type": content_type,
-                            "body_base64": base64.b64encode(body).decode("ascii"),
-                        })
-                    except PreviewError as exc:
-                        return self.send_json(404, {"error": str(exc)})
                 if path == "/api/cloud-runners/status":
                     return self.send_json(200, self.control_status())
                 if path == "/api/cloud-runners":
