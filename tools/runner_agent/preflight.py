@@ -155,7 +155,11 @@ def collect_preflight() -> dict:
         capabilities.append("linux")
     if host == "macos" and flutter_ok and git_ok and tools.get("xcodebuild", {}).get("installed"):
         capabilities.extend(["macos", "ios"])
-    missing = [name for name in ("git", "flutter") if not tools[name]["installed"]]
+    missing = []
+    if not git_ok:
+        missing.append("git")
+    if not flutter_ok and not tools["node"]["installed"]:
+        missing.append("flutter")
     return {
         "schema_version": 1,
         "host_os": host,
@@ -187,8 +191,8 @@ def resolve_capabilities(report: dict, configured=None) -> list[str]:
     ):
         raise ValueError("Runner preflight capabilities are invalid")
     detected_set = set(detected)
-    if "flutter" not in detected_set:
-        raise ValueError("Runner preflight did not verify Flutter and Git")
+    if not ({"flutter", "web"} & detected_set):
+        raise ValueError("Runner preflight did not verify a supported build toolchain")
     if configured is None:
         return sorted(detected_set)
     if (not isinstance(configured, (list, tuple, set, frozenset))
