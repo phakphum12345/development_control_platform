@@ -99,8 +99,10 @@ Keep these outcomes distinct:
 
 The launch exception is surfaced as a bounded diagnostic so CI can report the
 browser error class and a short error summary without swallowing the underlying
-reason. Diagnose Linux user-namespace, setuid-helper, seccomp/AppArmor and
-browser-library prerequisites on the actual Runner image. Select a CI host or
+reason. The repository CI also records read-only Linux identity, namespace,
+seccomp and capability information and enables Playwright browser debug output
+for the failing smoke step. Diagnose Linux user-namespace, setuid-helper,
+seccomp/AppArmor and browser-library prerequisites on the actual Runner image. Select a CI host or
 container configuration that demonstrably supports Chromium sandboxing; do
 not infer sandbox support from a successful browser download.
 
