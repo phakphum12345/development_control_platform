@@ -155,16 +155,19 @@ class WorkspaceManager:
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
+        payload = json.dumps({
+            "job_id": job_id, "worker_id": worker_id,
+            "expires_at": time.time() + ttl_seconds, "version": 1,
+        }, sort_keys=True, separators=(",", ":")).encode("utf-8")
         try:
             fd = os.open(temporary, flags, 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump({
-                    "job_id": job_id, "worker_id": worker_id,
-                    "expires_at": time.time() + ttl_seconds, "version": 1,
-                }, handle, sort_keys=True)
-                handle.write("\\n")
-                handle.flush()
-                os.fsync(handle.fileno())
+            try:
+                offset = 0
+                while offset < len(payload):
+                    offset += os.write(fd, payload[offset:])
+                os.fsync(fd)
+            finally:
+                os.close(fd)
             os.replace(temporary, marker)
         except OSError:
             try:
