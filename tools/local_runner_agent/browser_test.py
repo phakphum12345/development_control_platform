@@ -138,7 +138,7 @@ class StaticWebPlaywrightTester:
                     "**/*",
                     lambda websocket: websocket.close(code=1008, reason="DCP local test network policy"),
                 )
-                context.add_init_script("""() => {
+                context.add_init_script("""(() => {
                   const deny = () => { throw new Error("WebRTC is disabled by DCP local test policy"); };
                   for (const name of ["RTCPeerConnection", "webkitRTCPeerConnection"]) {
                     try { Object.defineProperty(window, name, { configurable: false, writable: false, value: deny }); }
@@ -151,7 +151,7 @@ class StaticWebPlaywrightTester:
                       });
                     }
                   } catch (_) {}
-                }""")
+                })();""")
                 page = context.new_page()
                 page.set_default_timeout(self.timeout_ms)
                 console_errors = []
