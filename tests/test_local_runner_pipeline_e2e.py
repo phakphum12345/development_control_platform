@@ -204,7 +204,7 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
             web_executor=WebBuildExecutor(self.manager, enabled=True),
         )
         result = pipeline.run_once()
-        self.assertEqual(result["outcome"], "succeeded")
+        self.assertEqual(result["outcome"], "succeeded", result)
         self.assertEqual(result["job"]["state"], "succeeded")
         self.assertEqual(result["result"]["source_type"], "local_folder")
         self.assertEqual(result["result"]["source_sha256"], registered["snapshot_sha256"])
