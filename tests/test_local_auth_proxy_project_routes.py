@@ -77,7 +77,8 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
             "/api/local-projects/roots",
             "/api/local-projects/123e4567-e89b-42d3-a456-426614174000",
             "/api/github/repositories",
-            "/api/github/repositories/example/demo/refs",
+            "/api/github/repositories/example/demo/refs?kind=branches",
+            "/api/github/repositories/example/demo/refs?kind=tags",
             "/api/github/repositories/example/demo/commits/" + ("a" * 40),
             "/api/github/repositories/example/demo/projects/" + ("b" * 40),
         ):
@@ -86,9 +87,15 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
             self.assertEqual(self.gateway_requests[-1], path)
 
     def test_rejects_unapproved_project_api_paths(self):
-        status, body = self.get("/api/local-projects/not-a-project")
-        self.assertEqual(status, 404)
-        self.assertEqual(body["error"], "not found")
+        for path in (
+            "/api/local-projects/not-a-project",
+            "/api/github/repositories/example/demo/refs?kind=unknown",
+            "/api/github/repositories/example/demo/refs?kind=tags&unexpected=1",
+            "/api/local-projects?unexpected=1",
+        ):
+            status, body = self.get(path)
+            self.assertEqual(status, 404)
+            self.assertEqual(body["error"], "not found")
         self.assertEqual(len(self.gateway_requests), 0)
 
     def test_requires_authenticated_owner_session(self):
