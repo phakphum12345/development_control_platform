@@ -100,11 +100,22 @@ Keep these outcomes distinct:
 The launch exception is surfaced as a bounded diagnostic so CI can report the
 browser error class and a short error summary without swallowing the underlying
 reason. The repository CI also records read-only Linux identity, namespace,
-seccomp and capability information and enables Playwright browser debug output
-for the failing smoke step. Diagnose Linux user-namespace, setuid-helper,
-seccomp/AppArmor and browser-library prerequisites on the actual Runner image. Select a CI host or
-container configuration that demonstrably supports Chromium sandboxing; do
-not infer sandbox support from a successful browser download.
+seccomp, AppArmor restriction and capability information and enables Playwright
+browser debug output for the failing smoke step.
+
+On Ubuntu CI images that set
+`kernel.apparmor_restrict_unprivileged_userns=1`, the workflow installs a
+temporary, path-scoped AppArmor profile granting `userns` only to the exact
+Playwright `chrome-headless-shell` executable found under the Playwright cache.
+It does not disable the system-wide AppArmor user-namespace restriction. The
+subsequent real-browser smoke test is the required proof that the profile is
+effective; if the profile cannot be loaded or Chromium still cannot create its
+sandbox, CI fails closed. This CI-only profile does not configure a user's
+local Runner. Local administrators must provide an equivalent narrowly scoped
+host policy or use a host that already supports Chromium sandboxing.
+
+Do not add `--no-sandbox`, globally disable AppArmor's user-namespace
+restriction, or infer sandbox support from a successful browser download.
 
 ### Latest observed CI evidence (2026-11-12)
 
