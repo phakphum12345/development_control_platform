@@ -29,7 +29,7 @@ PBKDF2_ROUNDS = 600_000
 MIN_PASSWORD_LENGTH = 14
 COOKIE = "DCP_LOCAL_SESSION"
 MAX_BODY = 32_768
-ALLOWED_GET = ("/api/cloud-runners/status", "/api/cloud-runners", "/api/local-projects", "/api/local-projects/roots")
+ALLOWED_GET = ("/api/cloud-runners/status", "/api/cloud-runners", "/api/local-projects", "/api/local-projects/roots", "/api/github/repositories")
 CREDENTIALS = Path(os.getenv("DCP_LOCAL_AUTH_CREDENTIAL_FILE", str(Path(os.getenv("LOCALAPPDATA", str(Path.home()))) / "DCP" / "owner-auth.json")))
 
 
@@ -318,9 +318,13 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                 session = self.require_session()
                 if not session:
                     return self.send_json(401, {"error": "authenticated session required"})
+                github_read_path = re.fullmatch(
+                    r"/api/github/repositories/[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}/(?:refs|commits/[0-9a-fA-F]{40}|projects/[0-9a-fA-F]{40})",
+                    path,
+                )
                 if path not in ALLOWED_GET and not (
                     path.startswith("/api/cloud-runners/") and path.count("/") == 3
-                ) and not re.fullmatch(r"/api/local-projects/[0-9a-f-]{36}", path):
+                ) and not re.fullmatch(r"/api/local-projects/[0-9a-f-]{36}", path) and not github_read_path:
                     return self.send_json(404, {"error": "not found"})
                 status, data = app.gateway_request("GET", path, session)
                 return self.send_bytes(status, data)
