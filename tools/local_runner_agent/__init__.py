@@ -7,6 +7,7 @@ from .web_build import WebBuildExecutor, WebArtifactPackager
 from .pipeline import RunnerPipeline
 from .workspace import WorkspaceError, WorkspaceManager
 from .local_project import LocalProjectError, LocalProjectRegistry
+from .runtime import RuntimeManager, RuntimeErrorDCP
 
 __all__ = [
     "GatewayClient", "RunnerAgentConfig", "RunnerGatewayError",
@@ -16,4 +17,5 @@ __all__ = [
     "WebBuildExecutor", "WebArtifactPackager",
     "RunnerPipeline", "WorkspaceError", "WorkspaceManager",
     "LocalProjectError", "LocalProjectRegistry",
+    "RuntimeManager", "RuntimeErrorDCP",
 ]
