@@ -366,6 +366,12 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
         self.assertEqual(headers.get("X-Frame-Options"), "SAMEORIGIN")
         self.assertNotIn("session_token", body.decode("utf-8", "ignore"))
         gateway.assert_called_once()
+        _, _, session_body = self.request("/api/auth/session")
+        logout_csrf = json.loads(session_body)["csrfToken"]
+        logged_out, _, _ = self.request(
+            "/api/auth/logout", "POST", csrf=logout_csrf
+        )
+        self.assertEqual(logged_out, 200)
 
     def test_origin_and_csrf_protections_fail_closed(self):
         _, _, body = self.request(
