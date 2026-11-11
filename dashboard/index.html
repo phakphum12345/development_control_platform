@@ -1014,6 +1014,7 @@ function initProjectImport(){
  $("project-import-ref-kind").addEventListener("change",()=>{$("project-import-refs-load").disabled=!projectImportState.authenticated||!$("project-import-github-repo").value});
  $("project-import-github-repo").addEventListener("change",()=>{
   projectImportState.refs=[];projectImportState.verifiedCommit=null;projectImportState.inspection=null;projectImportState.selectedSource=null;
+  runnerUI.project=null;runnerUI.verifiedCommit=null;
   $("project-import-ref").innerHTML='<option value="">Load refs first</option>';
   $("project-import-ref").disabled=true;$("project-import-verify").disabled=true;$("project-import-inspect").disabled=true;
   $("project-import-refs-load").disabled=!projectImportState.authenticated||!$("project-import-github-repo").value;
