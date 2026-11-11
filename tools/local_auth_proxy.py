@@ -323,6 +323,15 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                     "csrfToken": app.csrf(session),
                     "user": {"displayName": session["username"], "role": "owner"} if session["authenticated"] else None,
                 }, cookie)
+            preview_list = re.fullmatch(r"/api/jobs/([0-9a-f-]{36})/previews", path)
+            if preview_list:
+                session = self.require_session()
+                if not session:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if parsed.query:
+                    return self.send_json(400, {"error": "preview query parameters are not supported"})
+                status, data = app.gateway_request("GET", path, session)
+                return self.send_bytes(status, data)
             preview_match = re.fullmatch(
                 r"/api/jobs/([0-9a-f-]{36})/previews/([0-9a-f-]{36})(?:/content/(.*))?",
                 path,
