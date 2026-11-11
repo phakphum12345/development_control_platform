@@ -762,6 +762,8 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                                 inspection = discover_project(current["path"], max_files=5000)
                             except (DiscoveryError, OSError, ValueError):
                                 return self.send_json(409, {"error": "local project could not be inspected safely"})
+                            if inspection.get("truncated"):
+                                return self.send_json(409, {"error": "local project inventory is truncated; narrow the selected project before queueing"})
                             detection = inspection["inventory"]["framework_detection"]
                             framework = detection.get("framework")
                             if target == "build_static_web" and framework != "Static HTML/CSS/JS":
