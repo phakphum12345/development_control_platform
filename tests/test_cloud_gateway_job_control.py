@@ -57,7 +57,7 @@ class JobStoreTests(unittest.TestCase):
         self.assertEqual(row["target"], "test_static_web")
         self.assertEqual(row["payload"]["source_type"], "local_folder")
 
-        def test_local_folder_job_uses_immutable_snapshot_identity(self):
+    def test_local_folder_job_uses_immutable_snapshot_identity(self):
         project_id = "12345678-1234-4234-8234-123456789abc"
         payload = {
             "source_type": "local_folder",
