@@ -255,6 +255,71 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
         self.assertEqual(result["job"]["state"], "failed")
         self.assertFalse((self.root / "workspaces" / job["id"]).exists())
 
+    def test_static_web_playwright_pipeline_uploads_evidence_and_fails_closed(self):
+        from tools.local_runner_agent.web_build import WebBuildExecutor
+
+        class StaticCheckout:
+            def __init__(self, manager):
+                self.manager = manager
+            def checkout(self, job_id, worker_id, repository, commit_sha):
+                source = self.manager.get(job_id, worker_id) / "source"
+                source.mkdir()
+                (source / "index.html").write_text(
+                    '<!doctype html><html lang="en"><head><title>Fixture</title></head><body><h1>Ready</h1></body></html>',
+                    encoding="utf-8",
+                )
+                return source
+
+        class BrowserTestFixture:
+            def __init__(self, manager, status):
+                self.manager = manager
+                self.status = status
+            def run(self, job_id, worker_id):
+                workspace = self.manager.get(job_id, worker_id)
+                evidence = workspace / ".dcp-artifacts" / "web-test-results.zip"
+                evidence.parent.mkdir(mode=0o700, exist_ok=True)
+                evidence.write_bytes(b"fixture-playwright-evidence")
+                return {
+                    "status": self.status,
+                    "duration_seconds": 0.25,
+                    "screenshots": ["viewport-mobile.png", "viewport-tablet.png", "viewport-desktop.png"],
+                    "accessibility_issue_count": 0 if self.status == "PASS" else 1,
+                    "blocked_external_request_count": 0,
+                    "console_error_count": 0,
+                    "page_error_count": 0,
+                    "report_path": "source/.dcp-test-results/report.json",
+                    "artifact_path": evidence,
+                    "artifact_name": "web-test-results.zip",
+                }
+
+        for status, expected_outcome in (("PASS", "succeeded"), ("FAIL", "failed")):
+            with self.subTest(status=status):
+                job, created = self.jobs.create({
+                    "repository": "owner/static-playwright-site",
+                    "commit_sha": ("f" if status == "PASS" else "9") * 40,
+                    "target": "test_static_web",
+                }, "playwright-pipeline-" + status.lower() + "-001")
+                self.assertTrue(created)
+                pipeline = RunnerPipeline(
+                    self.client, self.manager, StaticCheckout(self.manager),
+                    FlutterBuildExecutor(self.manager, enabled=False),
+                    trusted_repositories={"owner/static-playwright-site"},
+                    worker_os="windows" if os.name == "nt" else "linux",
+                    capabilities={"web", "playwright", "windows" if os.name == "nt" else "linux"},
+                    web_executor=WebBuildExecutor(self.manager, enabled=True),
+                    browser_test_executor=BrowserTestFixture(self.manager, status),
+                )
+                result = pipeline.run_once()
+                self.assertEqual(result["outcome"], expected_outcome)
+                self.assertEqual(result["job"]["state"], expected_outcome)
+                self.assertEqual(result["result"]["browser_test"]["status"], status)
+                test_artifact = result["result"]["test_artifact"]
+                metadata, handle = self.artifacts.open(test_artifact["id"])
+                with handle:
+                    self.assertEqual(handle.read(), b"fixture-playwright-evidence")
+                self.assertEqual(metadata["sha256"], test_artifact["sha256"])
+                self.assertTrue(result["result"]["workspace_retained_for_preview"])
+
     def test_static_web_job_runs_through_scheduler_and_uploads_artifact(self):
         job, created = self.jobs.create({
             "repository": "owner/static-site",
