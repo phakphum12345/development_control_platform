@@ -96,7 +96,6 @@ class WorkspaceManager:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 json.dump({"job_id": job_id, "worker_id": worker_id, "version": 1},
                           handle, sort_keys=True)
-                handle.write(chr(10))
             return target
         except Exception:
             shutil.rmtree(target, ignore_errors=True)
