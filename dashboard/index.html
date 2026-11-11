@@ -322,7 +322,7 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
  <div class="grid">
   <div class="field"><label for="build-job-target">Build target</label><select id="build-job-target">
    <option value="test">Flutter Test</option><option value="build">Android APK</option><option value="package">Android App Bundle</option>
-   <option value="build_static_web">Static HTML/CSS/JS</option><option value="build_vite">React/Vue + Vite (preinstalled dependencies)</option><option value="build_web">Flutter Web</option><option value="build_windows">Windows</option><option value="build_linux">Linux</option>
+   <option value="build_static_web">Static HTML/CSS/JS Build</option><option value="test_static_web">Static Web + Playwright Test</option><option value="build_vite">React/Vue + Vite (preinstalled dependencies)</option><option value="build_web">Flutter Web</option><option value="build_windows">Windows</option><option value="build_linux">Linux</option>
    <option value="build_macos">macOS</option><option value="build_ios">iOS (no code signing)</option>
   </select></div>
   <div class="field"><label>Selected immutable commit</label><span class="small muted" id="build-job-selected-commit">Select and verify a commit above first</span></div>
@@ -1290,13 +1290,13 @@ async function buildJobCreate(){
   if(!localProject||localProject.snapshot_sha256!==selected.snapshot_sha256){
    runnerText("build-job-result","BLOCKED: refresh the Local Project catalog and select its current snapshot.");return;
   }
-  if(target!=="build_static_web"||!localProject.framework_detection||
+  if(!["build_static_web","test_static_web"].includes(target)||!localProject.framework_detection||
      localProject.framework_detection.framework!=="Static HTML/CSS/JS"){
-   runnerText("build-job-result","BLOCKED: Local Folder currently supports detected dependency-free Static HTML/CSS/JS projects only.");return;
+   runnerText("build-job-result","BLOCKED: Local Folder currently supports detected dependency-free Static HTML/CSS/JS build and Playwright test targets only.");return;
   }
   payload={
    source_type:"local_folder",project_id:localProject.project_id,
-   snapshot_sha256:localProject.snapshot_sha256,target:"build_static_web"
+   snapshot_sha256:localProject.snapshot_sha256,target
   };
  }else{
   if(!runnerUI.repositories.some(item=>item.full_name===repository)){runnerText("build-job-result","BLOCKED: choose a GitHub App installation repository above.");return}
@@ -1323,11 +1323,11 @@ function buildJobsUpdateGate(){
   const ready=projectImportState.authenticated&&projectImportState.csrf&&localProject&&
    localProject.snapshot_sha256===selected.snapshot_sha256&&
    localProject.framework_detection&&localProject.framework_detection.framework==="Static HTML/CSS/JS"&&
-   $("build-job-target").value==="build_static_web";
+   ["build_static_web","test_static_web"].includes($("build-job-target").value);
   $("build-job-create").disabled=!ready;
   $("build-job-selected-commit").textContent=ready
    ?"Local Folder · "+localProject.relative_path+" · SHA-256 "+localProject.snapshot_sha256
-   :"Local Folder selected; static HTML/CSS/JS detection and build_static_web target are required";
+   :"Local Folder selected; static HTML/CSS/JS detection and a supported build/test target are required";
   return;
  }
  const repository=$("runner-repository").value;

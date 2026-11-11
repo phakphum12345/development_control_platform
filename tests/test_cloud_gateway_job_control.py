@@ -45,6 +45,18 @@ class JobStoreTests(unittest.TestCase):
                 self.assertTrue(created)
                 self.assertEqual(row["target"], target)
 
+    def test_local_folder_accepts_playwright_target_only_for_static_test_flow(self):
+        payload = {
+            "source_type": "local_folder",
+            "project_id": "12345678-1234-4234-8234-123456789abc",
+            "snapshot_sha256": "d" * 64,
+            "target": "test_static_web",
+        }
+        row, created = self.store.create(payload, "local-folder-playwright-01")
+        self.assertTrue(created)
+        self.assertEqual(row["target"], "test_static_web")
+        self.assertEqual(row["payload"]["source_type"], "local_folder")
+
     def test_local_folder_job_uses_immutable_snapshot_identity(self):
         project_id = "12345678-1234-4234-8234-123456789abc"
         payload = {

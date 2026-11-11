@@ -79,7 +79,7 @@ class JobStore:
         source_type = payload.get("source_type", "github")
         target = payload.get("target", "test")
         if target not in ("test", "build", "package", "build_android", "build_web", "build_windows",
-                          "build_linux", "build_macos", "build_ios", "build_static_web", "build_vite"):
+                          "build_linux", "build_macos", "build_ios", "build_static_web", "build_vite", "test_static_web"):
             raise ValueError("Unsupported target")
         if source_type == "github":
             if not set(payload).issubset({"source_type", "repository", "commit_sha", "target"}):
@@ -105,8 +105,8 @@ class JobStore:
                 raise ValueError("Local project ID must use canonical lowercase UUID form")
             if not isinstance(snapshot_sha, str) or not re.fullmatch(r"[0-9a-f]{64}", snapshot_sha):
                 raise ValueError("Invalid local project snapshot SHA-256")
-            if target != "build_static_web":
-                raise ValueError("Local Folder jobs currently support only static web builds; dependency-managed frameworks are deferred")
+            if target not in ("build_static_web", "test_static_web"):
+                raise ValueError("Local Folder jobs support static web build or Playwright test targets only; dependency-managed frameworks are deferred")
             repository = "local-folder/" + project_id
             sha = hashlib.sha1(("dcp-local-folder:" + project_id + ":" + snapshot_sha).encode("utf-8")).hexdigest()
             normalized = {
@@ -179,7 +179,7 @@ class JobStore:
         if allowed_targets is not None:
             supported = {"test", "build", "package", "build_android", "build_web",
                          "build_windows", "build_linux", "build_macos", "build_ios",
-                         "build_static_web", "build_vite"}
+                         "build_static_web", "build_vite", "test_static_web"}
             if (not isinstance(allowed_targets, (list, tuple, set, frozenset))
                     or any(not isinstance(item, str) or item not in supported for item in allowed_targets)):
                 raise ValueError("Invalid allowed target list")

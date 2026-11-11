@@ -14,7 +14,7 @@ from .sqlite_security import prepare_private_sqlite_file
 
 _WORKER = re.compile(r"^[A-Za-z0-9_.:-]{1,100}$")
 _OS = {"linux", "windows", "macos"}
-_CAPABILITIES = {"flutter", "android", "web", "linux", "windows", "macos", "ios"}
+_CAPABILITIES = {"flutter", "android", "web", "linux", "windows", "macos", "ios", "playwright"}
 
 
 class WorkerNotFound(KeyError):
@@ -71,7 +71,7 @@ class RunnerRegistry:
             raise ValueError("invalid worker ID")
         if not isinstance(host_os, str) or host_os not in _OS:
             raise ValueError("host_os must be linux, windows, or macos")
-        if not isinstance(capabilities, list) or not 1 <= len(capabilities) <= 7:
+        if not isinstance(capabilities, list) or not 1 <= len(capabilities) <= 8:
             raise ValueError("capabilities must be a non-empty array")
         if any(not isinstance(item, str) or item not in _CAPABILITIES for item in capabilities):
             raise ValueError("unsupported Runner capability")
@@ -158,6 +158,8 @@ class RunnerRegistry:
             targets.extend(("build", "build_android", "package"))
         if "web" in caps:
             targets.extend(("build_web", "build_static_web", "build_vite"))
+        if "web" in caps and "playwright" in caps:
+            targets.append("test_static_web")
         if "windows" in caps:
             targets.append("build_windows")
         if "linux" in caps:

@@ -6,7 +6,7 @@ The local-first job API adds a durable SQLite queue, authenticated HTTP lifecycl
 
 Dashboard routes use the existing trusted-proxy HMAC session. Reads require an owner/operator session. Mutations require same-origin plus CSRF validation. Job cancellation is owner-only.
 
-- `POST /api/jobs` — create with `Idempotency-Key`; payload allows only `repository`, immutable lowercase `commit_sha`, and `target` in `test|build|package|build_android|build_web|build_windows|build_linux|build_macos|build_ios`.
+- `POST /api/jobs` — create with `Idempotency-Key`; payload allows only `repository`, immutable lowercase `commit_sha`, and `target` in the Flutter target allowlist plus `build_static_web`, `build_vite`, and `test_static_web` where the source type and Runner capability policy permit them.
 - `GET /api/jobs?limit=50` — list recent jobs.
 - `GET /api/jobs/{id}` — inspect a job.
 - `GET /api/jobs/{id}/events` — lifecycle events.
@@ -231,3 +231,17 @@ The selected source evidence is currently a Dashboard view state only. It is not
 - Does not execute source, install dependencies, contact the network or create a job.
 
 The next integration step is to bind the project ID and expected fingerprint into the durable job payload, then have the Local Runner materialize the verified snapshot before executing only an explicitly approved, supported build adapter.
+
+
+## M11 — Local Web Build, Runtime and Static Playwright
+
+The Local Runner pipeline now supports:
+- `build_static_web` for detected dependency-free Static HTML/CSS/JS projects.
+- `build_vite` for supported React/Vite and Vue/Vite projects when the Vite CLI and dependencies are already present locally. DCP does not run package installation or npm lifecycle scripts.
+- `test_static_web` for detected dependency-free static projects only, requiring both `web` and `playwright` Runner capabilities and the explicit `DCP_RUNNER_PLAYWRIGHT_ENABLED=1` opt-in.
+
+The static RuntimeManager binds to `127.0.0.1`, serves only generated output, checks health, records bounded logs, and stops its owned process. The authenticated Preview Proxy provides owner/job-bound static preview sessions, but the current `test_static_web` implementation starts RuntimeManager directly; Playwright-through-Preview-Proxy E2E is not yet established.
+
+Playwright uses a fixed DCP-owned test plan, Chromium sandboxing, exact loopback HTTP origin routing, WebSocket blocking, WebRTC API denial and service-worker blocking. These browser controls are defense-in-depth, not OS-level process isolation or a host firewall. Only trusted projects on a suitably isolated Runner may be tested.
+
+The test evidence currently consists of three viewport screenshots, a JSON report and a bounded ZIP artifact. It does not include traces, cross-browser results, visual baselines, full WCAG conformance or authenticated preview-proxy browser coverage. See `docs/DCP-PLAYWRIGHT-TESTING.md` and `docs/DCP-ACCEPTANCE-TEST-PLAN.md`.

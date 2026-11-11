@@ -75,7 +75,7 @@ class RunnerRegistryTargets:
     ALL = {
         "test", "build", "package", "build_android", "build_web",
         "build_windows", "build_linux", "build_macos", "build_ios",
-        "build_static_web", "build_vite",
+        "build_static_web", "build_vite", "test_static_web",
     }
     REQUIRES_HOST = {
         "build_linux": "linux",

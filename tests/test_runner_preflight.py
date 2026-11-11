@@ -49,9 +49,12 @@ class RunnerPreflightTests(unittest.TestCase):
 
 
     @patch("tools.runner_agent.preflight.platform.system", return_value="Linux")
+    @patch("tools.runner_agent.preflight._playwright_tool", return_value={
+        "installed": False, "version": None, "browser_installed": False,
+    })
     @patch("tools.runner_agent.preflight.shutil.which")
     @patch("tools.runner_agent.preflight.subprocess.run")
-    def test_node_and_git_allow_web_only_runner_without_flutter(self, run, which, _system):
+    def test_node_and_git_allow_web_only_runner_without_flutter(self, run, which, _playwright, _system):
         which.side_effect = lambda name: f"/usr/bin/{name}" if name in {"git", "node"} else None
         run.return_value.stdout = "version"
         run.return_value.stderr = ""
@@ -59,6 +62,19 @@ class RunnerPreflightTests(unittest.TestCase):
         self.assertTrue(report["minimum_agent_prerequisites_met"])
         self.assertEqual(report["detected_capabilities"], ["web"])
         self.assertEqual(preflight.resolve_capabilities(report), ["web"])
+
+    @patch("tools.runner_agent.preflight.platform.system", return_value="Linux")
+    @patch("tools.runner_agent.preflight._playwright_tool", return_value={
+        "installed": True, "version": "1.55.0", "browser_installed": True, "websocket_routing": True,
+    })
+    @patch("tools.runner_agent.preflight.shutil.which")
+    def test_playwright_capability_requires_verified_package_and_chromium(self, which, _playwright, _system):
+        which.side_effect = lambda name: f"/usr/bin/{name}" if name in {"git", "node"} else None
+        report = preflight.collect_preflight()
+        self.assertIn("playwright", report["detected_capabilities"])
+        self.assertTrue(report["tools"]["playwright"]["browser_installed"])
+        self.assertIn("playwright", preflight.resolve_capabilities(report))
+        self.assertNotIn("playwright", preflight.resolve_capabilities(report, ["web"]))
 
     @patch("tools.runner_agent.preflight.platform.system", return_value="Darwin")
     @patch("tools.runner_agent.preflight.shutil.which")
