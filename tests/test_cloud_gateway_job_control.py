@@ -100,8 +100,33 @@ class JobStoreTests(unittest.TestCase):
         self.store.append_log(job["id"], "local-worker-1", "tests started")
         done = self.store.finish(job["id"], "local-worker-1", "succeeded", {"exit_code": 0})
         self.assertEqual(done["state"], "succeeded")
+        self.assertIsNone(done["worker"], "terminal jobs must release their active lease owner")
+        self.assertEqual(done["last_worker"], "local-worker-1")
+        self.assertIsNone(done["lease_until"])
         self.assertEqual(self.store.logs(job["id"])[0]["message"], "tests started")
         self.assertIsNone(self.store.claim("local-worker-2"))
+
+    def test_legacy_jobs_database_adds_worker_provenance_column(self):
+        import sqlite3
+
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "legacy-jobs.sqlite3"
+            with sqlite3.connect(path) as db:
+                db.execute("""
+                    CREATE TABLE jobs (
+                        id TEXT PRIMARY KEY, idem TEXT UNIQUE NOT NULL,
+                        fingerprint TEXT NOT NULL, repository TEXT NOT NULL,
+                        commit_sha TEXT NOT NULL, target TEXT NOT NULL,
+                        state TEXT NOT NULL, payload TEXT NOT NULL,
+                        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                        worker TEXT, lease_until TEXT, cancel_at TEXT,
+                        result TEXT, error_code TEXT
+                    )
+                """)
+            migrated = JobStore(str(path))
+            with migrated.db() as db:
+                columns = {row["name"] for row in db.execute("PRAGMA table_info(jobs)")}
+            self.assertIn("last_worker", columns)
 
     def test_cancel_queued_and_running(self):
         queued, _ = self.create()

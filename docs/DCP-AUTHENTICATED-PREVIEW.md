@@ -10,6 +10,7 @@ The first authenticated preview release serves an already-built static output di
 - The browser receives an opaque runtime ID and a same-origin preview path. It never receives the Runtime Manager session capability, upstream port, or upstream URL.
 - Every start, status, content, and stop request requires the authenticated owner session. Mutations additionally require same-origin and CSRF validation.
 - Gateway verifies that the requested job exists, belongs to a local worker, and completed successfully before starting a preview.
+- The Job Control Plane separates the active lease owner (`worker`, cleared at completion) from terminal execution provenance (`last_worker`). Preview lookup uses the recorded terminal worker to reopen only the matching job/worker workspace; legacy rows without that provenance fail closed.
 - The Runtime Manager binds only to 127.0.0.1. The Gateway proxy uses a fixed loopback host and a port read from the server-side runtime record; clients cannot choose either.
 - Content paths reject absolute paths, dot segments, backslashes, control characters, and oversized values. Responses are bounded to 8 MiB.
 - Preview content is restricted to static web MIME types; cookies and arbitrary upstream request headers are not forwarded.
@@ -33,6 +34,17 @@ All routes are exposed through the Local Auth Proxy:
 - DELETE /api/jobs/{job_id}/previews/{runtime_id} stops the runtime.
 
 Supported output roots are source/dist, source/build/web, dist, and build/web. A job must be in succeeded state. Only one active preview per job is allowed.
+
+## End-to-end verification
+
+The Local Auth Proxy integration test starts a real Gateway and Local Auth Proxy,
+creates a completed static-web job and its owner-marked workspace, and starts
+the actual loopback Runtime Manager. It then exercises owner login, preview
+start/list/status, HTML and CSS retrieval through the same-origin proxy,
+cross-job runtime rejection, query-string rejection, CSRF-protected stop,
+post-stop denial, and logout denial. This verifies the full local request path;
+it does not certify untrusted-project OS isolation or a general-purpose browser
+sandbox.
 
 ## Current limitations
 

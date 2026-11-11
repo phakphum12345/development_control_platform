@@ -98,6 +98,8 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
         cls.gateway_db = str(
             Path(cls.temp.name) / "gateway.sqlite3"
         )
+        cls.workspace_root = Path(cls.temp.name) / "workspaces"
+        cls.jobs_db = cls.gateway_db + ".jobs"
 
         env = os.environ.copy()
         env.update({
@@ -109,6 +111,8 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                 f"http://127.0.0.1:{cls.local_port}"
             ),
             "DCP_GATEWAY_DATABASE": cls.gateway_db,
+            "DCP_GATEWAY_JOBS_DATABASE": cls.jobs_db,
+            "DCP_RUNNER_WORKSPACE_ROOT": str(cls.workspace_root),
             "DCP_GATEWAY_PROVISIONING_ENABLED": "false",
             "DCP_GATEWAY_OWNER_APPROVED": "false",
         })
@@ -375,6 +379,163 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
             "/api/auth/logout", "POST", csrf=logout_csrf
         )
         self.assertEqual(logged_out, 200)
+
+    def test_real_authenticated_preview_proxy_serves_and_stops_completed_job(self):
+        import uuid
+
+        from tools.cloud_gateway.job_control import JobStore
+        from tools.local_runner_agent.workspace import WorkspaceManager
+
+        worker_id = "preview-e2e-worker"
+        jobs = JobStore(self.jobs_db)
+        job, created = jobs.create(
+            {
+                "repository": "example/preview-fixture",
+                "commit_sha": "a" * 40,
+                "target": "build_static_web",
+            },
+            "authenticated-preview-e2e-0001",
+        )
+        self.assertTrue(created)
+        claimed = jobs.claim(worker_id, allowed_targets=["build_static_web"])
+        self.assertEqual(claimed["id"], job["id"])
+
+        workspaces = WorkspaceManager(self.workspace_root)
+        workspace = workspaces.create(job["id"], worker_id)
+        dist = workspace / "source" / "dist"
+        (dist / "assets").mkdir(parents=True)
+        html = (
+            "<!doctype html><html lang='en'><head><title>DCP Preview E2E</title>"
+            "<link rel='stylesheet' href='/assets/site.css'></head>"
+            "<body><h1 id='preview-ready'>Authenticated preview works</h1></body></html>"
+        )
+        (dist / "index.html").write_text(html, encoding="utf-8")
+        (dist / "assets" / "site.css").write_text(
+            "body { color: rgb(1, 2, 3); }", encoding="utf-8"
+        )
+        completed = jobs.finish(
+            job["id"], worker_id, "succeeded", {"exit_code": 0}
+        )
+        self.assertEqual(completed["state"], "succeeded")
+        self.assertIsNone(completed["worker"])
+        self.assertEqual(completed["last_worker"], worker_id)
+
+        _, _, preauth_body = self.request("/api/auth/session")
+        preauth = json.loads(preauth_body)
+        denied, _, _ = self.request(
+            f"/api/jobs/{job['id']}/previews"
+        )
+        self.assertEqual(denied, 401)
+
+        logged_in, _, _ = self.request(
+            "/api/auth/login",
+            "POST",
+            {
+                "username": "owner-test",
+                "password": "correct horse battery staple 2026!",
+            },
+            preauth["csrfToken"],
+        )
+        self.assertEqual(logged_in, 200)
+        _, _, session_body = self.request("/api/auth/session")
+        csrf = json.loads(session_body)["csrfToken"]
+
+        preview_list_path = f"/api/jobs/{job['id']}/previews"
+        self.assertRegex(job["id"], r"^[0-9a-f-]{36}$")
+        cookie_header = "; ".join(
+            f"{cookie.name}={cookie.value}" for cookie in self.cookie_jar
+        )
+        owner_session = self.app.get_session(cookie_header)
+        self.assertTrue(owner_session and owner_session["authenticated"])
+        direct_status, direct_body = self.app.gateway_request(
+            "GET", preview_list_path, owner_session
+        )
+        self.assertEqual(
+            direct_status, 200,
+            "Gateway preview-list route failed: " + direct_body.decode(errors="replace"),
+        )
+
+        listed, _, list_body = self.request(preview_list_path)
+        self.assertEqual(listed, 200, list_body.decode(errors="replace"))
+        self.assertEqual(json.loads(list_body)["previews"], [])
+
+        started, _, start_body = self.request(
+            f"/api/jobs/{job['id']}/previews",
+            "POST",
+            {},
+            csrf,
+        )
+        self.assertEqual(started, 201, start_body.decode(errors="replace"))
+        preview = json.loads(start_body)
+        self.assertEqual(preview["job_id"], job["id"])
+        self.assertEqual(preview["state"], "running")
+        self.assertTrue(preview["preview_path"].endswith("/content/"))
+        self.assertNotIn("session_token", start_body.decode("utf-8"))
+        self.assertNotIn("port", preview)
+        self.assertNotIn("url", preview)
+
+        listed, _, list_body = self.request(
+            f"/api/jobs/{job['id']}/previews"
+        )
+        self.assertEqual(listed, 200)
+        self.assertEqual(len(json.loads(list_body)["previews"]), 1)
+        self.assertEqual(
+            json.loads(list_body)["previews"][0]["runtime_id"],
+            preview["runtime_id"],
+        )
+
+        status, _, status_body = self.request(
+            f"/api/jobs/{job['id']}/previews/{preview['runtime_id']}"
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(status_body)["state"], "running")
+
+        content_status, content_headers, content_body = self.request(
+            preview["preview_path"] + "index.html"
+        )
+        self.assertEqual(content_status, 200)
+        self.assertIn(b"Authenticated preview works", content_body)
+        self.assertIn("sandbox allow-scripts", content_headers.get("Content-Security-Policy", ""))
+        self.assertEqual(content_headers.get("X-Frame-Options"), "SAMEORIGIN")
+        self.assertEqual(content_headers.get("X-Content-Type-Options"), "nosniff")
+        self.assertNotIn("session_token", content_body.decode("utf-8", "ignore"))
+
+        asset_status, asset_headers, asset_body = self.request(
+            preview["preview_path"] + "assets/site.css"
+        )
+        self.assertEqual(asset_status, 200)
+        self.assertIn("text/css", asset_headers.get("Content-Type", ""))
+        self.assertIn(b"rgb(1, 2, 3)", asset_body)
+
+        other_job_id = str(uuid.uuid4())
+        cross_job, _, _ = self.request(
+            f"/api/jobs/{other_job_id}/previews/{preview['runtime_id']}/content/index.html"
+        )
+        self.assertEqual(cross_job, 404)
+        query_status, _, _ = self.request(
+            preview["preview_path"] + "index.html?external=1"
+        )
+        self.assertEqual(query_status, 400)
+
+        stopped, _, stop_body = self.request(
+            f"/api/jobs/{job['id']}/previews/{preview['runtime_id']}",
+            "DELETE",
+            csrf=csrf,
+        )
+        self.assertEqual(stopped, 200, stop_body.decode(errors="replace"))
+        stopped_status, _, _ = self.request(
+            f"/api/jobs/{job['id']}/previews/{preview['runtime_id']}"
+        )
+        self.assertEqual(stopped_status, 404)
+
+        logged_out, _, _ = self.request(
+            "/api/auth/logout", "POST", csrf=csrf
+        )
+        self.assertEqual(logged_out, 200)
+        denied_after_logout, _, _ = self.request(
+            preview["preview_path"] + "index.html"
+        )
+        self.assertEqual(denied_after_logout, 401)
 
     def test_job_creation_proxy_forwards_idempotency_key_and_owner_csrf(self):
         _, _, preauth_body = self.request("/api/auth/session")

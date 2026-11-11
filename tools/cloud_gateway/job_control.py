@@ -32,7 +32,7 @@ class JobStore:
                     id TEXT PRIMARY KEY, idem TEXT UNIQUE NOT NULL, fingerprint TEXT NOT NULL,
                     repository TEXT NOT NULL, commit_sha TEXT NOT NULL, target TEXT NOT NULL,
                     state TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL, worker TEXT, lease_until TEXT,
+                    updated_at TEXT NOT NULL, worker TEXT, last_worker TEXT, lease_until TEXT,
                     cancel_at TEXT, result TEXT, error_code TEXT
                 );
                 CREATE INDEX IF NOT EXISTS jobs_queue_idx ON jobs(state, created_at);
@@ -45,6 +45,10 @@ class JobStore:
                     message TEXT NOT NULL, created_at TEXT NOT NULL
                 );
             """)
+            # Preserve execution provenance separately from the active lease owner.
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(jobs)")}
+            if "last_worker" not in columns:
+                db.execute("ALTER TABLE jobs ADD COLUMN last_worker TEXT")
 
     @contextmanager
     def db(self):
@@ -260,8 +264,9 @@ class JobStore:
             if row["state"] == "cancel_requested" and outcome == "succeeded":
                 raise JobConflict("Cancellation must be acknowledged")
             db.execute(
-                "UPDATE jobs SET state=?,updated_at=?,worker=NULL,lease_until=NULL,result=?,error_code=? WHERE id=?",
-                (outcome, utcnow().isoformat(), json.dumps(result) if result is not None else None, error_code, job_id),
+                "UPDATE jobs SET state=?,updated_at=?,worker=NULL,last_worker=?,lease_until=NULL,result=?,error_code=? WHERE id=?",
+                (outcome, utcnow().isoformat(), worker,
+                 json.dumps(result) if result is not None else None, error_code, job_id),
             )
             self._event(db, job_id, outcome, {"error_code": error_code} if error_code else {})
             db.execute("COMMIT")
