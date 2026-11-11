@@ -132,8 +132,11 @@ class RuntimeManager:
     def start_static(self, job_id: str, worker_id: str, *,
                      output_relative: str = "source/dist") -> dict:
         """Start an already-built static app; no project code or shell is executed."""
-        workspace = self.workspaces.get(job_id, worker_id)
-        self.workspaces.check_quota(job_id, worker_id)
+        try:
+            workspace = self.workspaces.get(job_id, worker_id)
+            self.workspaces.check_quota(job_id, worker_id)
+        except WorkspaceError:
+            raise RuntimeErrorDCP("job workspace is not safe or available") from None
         self.reap_expired()
         if len(self._runtimes) >= self.max_active:
             raise RuntimeErrorDCP("active runtime limit reached")
