@@ -201,6 +201,8 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
                     raise
         web_executor = DiagnosticWebBuildExecutor(self.manager, enabled=True)
         class BrowserTestFixture:
+            def __init__(self, manager):
+                self.manager = manager
             def run(self, job_id, worker_id):
                 evidence = self.manager.get(job_id, worker_id) / ".dcp-artifacts" / "web-test-results.zip"
                 evidence.parent.mkdir(mode=0o700, exist_ok=True)
@@ -223,7 +225,7 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
             worker_os=host_os,
             capabilities={"web", "playwright", host_os},
             web_executor=web_executor,
-            browser_test_executor=BrowserTestFixture(),
+            browser_test_executor=BrowserTestFixture(self.manager),
         )
         result = pipeline.run_once()
         self.assertEqual(
