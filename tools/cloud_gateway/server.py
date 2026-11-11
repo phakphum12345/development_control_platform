@@ -754,8 +754,8 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                                 return self.send_json(400, {"error": "invalid local project ID"})
                             if not isinstance(expected_sha, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_sha):
                                 return self.send_json(400, {"error": "invalid local snapshot SHA-256"})
-                            if target != "build_static_web":
-                                return self.send_json(400, {"error": "Local Folder currently supports dependency-free static web builds only"})
+                            if target not in ("build_static_web", "test_static_web"):
+                                return self.send_json(400, {"error": "Local Folder supports static web build or Playwright test targets only"})
                             try:
                                 registry.reload()
                                 current = registry.refresh_project(project_id)
