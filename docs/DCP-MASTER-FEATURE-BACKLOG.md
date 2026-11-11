@@ -14,7 +14,7 @@ Status labels describe the initial source review only; revalidate against the ex
 | IMP-02 | Local Folder import via Local Agent | PARTIAL | P0 | Local registry, explicit CLI enrollment, owner-only read APIs, Dashboard source selection and verified snapshot materialization exist; durable job binding and runner integration remain. |
 | IMP-03 | Framework/toolchain detection | PARTIAL | P0 | Existing bounded inventory now reports evidence-based framework, package manager, manifest constraints and scripts; installed toolchain readiness and job integration remain. |
 | BUILD-01 | Flutter fixed-target executor | EXISTING/PARTIAL | P1 | Opt-in, trusted-repository allowlist, disabled by default; verify artifacts and cleanup. |
-| BUILD-02 | Generic web build adapters | MISSING | P0 | Start with static HTML/JS and Node/Vite stacks; no arbitrary shell command. |
+| BUILD-02 | Generic web build adapters | PARTIAL | P0 | Static HTML/JS and React/Vite + Vue/Vite Local Runner targets implemented; dashboard UX, host acceptance and broader build matrix remain. |
 | RUN-01 | Runtime Manager | MISSING | P0 | Start/stop supervised process trees with port isolation, timeout and logs. |
 | RUN-02 | Real application preview | MISSING/PARTIAL | P0 | Preview actual runtime via owner-bound expiring proxy session. |
 | TERM-01 | Terminal Studio UI | MISSING | P1 | Tabs, shell selection, working directory, output, exit code, stop and history. |
@@ -60,3 +60,8 @@ A feature is complete only when implementation, unit/integration tests, security
 ## 2026-11-11 project intelligence progress
 - Added manifest-backed framework detection to the existing Project Intelligence inventory.
 - Detection is read-only and does not imply toolchain readiness or build support.
+
+
+## Universal Build Engine progress
+- Static web and Vite targets are now wired through existing Job Control Plane, Runner Scheduler, Local Runner Pipeline and Artifact Store.
+- Dependency installation is intentionally not automated; Vite must already exist in the workspace. Unknown frameworks remain unsupported.
