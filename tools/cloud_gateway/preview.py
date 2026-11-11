@@ -46,9 +46,11 @@ class AuthenticatedPreviewManager:
 
     def start(self, job_id: str, worker_id: str, output_relative: str = "source/dist") -> dict:
         try:
-            uuid.UUID(job_id)
+            parsed_job_id = uuid.UUID(job_id)
         except (ValueError, TypeError, AttributeError):
             raise PreviewError("invalid job id") from None
+        if str(parsed_job_id) != job_id:
+            raise PreviewError("invalid job id")
         if not isinstance(worker_id, str) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", worker_id):
             raise PreviewError("invalid worker id")
         if output_relative not in ("source/dist", "source/build/web", "dist", "build/web"):
