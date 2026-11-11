@@ -205,8 +205,16 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
             if isinstance(raw_path, str) and os.path.isabs(raw_path):
                 try:
                     inspection = discover_project(raw_path, max_files=5000)
-                    public["framework_detection"] = inspection["inventory"]["framework_detection"]
-                    public["inspection_status"] = inspection["status"]
+                    if inspection.get("truncated"):
+                        public["framework_detection"] = {
+                            "framework": "UNKNOWN", "language": "UNKNOWN",
+                            "project_type": "UNKNOWN", "confidence": "unknown",
+                            "package_manager": "UNKNOWN", "toolchain_readiness": "NOT_CHECKED",
+                        }
+                        public["inspection_status"] = "truncated"
+                    else:
+                        public["framework_detection"] = inspection["inventory"]["framework_detection"]
+                        public["inspection_status"] = inspection["status"]
                 except (DiscoveryError, OSError, ValueError):
                     public["framework_detection"] = {
                         "framework": "UNKNOWN", "language": "UNKNOWN",
