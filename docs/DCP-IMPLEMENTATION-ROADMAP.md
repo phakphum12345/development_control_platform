@@ -51,3 +51,13 @@ Each phase is a separate feature branch and Draft PR, with narrowly scoped chang
 - Reports package manager, declared Node/Python/Dart constraints and declared npm scripts without running them.
 - Toolchain readiness remains NOT_CHECKED; unknown or malformed evidence is not promoted to a supported build.
 - No dependency installation, network access, source execution or build command is performed during detection.
+
+
+## Universal Build Engine — first implementation slice
+- Added Local Runner targets for static HTML/CSS/JS and React/Vite or Vue/Vite.
+- Static web builds copy the project into a bounded `dist/` tree without executing source.
+- Vite builds invoke only the locally installed Vite CLI through Node; dependency installation and npm lifecycle scripts are not run.
+- Vite config/application build code is still executable project code and requires the Runner's explicit execution opt-in and trusted-repository allowlist.
+- Build output is packaged as a bounded ZIP artifact and uploaded through the existing authenticated artifact channel.
+- Framework detection, job target validation, runner scheduling, and local Runner dispatch are connected.
+- Next: dashboard build-job controls, actual Windows-host acceptance, SHA-256 provenance verification, runtime manager and real preview.

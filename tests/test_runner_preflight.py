@@ -33,7 +33,7 @@ class RunnerPreflightTests(unittest.TestCase):
         self, run, which, _python, _system
     ):
         which.side_effect = lambda name: f"/usr/bin/{name}" if name in {
-            "git", "flutter", "clang", "cmake", "ninja"
+            "git", "flutter", "node", "clang", "cmake", "ninja"
         } else None
         run.return_value.stdout = "tool version"
         run.return_value.stderr = ""
@@ -46,6 +46,19 @@ class RunnerPreflightTests(unittest.TestCase):
         self.assertTrue(report["minimum_agent_prerequisites_met"])
         self.assertFalse(report["execution_enabled"])
         self.assertFalse(report["gateway_contacted"])
+
+
+    @patch("tools.runner_agent.preflight.platform.system", return_value="Linux")
+    @patch("tools.runner_agent.preflight.shutil.which")
+    @patch("tools.runner_agent.preflight.subprocess.run")
+    def test_node_and_git_allow_web_only_runner_without_flutter(self, run, which, _system):
+        which.side_effect = lambda name: f"/usr/bin/{name}" if name in {"git", "node"} else None
+        run.return_value.stdout = "version"
+        run.return_value.stderr = ""
+        report = preflight.collect_preflight()
+        self.assertTrue(report["minimum_agent_prerequisites_met"])
+        self.assertEqual(report["detected_capabilities"], ["web"])
+        self.assertEqual(preflight.resolve_capabilities(report), ["web"])
 
     @patch("tools.runner_agent.preflight.platform.system", return_value="Darwin")
     @patch("tools.runner_agent.preflight.shutil.which")

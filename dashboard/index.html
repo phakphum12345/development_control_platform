@@ -318,16 +318,16 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
  <div id="local-runner-list"><div class="empty">Local Runner inventory: UNKNOWN</div></div>
 </div>
 <div class="panel" id="build-jobs-panel">
- <div class="row"><div><h3>Flutter Build Jobs & Artifacts</h3><p class="small muted">ใช้ Repository และ Commit SHA ที่เลือกและ Verify ไว้ด้านบน คิวงานนี้ไม่สร้าง VM และไม่เปิด Cloud Provisioning</p></div><button id="build-jobs-refresh" type="button">Refresh jobs</button></div>
+ <div class="row"><div><h3>Build Jobs & Artifacts</h3><p class="small muted">เลือก Repository และ Commit SHA ที่ Verify แล้ว งานทำผ่าน Local Runner เท่านั้น ไม่สร้าง VM และไม่เปิด Cloud Provisioning</p></div><button id="build-jobs-refresh" type="button">Refresh jobs</button></div>
  <div class="grid">
-  <div class="field"><label for="build-job-target">Flutter target</label><select id="build-job-target">
+  <div class="field"><label for="build-job-target">Build target</label><select id="build-job-target">
    <option value="test">Flutter Test</option><option value="build">Android APK</option><option value="package">Android App Bundle</option>
-   <option value="build_web">Web</option><option value="build_windows">Windows</option><option value="build_linux">Linux</option>
+   <option value="build_static_web">Static HTML/CSS/JS</option><option value="build_vite">React/Vue + Vite (preinstalled dependencies)</option><option value="build_web">Flutter Web</option><option value="build_windows">Windows</option><option value="build_linux">Linux</option>
    <option value="build_macos">macOS</option><option value="build_ios">iOS (no code signing)</option>
   </select></div>
   <div class="field"><label>Selected immutable commit</label><span class="small muted" id="build-job-selected-commit">Select and verify a commit above first</span></div>
  </div>
- <div class="actions"><button class="primary" id="build-job-create" type="button" disabled>Queue Flutter job</button></div>
+ <div class="actions"><button class="primary" id="build-job-create" type="button" disabled>Queue local build job</button></div>
  <div id="build-job-result" class="output" role="status" aria-live="polite">Build queue: not checked</div>
  <div id="build-job-list"><div class="empty">Job queue: UNKNOWN — press Refresh jobs</div></div>
 </div>
