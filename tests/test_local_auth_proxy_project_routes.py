@@ -76,6 +76,10 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
             "/api/local-projects",
             "/api/local-projects/roots",
             "/api/local-projects/123e4567-e89b-42d3-a456-426614174000",
+            "/api/github/repositories",
+            "/api/github/repositories/example/demo/refs",
+            "/api/github/repositories/example/demo/commits/" + ("a" * 40),
+            "/api/github/repositories/example/demo/projects/" + ("b" * 40),
         ):
             status, _ = self.get(path)
             self.assertEqual(status, 200)
