@@ -36,6 +36,7 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
         self.origin = "https://dcp.example.test"
         store = RunnerStore(str(base / "gateway.sqlite"))
         service = GatewayService(GatewaySettings(), store, object())
+        self.service = service
         service.local_project_registry = registry
         service.job_store = JobStore(base / "jobs.sqlite3")
         service.repository_catalog = lambda: []
