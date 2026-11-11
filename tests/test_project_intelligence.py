@@ -117,6 +117,17 @@ class ProjectIntelligenceTests(unittest.TestCase):
         self.assertEqual(detected["confidence"], "unknown")
         self.assertEqual(detected["toolchain_readiness"], "NOT_CHECKED")
 
+
+    def test_framework_detection_does_not_follow_symlinked_manifests(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "external-angular.json"
+            target.write_text("{}", encoding="utf-8")
+            (root / "angular.json").symlink_to(target)
+            detected = discover_project(root)["inventory"]["framework_detection"]
+        self.assertEqual(detected["framework"], "UNKNOWN")
+        self.assertNotIn("angular.json", detected["evidence"])
+
     def test_runner_profile_is_deterministic_and_dry_run(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
