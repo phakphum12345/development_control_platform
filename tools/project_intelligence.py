@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import stat
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -91,6 +92,15 @@ def _classify_path(relative: str) -> str:
 
 
 
+
+def _is_regular_file(path: Path) -> bool:
+    """Check a manifest without following symbolic links."""
+    try:
+        return stat.S_ISREG(path.lstat().st_mode)
+    except OSError:
+        return False
+
+
 def detect_frameworks(workspace: Path) -> dict[str, Any]:
     """Return explicit framework/toolchain evidence from root manifests only.
 
@@ -120,9 +130,9 @@ def detect_frameworks(workspace: Path) -> dict[str, Any]:
     language = "UNKNOWN"
     project_type = "UNKNOWN"
 
-    if "@angular/core" in names or (workspace / "angular.json").is_file():
+    if "@angular/core" in names or _is_regular_file(workspace / "angular.json"):
         framework, language, project_type = "Angular", "JavaScript/TypeScript", "web"
-    elif "next" in names or any((workspace / name).is_file() for name in (
+    elif "next" in names or any(_is_regular_file(workspace / name) for name in (
         "next.config.js", "next.config.mjs", "next.config.ts"
     )):
         framework, language, project_type = "Next.js", "JavaScript/TypeScript", "web"
@@ -152,7 +162,7 @@ def detect_frameworks(workspace: Path) -> dict[str, Any]:
     if framework == "UNKNOWN" and python_text:
         if re.search(r"(?i)\bfastapi\b", python_text):
             framework = "FastAPI"
-        elif re.search(r"(?i)\bdjango\b", python_text) or (workspace / "manage.py").is_file():
+        elif re.search(r"(?i)\bdjango\b", python_text) or _is_regular_file(workspace / "manage.py"):
             framework = "Django"
         elif re.search(r"(?i)\bflask\b", python_text):
             framework = "Flask"
@@ -161,7 +171,7 @@ def detect_frameworks(workspace: Path) -> dict[str, Any]:
         language = "Python"
         project_type = "web" if framework in {"FastAPI", "Django", "Flask"} else "python"
 
-    if framework == "UNKNOWN" and (workspace / "index.html").is_file():
+    if framework == "UNKNOWN" and _is_regular_file(workspace / "index.html"):
         framework, language, project_type = "Static HTML/CSS/JS", "HTML/CSS/JavaScript", "web"
 
     package_manager = "UNKNOWN"
@@ -171,7 +181,7 @@ def detect_frameworks(workspace: Path) -> dict[str, Any]:
         ("package-lock.json", "npm"),
     )
     for filename, manager in lockfiles:
-        if (workspace / filename).is_file():
+        if _is_regular_file(workspace / filename):
             package_manager = manager
             break
     if package_manager == "UNKNOWN" and package_text:
@@ -220,7 +230,7 @@ def detect_frameworks(workspace: Path) -> dict[str, Any]:
             "package.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb",
             "package-lock.json", "angular.json", "next.config.js", "next.config.mjs",
             "next.config.ts", "pubspec.yaml", "pyproject.toml", "requirements.txt", "index.html"
-        ) if (workspace / name).is_file()),
+        ) if _is_regular_file(workspace / name)),
         "warnings": warnings,
         "toolchain_readiness": "NOT_CHECKED",
         "execution_performed": False,
