@@ -63,7 +63,7 @@ class ProjectIntelligenceTests(unittest.TestCase):
                 "scripts": {"build": "vite build", "test": "vitest"},
                 "engines": {"node": ">=20"},
             }), encoding="utf-8")
-            (root / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\\n", encoding="utf-8")
+            (root / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n", encoding="utf-8")
             result = discover_project(root)
         detected = result["inventory"]["framework_detection"]
         self.assertEqual(detected["framework"], "React + Vite")
@@ -90,14 +90,14 @@ class ProjectIntelligenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "pubspec.yaml").write_text(
-                "name: sample\\ndependencies:\\n  flutter:\\n    sdk: flutter\\n"
-                "environment:\\n  sdk: '>=3.4.0 <4.0.0'\\n", encoding="utf-8"
+                "name: sample\ndependencies:\n  flutter:\n    sdk: flutter\n"
+                "environment:\n  sdk: '>=3.4.0 <4.0.0'\n", encoding="utf-8"
             )
             self.assertEqual(discover_project(root)["inventory"]["framework_detection"]["framework"], "Flutter")
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "pyproject.toml").write_text(
-                '[project]\\nrequires-python = ">=3.11"\\ndependencies = ["fastapi>=0.100"]\\n',
+                '[project]\nrequires-python = ">=3.11"\ndependencies = ["fastapi>=0.100"]\n',
                 encoding="utf-8"
             )
             detected = discover_project(root)["inventory"]["framework_detection"]
