@@ -10,7 +10,15 @@ $project = [System.IO.Path]::GetFullPath($PSScriptRoot)
 $dashboard = [System.IO.Path]::GetFullPath((Join-Path $project 'dashboard'))
 $requestedPort = $Port
 $autoPort = $requestedPort -eq 0
-$stateName = if ($autoPort -or $Port -eq 8000) { 'DCP' } else { "DCP-Test-$Port" }
+$stateName = if ($autoPort -or $Port -eq 8000) {
+    # Must match Start-DCP-Dashboard.ps1: ownership is isolated per checkout.
+    $pathBytes = [System.Text.Encoding]::UTF8.GetBytes($dashboard.ToUpperInvariant())
+    $pathHash = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $projectKey = ([System.BitConverter]::ToString($pathHash.ComputeHash($pathBytes))).Replace('-', '').Substring(0, 12)
+    } finally { $pathHash.Dispose() }
+    "DCP-Dashboard-$projectKey"
+} else { "DCP-Test-$Port" }
 $pidFile = Join-Path (Join-Path $env:LOCALAPPDATA $stateName) 'dashboard-server.json'
 
 if ($autoPort) {

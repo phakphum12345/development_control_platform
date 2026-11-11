@@ -13,7 +13,7 @@ class OrkaProvider:
  requires_budget_guard=True
  def __init__(self,base_url,namespace,vm_config,secret_reader,secret_name="orka-api-token",runner_online_checker=None,timeout=20):
   parsed=urlparse(base_url)
-  if parsed.scheme!="https" or not parsed.hostname or parsed.username or parsed.password or parsed.path not in ("","/") or parsed.query or parsed.fragment: raise ValueError("Orka endpoint must be an HTTPS origin")
+  if parsed.scheme!="https" or not parsed.hostname or parsed.username is not None or parsed.password is not None or parsed.path not in ("","/") or parsed.query or parsed.fragment: raise ValueError("Orka endpoint must be an HTTPS origin")
   if not re.fullmatch(r"[a-z0-9]([-a-z0-9]*[a-z0-9])?",namespace): raise ValueError("Invalid Orka namespace")
   if not re.fullmatch(r"[A-Za-z0-9_.-]{1,63}",vm_config): raise ValueError("Invalid approved Orka VM config")
   if not re.fullmatch(r"[A-Za-z0-9-]{1,127}",secret_name): raise ValueError("Invalid Key Vault secret name")
@@ -27,8 +27,11 @@ class OrkaProvider:
   try:
    with urlopen(req,timeout=self.timeout) as response: raw=response.read(65537)
   except HTTPError as exc:
-   if allow_missing and exc.code==404: return None
-   raise OrkaError("Orka API request failed with HTTP "+str(exc.code)) from exc
+   try:
+    if allow_missing and exc.code==404: return None
+    raise OrkaError("Orka API request failed with HTTP "+str(exc.code)) from exc
+   finally:
+    exc.close()
   except (URLError,TimeoutError) as exc: raise OrkaError("Orka API request failed: "+type(exc).__name__) from exc
   if len(raw)>65536: raise OrkaError("Orka response exceeded size limit")
   if not raw: return {}

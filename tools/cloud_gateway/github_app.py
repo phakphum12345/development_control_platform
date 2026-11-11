@@ -7,12 +7,14 @@ only through a provider's protected bootstrap channel.
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 
@@ -43,11 +45,16 @@ class GitHubAppRunnerBootstrap:
     """Mint narrowly scoped registration tokens using a GitHub App installation.
 
     The App private key should be read from a server-side secret store (for
-    example Key Vault) and passed in memory. The installation token is scoped
-    to the one allowlisted repository and is never returned to callers.
+    example Key Vault) and passed in memory. Installation tokens used for
+    runner administration are scoped to one verified repository and are never
+    returned to callers.
     """
 
     API_ORIGIN = "https://api.github.com"
+    # Installation catalog pages can contain 100 full repository objects. A
+    # 64 KiB cap rejects legitimate accounts with many repositories; retain a
+    # strict bound while allowing normal GitHub pagination responses.
+    MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 
     def __init__(
         self,
@@ -67,8 +74,8 @@ class GitHubAppRunnerBootstrap:
         if not isinstance(private_key_pem, str) or "BEGIN" not in private_key_pem:
             raise ValueError("GitHub App private key is required")
         repos = tuple(allowed_repositories)
-        if not repos or len(set(repos)) != len(repos):
-            raise ValueError("A non-empty unique repository allowlist is required")
+        if len(set(repos)) != len(repos):
+            raise ValueError("Repository allowlist entries must be unique")
         if any(not isinstance(repo, str) or not re.fullmatch(
             r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}", repo
         ) for repo in repos):
@@ -79,6 +86,8 @@ class GitHubAppRunnerBootstrap:
         self.installation_id = installation_id
         self.private_key_pem = private_key_pem
         self.allowed_repositories = frozenset(repos)
+        self._repository_catalog_cache = None
+        self._repository_catalog_cache_until = 0.0
         self.clock = clock
         self.timeout = timeout
         self.opener = opener or urlopen
@@ -108,7 +117,7 @@ class GitHubAppRunnerBootstrap:
         except Exception as exc:
             raise GitHubAppError("GitHub App JWT signing failed: " + type(exc).__name__) from exc
 
-    def _request(self, method: str, path: str, token: str, payload: dict | None = None) -> dict:
+    def _request(self, method: str, path: str, token: str, payload: dict | None = None) -> dict | list:
         if not path.startswith("/") or ".." in path.split("/"):
             raise GitHubAppError("Invalid GitHub API path")
         body = None if payload is None else json.dumps(payload, separators=(",", ":")).encode("utf-8")
@@ -123,17 +132,20 @@ class GitHubAppRunnerBootstrap:
         request.add_unredirected_header("Authorization", "Bearer " + token)
         try:
             with self.opener(request, timeout=self.timeout) as response:
-                raw = response.read(65537)
-            if len(raw) > 65536:
+                raw = response.read(self.MAX_RESPONSE_BYTES + 1)
+            if len(raw) > self.MAX_RESPONSE_BYTES:
                 raise GitHubAppError("GitHub API response exceeded size limit")
             data = json.loads(raw.decode("utf-8")) if raw else {}
         except HTTPError as exc:
-            raise GitHubAppError("GitHub API returned HTTP " + str(exc.code)) from exc
+            try:
+                raise GitHubAppError("GitHub API returned HTTP " + str(exc.code)) from exc
+            finally:
+                exc.close()
         except (URLError, TimeoutError) as exc:
             raise GitHubAppError("GitHub API request failed: " + type(exc).__name__) from exc
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise GitHubAppError("GitHub API returned malformed JSON") from exc
-        if not isinstance(data, dict):
+        if not isinstance(data, (dict, list)):
             raise GitHubAppError("GitHub API returned an invalid response shape")
         return data
 
@@ -149,9 +161,105 @@ class GitHubAppRunnerBootstrap:
             raise GitHubAppError("GitHub token is expired or has no timezone")
         return expiry.astimezone(timezone.utc)
 
+    def _installation_catalog_token(self) -> str:
+        """Mint an installation-wide metadata token for server-side catalog reads."""
+        installation = self._request(
+            "POST",
+            "/app/installations/{}/access_tokens".format(self.installation_id),
+            self._app_jwt(),
+            {"permissions": {"metadata": "read"}},
+        )
+        token = installation.get("token")
+        if not isinstance(token, str) or not token:
+            raise GitHubAppError("GitHub installation catalog token was not issued")
+        self._expiry(installation.get("expires_at"))
+        permissions = installation.get("permissions")
+        metadata = permissions.get("metadata") if isinstance(permissions, dict) else None
+        if metadata not in ("read", "write"):
+            raise GitHubAppError("GitHub App installation lacks repository metadata access")
+        return token
+
+    def list_installation_repositories(self, refresh: bool = False) -> list[dict]:
+        """List repositories installed for DCP, never the user's unrelated repos."""
+        now = float(self.clock())
+        if (not refresh and self._repository_catalog_cache is not None
+                and now < self._repository_catalog_cache_until):
+            return [dict(item) for item in self._repository_catalog_cache]
+
+        token = self._installation_catalog_token()
+        catalog = []
+        seen = set()
+        expected_total = None
+        for page in range(1, 101):
+            data = self._request(
+                "GET",
+                "/installation/repositories?per_page=100&page={}".format(page),
+                token,
+            )
+            total = data.get("total_count")
+            batch = data.get("repositories")
+            if isinstance(total, bool) or not isinstance(total, int) or total < 0:
+                raise GitHubAppError("GitHub installation repository count is invalid")
+            if not isinstance(batch, list) or any(not isinstance(item, dict) for item in batch):
+                raise GitHubAppError("GitHub installation repository catalog is invalid")
+            if expected_total is None:
+                expected_total = total
+            elif total != expected_total:
+                raise GitHubAppError("GitHub installation repository catalog changed during pagination")
+            for item in batch:
+                full_name = item.get("full_name")
+                private = item.get("private")
+                default_branch = item.get("default_branch")
+                if (not isinstance(full_name, str)
+                        or not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}", full_name)
+                        or not isinstance(private, bool)
+                        or (default_branch is not None and not isinstance(default_branch, str))):
+                    raise GitHubAppError("GitHub installation repository metadata is malformed")
+                canonical = full_name.lower()
+                if canonical in seen:
+                    raise GitHubAppError("GitHub installation repository catalog contains duplicates")
+                seen.add(canonical)
+                permissions = item.get("permissions")
+                safe_permissions = {}
+                if isinstance(permissions, dict):
+                    for key in ("admin", "maintain", "push", "triage", "pull"):
+                        if isinstance(permissions.get(key), bool):
+                            safe_permissions[key] = permissions[key]
+                catalog.append({
+                    "full_name": full_name,
+                    "private": private,
+                    "default_branch": default_branch or "",
+                    "permissions": safe_permissions,
+                })
+            if len(catalog) >= expected_total:
+                if len(catalog) != expected_total:
+                    raise GitHubAppError("GitHub installation repository count did not match catalog")
+                break
+            if not batch:
+                raise GitHubAppError("GitHub installation repository pagination ended early")
+        else:
+            raise GitHubAppError("GitHub installation repository catalog exceeded pagination limit")
+
+        catalog.sort(key=lambda item: item["full_name"].lower())
+        self._repository_catalog_cache = tuple(dict(item) for item in catalog)
+        self._repository_catalog_cache_until = now + 60.0
+        return [dict(item) for item in catalog]
+
+    def is_repository_accessible(self, repository: str, refresh: bool = False) -> bool:
+        if not isinstance(repository, str) or not re.fullmatch(
+            r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}", repository
+        ):
+            return False
+        if self.allowed_repositories:
+            return repository in self.allowed_repositories
+        return any(
+            item["full_name"].lower() == repository.lower()
+            for item in self.list_installation_repositories(refresh=refresh)
+        )
+
     def _installation_token(self, repository: str, administration: str) -> str:
-        if not isinstance(repository, str) or repository not in self.allowed_repositories:
-            raise GitHubAppError("Repository is not allowlisted for runner administration")
+        if not self.is_repository_accessible(repository, refresh=True):
+            raise GitHubAppError("Repository is not accessible to the DCP GitHub App installation")
         if administration not in ("read", "write"):
             raise ValueError("Unsupported GitHub repository administration scope")
         app_jwt = self._app_jwt()
@@ -174,6 +282,225 @@ class GitHubAppRunnerBootstrap:
             raise GitHubAppError("GitHub App installation lacks required Administration permission")
         self._expiry(installation.get("expires_at"))
         return token
+
+    def _repository_contents_token(self, repository: str) -> str:
+        """Mint a repository-scoped, read-only token for branch/tag metadata."""
+        if not self.is_repository_accessible(repository, refresh=True):
+            raise GitHubAppError("Repository is not accessible to the DCP GitHub App installation")
+        installation = self._request(
+            "POST",
+            "/app/installations/{}/access_tokens".format(self.installation_id),
+            self._app_jwt(),
+            {
+                "repositories": [repository],
+                "permissions": {"contents": "read"},
+            },
+        )
+        token = installation.get("token")
+        if not isinstance(token, str) or not token:
+            raise GitHubAppError("GitHub repository contents token was not issued")
+        permissions = installation.get("permissions")
+        granted = permissions.get("contents") if isinstance(permissions, dict) else None
+        if granted not in ("read", "write"):
+            raise GitHubAppError("GitHub App installation lacks Contents read permission")
+        self._expiry(installation.get("expires_at"))
+        return token
+
+    def list_repository_refs(self, repository: str, kind: str = "branches") -> list[dict]:
+        """List branch or tag refs using a selected-repository Contents-read token."""
+        if kind not in ("branches", "tags"):
+            raise GitHubAppError("Unsupported repository ref kind")
+        token = self._repository_contents_token(repository)
+        owner, name = repository.split("/", 1)
+        refs = []
+        seen = set()
+        for page in range(1, 101):
+            data = self._request(
+                "GET",
+                "/repos/{}/{}/{}?per_page=100&page={}".format(owner, name, kind, page),
+                token,
+            )
+            if not isinstance(data, list) or any(not isinstance(item, dict) for item in data):
+                raise GitHubAppError("GitHub repository ref response is invalid")
+            for item in data:
+                ref_name = item.get("name")
+                commit = item.get("commit")
+                sha = commit.get("sha") if isinstance(commit, dict) else None
+                if (not isinstance(ref_name, str) or not 1 <= len(ref_name) <= 255
+                        or not isinstance(sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", sha)):
+                    raise GitHubAppError("GitHub repository ref metadata is malformed")
+                key = ref_name
+                if key in seen:
+                    raise GitHubAppError("GitHub repository ref response contains duplicates")
+                seen.add(key)
+                refs.append({"name": ref_name, "commit_sha": sha.lower()})
+            if len(data) < 100:
+                return refs
+        raise GitHubAppError("GitHub repository ref inventory exceeded the safe pagination limit")
+
+    def resolve_repository_commit(self, repository: str, commit_sha: str) -> dict:
+        """Verify that a full commit SHA resolves inside the selected installed repository."""
+        if not isinstance(commit_sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", commit_sha):
+            raise GitHubAppError("Commit SHA must be 40 hexadecimal characters")
+        token = self._repository_contents_token(repository)
+        owner, name = repository.split("/", 1)
+        data = self._request(
+            "GET",
+            "/repos/{}/{}/commits/{}".format(owner, name, commit_sha),
+            token,
+        )
+        if not isinstance(data, dict):
+            raise GitHubAppError("GitHub commit response is invalid")
+        resolved = data.get("sha")
+        if not isinstance(resolved, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", resolved):
+            raise GitHubAppError("GitHub commit response omitted a valid SHA")
+        if resolved.lower() != commit_sha.lower():
+            raise GitHubAppError("GitHub commit response did not match the requested SHA")
+        return {"commit_sha": resolved.lower()}
+
+    def inspect_repository_project(self, repository: str, commit_sha: str) -> dict:
+        """Inspect bounded Git tree metadata; never download or execute project code."""
+        if not isinstance(commit_sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", commit_sha):
+            raise GitHubAppError("Commit SHA must be 40 hexadecimal characters")
+        token = self._repository_contents_token(repository)
+        owner, name = repository.split("/", 1)
+        commit = self._request(
+            "GET",
+            "/repos/{}/{}/commits/{}".format(owner, name, commit_sha),
+            token,
+        )
+        if not isinstance(commit, dict):
+            raise GitHubAppError("GitHub commit response is invalid")
+        resolved = commit.get("sha")
+        commit_data = commit.get("commit")
+        tree_data = commit_data.get("tree") if isinstance(commit_data, dict) else None
+        tree_sha = tree_data.get("sha") if isinstance(tree_data, dict) else None
+        if (not isinstance(resolved, str) or resolved.lower() != commit_sha.lower()
+                or not isinstance(tree_sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", tree_sha)):
+            raise GitHubAppError("GitHub commit tree identity is invalid")
+        tree = self._request(
+            "GET",
+            "/repos/{}/{}/git/trees/{}?recursive=1".format(owner, name, tree_sha),
+            token,
+        )
+        if not isinstance(tree, dict) or not isinstance(tree.get("tree"), list):
+            raise GitHubAppError("GitHub repository tree response is invalid")
+        entries = tree["tree"]
+        truncated = tree.get("truncated")
+        if not isinstance(truncated, bool) or any(not isinstance(item, dict) for item in entries):
+            raise GitHubAppError("GitHub repository tree metadata is malformed")
+        if len(entries) > 20000:
+            truncated = True
+        paths = set()
+        ignored_parts = {
+            ".git", ".venv", "venv", "node_modules", "__pycache__", ".dart_tool",
+            "build", "dist", "target", "coverage", "pods", "deriveddata", ".gradle",
+        }
+        for item in entries[:20000]:
+            path = item.get("path")
+            if (not isinstance(path, str) or not path or path.startswith("/")
+                    or any(part in ("", ".", "..") for part in path.split("/"))):
+                raise GitHubAppError("GitHub repository tree contains an unsafe path")
+            # Symlinks, submodules, and generated dependency/build trees are not
+            # treated as project manifests or source files.
+            parts = path.split("/")
+            if (item.get("type") == "blob" and item.get("mode") != "120000"
+                    and not any(part.lower() in ignored_parts for part in parts)):
+                paths.add(path)
+
+        pubspecs = sorted(path for path in paths if path.rsplit("/", 1)[-1] == "pubspec.yaml")
+        flutter_pubspecs = []
+        manifest_scan_incomplete = len(pubspecs) > 20
+        for pubspec in ([] if truncated else pubspecs[:20]):
+            manifest = self._request(
+                "GET",
+                "/repos/{}/{}/contents/{}?ref={}".format(
+                    owner, name, quote(pubspec, safe="/"), resolved
+                ),
+                token,
+            )
+            encoded = manifest.get("content") if isinstance(manifest, dict) else None
+            encoding = manifest.get("encoding") if isinstance(manifest, dict) else None
+            size = manifest.get("size") if isinstance(manifest, dict) else None
+            if (encoding != "base64" or not isinstance(encoded, str)
+                    or isinstance(size, bool) or not isinstance(size, int) or size > 256 * 1024):
+                manifest_scan_incomplete = True
+                continue
+            try:
+                manifest_bytes = base64.b64decode(re.sub(r"\s+", "", encoded), validate=True)
+                if len(manifest_bytes) != size:
+                    manifest_scan_incomplete = True
+                    continue
+                manifest_text = manifest_bytes.decode("utf-8")
+            except (ValueError, UnicodeDecodeError, binascii.Error):
+                manifest_scan_incomplete = True
+                continue
+            if re.search(r"(?m)^\s*flutter\s*:", manifest_text):
+                flutter_pubspecs.append(pubspec)
+
+        if manifest_scan_incomplete:
+            truncated = True
+        package_roots = [path.rsplit("/", 1)[0] if "/" in path else "" for path in flutter_pubspecs]
+        macos_projects = []
+        for root in package_roots:
+            prefix = root + "/" if root else ""
+            project = prefix + "macos/Runner.xcodeproj/project.pbxproj"
+            info = prefix + "macos/Runner/Info.plist"
+            if project in paths and info in paths:
+                macos_projects.append(project)
+        macos_supported = bool(macos_projects)
+        if truncated:
+            status = "unknown"
+            macos_supported_result = None
+        elif flutter_pubspecs and macos_supported:
+            status = "target_detected"
+            macos_supported_result = True
+        elif flutter_pubspecs:
+            status = "needs_setup"
+            macos_supported_result = False
+        else:
+            status = "detected"
+            # A non-Flutter repository is not evidence that a Flutter macOS
+            # target is unsupported; this field is not applicable.
+            macos_supported_result = None
+
+        project_types = set()
+        if pubspecs and not flutter_pubspecs and not truncated:
+            project_types.add("dart")
+        if flutter_pubspecs:
+            project_types.add("flutter")
+        for path in paths:
+            filename = path.rsplit("/", 1)[-1].lower()
+            if filename in ("pyproject.toml", "requirements.txt", "setup.py", "pipfile"):
+                project_types.add("python")
+            elif filename in ("package.json", "pnpm-lock.yaml", "yarn.lock", "package-lock.json"):
+                project_types.add("node")
+            elif filename == "cargo.toml":
+                project_types.add("rust")
+            elif filename == "go.mod":
+                project_types.add("go")
+            elif filename in ("pom.xml", "build.gradle", "build.gradle.kts"):
+                project_types.add("java")
+
+        return {
+            "repository": repository,
+            "commit_sha": resolved.lower(),
+            "status": status,
+            "project_types": sorted(project_types),
+            "file_count": len(paths),
+            "truncated": truncated,
+            "flutter": {
+                "detected": bool(flutter_pubspecs),
+                "package_manifests": flutter_pubspecs,
+                "macos_supported": macos_supported_result,
+                "macos_runner_projects": macos_projects if not truncated else [],
+            },
+            "notes": [
+                "Inspection reads bounded pubspec manifest metadata and Git tree paths only; no source files are executed.",
+                "A Flutter macOS target is detected only when its Runner Xcode project and Info.plist are present.",
+                "A truncated tree is UNKNOWN and is never treated as proof that a target is absent.",
+            ],
+        }
 
     def create_registration_token(self, repository: str) -> RunnerRegistrationCredential:
         installation_token = self._installation_token(repository, "write")
@@ -249,9 +576,9 @@ class GitHubAppRunnerBootstrap:
     def remove_runner(self, repository: str, runner_id: int) -> bool:
         if isinstance(runner_id, bool) or not isinstance(runner_id, int) or runner_id < 1:
             raise GitHubAppError("Invalid GitHub runner ID")
-        owner, name = repository.split("/", 1) if repository in self.allowed_repositories else ("", "")
+        owner, name = repository.split("/", 1) if self.is_repository_accessible(repository, refresh=True) else ("", "")
         if not owner:
-            raise GitHubAppError("Repository is not allowlisted for runner administration")
+            raise GitHubAppError("Repository is not accessible to the DCP GitHub App installation")
         runners = self._list_runners(repository)
         matches = [runner for runner in runners if isinstance(runner, dict) and runner.get("id") == runner_id]
         if not matches:

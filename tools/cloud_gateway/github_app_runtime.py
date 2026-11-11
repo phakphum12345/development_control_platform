@@ -27,9 +27,9 @@ def build_github_app_runtime(settings, env=None):
         return None, None, None
     if not all(configured):
         raise ValueError("GitHub App runtime configuration is incomplete")
-    repositories = tuple(settings.allowed_repositories)
-    if not repositories:
-        raise ValueError("GitHub App runtime requires an explicit repository allowlist")
+    # In GitHub App mode, the installation catalog is the source of truth;
+    # legacy static allowlists must not silently hide installed repositories.
+    repositories = ()
     installation_raw = values["DCP_GITHUB_APP_INSTALLATION_ID"]
     if not re.fullmatch(r"[0-9]{1,20}", installation_raw):
         raise ValueError("GitHub App installation ID must be numeric")
@@ -48,8 +48,8 @@ def build_github_app_runtime(settings, env=None):
     def cleanup(row, instance):
         repository = row.get("repository")
         provider_id = row.get("provider_id")
-        if repository not in repositories or not isinstance(provider_id, str):
-            raise RuntimeError("Runner cleanup identity is not allowlisted")
+        if not app.is_repository_accessible(repository, refresh=True) or not isinstance(provider_id, str):
+            raise RuntimeError("Runner cleanup identity is not accessible to the DCP GitHub App installation")
         runner_name = provider_id.split(":", 1)[-1]
         runner = app.find_runner(repository, runner_name)
         if runner is None:

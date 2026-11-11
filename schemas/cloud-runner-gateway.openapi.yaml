@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: DCP Cloud Runner Gateway API
-  version: 1.1.0
+  version: 1.2.0
   description: |
     Provider-neutral contract. Azure is the control plane and Linux/Windows VM
     provider; macOS capacity is supplied by Apple-hardware infrastructure such
@@ -17,8 +17,8 @@ paths:
       operationId: createEphemeralRunner
       summary: Request an ephemeral Linux, Windows, or macOS runner
       description: |
-        The gateway independently authenticates the caller, enforces repository
-        allowlisting, idempotency, approved platform/image mappings, concurrency
+        The gateway independently authenticates the caller, enforces GitHub App installation
+        membership (or a legacy explicit allowlist), idempotency, approved platform/image mappings, concurrency
         and billing limits, creates the isolated runner, registers a short-lived
         GitHub runner, and arranges teardown on completion, cancellation, or TTL.
         A 202 response means accepted/provisioning only; it is not evidence that
@@ -68,6 +68,208 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Runner not found. }
+  /api/github/repositories:
+    get:
+      operationId: listGitHubAppRepositories
+      summary: List repositories available to the DCP GitHub App installation
+      description: |
+        Requires a trusted-proxy authenticated browser session. Returns only
+        normalized repository metadata from the DCP GitHub App installation;
+        it does not list unrelated repositories from the user's GitHub account.
+        Installation tokens and App credentials remain server-side.
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Installation repository catalog.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [repositories]
+                properties:
+                  repositories:
+                    type: array
+                    items:
+                      type: object
+                      required: [full_name, private, default_branch, permissions]
+                      properties:
+                        full_name:
+                          type: string
+                          pattern: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+                        private: { type: boolean }
+                        default_branch: { type: string }
+                        permissions:
+                          type: object
+                          additionalProperties: { type: boolean }
+        '401': { description: Missing or invalid trusted-proxy identity. }
+        '503': { description: GitHub App installation catalog is unavailable. }
+  /api/github/repositories/{owner}/{repo}/refs:
+    parameters:
+      - name: owner
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: repo
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+    get:
+      operationId: listGitHubRepositoryRefs
+      summary: List branches or tags and their resolved commit SHAs
+      description: |
+        Requires a trusted-proxy authenticated browser session. The backend
+        revalidates DCP GitHub App installation membership and uses a
+        short-lived token scoped to the selected repository with Contents: read.
+        If the App installation lacks that permission, the request fails closed.
+      security:
+        - TrustedProxyAssertion: []
+      parameters:
+        - name: kind
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [branches, tags]
+            default: branches
+      responses:
+        '200':
+          description: Branch or tag metadata with full commit SHA.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [repository, kind, refs]
+                properties:
+                  repository: { type: string }
+                  kind: { type: string, enum: [branches, tags] }
+                  refs:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, commit_sha]
+                      properties:
+                        name: { type: string }
+                        commit_sha:
+                          type: string
+                          pattern: '^[0-9a-f]{40}$'
+        '400': { description: Invalid repository or ref kind. }
+        '401': { description: Missing or invalid trusted-proxy identity. }
+        '403': { description: Repository is outside the DCP GitHub App installation. }
+        '503': { description: GitHub App Contents read permission or repository ref API is unavailable. }
+  /api/github/repositories/{owner}/{repo}/commits/{sha}:
+    parameters:
+      - name: owner
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: repo
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: sha
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Fa-f0-9]{40}$'
+    get:
+      operationId: verifyGitHubRepositoryCommit
+      summary: Verify that a full commit SHA belongs to the selected repository
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: The exact commit SHA resolved inside the selected repository.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [repository, commit_sha]
+                properties:
+                  repository: { type: string }
+                  commit_sha:
+                    type: string
+                    pattern: '^[0-9a-f]{40}$'
+        '400': { description: Invalid full commit SHA. }
+        '401': { description: Missing or invalid trusted-proxy identity. }
+        '403': { description: Repository is outside the DCP GitHub App installation. }
+        '503': { description: GitHub App Contents read permission or commit lookup is unavailable. }
+  /api/github/repositories/{owner}/{repo}/projects/{sha}:
+    parameters:
+      - name: owner
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: repo
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}$'
+      - name: sha
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Fa-f0-9]{40}$'
+    get:
+      operationId: inspectGitHubRepositoryProject
+      summary: Detect project type and supported build targets at an immutable commit
+      description: |
+        Uses a repository-scoped Contents: read token to inspect Git tree paths and
+        bounded pubspec.yaml manifest contents only. It never downloads application
+        source files or executes project code. A truncated inventory returns UNKNOWN;
+        absence of macOS files is not asserted when the inventory is incomplete.
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Bounded project and build-target assessment.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [repository, commit_sha, status, project_types, file_count, truncated, flutter]
+                properties:
+                  repository: { type: string }
+                  commit_sha: { type: string, pattern: '^[0-9a-f]{40}$' }
+                  status: { type: string, enum: [target_detected, needs_setup, detected, unknown] }
+                  project_types:
+                    type: array
+                    items: { type: string }
+                  file_count: { type: integer, minimum: 0 }
+                  truncated: { type: boolean }
+                  flutter:
+                    type: object
+                    required: [detected, package_manifests, macos_supported, macos_runner_projects]
+                    properties:
+                      detected: { type: boolean }
+                      package_manifests:
+                        type: array
+                        items: { type: string }
+                      macos_supported:
+                        type: [boolean, 'null']
+                      macos_runner_projects:
+                        type: array
+                        items: { type: string }
+                  notes:
+                    type: array
+                    items: { type: string }
+        '400': { description: Invalid repository or full commit SHA. }
+        '401': { description: Missing or invalid trusted-proxy identity. }
+        '403': { description: Repository is outside the DCP GitHub App installation. }
+        '503': { description: GitHub App Contents read permission or project inspection is unavailable. }
   /api/auth/session:
     get:
       operationId: getBrowserSession
@@ -166,6 +368,68 @@ paths:
         '409': { description: Idempotency conflict. }
         '429': { description: Budget, concurrency, or rate limit denied. }
         '503': { description: Owner, budget, provisioning, or provider bootstrap gate is not ready. }
+  /api/local-projects:
+    get:
+      operationId: listLocalProjects
+      summary: List locally enrolled projects
+      description: Owner-only read API. Returns project IDs and relative metadata only; absolute host paths are never returned. Local roots are enrolled through the Local Agent CLI, not browser-supplied paths.
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Registered local projects.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [projects]
+                properties:
+                  projects:
+                    type: array
+                    items: { $ref: '#/components/schemas/LocalProject' }
+        '401': { description: Authenticated proxy assertion required. }
+        '403': { description: Owner role required. }
+        '503': { description: Local Project Registry is not configured or unavailable. }
+  /api/local-projects/roots:
+    get:
+      operationId: listLocalProjectRoots
+      summary: List explicitly enrolled local roots
+      description: Owner-only. Returns a display label and opaque root ID, never an absolute filesystem path.
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Enrolled roots.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [roots]
+                properties:
+                  roots:
+                    type: array
+                    items: { $ref: '#/components/schemas/LocalProjectRoot' }
+        '401': { description: Authenticated proxy assertion required. }
+        '403': { description: Owner role required. }
+        '503': { description: Local Project Registry is not configured or unavailable. }
+  /api/local-projects/{project_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: getLocalProject
+      summary: Read one enrolled local project
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Local project metadata.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LocalProject' }
+        '401': { description: Authenticated proxy assertion required. }
+        '403': { description: Owner role required. }
+        '404': { description: Project is not registered. }
+        '503': { description: Local Project Registry is unavailable. }
   /api/cloud-runners/{id}:
     parameters:
       - $ref: '#/components/parameters/RunnerId'
@@ -219,6 +483,12 @@ components:
       required: true
       description: Opaque gateway ID; URL-encode as one path segment.
       schema: { type: string, minLength: 1, maxLength: 200 }
+    ProjectId:
+      name: project_id
+      in: path
+      required: true
+      description: Opaque local project UUID; never a filesystem path.
+      schema: { type: string, format: uuid }
   schemas:
     RunnerCreateRequest:
       type: object
@@ -262,6 +532,27 @@ components:
           type: array
           items: { type: string }
         detail: { type: string }
+    LocalProjectRoot:
+      type: object
+      additionalProperties: false
+      required: [root_id, label, created_at]
+      properties:
+        root_id: { type: string, format: uuid }
+        label: { type: string, minLength: 1, maxLength: 255 }
+        created_at: { type: string, format: date-time }
+    LocalProject:
+      type: object
+      additionalProperties: false
+      required: [project_id, root_id, relative_path, snapshot_sha256, file_count, total_bytes]
+      properties:
+        project_id: { type: string, format: uuid }
+        root_id: { type: string, format: uuid }
+        relative_path: { type: string, minLength: 1, maxLength: 2048 }
+        snapshot_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        file_count: { type: integer, minimum: 0, maximum: 100000 }
+        total_bytes: { type: integer, minimum: 0, maximum: 1073741824 }
     Error:
       type: object
       additionalProperties: true
