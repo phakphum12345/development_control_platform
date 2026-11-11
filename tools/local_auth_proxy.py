@@ -219,7 +219,8 @@ class LocalAuthProxy:
         }
 
     def gateway_request(self, method: str, path: str, session: dict, body: bytes = b"",
-                        csrf_token: str = "", max_response_bytes: int = MAX_BODY) -> tuple[int, bytes]:
+                        csrf_token: str = "", max_response_bytes: int = MAX_BODY,
+                        idempotency_key: str = "") -> tuple[int, bytes]:
         headers = self.sign_gateway(method, urlparse(path).path, session)
         if csrf_token:
             expected = hmac.new(
@@ -230,6 +231,10 @@ class LocalAuthProxy:
             if not hmac.compare_digest(csrf_token, expected):
                 return 403, b'{"error":"CSRF validation failed"}'
             headers["X-CSRF-Token"] = expected
+        if idempotency_key:
+            if not re.fullmatch(r"[A-Za-z0-9._:-]{8,200}", idempotency_key):
+                return 400, b'{"error":"Invalid Idempotency-Key"}'
+            headers["Idempotency-Key"] = idempotency_key
         if body:
             headers["Content-Type"] = "application/json"
             headers["Content-Length"] = str(len(body))
@@ -442,6 +447,18 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                     app.sessions.pop(session["id"], None)
                 return self.send_json(200, {"authenticated": False},
                                       f"{COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0")
+            if path == "/api/jobs":
+                if not session or not session["authenticated"] or not self.csrf_ok(session):
+                    return self.send_json(403, {"error": "authenticated session and CSRF token required"})
+                try:
+                    _, raw = self.body()
+                except Exception:
+                    return self.send_json(400, {"error": "invalid JSON body"})
+                status, data = app.gateway_request(
+                    "POST", path, session, raw, self.headers.get("X-CSRF-Token", ""),
+                    idempotency_key=self.headers.get("Idempotency-Key", ""),
+                )
+                return self.send_bytes(status, data)
             preview_start = re.fullmatch(r"/api/jobs/([0-9a-f-]{36})/previews", path)
             if preview_start:
                 if not session or not session["authenticated"] or not self.csrf_ok(session):
