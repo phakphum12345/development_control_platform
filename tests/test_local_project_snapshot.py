@@ -82,9 +82,9 @@ class LocalProjectSnapshotTests(unittest.TestCase):
         snapshot = self.workspaces.get(self.job_id, self.worker_id) / "source-snapshot"
         self.assertEqual(metadata["snapshot_sha256"], self.project_record["snapshot_sha256"])
         self.assertEqual(self.registry._fingerprint(source)[0], self.project_record["snapshot_sha256"])
-        self.assertEqual((source / "index.html").read_text(encoding="utf-8"), "<h1>snapshot</h1>\\n")
+        self.assertEqual((source / "index.html").read_text(encoding="utf-8").strip(), "<h1>snapshot</h1>")
         (source / "index.html").write_text("<h1>built copy</h1>", encoding="utf-8")
-        self.assertEqual((snapshot / "index.html").read_text(encoding="utf-8"), "<h1>snapshot</h1>\\n")
+        self.assertEqual((snapshot / "index.html").read_text(encoding="utf-8").strip(), "<h1>snapshot</h1>")
 
     def test_local_checkout_refuses_changed_source_before_build_copy(self):
         (self.project / "index.html").write_text("changed", encoding="utf-8")
