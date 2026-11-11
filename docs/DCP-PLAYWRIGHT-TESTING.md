@@ -40,9 +40,7 @@ advertising both `web` and `playwright`.
 
 Install and browser maintenance remain an explicit administrator action on
 the local machine; DCP does not download browsers or install Python packages.
-The browser is launched with Chromium sandboxing enabled. Browser requests are
-restricted to the exact loopback origin/port of the DCP static runtime; service
-workers are blocked. Project HTML/JavaScript is still untrusted executable
+The browser is launched with Chromium sandboxing enabled. HTTP requests are restricted to the exact loopback origin/port of the DCP static runtime; WebSocket connections are closed, WebRTC peer/media APIs are disabled in the page context, and service workers are blocked. These browser-level controls are defense-in-depth, not an OS firewall or network namespace. Project HTML/JavaScript is still untrusted executable
 content: use only explicitly trusted projects and a suitably isolated local
 Runner. Workspace separation alone is not an OS sandbox.
 
@@ -52,6 +50,7 @@ Runner. Workspace separation alone is not an OS sandbox.
 - No project server, package script, custom test script, or dependency install
   is executed by this target.
 - Browser session and network access are not exposed to the dashboard.
+- Browser request routing is not a substitute for host-level egress isolation; use only trusted projects on a suitably isolated Runner.
 - Screenshot and ZIP sizes are bounded; oversized full-page screenshots are
   reduced to viewport captures and reported as a failure.
 - The result ZIP and static build artifact are uploaded to the Gateway Artifact
