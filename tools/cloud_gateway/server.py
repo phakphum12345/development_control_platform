@@ -216,10 +216,17 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
 
         @staticmethod
         def public_job(row):
-            keys = ("id", "repository", "commit_sha", "target", "state",
+            source_type = row.get("source_type") or "github"
+            keys = ("id", "source_type", "repository", "commit_sha", "local_project_id",
+                    "snapshot_sha256", "execution_approved", "target", "state",
                     "created_at", "updated_at", "worker", "lease_until",
                     "cancel_at", "result", "error_code")
-            return {key: row.get(key) for key in keys}
+            result = {key: row.get(key) for key in keys}
+            if source_type == "local":
+                result["repository"] = None
+                result["commit_sha"] = None
+            result["execution_approved"] = bool(result.get("execution_approved"))
+            return result
 
         def proxy_identity(self):
             return verifier.verify(self) if verifier else None
@@ -644,26 +651,47 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                 try:
                     if path == "/api/jobs":
                         payload = self.body()
-                        repository = payload.get("repository")
-                        authorizer = getattr(service, "repository_authorizer", None)
-                        if callable(authorizer):
+                        source_type = payload.get("source_type", "github")
+                        if source_type == "local":
+                            if identity.get("role") != "owner":
+                                raise PolicyDenied("Owner role required for Local Project execution", 403)
+                            if payload.get("execution_approved") is not True:
+                                raise PolicyDenied("Explicit source execution approval is required", 403)
+                            registry = self.local_project_registry()
+                            if registry is None:
+                                raise PolicyDenied("Local Project Registry is unavailable", 503)
                             try:
-                                allowed = authorizer(repository)
+                                detected = registry.detect_project(
+                                    payload.get("local_project_id"),
+                                    payload.get("snapshot_sha256"),
+                                )
+                            except LocalProjectError:
+                                raise PolicyDenied("Local Project snapshot is stale or unavailable; refresh it before queueing", 409)
+                            if detected.get("supports_flutter") is not True:
+                                raise PolicyDenied("Local Runner currently supports only registered Flutter projects", 400)
+                        elif source_type == "github":
+                            repository = payload.get("repository")
+                            authorizer = getattr(service, "repository_authorizer", None)
+                            if callable(authorizer):
+                                try:
+                                    allowed = authorizer(repository)
+                                except Exception:
+                                    raise PolicyDenied("Repository access could not be verified", 503)
+                                if allowed is not True:
+                                    raise PolicyDenied("Repository is not accessible to this GitHub App installation", 403)
+                            elif repository not in service.settings.allowed_repositories:
+                                raise PolicyDenied("Repository is not allowlisted", 403)
+                            resolver = getattr(service, "repository_commit_resolver", None)
+                            if not callable(resolver):
+                                raise PolicyDenied("Immutable commit verification is unavailable", 503)
+                            try:
+                                resolved = resolver(repository, payload.get("commit_sha"))
                             except Exception:
-                                raise PolicyDenied("Repository access could not be verified", 503)
-                            if allowed is not True:
-                                raise PolicyDenied("Repository is not accessible to this GitHub App installation", 403)
-                        elif repository not in service.settings.allowed_repositories:
-                            raise PolicyDenied("Repository is not allowlisted", 403)
-                        resolver = getattr(service, "repository_commit_resolver", None)
-                        if not callable(resolver):
-                            raise PolicyDenied("Immutable commit verification is unavailable", 503)
-                        try:
-                            resolved = resolver(repository, payload.get("commit_sha"))
-                        except Exception:
-                            raise PolicyDenied("Commit could not be verified", 503)
-                        if not isinstance(resolved, dict) or resolved.get("commit_sha") != payload.get("commit_sha"):
-                            raise PolicyDenied("Commit SHA does not resolve in the selected repository", 403)
+                                raise PolicyDenied("Commit could not be verified", 503)
+                            if not isinstance(resolved, dict) or resolved.get("commit_sha") != payload.get("commit_sha"):
+                                raise PolicyDenied("Commit SHA does not resolve in the selected repository", 403)
+                        else:
+                            raise PolicyDenied("Unsupported job source type", 400)
                         row, created = jobs.create(payload, self.headers.get("Idempotency-Key", ""))
                         return self.send_json(202 if created else 200, self.public_job(row))
                     suffix = path[len("/api/jobs/"):]
