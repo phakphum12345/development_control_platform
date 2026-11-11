@@ -53,7 +53,7 @@ class DashboardContractTests(unittest.TestCase):
             'function projectImportCheckSession()',
             'function projectImportVerifyCommit()',
             'function projectImportInspectProject()',
-            'absolute host paths are not returned',
+            'Absolute host paths are not returned by the API',
             'does not yet create an immutable job snapshot',
         ):
             with self.subTest(expected=expected):
