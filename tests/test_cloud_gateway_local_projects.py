@@ -36,6 +36,7 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
         store = RunnerStore(str(base / "gateway.sqlite"))
         service = GatewayService(GatewaySettings(), store, object())
         service.local_project_registry = registry
+        service.repository_catalog = lambda: []
         service.repository_authorizer = lambda repository: repository == "example/demo"
         service.repository_ref_catalog = lambda repository, kind: [
             {"name": kind + "-selected", "commit_sha": "a" * 40}
@@ -118,10 +119,10 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(result["refs"][0]["name"], "tags-selected")
 
-    def test_operator_cannot_read_github_app_project_catalog(self):
+    def test_operator_can_read_github_app_project_catalog(self):
         status, result = self.request("/api/github/repositories", role="operator")
-        self.assertEqual(status, 403)
-        self.assertEqual(result["error"], "owner role required")
+        self.assertEqual(status, 200)
+        self.assertEqual(result["repositories"], [])
 
     def test_operator_cannot_read_local_filesystem_metadata(self):
         status, result = self.request("/api/local-projects", role="operator")
