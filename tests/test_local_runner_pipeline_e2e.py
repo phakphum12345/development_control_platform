@@ -192,6 +192,14 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
         }, "runner-local-folder-static-001")
         self.assertTrue(created)
         from tools.local_runner_agent.web_build import WebBuildExecutor
+        class DiagnosticWebBuildExecutor(WebBuildExecutor):
+            def run(self, *args, **kwargs):
+                try:
+                    return super().run(*args, **kwargs)
+                except Exception as exc:
+                    self.last_error = f"{type(exc).__name__}: {exc}"
+                    raise
+        web_executor = DiagnosticWebBuildExecutor(self.manager, enabled=True)
         host_os = "windows" if os.name == "nt" else "linux"
         pipeline = RunnerPipeline(
             self.client, self.manager, _FixtureCheckout(self.manager),
@@ -201,10 +209,13 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
             local_project_checkout=LocalProjectCheckout(self.manager, local_registry),
             worker_os=host_os,
             capabilities={"web", host_os},
-            web_executor=WebBuildExecutor(self.manager, enabled=True),
+            web_executor=web_executor,
         )
         result = pipeline.run_once()
-        self.assertEqual(result["outcome"], "succeeded", result)
+        self.assertEqual(
+            result["outcome"], "succeeded",
+            {"pipeline": result, "web_build_error": getattr(web_executor, "last_error", None)},
+        )
         self.assertEqual(result["job"]["state"], "succeeded")
         self.assertEqual(result["result"]["source_type"], "local_folder")
         self.assertEqual(result["result"]["source_sha256"], registered["snapshot_sha256"])
