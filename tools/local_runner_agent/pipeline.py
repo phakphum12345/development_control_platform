@@ -128,13 +128,13 @@ class RunnerPipeline:
             )
             outcome = build.outcome
             error_code = build.error_code
-            result = {
+            result.update({
                 "command": list(build.command),
                 "return_code": build.return_code,
                 "duration_seconds": build.duration_seconds,
                 "output_bytes": build.output_bytes,
                 "source_directory": str(source.relative_to(self.workspaces.get(job_id, worker_id))),
-            }
+            })
             self.client.append_log(
                 job_id,
                 f"Build execution {outcome}; exit={build.return_code}; "
