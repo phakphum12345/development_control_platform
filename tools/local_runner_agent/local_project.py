@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import stat
 import tempfile
@@ -355,7 +356,11 @@ class LocalProjectRegistry:
                     source_flags |= os.O_NOFOLLOW
                     output_flags |= os.O_NOFOLLOW
                 source_fd = os.open(source_file, source_flags)
-                output_fd = os.open(output_file, output_flags, 0o600)
+                try:
+                    output_fd = os.open(output_file, output_flags, 0o600)
+                except Exception:
+                    os.close(source_fd)
+                    raise
                 file_hash = hashlib.sha256()
                 copied = 0
                 with os.fdopen(source_fd, "rb") as source_handle, os.fdopen(output_fd, "wb") as output_handle:
@@ -397,7 +402,8 @@ class LocalProjectRegistry:
                 "snapshot_directory": str(target),
                 "file_count": snapshot_count,
                 "total_bytes": snapshot_bytes,
-                "read_only": True,
+                "read_only_permissions_applied": True,
+                "os_sandbox": False,
             }
         except Exception:
             if created and target.exists():
