@@ -11,6 +11,7 @@ import os
 import stat
 import tempfile
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -26,14 +27,23 @@ _MAX_FILES = 100_000
 _MAX_BYTES = 1024 * 1024 * 1024
 
 
+def _reject_link_components(path: Path, label: str) -> None:
+    current = Path(path.anchor)
+    for part in path.parts[1:]:
+        current = current / part
+        try:
+            if current.is_symlink() or (hasattr(current, "is_junction") and current.is_junction()):
+                raise LocalProjectError(f"{label} path contains a symlink or junction")
+        except OSError:
+            raise LocalProjectError(f"{label} path cannot be inspected") from None
+
+
 def _canonical_directory(value: str | os.PathLike, label: str) -> Path:
     raw = Path(value).expanduser()
     if not raw.is_absolute():
         raise LocalProjectError(f"{label} must be an absolute path")
     try:
-        # Reject a symlink/junction at the selected path itself before resolving it.
-        if raw.is_symlink() or (hasattr(raw, "is_junction") and raw.is_junction()):
-            raise LocalProjectError(f"{label} must not be a symlink or junction")
+        _reject_link_components(raw, label)
         resolved = raw.resolve(strict=True)
     except (OSError, RuntimeError):
         raise LocalProjectError(f"{label} does not exist or cannot be resolved") from None
@@ -64,12 +74,11 @@ class LocalProjectRegistry:
             raise ValueError("max_files is outside the allowed range")
         if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or not 1 <= max_bytes <= _MAX_BYTES:
             raise ValueError("max_bytes is outside the allowed range")
-        if raw.exists() and (raw.is_symlink() or (hasattr(raw, "is_junction") and raw.is_junction())):
-            raise LocalProjectError("registry file must not be a symlink or junction")
         parent = raw.parent
         parent.mkdir(parents=True, exist_ok=True)
-        if parent.is_symlink() or (hasattr(parent, "is_junction") and parent.is_junction()):
-            raise LocalProjectError("registry directory must not be a symlink or junction")
+        _reject_link_components(parent, "registry directory")
+        if raw.exists():
+            _reject_link_components(raw, "registry file")
         self.registry_file = parent.resolve(strict=True) / raw.name
         self.max_files = max_files
         self.max_bytes = max_bytes
@@ -122,9 +131,7 @@ class LocalProjectRegistry:
             if record.get("path") == str(root):
                 return {"root_id": root_id, **record}
         root_id = str(uuid.uuid4())
-        record = {"path": str(root), "created_at": __import__("datetime").datetime.now(
-            __import__("datetime").timezone.utc
-        ).isoformat()}
+        record = {"path": str(root), "created_at": datetime.now(timezone.utc).isoformat()}
         self._data["roots"][root_id] = record
         self._save()
         return {"root_id": root_id, **record}
@@ -166,12 +173,21 @@ class LocalProjectRegistry:
             raise LocalProjectError("project file-count limit exceeded")
         for relative, path in entries:
             try:
-                before = path.stat(follow_symlinks=False)
+                before = path.lstat()
                 if not stat.S_ISREG(before.st_mode):
                     raise LocalProjectError("project file changed type during fingerprint")
                 file_hash = hashlib.sha256()
                 size = 0
-                with path.open("rb") as handle:
+                flags = os.O_RDONLY
+                if hasattr(os, "O_NOFOLLOW"):
+                    flags |= os.O_NOFOLLOW
+                descriptor = os.open(path, flags)
+                with os.fdopen(descriptor, "rb") as handle:
+                    opened = os.fstat(handle.fileno())
+                    if not stat.S_ISREG(opened.st_mode) or (
+                        before.st_ino and opened.st_ino and before.st_ino != opened.st_ino
+                    ):
+                        raise LocalProjectError("project file changed during fingerprint")
                     while True:
                         chunk = handle.read(1024 * 1024)
                         if not chunk:
@@ -181,8 +197,8 @@ class LocalProjectRegistry:
                         if total_bytes > self.max_bytes:
                             raise LocalProjectError("project snapshot byte limit exceeded")
                         file_hash.update(chunk)
-                after = path.stat(follow_symlinks=False)
-                if (before.st_ino, before.st_size, before.st_mtime_ns) != (
+                    after = os.fstat(handle.fileno())
+                if (opened.st_ino, opened.st_size, opened.st_mtime_ns) != (
                     after.st_ino, after.st_size, after.st_mtime_ns
                 ) or size != after.st_size:
                     raise LocalProjectError("project changed while snapshot was fingerprinted")
