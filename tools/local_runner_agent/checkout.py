@@ -5,9 +5,7 @@ package scripts, or any repository code during extraction.
 """
 from __future__ import annotations
 
-import hashlib
 import os
-import shutil
 import stat
 import tempfile
 import urllib.error
@@ -84,7 +82,6 @@ class LocalProjectCheckout:
                 except Exception:
                     os.close(source_fd)
                     raise
-                file_hash = hashlib.sha256()
                 copied = 0
                 with os.fdopen(source_fd, "rb") as source_handle, os.fdopen(output_fd, "wb") as output_handle:
                     opened = os.fstat(source_handle.fileno())
@@ -99,7 +96,6 @@ class LocalProjectCheckout:
                         if total > self.max_bytes:
                             raise CheckoutError("local snapshot copy exceeds byte limit")
                         output_handle.write(chunk)
-                        file_hash.update(chunk)
                     after = os.fstat(source_handle.fileno())
                     output_handle.flush()
                     os.fsync(output_handle.fileno())
