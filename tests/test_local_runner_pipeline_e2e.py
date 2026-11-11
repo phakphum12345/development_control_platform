@@ -269,6 +269,5 @@ class WindowsRunnerPipelineAcceptanceTests(RunnerPipelineEndToEndTests):
         ))
 
 
-    @unittest.skipIf(os.name == "nt", "POSIX fixture executable used for deterministic process tests")
 if __name__ == "__main__":
     unittest.main()
