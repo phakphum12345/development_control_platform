@@ -29,6 +29,21 @@ class AuthenticatedPreviewManager:
         self._jobs: dict[str, str] = {}
         self._lock = threading.RLock()
 
+    def _prune_stale(self) -> None:
+        for runtime_id, token in list(self._tokens.items()):
+            try:
+                status = self.runtime_manager.status(runtime_id, token)
+                if status.get("state") != "running":
+                    try:
+                        self.runtime_manager.stop(runtime_id, token)
+                    except RuntimeErrorDCP:
+                        pass
+                    self._tokens.pop(runtime_id, None)
+                    self._jobs.pop(runtime_id, None)
+            except RuntimeErrorDCP:
+                self._tokens.pop(runtime_id, None)
+                self._jobs.pop(runtime_id, None)
+
     def start(self, job_id: str, worker_id: str, output_relative: str = "source/dist") -> dict:
         try:
             uuid.UUID(job_id)
@@ -39,6 +54,7 @@ class AuthenticatedPreviewManager:
         if output_relative not in ("source/dist", "source/build/web", "dist", "build/web"):
             raise PreviewError("unsupported preview output")
         with self._lock:
+            self._prune_stale()
             active_for_job = sum(1 for value in self._jobs.values() if value == job_id)
             if active_for_job:
                 raise PreviewError("a preview is already active for this job")
