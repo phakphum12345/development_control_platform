@@ -528,7 +528,8 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                     jobs = self.job_store()
                     previews = getattr(service, "preview_manager", None)
                     job = jobs.get(job_id) if jobs is not None else None
-                    if not job or not previews or not job.get("worker"):
+                    worker_id = (job.get("last_worker") or job.get("worker")) if job else None
+                    if not job or not previews or not worker_id:
                         return self.send_json(404, {"error": "preview not found"})
                     try:
                         if relative_path is None:
@@ -727,11 +728,12 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                         previews = getattr(service, "preview_manager", None)
                         if not job or job.get("state") != "succeeded":
                             return self.send_json(409, {"error": "job must succeed before preview"})
-                        if not previews or not job.get("worker"):
+                        worker_id = (job.get("last_worker") or job.get("worker")) if job else None
+                        if not previews or not worker_id:
                             return self.send_json(503, {"error": "local preview runtime is not configured"})
                         payload = self.body()
                         try:
-                            row = previews.start(job_id, job["worker"], payload.get("output_relative", "source/dist"))
+                            row = previews.start(job_id, worker_id, payload.get("output_relative", "source/dist"))
                             return self.send_json(201, row)
                         except PreviewError as exc:
                             return self.send_json(409, {"error": str(exc)})
