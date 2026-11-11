@@ -222,7 +222,12 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
             keys = ("id", "repository", "commit_sha", "target", "state",
                     "created_at", "updated_at", "worker", "lease_until",
                     "cancel_at", "result", "error_code")
-            return {key: row.get(key) for key in keys}
+            public = {key: row.get(key) for key in keys}
+            payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+            public["source_type"] = payload.get("source_type", "github")
+            public["source_id"] = payload.get("source_id", row.get("repository"))
+            public["source_sha256"] = payload.get("source_sha256")
+            return public
 
         def proxy_identity(self):
             return verifier.verify(self) if verifier else None
