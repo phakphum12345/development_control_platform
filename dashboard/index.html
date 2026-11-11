@@ -1190,8 +1190,15 @@ async function buildJobsRefresh(){
   const rows=data.jobs;
   const artifactsByJob={};
   await Promise.all(rows.filter(job=>job.state==="succeeded").map(async job=>{
-   try{const result=await runnerJson("./api/jobs/"+encodeURIComponent(job.id)+"/artifacts");artifactsByJob[job.id]=Array.isArray(result.artifacts)?result.artifacts:[]}
-   catch(_){artifactsByJob[job.id]=[]}
+   try{
+    const [artifactResult,previewResult]=await Promise.all([
+     runnerJson("./api/jobs/"+encodeURIComponent(job.id)+"/artifacts"),
+     runnerJson("./api/jobs/"+encodeURIComponent(job.id)+"/previews")
+    ]);
+    artifactsByJob[job.id]=Array.isArray(artifactResult.artifacts)?artifactResult.artifacts:[];
+    const active=(Array.isArray(previewResult.previews)?previewResult.previews:[]).find(item=>item.state==="running");
+    if(active)runnerUI.previews[job.id]=active;else delete runnerUI.previews[job.id];
+   }catch(_){artifactsByJob[job.id]=[];delete runnerUI.previews[job.id]}
   }));
   if(!rows.length){list.innerHTML='<div class="empty">No Jobs in the queue.</div>';return}
   list.innerHTML='<table><thead><tr><th>Job</th><th>Repository / Commit</th><th>Target</th><th>Status</th><th>Artifacts</th><th>Local Preview</th></tr></thead><tbody>'+
