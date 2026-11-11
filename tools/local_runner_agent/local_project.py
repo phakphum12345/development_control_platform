@@ -194,7 +194,7 @@ class LocalProjectRegistry:
             except OSError:
                 raise LocalProjectError("project directory cannot be inspected") from None
             for entry in children:
-                if entry.name in _IGNORED_DIRS and entry.is_dir(follow_symlinks=False):
+                if entry.name.lower() in _IGNORED_DIRS and entry.is_dir(follow_symlinks=False):
                     continue
                 path = Path(entry.path)
                 try:
