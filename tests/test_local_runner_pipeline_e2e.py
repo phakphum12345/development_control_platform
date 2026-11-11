@@ -194,10 +194,12 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
 
         flutter_executor = FlutterBuildExecutor(self.manager, enabled=False)
         from tools.local_runner_agent.web_build import WebBuildExecutor
+        host_os = "windows" if os.name == "nt" else "linux"
         pipeline = RunnerPipeline(
             self.client, self.manager, StaticCheckout(self.manager), flutter_executor,
             trusted_repositories={"owner/static-site"},
-            capabilities={"web", "linux"},
+            worker_os=host_os,
+            capabilities={"web", host_os},
             web_executor=WebBuildExecutor(self.manager, enabled=True),
         )
         result = pipeline.run_once()
