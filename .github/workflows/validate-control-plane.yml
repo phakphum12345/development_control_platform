@@ -61,7 +61,7 @@ jobs:
 
       - name: Install Chromium browser
         run: |
-          npx playwright install --with-deps chromium
+          npx playwright install chromium
           python -m playwright install chromium
 
       - name: Test DCP local static application with real Chromium
