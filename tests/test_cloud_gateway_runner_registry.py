@@ -64,6 +64,16 @@ class RunnerRegistryTests(unittest.TestCase):
         self.assertNotIn("build", flutter_targets)
         self.assertNotIn("package", flutter_targets)
 
+
+    def test_node_web_only_runner_can_register_and_receive_web_jobs(self):
+        row = self.registry.register("node-web-runner", "linux", ["web"])
+        self.assertEqual(row["state"], "online")
+        targets = self.registry.allowed_targets("node-web-runner")
+        self.assertIn("build_static_web", targets)
+        self.assertIn("build_vite", targets)
+        self.assertNotIn("test", targets)
+        self.assertNotIn("build_android", targets)
+
     def test_stale_runner_is_reported_offline_and_cannot_claim(self):
         self.registry.register("runner-stale", "linux", ["flutter", "linux"])
         with self.registry.db() as conn:

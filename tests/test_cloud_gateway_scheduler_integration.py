@@ -35,6 +35,16 @@ class RunnerSchedulerTests(unittest.TestCase):
         }, key)
         return row
 
+
+    def test_web_runner_claims_static_and_vite_jobs_only_with_web_capability(self):
+        static_job = self.create_job("build_static_web", "sched-static-web-01")
+        vite_job = self.create_job("build_vite", "sched-vite-web-001")
+        self.registry.register("web-runner", "linux", ["web"])
+        self.assertEqual(self.scheduler.eligible_runners("build_static_web")[0]["worker_id"], "web-runner")
+        claimed = self.scheduler.claim("web-runner")
+        self.assertEqual(claimed["id"], static_job["id"])
+        self.assertEqual(self.jobs.get(vite_job["id"])["state"], "queued")
+
     def test_linux_runner_only_claims_linux_and_generic_work(self):
         linux_job = self.create_job("build_linux", "sched-linux-0001")
         windows_job = self.create_job("build_windows", "sched-win-0001")

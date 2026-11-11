@@ -12,10 +12,10 @@ Status labels describe the initial source review only; revalidate against the ex
 | CORE-06 | Backend-enforced VM Creation OFF | PARTIAL/VERIFY | P0 | Separate gate from Cloud Provisioning; tests prove no provider create call. |
 | IMP-01 | GitHub App repository/ref/SHA import | EXISTING/PARTIAL | P0 | Revalidate installation membership and immutable SHA at job acceptance. |
 | IMP-02 | Local Folder import via Local Agent | PARTIAL | P0 | Local registry, explicit CLI enrollment, owner-only read APIs, Dashboard source selection and verified snapshot materialization exist; durable job binding and runner integration remain. |
-| IMP-03 | Framework/toolchain detection | PARTIAL | P0 | Detect from manifests and tool availability; unknown stays UNKNOWN. |
+| IMP-03 | Framework/toolchain detection | PARTIAL | P0 | Existing bounded inventory now reports evidence-based framework, package manager, manifest constraints and scripts; installed toolchain readiness and job integration remain. |
 | BUILD-01 | Flutter fixed-target executor | EXISTING/PARTIAL | P1 | Opt-in, trusted-repository allowlist, disabled by default; verify artifacts and cleanup. |
-| BUILD-02 | Generic web build adapters | MISSING | P0 | Start with static HTML/JS and Node/Vite stacks; no arbitrary shell command. |
-| RUN-01 | Runtime Manager | MISSING | P0 | Start/stop supervised process trees with port isolation, timeout and logs. |
+| BUILD-02 | Generic web build adapters | PARTIAL | P0 | Static HTML/JS and React/Vite + Vue/Vite Local Runner targets implemented; dashboard UX, host acceptance and broader build matrix remain. |
+| RUN-01 | Runtime Manager | PARTIAL | P0 | Added loopback-only static runtime supervisor with ephemeral port, process-tree stop, health, bounded logs and expiring session capability; Gateway/Preview Proxy integration remains. |
 | RUN-02 | Real application preview | MISSING/PARTIAL | P0 | Preview actual runtime via owner-bound expiring proxy session. |
 | TERM-01 | Terminal Studio UI | MISSING | P1 | Tabs, shell selection, working directory, output, exit code, stop and history. |
 | TERM-02 | Import Command / Template Library | MISSING | P1 | Import text/JSON/script as inert data; never auto-execute; validate schema and provenance. |
@@ -55,3 +55,18 @@ A feature is complete only when implementation, unit/integration tests, security
 - Dashboard Project Import view now reads GitHub App repositories/refs/verified commits and enrolled Local Projects. This remains PARTIAL until selected sources can be materialized into immutable job snapshots and bound to build/test jobs.
 
 - Local Folder snapshot materialization now verifies the registered SHA-256 before/after copy, rejects symlinks and destination overwrites, and produces a bounded read-only-permissions copy. Durable job payload binding and Local Runner execution integration remain outstanding.
+
+
+## 2026-11-11 project intelligence progress
+- Added manifest-backed framework detection to the existing Project Intelligence inventory.
+- Detection is read-only and does not imply toolchain readiness or build support.
+
+
+## Universal Build Engine progress
+- Static web and Vite targets are now wired through existing Job Control Plane, Runner Scheduler, Local Runner Pipeline and Artifact Store.
+- Dependency installation is intentionally not automated; Vite must already exist in the workspace. Unknown frameworks remain unsupported.
+
+
+## Runtime Manager progress
+- Initial static runtime supervisor implemented for built output only; no arbitrary project server scripts are started.
+- Preview session tokens are local capability tokens and must be wrapped by authenticated Gateway owner authorization before Dashboard exposure.

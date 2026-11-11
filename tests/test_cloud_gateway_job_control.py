@@ -34,6 +34,16 @@ class JobStoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.store.create({**self.payload, "commit_sha": "bad"}, "job-key-0002")
 
+
+    def test_accepts_static_and_vite_web_targets(self):
+        for target in ("build_static_web", "build_vite"):
+            with self.subTest(target=target):
+                row, created = self.store.create(
+                    {**self.payload, "target": target}, f"job-key-{target}"
+                )
+                self.assertTrue(created)
+                self.assertEqual(row["target"], target)
+
     def test_claim_heartbeat_logs_and_finish(self):
         job, _ = self.create()
         claimed = self.store.claim("local-worker-1")

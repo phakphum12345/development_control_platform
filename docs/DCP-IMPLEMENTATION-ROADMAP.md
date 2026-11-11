@@ -44,3 +44,28 @@ Each phase is a separate feature branch and Draft PR, with narrowly scoped chang
 - Remaining: Dashboard project catalog/picker, authenticated project selection UX, immutable job snapshot/materialization, and end-to-end import-to-job binding.
 
 - Dashboard Project Import workspace added: authenticated owner-only GitHub App repository/ref/commit inspection and Local Project catalog selection. This is a read-only source-selection UI; immutable snapshot materialization and job binding remain outstanding.
+
+
+## Phase 2 progress — read-only project intelligence
+- Extended the existing bounded project inventory with evidence-based primary framework detection for static HTML/JS, React/Vite, Vue/Vite, Next.js, Angular, Flutter, Python, FastAPI, Django and Flask.
+- Reports package manager, declared Node/Python/Dart constraints and declared npm scripts without running them.
+- Toolchain readiness remains NOT_CHECKED; unknown or malformed evidence is not promoted to a supported build.
+- No dependency installation, network access, source execution or build command is performed during detection.
+
+
+## Universal Build Engine — first implementation slice
+- Added Local Runner targets for static HTML/CSS/JS and React/Vite or Vue/Vite.
+- Static web builds copy the project into a bounded `dist/` tree without executing source.
+- Vite builds invoke only the locally installed Vite CLI through Node; dependency installation and npm lifecycle scripts are not run.
+- Vite config/application build code is still executable project code and requires the Runner's explicit execution opt-in and trusted-repository allowlist.
+- Build output is packaged as a bounded ZIP artifact and uploaded through the existing authenticated artifact channel.
+- Framework detection, job target validation, runner scheduling, and local Runner dispatch are connected.
+- Next: dashboard build-job controls, actual Windows-host acceptance, SHA-256 provenance verification, runtime manager and real preview.
+
+
+## Runtime Manager — initial local static runtime slice
+- Added a loopback-only static runtime supervisor for already-built output.
+- Starts the Python standard-library HTTP server with an argv array; no shell or project server code is executed.
+- Allocates an ephemeral loopback port, verifies HTTP health, records bounded logs, supervises process-tree shutdown and expires runtime sessions.
+- Runtime session capabilities are random and required for local status/log/stop operations.
+- This is a local supervisor primitive, not yet a Gateway-authenticated Preview Proxy or Dashboard workflow.
