@@ -749,6 +749,7 @@ function initCodeNavigator(){$("code-nav-search").addEventListener("input",codeN
 initCodeNavigator();
 initPWA();
 initPasswordAuth();
+initProjectImport();
 
 let pwaInstallPrompt=null;
 function initPWA(){
@@ -804,6 +805,196 @@ async function initPasswordAuth(){
  await sessionCheck();
 }
 
+
+/* Project Import — authenticated read-only source selection; never submits host paths. */
+const projectImportState={authenticated:false,csrf:null,repositories:[],refs:[],verifiedCommit:null,inspection:null,roots:[],projects:[]};
+function projectImportStatus(text,state){
+ const el=$("project-import-status");el.textContent=text;el.dataset.state=state||"unknown";
+ $("project-import-auth-state").textContent="AUTH · "+(projectImportState.authenticated?"OWNER":"UNKNOWN");
+ $("project-import-auth-state").dataset.state=projectImportState.authenticated?"ready":"unknown";
+}
+async function projectImportApi(path){
+ const response=await fetch("."+path,{method:"GET",credentials:"same-origin",cache:"no-store",headers:{Accept:"application/json"}});
+ let data={};try{data=await response.json()}catch(_){}
+ if(!response.ok)throw new Error((data&&data.error)||("HTTP "+response.status));
+ if(!data||typeof data!=="object"||Array.isArray(data))throw new Error("Invalid API response");
+ return data;
+}
+function projectImportRenderSelected(source){
+ const box=$("project-import-selected");
+ if(!source){box.textContent="No source selected or verified.";return}
+ box.textContent=JSON.stringify(source,null,2);
+}
+async function projectImportCheckSession(){
+ ["project-import-github-refresh","project-import-local-refresh"].forEach(id=>$(id).disabled=true);
+ projectImportState.authenticated=false;projectImportState.csrf=null;
+ try{
+  const data=await projectImportApi("/api/auth/session");
+  projectImportState.authenticated=data.authenticated===true;
+  projectImportState.csrf=typeof data.csrfToken==="string"?data.csrfToken:null;
+  if(!projectImportState.authenticated||!projectImportState.csrf){
+   projectImportStatus("Owner sign-in required. Sign in from Password Login, then check the session again.","unknown");
+   return false;
+  }
+  ["project-import-github-refresh","project-import-local-refresh"].forEach(id=>$(id).disabled=false);
+  projectImportStatus("Authenticated owner session confirmed. Source catalogs are read-only.","ready");
+  return true;
+ }catch(error){
+  projectImportStatus("Local Auth Proxy / Gateway unavailable: "+error.message,"error");
+  return false;
+ }
+}
+async function projectImportLoadGithub(){
+ if(!projectImportState.authenticated){projectImportStatus("Owner sign-in required.","error");return}
+ const button=$("project-import-github-refresh");button.disabled=true;
+ $("project-import-github-result").textContent="Loading GitHub App installation catalog…";
+ try{
+  const data=await projectImportApi("/api/github/repositories");
+  if(!Array.isArray(data.repositories))throw new Error("Repository catalog response is invalid");
+  projectImportState.repositories=data.repositories;
+  const select=$("project-import-github-repo");
+  select.innerHTML='<option value="">Select an installed repository</option>'+data.repositories.map(item=>{
+   if(!item||typeof item.full_name!=="string")return "";
+   return '<option value="'+esc(item.full_name)+'">'+esc(item.full_name)+(item.private?" · private":" · public")+'</option>';
+  }).join("");
+  select.disabled=data.repositories.length===0;
+  $("project-import-ref-kind").disabled=data.repositories.length===0;
+  $("project-import-refs-load").disabled=data.repositories.length===0;
+  $("project-import-github-result").textContent=data.repositories.length
+   ?data.repositories.length+" GitHub App repositories loaded. Choose one to inspect branches or tags."
+   :"The GitHub App installation returned no repositories.";
+  projectImportStatus("GitHub App catalog loaded. No source code was downloaded or executed.","ready");
+ }catch(error){
+  $("project-import-github-result").textContent="GitHub App catalog unavailable: "+error.message;
+  projectImportStatus("GitHub App catalog could not be verified: "+error.message,"error");
+ }finally{button.disabled=false}
+}
+async function projectImportLoadRefs(){
+ const repository=$("project-import-github-repo").value;
+ const kind=$("project-import-ref-kind").value;
+ if(!repository){$("project-import-github-result").textContent="Select a repository first.";return}
+ const parts=repository.split("/");
+ if(parts.length!==2){$("project-import-github-result").textContent="Invalid repository selection.";return}
+ $("project-import-refs-load").disabled=true;
+ try{
+  const path="/api/github/repositories/"+encodeURIComponent(parts[0])+"/"+encodeURIComponent(parts[1])+"/refs?kind="+encodeURIComponent(kind);
+  const data=await projectImportApi(path);
+  if(!Array.isArray(data.refs))throw new Error("Reference catalog response is invalid");
+  projectImportState.refs=data.refs;
+  const select=$("project-import-ref");
+  select.innerHTML='<option value="">Select a '+(kind==="tags"?"tag":"branch")+'</option>'+data.refs.map(item=>
+   '<option value="'+esc(item.commit_sha)+'">'+esc(item.name)+' · '+esc(item.commit_sha)+'</option>'
+  ).join("");
+  select.disabled=data.refs.length===0;
+  $("project-import-verify").disabled=data.refs.length===0;
+  $("project-import-inspect").disabled=true;
+  projectImportState.verifiedCommit=null;projectImportState.inspection=null;projectImportRenderSelected(null);
+  $("project-import-github-result").textContent=data.refs.length+" "+kind+" loaded. Select a ref and verify its immutable commit SHA.";
+ }catch(error){$("project-import-github-result").textContent="Could not load refs: "+error.message}
+ finally{$("project-import-refs-load").disabled=false}
+}
+async function projectImportVerifyCommit(){
+ const repository=$("project-import-github-repo").value;
+ const sha=$("project-import-ref").value;
+ const parts=repository.split("/");
+ if(parts.length!==2||!isSha(sha)){ $("project-import-github-result").textContent="Select a valid full commit SHA.";return}
+ $("project-import-verify").disabled=true;
+ try{
+  const path="/api/github/repositories/"+encodeURIComponent(parts[0])+"/"+encodeURIComponent(parts[1])+"/commits/"+sha;
+  const data=await projectImportApi(path);
+  if(String(data.commit_sha||"").toLowerCase()!==sha.toLowerCase())throw new Error("Server-side SHA verification did not match the selected commit");
+  projectImportState.verifiedCommit={source_type:"github",repository:repository,commit_sha:sha.toLowerCase()};
+  $("project-import-inspect").disabled=false;
+  $("project-import-github-result").textContent="Commit verified by GitHub App: "+sha;
+  projectImportRenderSelected(projectImportState.verifiedCommit);
+ }catch(error){projectImportState.verifiedCommit=null;$("project-import-inspect").disabled=true;$("project-import-github-result").textContent="Commit verification failed: "+error.message}
+ finally{$("project-import-verify").disabled=false}
+}
+async function projectImportInspectProject(){
+ const selected=projectImportState.verifiedCommit;
+ if(!selected){$("project-import-github-result").textContent="Verify a commit SHA first.";return}
+ const parts=selected.repository.split("/");
+ $("project-import-inspect").disabled=true;
+ try{
+  const path="/api/github/repositories/"+encodeURIComponent(parts[0])+"/"+encodeURIComponent(parts[1])+"/projects/"+selected.commit_sha;
+  const data=await projectImportApi(path);
+  projectImportState.inspection=data;
+  const summary={
+   source_type:"github",repository:selected.repository,commit_sha:selected.commit_sha,
+   status:data.status,project_types:data.project_types,file_count:data.file_count,
+   truncated:data.truncated,flutter:data.flutter
+  };
+  $("project-import-github-result").textContent=JSON.stringify(summary,null,2);
+  projectImportRenderSelected(summary);
+ }catch(error){$("project-import-github-result").textContent="Project inspection unavailable: "+error.message}
+ finally{$("project-import-inspect").disabled=false}
+}
+async function projectImportLoadLocal(){
+ if(!projectImportState.authenticated){projectImportStatus("Owner sign-in required.","error");return}
+ const button=$("project-import-local-refresh");button.disabled=true;
+ $("project-import-local-roots").textContent="Loading enrolled roots…";
+ $("project-import-local-projects").textContent="Loading local projects…";
+ try{
+  const [roots,projects]=await Promise.all([
+   projectImportApi("/api/local-projects/roots"),
+   projectImportApi("/api/local-projects")
+  ]);
+  if(!Array.isArray(roots.roots)||!Array.isArray(projects.projects))throw new Error("Local Project Registry response is invalid");
+  projectImportState.roots=roots.roots;projectImportState.projects=projects.projects;
+  $("project-import-local-roots").innerHTML=table(["Root ID","Display label"],roots.roots.map(row=>[
+   '<code>'+esc(row.root_id)+'</code>',esc(row.label)
+  ]));
+  const select=$("project-import-local-project");
+  select.innerHTML='<option value="">Select a registered local project</option>'+projects.projects.map(row=>
+   '<option value="'+esc(row.project_id)+'">'+esc(row.relative_path)+' · '+esc(row.snapshot_sha256.slice(0,12))+'</option>'
+  ).join("");
+  select.disabled=projects.projects.length===0;
+  $("project-import-local-select").disabled=projects.projects.length===0;
+  $("project-import-local-projects").innerHTML=table(
+   ["Project ID","Root ID","Relative path","SHA-256","Files","Bytes"],
+   projects.projects.map(row=>[
+    '<code>'+esc(row.project_id)+'</code>','<code>'+esc(row.root_id)+'</code>',
+    esc(row.relative_path),'<code>'+esc(row.snapshot_sha256)+'</code>',
+    esc(row.file_count),esc(row.total_bytes)
+   ])
+  );
+  projectImportStatus("Local registry refreshed. Absolute host paths are not returned by the API.","ready");
+ }catch(error){
+  $("project-import-local-roots").textContent="Enrolled roots unavailable: "+error.message;
+  $("project-import-local-projects").textContent="Local projects unavailable: "+error.message;
+  projectImportStatus("Local Project Registry could not be loaded: "+error.message,"error");
+ }finally{button.disabled=false}
+}
+function projectImportSelectLocal(){
+ const id=$("project-import-local-project").value;
+ const row=projectImportState.projects.find(item=>item.project_id===id);
+ if(!row)return;
+ const selected={
+  source_type:"local",project_id:row.project_id,root_id:row.root_id,
+  relative_path:row.relative_path,snapshot_sha256:row.snapshot_sha256,
+  file_count:row.file_count,total_bytes:row.total_bytes
+ };
+ projectImportRenderSelected(selected);
+ projectImportStatus("Local project selected by opaque ID. Source execution and job creation are not enabled by this view.","ready");
+}
+function initProjectImport(){
+ $("project-import-session-refresh").addEventListener("click",projectImportCheckSession);
+ $("project-import-github-refresh").addEventListener("click",projectImportLoadGithub);
+ $("project-import-local-refresh").addEventListener("click",projectImportLoadLocal);
+ $("project-import-refs-load").addEventListener("click",projectImportLoadRefs);
+ $("project-import-verify").addEventListener("click",projectImportVerifyCommit);
+ $("project-import-inspect").addEventListener("click",projectImportInspectProject);
+ $("project-import-ref-kind").addEventListener("change",()=>{$("project-import-refs-load").disabled=!projectImportState.authenticated||!$("project-import-github-repo").value});
+ $("project-import-github-repo").addEventListener("change",()=>{
+  projectImportState.refs=[];projectImportState.verifiedCommit=null;projectImportState.inspection=null;
+  $("project-import-ref").innerHTML='<option value="">Load refs first</option>';
+  $("project-import-ref").disabled=true;$("project-import-verify").disabled=true;$("project-import-inspect").disabled=true;
+  $("project-import-refs-load").disabled=!projectImportState.authenticated||!$("project-import-github-repo").value;
+  projectImportRenderSelected(null);
+ });
+ $("project-import-local-select").addEventListener("click",projectImportSelectLocal);
+ projectImportCheckSession();
+}
 
 /* Cloud Runner Control — fail closed; all secrets remain server-side. */
 const runnerUI={os:"linux",session:false,csrf:null,status:null,ready:false,repositories:[],verifiedCommit:null,project:null,projectRequestId:0};
