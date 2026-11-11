@@ -259,7 +259,10 @@ class CloudRunnerEndToEndAcceptanceTests(unittest.TestCase):
         )
         with self.assertRaises(HTTPError) as caught:
             urlopen(request, timeout=5)
-        self.assertEqual(caught.exception.code, 401)
+        try:
+            self.assertEqual(caught.exception.code, 401)
+        finally:
+            caught.exception.close()
 
 
 if __name__ == "__main__":

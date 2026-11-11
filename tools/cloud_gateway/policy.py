@@ -29,20 +29,27 @@ class GatewaySettings:
   if not 5<=self.max_runtime_minutes<=180: raise ValueError("Runtime must be 5..180 minutes")
   for value in (self.budget_limit_usd,self.current_spend_usd,self.projected_run_cost_usd):
    if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or value<0: raise ValueError("Budget values must be finite non-negative numbers")
- def authorize_provisioning(self,active_count):
+ def authorize_provisioning(self,active_count,dynamic_repository_authorization=False):
   self.validate_configuration()
   if not self.provisioning_enabled: raise PolicyDenied("Live provisioning is disabled",503)
   if not self.owner_approved: raise PolicyDenied("Owner approval is required",403)
-  if not self.allowed_repositories: raise PolicyDenied("Repository allowlist is empty",403)
+  if not self.allowed_repositories and not dynamic_repository_authorization: raise PolicyDenied("Repository authorization is not configured",403)
   if self.circuit_breaker_tripped: raise PolicyDenied("Budget circuit breaker is tripped",503)
   if self.budget_limit_usd<=0: raise PolicyDenied("Positive approved budget ceiling required",503)
   if self.current_spend_usd+self.projected_run_cost_usd>self.budget_limit_usd: raise PolicyDenied("Projected spend exceeds budget ceiling",429)
   if active_count>=self.max_concurrent_runners: raise PolicyDenied("Concurrency limit reached",429)
-def validate_runner_request(payload,settings):
+def validate_runner_request(payload,settings,repository_authorizer=None):
  if not isinstance(payload,dict) or set(payload)!=FIELDS: raise PolicyDenied("Request fields do not match contract",400)
  repo=payload["repository"]
  if not isinstance(repo,str) or not REPO.fullmatch(repo): raise PolicyDenied("Invalid owner/name repository",400)
- if repo not in settings.allowed_repositories: raise PolicyDenied("Repository is not allowlisted",403)
+ if callable(repository_authorizer):
+  try:
+   allowed=repository_authorizer(repo)
+  except Exception:
+   raise PolicyDenied("Repository installation membership could not be verified",503)
+  if allowed is not True: raise PolicyDenied("Repository is not accessible to the DCP GitHub App installation",403)
+ elif repo not in settings.allowed_repositories:
+  raise PolicyDenied("Repository is not allowlisted and dynamic installation authorization is unavailable",403)
  run=payload["workflow_run_id"]
  if isinstance(run,bool) or not isinstance(run,int) or run<1: raise PolicyDenied("workflow_run_id must be positive",400)
  if not isinstance(payload["commit_sha"],str) or not SHA.fullmatch(payload["commit_sha"]): raise PolicyDenied("commit_sha must be lowercase 40-character SHA",400)

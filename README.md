@@ -1,10 +1,12 @@
 # Development Control Platform
 
+> Platform architecture: [DCP Own Infrastructure Platform](docs/dcp-own-platform-architecture.md) — provider-neutral control plane, GitHub App repository catalog, local-first Runner workflow, and guarded provisioning.
+
 An independent control plane for development phases, quality gates, commit-bound evidence, and resumable checkpoints.
 
 ## Cloud Runner Control Plane
 
-The DCP includes a provider-neutral backend for requesting ephemeral macOS cloud runners for allowlisted repositories. See [docs/cloud-runner-control-plane.md](docs/cloud-runner-control-plane.md) for the canonical gateway API contract. The machine-readable [OpenAPI specification](schemas/cloud-runner-gateway.openapi.yaml) is validated by `tests/test_cloud_runner_openapi.py`. The historical [macOS runner design note](docs/macos-cloud-runner-control-plane.md) is retained as a legacy architecture record and is not the current adapter contract. The backend is opt-in and fail-closed: without provider HTTPS endpoint/token secrets it cannot provision anything. Dispatch acceptance is not runner-online or build-pass evidence. The initial allowlist contains only `phakphum12345/generated-A4-pdf`. No paid cloud provider is selected or activated automatically.
+The DCP includes a provider-neutral backend for requesting ephemeral runners. When a GitHub App is configured, repository discovery and authorization are based on the App installation catalog (all repositories installed for DCP), with repository-scoped runner registration tokens. The authenticated Dashboard can select Branches/Tags, verify a full commit SHA, and inspect Git tree paths plus bounded `pubspec.yaml` manifest contents to detect Flutter and macOS Runner project files without downloading or executing application source code. See [docs/cloud-runner-control-plane.md](docs/cloud-runner-control-plane.md) for the canonical gateway API contract. The machine-readable [OpenAPI specification](schemas/cloud-runner-gateway.openapi.yaml) is validated by `tests/test_cloud_runner_openapi.py`. The historical [macOS runner design note](docs/macos-cloud-runner-control-plane.md) is retained as a legacy architecture record and is not the current adapter contract. The backend is opt-in and fail-closed: without provider HTTPS endpoint/token secrets it cannot provision anything. Dispatch acceptance is not runner-online or build-pass evidence. A legacy static repository allowlist is used only when GitHub App installation discovery is not configured; it is not a narrowing filter in GitHub App mode. No paid cloud provider is selected or activated automatically.
 
 Azure deployment preparation is documented in [docs/azure-production-deployment.md](docs/azure-production-deployment.md). It defines a gated, non-provisioning-first Azure rollout; no cloud resources are created until subscription, domain, identity, cost, and live acceptance prerequisites are approved.
 
@@ -30,6 +32,25 @@ py -3 -m tools.local_runner_manager start --repository OWNER/PRIVATE-REPOSITORY
 ```
 
 The manager uses ephemeral runners, bounded restart attempts, GitHub online/busy status checks, and fail-safe behavior during GitHub API outages. This is a local Windows implementation; it does not enable cloud provisioning or rewrite workflow labels.
+
+## DCP Gateway Runner Agent
+
+The separate Gateway-backed Runner Agent can enroll with the local DCP Job Control Plane. It is distinct from the Central Local Runner Manager above: the manager starts an ephemeral GitHub Actions runner, while this agent claims DCP jobs through the local Gateway.
+
+Prepare a protected worker credential, restart the local stack, then enroll offline:
+
+```powershell
+.\Setup-DCP-Local-Runner.cmd
+.\Start-DCP-Gateway-Runner.cmd -WorkerId windows-local-01
+```
+
+Job execution remains disabled by default. Enable it only for an explicitly trusted repository after host preflight:
+
+```powershell
+.\Start-DCP-Gateway-Runner.cmd -WorkerId windows-local-01 -EnableExecution -TrustedRepository "owner/repository" -Once
+```
+
+See [Local Job Control Plane](docs/local-job-control-plane.md). Cloud provisioning remains disabled.
 
 ## Local-first development (zero-cost by default)
 
