@@ -13,6 +13,7 @@ from .checkout import GitHubCommitCheckout
 from .execution import FlutterBuildExecutor
 from .pipeline import RunnerPipeline
 from .workspace import WorkspaceManager
+from .local_project import LocalProjectError, LocalProjectRegistry, default_registry_path
 from tools.runner_agent.preflight import collect_preflight, resolve_capabilities
 
 
@@ -38,8 +39,40 @@ def main(argv=None) -> int:
         "--once", action="store_true",
         help="claim and process at most one job; requires explicit execution opt-in",
     )
+    modes.add_argument(
+        "--enroll-root", metavar="PATH",
+        help="explicitly enroll one local directory as an allowed project root",
+    )
+    modes.add_argument(
+        "--register-project", nargs=2, metavar=("ROOT_ID", "PATH"),
+        help="register a project directory beneath an already enrolled root",
+    )
+    modes.add_argument(
+        "--list-projects", action="store_true",
+        help="list locally enrolled roots and project IDs",
+    )
     args = parser.parse_args(argv)
     try:
+        if args.enroll_root or args.register_project or args.list_projects:
+            registry = LocalProjectRegistry(
+                os.environ.get("DCP_LOCAL_PROJECT_REGISTRY", str(default_registry_path()))
+            )
+            if args.enroll_root:
+                print(json.dumps(registry.enroll_root(args.enroll_root), indent=2, sort_keys=True))
+                return 0
+            if args.register_project:
+                root_id, project_path = args.register_project
+                print(json.dumps(
+                    registry.register_project(root_id, project_path),
+                    indent=2, sort_keys=True,
+                ))
+                return 0
+            print(json.dumps({
+                "roots": registry.list_roots(),
+                "projects": registry.list_projects(),
+            }, indent=2, sort_keys=True))
+            return 0
+
         config = RunnerAgentConfig.from_env()
         client = GatewayClient(config)
         health = client.health()
@@ -115,7 +148,7 @@ def main(argv=None) -> int:
         }
         print(json.dumps(summary, indent=2, sort_keys=True))
         return 0 if result.get("outcome") == "succeeded" else 1
-    except (ValueError, RunnerGatewayError) as exc:
+    except (ValueError, RunnerGatewayError, LocalProjectError) as exc:
         print(json.dumps({"agent": "not_ready", "error": str(exc)}), file=sys.stderr)
         return 1
     except Exception as exc:
