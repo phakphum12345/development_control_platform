@@ -75,16 +75,21 @@ class RunnerPipeline:
         last_heartbeat = 0.0
         try:
             job_payload = job.get("payload") if isinstance(job.get("payload"), dict) else {}
-            source_type = job_payload.get("source_type", "github")
+            # The Gateway's public claim response deliberately omits the private payload.
+            # Source identity and immutable revision are exposed as sanitized top-level fields.
+            source_type = job.get("source_type") or job_payload.get("source_type", "github")
             if source_type == "github":
                 if job["repository"] not in self.trusted_repositories:
                     raise ExecutionError("repository is not in the Runner trusted-repository allowlist")
             elif source_type == "local_folder":
-                project_id = job_payload.get("source_id")
+                project_id = job.get("source_id") or job_payload.get("source_id")
+                snapshot_sha256 = job.get("source_sha256") or job_payload.get("source_sha256")
                 if project_id not in self.trusted_local_projects:
                     raise ExecutionError("local project is not in the Runner trusted-project allowlist")
                 if self.local_project_checkout is None:
                     raise CheckoutError("Local Project snapshot checkout is not configured")
+                if not isinstance(snapshot_sha256, str):
+                    raise CheckoutError("Local Project snapshot revision is unavailable")
             else:
                 raise ExecutionError("job source type is not supported by this Runner")
             self.workspaces.cleanup_expired_preview_workspaces()
@@ -93,7 +98,7 @@ class RunnerPipeline:
             self.client.append_log(job_id, "Runner claimed job; workspace allocated", "system")
             if source_type == "local_folder":
                 source, snapshot = self.local_project_checkout.checkout(
-                    job_id, worker_id, job_payload["source_id"], job_payload["source_sha256"]
+                    job_id, worker_id, project_id, snapshot_sha256
                 )
                 result["source_type"] = "local_folder"
                 result["source_sha256"] = snapshot["snapshot_sha256"]
