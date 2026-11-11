@@ -1019,6 +1019,7 @@ function initProjectImport(){
   $("project-import-ref").disabled=true;$("project-import-verify").disabled=true;$("project-import-inspect").disabled=true;
   $("project-import-refs-load").disabled=!projectImportState.authenticated||!$("project-import-github-repo").value;
   projectImportRenderSelected(null);
+  buildJobsUpdateGate();
  });
  $("project-import-local-select").addEventListener("click",projectImportSelectLocal);
  projectImportCheckSession();
