@@ -27,6 +27,12 @@ _MAX_FILES = 100_000
 _MAX_BYTES = 1024 * 1024 * 1024
 
 
+def default_registry_path() -> Path:
+    """Return the same per-user DCP data location used by the Windows/local stack."""
+    base = Path(os.environ.get("LOCALAPPDATA") or Path.home())
+    return base / "DCP" / "local-projects.json"
+
+
 def _reject_link_components(path: Path, label: str) -> None:
     current = Path(path.anchor)
     for part in path.parts[1:]:
@@ -99,6 +105,10 @@ class LocalProjectRegistry:
                 or not isinstance(data.get("projects"), dict)):
             raise LocalProjectError("registry schema is invalid")
         return data
+
+    def reload(self) -> None:
+        """Refresh persisted enrollment state so CLI changes become visible to Gateway."""
+        self._data = self._load()
 
     def _save(self) -> None:
         payload = json.dumps(self._data, sort_keys=True, separators=(",", ":")) + "\n"

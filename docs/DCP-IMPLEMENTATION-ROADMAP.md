@@ -35,3 +35,10 @@ Run regression against isolated test workspace, verify recovery point, test upgr
 
 ## Phase gates
 Each phase is a separate feature branch and Draft PR, with narrowly scoped changes, automated tests, security review and exact-commit evidence. No merge without explicit user approval.
+
+
+## Phase 1 progress — Local Folder intake foundation
+- Implemented the Local Agent registry for explicitly enrolled roots and project snapshot fingerprints.
+- Added local CLI operations to enroll roots, register projects and list the registry.
+- Added owner-only, read-only Gateway endpoints and Local Auth Proxy allowlisting; absolute host paths are not returned.
+- Remaining: Dashboard project catalog/picker, authenticated project selection UX, immutable job snapshot/materialization, and end-to-end import-to-job binding.

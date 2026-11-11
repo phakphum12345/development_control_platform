@@ -368,6 +368,68 @@ paths:
         '409': { description: Idempotency conflict. }
         '429': { description: Budget, concurrency, or rate limit denied. }
         '503': { description: Owner, budget, provisioning, or provider bootstrap gate is not ready. }
+  /api/local-projects:
+    get:
+      operationId: listLocalProjects
+      summary: List locally enrolled projects
+      description: Owner-only read API. Returns project IDs and relative metadata only; absolute host paths are never returned. Local roots are enrolled through the Local Agent CLI, not browser-supplied paths.
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Registered local projects.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [projects]
+                properties:
+                  projects:
+                    type: array
+                    items: { $ref: '#/components/schemas/LocalProject' }
+        '401': { description: Authenticated proxy assertion required. }
+        '403': { description: Owner role required. }
+        '503': { description: Local Project Registry is not configured or unavailable. }
+  /api/local-projects/roots:
+    get:
+      operationId: listLocalProjectRoots
+      summary: List explicitly enrolled local roots
+      description: Owner-only. Returns a display label and opaque root ID, never an absolute filesystem path.
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Enrolled roots.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [roots]
+                properties:
+                  roots:
+                    type: array
+                    items: { $ref: '#/components/schemas/LocalProjectRoot' }
+        '401': { description: Authenticated proxy assertion required. }
+        '403': { description: Owner role required. }
+        '503': { description: Local Project Registry is not configured or unavailable. }
+  /api/local-projects/{project_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: getLocalProject
+      summary: Read one enrolled local project
+      security:
+        - TrustedProxyAssertion: []
+      responses:
+        '200':
+          description: Local project metadata.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LocalProject' }
+        '401': { description: Authenticated proxy assertion required. }
+        '403': { description: Owner role required. }
+        '404': { description: Project is not registered. }
+        '503': { description: Local Project Registry is unavailable. }
   /api/cloud-runners/{id}:
     parameters:
       - $ref: '#/components/parameters/RunnerId'
@@ -421,6 +483,12 @@ components:
       required: true
       description: Opaque gateway ID; URL-encode as one path segment.
       schema: { type: string, minLength: 1, maxLength: 200 }
+    ProjectId:
+      name: project_id
+      in: path
+      required: true
+      description: Opaque local project UUID; never a filesystem path.
+      schema: { type: string, format: uuid }
   schemas:
     RunnerCreateRequest:
       type: object
@@ -464,6 +532,27 @@ components:
           type: array
           items: { type: string }
         detail: { type: string }
+    LocalProjectRoot:
+      type: object
+      additionalProperties: false
+      required: [root_id, label, created_at]
+      properties:
+        root_id: { type: string, format: uuid }
+        label: { type: string, minLength: 1, maxLength: 255 }
+        created_at: { type: string, format: date-time }
+    LocalProject:
+      type: object
+      additionalProperties: false
+      required: [project_id, root_id, relative_path, snapshot_sha256, file_count, total_bytes]
+      properties:
+        project_id: { type: string, format: uuid }
+        root_id: { type: string, format: uuid }
+        relative_path: { type: string, minLength: 1, maxLength: 2048 }
+        snapshot_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        file_count: { type: integer, minimum: 0, maximum: 100000 }
+        total_bytes: { type: integer, minimum: 0, maximum: 1073741824 }
     Error:
       type: object
       additionalProperties: true

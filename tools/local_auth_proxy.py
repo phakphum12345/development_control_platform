@@ -29,7 +29,7 @@ PBKDF2_ROUNDS = 600_000
 MIN_PASSWORD_LENGTH = 14
 COOKIE = "DCP_LOCAL_SESSION"
 MAX_BODY = 32_768
-ALLOWED_GET = ("/api/cloud-runners/status", "/api/cloud-runners")
+ALLOWED_GET = ("/api/cloud-runners/status", "/api/cloud-runners", "/api/local-projects", "/api/local-projects/roots")
 CREDENTIALS = Path(os.getenv("DCP_LOCAL_AUTH_CREDENTIAL_FILE", str(Path(os.getenv("LOCALAPPDATA", str(Path.home()))) / "DCP" / "owner-auth.json")))
 
 
@@ -320,7 +320,7 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                     return self.send_json(401, {"error": "authenticated session required"})
                 if path not in ALLOWED_GET and not (
                     path.startswith("/api/cloud-runners/") and path.count("/") == 3
-                ):
+                ) and not re.fullmatch(r"/api/local-projects/[0-9a-f-]{36}", path):
                     return self.send_json(404, {"error": "not found"})
                 status, data = app.gateway_request("GET", path, session)
                 return self.send_bytes(status, data)
@@ -418,6 +418,7 @@ def main():
         "DCP_PUBLIC_ORIGIN": f"http://{HOST}:{PORT}",
         "DCP_GATEWAY_PROVISIONING_ENABLED": "false", "DCP_GATEWAY_OWNER_APPROVED": "false",
         "DCP_GATEWAY_DATABASE": str(CREDENTIALS.parent / "gateway.sqlite3"),
+        "DCP_LOCAL_PROJECT_REGISTRY": str(CREDENTIALS.parent / "local-projects.json"),
     })
     gateway = subprocess.Popen([sys.executable, "-m", "tools.cloud_gateway.server"], env=env)
     server = None

@@ -37,6 +37,26 @@ class CloudRunnerOpenAPITests(unittest.TestCase):
         self.assertIn("TrustedProxyAssertion", refs["security"][0])
         commit = paths["/api/github/repositories/{owner}/{repo}/commits/{sha}"]["get"]
         self.assertIn("TrustedProxyAssertion", commit["security"][0])
+    def test_local_project_api_is_owner_only_read_only_and_path_free(self):
+        paths = self.spec["paths"]
+        self.assertIn("/api/local-projects", paths)
+        self.assertIn("/api/local-projects/roots", paths)
+        self.assertIn("/api/local-projects/{project_id}", paths)
+        for path in (
+            "/api/local-projects",
+            "/api/local-projects/roots",
+            "/api/local-projects/{project_id}",
+        ):
+            operation = paths[path]["get"]
+            self.assertEqual(operation["security"], [{"TrustedProxyAssertion": []}])
+            self.assertIn("403", operation["responses"])
+        project = self.spec["components"]["schemas"]["LocalProject"]
+        self.assertFalse(project["additionalProperties"])
+        self.assertNotIn("path", project["properties"])
+        self.assertIn("snapshot_sha256", project["required"])
+        root = self.spec["components"]["schemas"]["LocalProjectRoot"]
+        self.assertNotIn("path", root["properties"])
+
     def test_responses_and_gateway_lifecycle_requirements(self):
         responses=self.spec["paths"]["/v1/runners"]["post"]["responses"]
         for code in ("202","400","401","403","409","429","503"): self.assertIn(code,responses)

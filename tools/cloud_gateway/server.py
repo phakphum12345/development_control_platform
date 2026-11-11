@@ -27,6 +27,9 @@ from .runner_registry import RunnerRegistry, WorkerNotFound
 from .scheduler import RunnerScheduler, RunnerNotEligible, RunnerNotRegistered
 from .infrastructure import (FakeInfrastructureProvider, InfrastructureManager,
                              InfrastructureStore, ProviderUnavailable, ResourceNotFound)
+from tools.local_runner_agent.local_project import (
+    LocalProjectError, LocalProjectRegistry,
+)
 
 
 class DisabledProvider:
@@ -185,6 +188,26 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
             service.runner_scheduler = scheduler
             return scheduler
 
+        def local_project_registry(self):
+            return getattr(service, "local_project_registry", None)
+
+        @staticmethod
+        def public_local_project(row):
+            return {key: row.get(key) for key in (
+                "project_id", "root_id", "relative_path", "snapshot_sha256",
+                "file_count", "total_bytes",
+            )}
+
+        @staticmethod
+        def public_local_root(row):
+            raw_path = row.get("path", "")
+            label = raw_path.replace("\\", "/").rstrip("/").split("/")[-1]
+            return {
+                "root_id": row.get("root_id"),
+                "label": label,
+                "created_at": row.get("created_at"),
+            }
+
         @staticmethod
         def public_infrastructure(row):
             keys = ("id", "provider_id", "target_os", "image_id", "template_id",
@@ -234,6 +257,41 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                     "status": "ok",
                     "provisioning_enabled": service.settings.provisioning_enabled,
                 })
+            if path == "/api/local-projects" or path.startswith("/api/local-projects/"):
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if identity.get("role") != "owner":
+                    return self.send_json(403, {"error": "owner role required"})
+                registry = self.local_project_registry()
+                if registry is None:
+                    return self.send_json(503, {"error": "Local Project Registry unavailable"})
+                try:
+                    registry.reload()
+                    if path == "/api/local-projects":
+                        return self.send_json(200, {
+                            "projects": [
+                                self.public_local_project(row)
+                                for row in registry.list_projects()
+                            ]
+                        })
+                    if path == "/api/local-projects/roots":
+                        return self.send_json(200, {
+                            "roots": [
+                                self.public_local_root(row)
+                                for row in registry.list_roots()
+                            ]
+                        })
+                    parts = path[len("/api/local-projects/"):].split("/")
+                    if len(parts) != 1 or not re.fullmatch(r"[0-9a-f-]{36}", parts[0]):
+                        return self.send_json(404, {"error": "not found"})
+                    return self.send_json(
+                        200, self.public_local_project(registry.get_project(parts[0]))
+                    )
+                except LocalProjectError:
+                    return self.send_json(404, {"error": "local project not found or invalid"})
+                except Exception:
+                    return self.send_json(503, {"error": "Local Project Registry read failed"})
             if path == "/api/jobs" or path.startswith("/api/jobs/"):
                 identity = self.proxy_identity()
                 if not identity:
@@ -947,6 +1005,13 @@ def main():
         repository_commit_resolver=github_app.resolve_repository_commit if github_app else None,
         repository_project_inspector=github_app.inspect_repository_project if github_app else None,
     )
+    registry_path = os.getenv("DCP_LOCAL_PROJECT_REGISTRY", "").strip()
+    service.local_project_registry = None
+    if registry_path:
+        try:
+            service.local_project_registry = LocalProjectRegistry(registry_path)
+        except (ValueError, OSError, LocalProjectError) as exc:
+            raise SystemExit("DCP Local Project Registry configuration is invalid") from exc
     service.job_store = jobs_store
     artifact_root = os.getenv("DCP_GATEWAY_ARTIFACTS_ROOT") or os.path.abspath(database_path + ".artifacts")
     try:
