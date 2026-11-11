@@ -1023,6 +1023,12 @@ def _start_expiry_reconciler(service, interval_seconds):
                 service.reconcile_expired()
             except Exception:
                 pass
+            try:
+                previews = getattr(service, "preview_manager", None)
+                if previews is not None:
+                    previews.reap_expired()
+            except Exception:
+                pass
             threading.Event().wait(interval_seconds)
 
     worker = threading.Thread(target=loop, name="dcp-runner-expiry-reconciler", daemon=True)
