@@ -34,6 +34,49 @@ class JobStoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.store.create({**self.payload, "commit_sha": "bad"}, "job-key-0002")
 
+    def test_github_jobs_keep_legacy_payload_and_source_type(self):
+        job, created = self.create()
+        self.assertTrue(created)
+        self.assertEqual(job["source_type"], "github")
+        self.assertIsNone(job["local_project_id"])
+        self.assertIsNone(job["snapshot_sha256"])
+        self.assertEqual(job["payload"], self.payload)
+
+    def test_local_job_requires_explicit_approval_and_persists_snapshot_binding(self):
+        project_id = "123e4567-e89b-42d3-a456-426614174000"
+        payload = {
+            "source_type": "local",
+            "local_project_id": project_id,
+            "snapshot_sha256": "b" * 64,
+            "target": "test",
+            "execution_approved": True,
+        }
+        job, created = self.store.create(payload, "local-job-key-0001")
+        self.assertTrue(created)
+        self.assertEqual(job["source_type"], "local")
+        self.assertEqual(job["local_project_id"], project_id)
+        self.assertEqual(job["snapshot_sha256"], "b" * 64)
+        self.assertEqual(job["execution_approved"], 1)
+        self.assertEqual(job["payload"], payload)
+        again, created_again = self.store.create(payload, "local-job-key-0001")
+        self.assertFalse(created_again)
+        self.assertEqual(again["id"], job["id"])
+
+    def test_local_job_rejects_missing_approval_and_invalid_snapshot(self):
+        payload = {
+            "source_type": "local",
+            "local_project_id": "123e4567-e89b-42d3-a456-426614174000",
+            "snapshot_sha256": "c" * 64,
+            "target": "test",
+            "execution_approved": False,
+        }
+        with self.assertRaisesRegex(ValueError, "approval"):
+            self.store.create(payload, "local-job-key-0002")
+        payload["execution_approved"] = True
+        payload["snapshot_sha256"] = "bad"
+        with self.assertRaisesRegex(ValueError, "SHA-256"):
+            self.store.create(payload, "local-job-key-0003")
+
     def test_claim_heartbeat_logs_and_finish(self):
         job, _ = self.create()
         claimed = self.store.claim("local-worker-1")
