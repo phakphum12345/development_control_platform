@@ -124,8 +124,15 @@ class StaticWebPlaywrightTester:
                             "--metrics-recording-only",
                         ],
                     )
-                except Exception:
-                    raise BrowserTestError("Chromium could not start with its browser sandbox enabled") from None
+                except Exception as exc:
+                    # Keep the sandbox failure closed, but retain a bounded diagnostic so
+                    # CI can distinguish missing host support from a browser/test failure.
+                    detail = " ".join(str(exc).split())[:300]
+                    suffix = f": {detail}" if detail else ""
+                    raise BrowserTestError(
+                        "Chromium could not start with its browser sandbox enabled "
+                        f"({type(exc).__name__}){suffix}"
+                    ) from None
 
                 context = browser.new_context(
                     viewport={"width": 360, "height": 800},
