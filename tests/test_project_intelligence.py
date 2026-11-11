@@ -108,6 +108,24 @@ class ProjectIntelligenceTests(unittest.TestCase):
             (root / "index.html").write_text("<h1>static</h1>", encoding="utf-8")
             self.assertEqual(discover_project(root)["inventory"]["framework_detection"]["framework"], "Static HTML/CSS/JS")
 
+    def test_inventory_excludes_secret_and_private_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "index.html").write_text("<h1>safe</h1>", encoding="utf-8")
+            (root / ".env").write_text("TOKEN=never-index", encoding="utf-8")
+            (root / ".env.local").write_text("PASSWORD=never-index", encoding="utf-8")
+            (root / "id_rsa").write_text("PRIVATE KEY", encoding="utf-8")
+            (root / "service-account-prod.json").write_text('{"private_key":"never-index"}', encoding="utf-8")
+            (root / ".env.example").write_text("API_URL=https://example.invalid", encoding="utf-8")
+            result = discover_project(root)
+            samples = result["inventory"]["sample_files"]
+            self.assertIn(".env.example", samples)
+            self.assertNotIn(".env", samples)
+            self.assertNotIn(".env.local", samples)
+            self.assertNotIn("id_rsa", samples)
+            self.assertNotIn("service-account-prod.json", samples)
+            self.assertEqual(result["inventory"]["file_count"], 2)
+
     def test_framework_detection_reports_unknown_and_does_not_infer_toolchain_readiness(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
