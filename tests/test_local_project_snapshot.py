@@ -109,9 +109,15 @@ class LocalProjectSnapshotTests(unittest.TestCase):
             ".env.example": "API_BASE_URL=https://example.invalid",
         }
         for name, content in secret_files.items():
-            (self.project / name).write_text(content, encoding="utf-8")
+            if name != ".env.example":
+                (self.project / name).write_text(content, encoding="utf-8")
+        refreshed_without_template = self.registry.refresh_project(self.project_record["project_id"])
+        self.assertEqual(refreshed_without_template["snapshot_sha256"], self.project_record["snapshot_sha256"])
+        self.assertEqual(refreshed_without_template["file_count"], 2)
+        (self.project / ".env.example").write_text(
+            secret_files[".env.example"], encoding="utf-8"
+        )
         refreshed = self.registry.refresh_project(self.project_record["project_id"])
-        self.assertEqual(refreshed["snapshot_sha256"], self.project_record["snapshot_sha256"])
         self.assertEqual(refreshed["file_count"], 3)
         destination = self.workspace / "secret-filtered-snapshot"
         self.registry.materialize_project(
