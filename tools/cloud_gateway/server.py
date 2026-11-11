@@ -249,6 +249,9 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
             public["source_type"] = payload.get("source_type", "github")
             public["source_id"] = payload.get("source_id", row.get("repository"))
             public["source_sha256"] = payload.get("source_sha256")
+            if public["source_type"] == "local_folder":
+                public["repository"] = None
+                public["commit_sha"] = None
             return public
 
         def proxy_identity(self):
