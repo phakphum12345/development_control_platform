@@ -973,7 +973,7 @@ async function projectImportLoadLocal(){
     '<code>'+esc(row.snapshot_sha256)+'</code>',esc(row.file_count),esc(row.total_bytes)
    ])
   );
-  projectImportStatus("Local registry refreshed. Absolute host paths and excluded credential files are not returned by the API.","ready");
+  projectImportStatus("Local registry refreshed. Absolute host paths are not returned by the API; excluded credential files are also omitted.","ready");
   buildJobsUpdateGate();
  }catch(error){
   $("project-import-local-roots").textContent="Enrolled roots unavailable: "+error.message;
