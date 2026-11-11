@@ -92,9 +92,9 @@ def main(argv=None) -> int:
         if not root or not Path(root).is_absolute():
             raise ValueError("DCP_RUNNER_WORKSPACE_ROOT must be an absolute path")
         raw_repositories = json.loads(os.environ.get("DCP_RUNNER_TRUSTED_REPOSITORIES", "[]"))
-        if (not isinstance(raw_repositories, list) or not raw_repositories
+        if (not isinstance(raw_repositories, list)
                 or any(not isinstance(item, str) for item in raw_repositories)):
-            raise ValueError("DCP_RUNNER_TRUSTED_REPOSITORIES must be a non-empty JSON string array")
+            raise ValueError("DCP_RUNNER_TRUSTED_REPOSITORIES must be a JSON string array")
         manager = WorkspaceManager(
             root,
             max_active=_positive_int("DCP_RUNNER_MAX_ACTIVE_WORKSPACES", 8),
@@ -129,11 +129,15 @@ def main(argv=None) -> int:
             json.loads(raw_capabilities) if raw_capabilities is not None else None
         )
         capabilities = resolve_capabilities(preflight, configured_capabilities)
+        local_projects = LocalProjectRegistry(
+            os.environ.get("DCP_LOCAL_PROJECT_REGISTRY", str(default_registry_path()))
+        )
         pipeline = RunnerPipeline(
             client, manager, checkout, executor,
             trusted_repositories=frozenset(raw_repositories),
             worker_os=host_os,
             capabilities=frozenset(capabilities),
+            local_projects=local_projects,
         )
         result = pipeline.run_once()
         if result is None:
