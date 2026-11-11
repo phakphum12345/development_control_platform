@@ -178,3 +178,26 @@ If the credential file is created or changed while the Gateway is running, resta
 - Registration and refresh are metadata/read operations only. They do not copy, execute, install dependencies, or contact GitHub/cloud services.
 
 This is a Local Agent library capability, not yet a complete Dashboard import workflow. A later integration must expose only enrolled project IDs through an authenticated, owner-authorized API; the browser must never submit arbitrary local paths. A stable snapshot fingerprint identifies observed content but does not freeze files against subsequent edits, so jobs must revalidate or materialize an immutable snapshot before execution.
+
+
+## M8 — Local Folder enrollment CLI and owner-only read API
+
+The Local Runner Agent now exposes explicit local CLI operations:
+
+```powershell
+python -m tools.local_runner_agent --enroll-root "D:\\Development\\Projects"
+python -m tools.local_runner_agent --register-project "<ROOT_ID>" "D:\\Development\\Projects\\sample-app"
+python -m tools.local_runner_agent --list-projects
+```
+
+The registry file defaults to `%LOCALAPPDATA%\\DCP\\local-projects.json` on Windows (or `~/DCP/local-projects.json` when LOCALAPPDATA is absent). The Local Auth Proxy configures the Gateway to use the same file. These CLI commands do not connect to the Gateway and do not execute imported project code.
+
+Owner-only, read-only Gateway endpoints:
+
+- `GET /api/local-projects/roots` — enrolled root IDs and display labels (never absolute host paths).
+- `GET /api/local-projects` — registered project IDs, relative paths, fingerprints and bounded file metadata.
+- `GET /api/local-projects/{project_id}` — one registered project by ID.
+
+The Local Auth Proxy allowlists only these GET paths. The Gateway independently verifies the signed owner session and returns no absolute filesystem paths. Operators are denied. No browser-facing POST endpoint accepts a filesystem path; enrollment and project selection remain explicit local CLI actions until a safe local folder-picker/agent workflow is designed.
+
+The Gateway registry is opt-in through `DCP_LOCAL_PROJECT_REGISTRY`; a standalone Gateway with no configured registry does not create a registry in the user's home directory and reports the API unavailable. Registry updates are reloaded on each read so CLI enrollment becomes visible without restarting the Gateway.
