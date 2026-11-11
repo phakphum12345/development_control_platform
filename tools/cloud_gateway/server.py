@@ -30,6 +30,7 @@ from .infrastructure import (FakeInfrastructureProvider, InfrastructureManager,
 from tools.local_runner_agent.local_project import (
     LocalProjectError, LocalProjectRegistry,
 )
+from tools.project_intelligence import DiscoveryError, discover_project
 from tools.local_runner_agent.workspace import WorkspaceManager
 from tools.local_runner_agent.runtime import RuntimeManager
 from .preview import AuthenticatedPreviewManager, PreviewError
@@ -196,10 +197,31 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
 
         @staticmethod
         def public_local_project(row):
-            return {key: row.get(key) for key in (
+            public = {key: row.get(key) for key in (
                 "project_id", "root_id", "relative_path", "snapshot_sha256",
                 "file_count", "total_bytes",
             )}
+            raw_path = row.get("path")
+            if isinstance(raw_path, str) and os.path.isabs(raw_path):
+                try:
+                    inspection = discover_project(raw_path, max_files=5000)
+                    public["framework_detection"] = inspection["inventory"]["framework_detection"]
+                    public["inspection_status"] = inspection["status"]
+                except (DiscoveryError, OSError, ValueError):
+                    public["framework_detection"] = {
+                        "framework": "UNKNOWN", "language": "UNKNOWN",
+                        "project_type": "UNKNOWN", "confidence": "unknown",
+                        "package_manager": "UNKNOWN", "toolchain_readiness": "NOT_CHECKED",
+                    }
+                    public["inspection_status"] = "unknown"
+            else:
+                public["framework_detection"] = {
+                    "framework": "UNKNOWN", "language": "UNKNOWN",
+                    "project_type": "UNKNOWN", "confidence": "unknown",
+                    "package_manager": "UNKNOWN", "toolchain_readiness": "NOT_CHECKED",
+                }
+                public["inspection_status"] = "unknown"
+            return public
 
         @staticmethod
         def public_local_root(row):
