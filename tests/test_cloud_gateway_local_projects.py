@@ -139,6 +139,8 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
         self.assertEqual(job["source_type"], "local_folder")
         self.assertEqual(job["source_id"], self.project["project_id"])
         self.assertEqual(job["source_sha256"], self.project["snapshot_sha256"])
+        self.assertIsNone(job["repository"])
+        self.assertIsNone(job["commit_sha"])
         self.assertEqual(job["state"], "queued")
         self.assertNotIn(str(Path(self.temp.name)), json.dumps(job))
 
