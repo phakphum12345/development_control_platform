@@ -8,6 +8,7 @@ repository allowlist.
 from __future__ import annotations
 
 import os
+import queue
 import shutil
 import signal
 import stat
@@ -176,28 +177,45 @@ class WebBuildExecutor:
         output_bytes = 0
         outcome, error_code = "succeeded", None
         deadline = started + self.timeout_seconds
+        chunks: queue.Queue = queue.Queue()
+        def pump():
+            try:
+                while True:
+                    data = process.stdout.read(4096)
+                    if not data:
+                        break
+                    chunks.put(data)
+            finally:
+                chunks.put(None)
+        reader = threading.Thread(target=pump, daemon=True)
+        reader.start()
+        stream_closed = False
         try:
-            while process.poll() is None:
-                if time.monotonic() >= deadline:
+            while process.poll() is None or not stream_closed:
+                now = time.monotonic()
+                if now >= deadline and process.poll() is None:
                     outcome, error_code = "failed", "BUILD_TIMEOUT"
                     self._terminate_tree(process)
-                    break
-                if cancel_requested and cancel_requested():
+                elif cancel_requested and cancel_requested() and process.poll() is None:
                     outcome, error_code = "cancelled", None
                     self._terminate_tree(process)
-                    break
-                chunk = process.stdout.read1(4096)
-                if chunk:
-                    remaining = self.max_output_bytes - output_bytes
-                    output_bytes += len(chunk)
-                    text = chunk[:max(0, remaining)].decode("utf-8", "replace")
-                    if text:
-                        self.log("stdout", text)
-                    if output_bytes > self.max_output_bytes:
-                        outcome, error_code = "failed", "BUILD_OUTPUT_LIMIT"
-                        self._terminate_tree(process)
-                        break
+                try:
+                    chunk = chunks.get(timeout=0.1)
+                except queue.Empty:
+                    continue
+                if chunk is None:
+                    stream_closed = True
+                    continue
+                remaining = self.max_output_bytes - output_bytes
+                output_bytes += len(chunk)
+                text = chunk[:max(0, remaining)].decode("utf-8", "replace")
+                if text:
+                    self.log("stdout", text)
+                if output_bytes > self.max_output_bytes and process.poll() is None:
+                    outcome, error_code = "failed", "BUILD_OUTPUT_LIMIT"
+                    self._terminate_tree(process)
             return_code = process.wait(timeout=5)
+            reader.join(timeout=2)
             if outcome == "succeeded" and return_code != 0:
                 outcome, error_code = "failed", "BUILD_FAILED"
         finally:
