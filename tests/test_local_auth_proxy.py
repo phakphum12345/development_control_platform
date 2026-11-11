@@ -401,7 +401,8 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
         self.assertEqual(status, 202)
         self.assertEqual(json.loads(body)["id"], "job")
         args, kwargs = gateway.call_args
-        self.assertEqual(args[:3], ("POST", "/api/jobs", gateway.call_args.args[2]))
+        self.assertEqual(args[:2], ("POST", "/api/jobs"))
+        self.assertTrue(args[2]["authenticated"])
         self.assertEqual(kwargs["idempotency_key"], "local-proxy-job-0001")
         self.assertEqual(json.loads(args[3]), payload)
         _, _, session_body = self.request("/api/auth/session")
