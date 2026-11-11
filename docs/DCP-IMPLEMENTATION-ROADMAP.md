@@ -42,3 +42,5 @@ Each phase is a separate feature branch and Draft PR, with narrowly scoped chang
 - Added local CLI operations to enroll roots, register projects and list the registry.
 - Added owner-only, read-only Gateway endpoints and Local Auth Proxy allowlisting; absolute host paths are not returned.
 - Remaining: Dashboard project catalog/picker, authenticated project selection UX, immutable job snapshot/materialization, and end-to-end import-to-job binding.
+
+- Dashboard Project Import workspace added: authenticated owner-only GitHub App repository/ref/commit inspection and Local Project catalog selection. This is a read-only source-selection UI; immutable snapshot materialization and job binding remain outstanding.

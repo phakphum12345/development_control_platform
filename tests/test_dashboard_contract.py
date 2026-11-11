@@ -8,18 +8,19 @@ HTML = (ROOT / "dashboard" / "index.html").read_text(encoding="utf-8")
 
 class DashboardContractTests(unittest.TestCase):
     def test_all_tool_views_exist(self):
-        for view in ("home", "repo", "pr", "user", "workspace", "evidence", "gates", "checkpoint", "audit", "route-colors", "ui-routes", "ui-simulator", "dev-tools", "code-navigator"):
+        for view in ("home", "account", "project-import", "repo", "pr", "user", "workspace", "evidence", "gates", "checkpoint", "audit", "route-colors", "ui-routes", "ui-simulator", "dev-tools", "code-navigator"):
             with self.subTest(view=view):
                 self.assertIn('id="' + view + '"', HTML)
         for control in ("repo-load", "pr-load", "user-load", "ws-load", "ws-repo", "ws-branch", "ws-permission", "ws-branches", "ev-check", "gate-eval", "cp-build", "audit-eval", "route-color-save", "route-color-reset", "route-color-export", "route-add", "route-reset", "route-export", "edge-add", "edge-clear", "sim-run", "sim-reset", "sim-download", "dev-tools-copy-status", "code-nav-search", "code-nav-filter", "code-nav-trace-ui", "code-nav-trace-calls", "code-nav-show-ui", "code-nav-compare", "code-nav-run-checks", "code-nav-checkpoint", "code-nav-route-list", "code-nav-mapping", "code-nav-evidence"):
             with self.subTest(control=control):
                 self.assertIn('id="' + control + '"', HTML)
 
-    def test_github_requests_are_public_read_only(self):
+    def test_public_research_and_private_github_app_import_are_separate(self):
         self.assertIn("https://api.github.com", HTML)
         self.assertIn("PUBLIC API", HTML)
-        self.assertIn("No token", HTML)
-        self.assertIn("private repository access", HTML.lower())
+        self.assertIn("Public GitHub research:", HTML)
+        self.assertIn("No token, private repository access", HTML)
+        self.assertIn("Private repository reads are separately available only through the authenticated", HTML)
         self.assertIn("does not prove", HTML)
 
     def test_evidence_requires_full_sha_and_url_for_pass(self):
@@ -37,9 +38,29 @@ class DashboardContractTests(unittest.TestCase):
             with self.subTest(feature=feature):
                 self.assertIn(feature, HTML)
 
-    def test_registry_remains_empty_and_write_actions_disabled(self):
-        self.assertIn("Registered projects", HTML)
-        self.assertIn("Registry remains opt-in and empty", HTML)
+    def test_project_import_is_authenticated_read_only_and_local_path_free(self):
+        for expected in (
+            'id="project-import"',
+            'id="project-import-github-refresh"',
+            'id="project-import-local-refresh"',
+            'id="project-import-verify"',
+            'id="project-import-inspect"',
+            'id="project-import-local-select"',
+            'id="registered-projects-count"',
+            '"/api/local-projects"',
+            '"/api/local-projects/roots"',
+            '"/api/github/repositories"',
+            'function initProjectImport()',
+            'function projectImportCheckSession()',
+            'function projectImportVerifyCommit()',
+            'function projectImportInspectProject()',
+            'Absolute host paths are not returned by the API',
+            'does not yet create an immutable job snapshot',
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, HTML)
+        self.assertIn("Registered local projects", HTML)
+        self.assertIn("Local registry is opt-in", HTML)
         self.assertIn("Write actions", HTML)
         self.assertIn("Disabled", HTML)
 

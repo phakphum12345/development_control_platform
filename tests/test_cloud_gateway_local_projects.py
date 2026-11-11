@@ -11,6 +11,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+from urllib.parse import urlparse
 
 from tools.cloud_gateway.policy import GatewaySettings
 from tools.cloud_gateway.server import make_handler
@@ -35,6 +36,11 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
         store = RunnerStore(str(base / "gateway.sqlite"))
         service = GatewayService(GatewaySettings(), store, object())
         service.local_project_registry = registry
+        service.repository_catalog = lambda: []
+        service.repository_authorizer = lambda repository: repository == "example/demo"
+        service.repository_ref_catalog = lambda repository, kind: [
+            {"name": kind + "-selected", "commit_sha": "a" * 40}
+        ]
         self.server = ThreadingHTTPServer(
             ("127.0.0.1", 0),
             make_handler(
@@ -59,7 +65,7 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
         session = "local_project_session_123"
         timestamp = str(int(time.time()))
         nonce = secrets.token_urlsafe(24)
-        canonical = "\n".join((method, path, subject, role, session, timestamp, nonce)).encode()
+        canonical = "\n".join((method, urlparse(path).path, subject, role, session, timestamp, nonce)).encode()
         signature = hmac.new(self.secret.encode(), canonical, hashlib.sha256).hexdigest()
         headers = {
             "X-DCP-User": subject,
@@ -105,6 +111,18 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
         status, result = self.request("/api/local-projects/" + self.project["project_id"])
         self.assertEqual(status, 200)
         self.assertEqual(result["project_id"], self.project["project_id"])
+
+    def test_github_ref_kind_query_is_honored(self):
+        status, result = self.request(
+            "/api/github/repositories/example/demo/refs?kind=tags"
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(result["refs"][0]["name"], "tags-selected")
+
+    def test_operator_can_read_github_app_project_catalog(self):
+        status, result = self.request("/api/github/repositories", role="operator")
+        self.assertEqual(status, 200)
+        self.assertEqual(result["repositories"], [])
 
     def test_operator_cannot_read_local_filesystem_metadata(self):
         status, result = self.request("/api/local-projects", role="operator")
