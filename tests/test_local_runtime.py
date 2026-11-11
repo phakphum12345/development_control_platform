@@ -57,8 +57,11 @@ class RuntimeManagerTests(unittest.TestCase):
 
     def test_rejects_symlinked_or_missing_build_output(self):
         (self.dist / "index.html").unlink()
-        (self.dist / "index.html").symlink_to(self.root / "outside.html")
         (self.root / "outside.html").write_text("outside", encoding="utf-8")
+        try:
+            (self.dist / "index.html").symlink_to(self.root / "outside.html")
+        except OSError:
+            self.skipTest("Symlink creation is unavailable on this host")
         with self.assertRaises(RuntimeErrorDCP):
             self.manager.start_static(self.job, self.worker)
 
