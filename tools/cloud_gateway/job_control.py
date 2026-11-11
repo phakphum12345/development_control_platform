@@ -32,7 +32,10 @@ class JobStore:
                     repository TEXT NOT NULL, commit_sha TEXT NOT NULL, target TEXT NOT NULL,
                     state TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL, worker TEXT, lease_until TEXT,
-                    cancel_at TEXT, result TEXT, error_code TEXT
+                    cancel_at TEXT, result TEXT, error_code TEXT,
+                    source_type TEXT NOT NULL DEFAULT 'github',
+                    local_project_id TEXT, snapshot_sha256 TEXT,
+                    execution_approved INTEGER NOT NULL DEFAULT 0
                 );
                 CREATE INDEX IF NOT EXISTS jobs_queue_idx ON jobs(state, created_at);
                 CREATE TABLE IF NOT EXISTS job_events (
@@ -44,6 +47,16 @@ class JobStore:
                     message TEXT NOT NULL, created_at TEXT NOT NULL
                 );
             """)
+            columns = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
+            migrations = (
+                ("source_type", "ALTER TABLE jobs ADD COLUMN source_type TEXT NOT NULL DEFAULT 'github'"),
+                ("local_project_id", "ALTER TABLE jobs ADD COLUMN local_project_id TEXT"),
+                ("snapshot_sha256", "ALTER TABLE jobs ADD COLUMN snapshot_sha256 TEXT"),
+                ("execution_approved", "ALTER TABLE jobs ADD COLUMN execution_approved INTEGER NOT NULL DEFAULT 0"),
+            )
+            for column, statement in migrations:
+                if column not in columns:
+                    db.execute(statement)
 
     @contextmanager
     def db(self):
@@ -75,17 +88,56 @@ class JobStore:
             raise ValueError("Invalid Idempotency-Key")
         if not isinstance(payload, dict):
             raise ValueError("Job payload must be an object")
-        if not set(payload).issubset({"repository", "commit_sha", "target"}):
-            raise ValueError("Unsupported job payload fields")
-        repository, sha = payload.get("repository"), payload.get("commit_sha")
+        source_type = payload.get("source_type", "github")
         target = payload.get("target", "test")
-        if not isinstance(repository, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}", repository):
-            raise ValueError("Invalid repository")
-        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
-            raise ValueError("Invalid commit SHA")
         if target not in ("test", "build", "package", "build_android", "build_web", "build_windows", "build_linux", "build_macos", "build_ios"):
             raise ValueError("Unsupported target")
-        normalized = {"repository": repository, "commit_sha": sha, "target": target}
+
+        local_project_id = None
+        snapshot_sha256 = None
+        execution_approved = False
+        if source_type == "github":
+            if not set(payload).issubset({"source_type", "repository", "commit_sha", "target"}):
+                raise ValueError("Unsupported GitHub job payload fields")
+            repository, sha = payload.get("repository"), payload.get("commit_sha")
+            if not isinstance(repository, str) or not re.fullmatch(
+                r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}", repository
+            ):
+                raise ValueError("Invalid repository")
+            if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+                raise ValueError("Invalid commit SHA")
+            normalized = {"repository": repository, "commit_sha": sha, "target": target}
+        elif source_type == "local":
+            if set(payload) != {
+                "source_type", "local_project_id", "snapshot_sha256", "target", "execution_approved"
+            }:
+                raise ValueError("Unsupported Local Project job payload fields")
+            local_project_id = payload.get("local_project_id")
+            try:
+                parsed_id = uuid.UUID(local_project_id)
+            except (ValueError, TypeError, AttributeError):
+                raise ValueError("Invalid local project ID") from None
+            if str(parsed_id) != local_project_id:
+                raise ValueError("Local project ID must use canonical lowercase UUID form")
+            snapshot_sha256 = payload.get("snapshot_sha256")
+            if not isinstance(snapshot_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", snapshot_sha256):
+                raise ValueError("Invalid local snapshot SHA-256")
+            execution_approved = payload.get("execution_approved") is True
+            if not execution_approved:
+                raise ValueError("Explicit source execution approval is required")
+            # Legacy NOT NULL columns remain populated for SQLite compatibility;
+            # public job representations suppress these local-source placeholders.
+            repository, sha = "local", "0" * 40
+            normalized = {
+                "source_type": "local",
+                "local_project_id": local_project_id,
+                "snapshot_sha256": snapshot_sha256,
+                "target": target,
+                "execution_approved": True,
+            }
+        else:
+            raise ValueError("Unsupported job source_type")
+
         fingerprint = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
         job_id, timestamp = str(uuid.uuid4()), utcnow().isoformat()
         with self.lock, self.db() as db:
@@ -97,11 +149,18 @@ class JobStore:
                 db.execute("COMMIT")
                 return self._decode(old), False
             db.execute(
-                "INSERT INTO jobs(id,idem,fingerprint,repository,commit_sha,target,state,payload,created_at,updated_at) VALUES(?,?,?,?,?,?,'queued',?,?,?)",
-                (job_id, idempotency_key, fingerprint, repository, sha, target,
-                 json.dumps(normalized), timestamp, timestamp),
+                """INSERT INTO jobs(
+                    id,idem,fingerprint,repository,commit_sha,target,state,payload,
+                    created_at,updated_at,source_type,local_project_id,snapshot_sha256,
+                    execution_approved
+                ) VALUES(?,?,?,?,?,?,'queued',?,?,?,?,?,?,?)""",
+                (
+                    job_id, idempotency_key, fingerprint, repository, sha, target,
+                    json.dumps(normalized), timestamp, timestamp, source_type,
+                    local_project_id, snapshot_sha256, int(execution_approved),
+                ),
             )
-            self._event(db, job_id, "queued")
+            self._event(db, job_id, "queued", {"source_type": source_type})
             db.execute("COMMIT")
         return self.get(job_id), True
 
