@@ -149,20 +149,28 @@ class WorkspaceManager:
             raise WorkspaceError("preview retention TTL must be between 60 and 86400 seconds")
         target = self.get(job_id, worker_id)
         marker = target / ".dcp-preview-retention.json"
-        if marker.is_symlink():
-            raise WorkspaceError("preview retention marker must not be a symlink")
-        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        if marker.is_symlink() or (marker.exists() and not marker.is_file()):
+            raise WorkspaceError("preview retention marker is unsafe")
+        temporary = target / (".dcp-preview-retention-" + uuid.uuid4().hex + ".tmp")
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
         try:
-            fd = os.open(marker, flags, 0o600)
+            fd = os.open(temporary, flags, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 json.dump({
                     "job_id": job_id, "worker_id": worker_id,
                     "expires_at": time.time() + ttl_seconds, "version": 1,
                 }, handle, sort_keys=True)
                 handle.write("\\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, marker)
         except OSError:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
             raise WorkspaceError("preview retention marker could not be secured") from None
         return {"job_id": job_id, "expires_in_seconds": ttl_seconds}
 
