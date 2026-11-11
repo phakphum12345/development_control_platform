@@ -341,6 +341,16 @@ class InfrastructureManager:
             if action == "delete":
                 return row
             raise LifecycleConflict("Deleted resources cannot be changed")
+        # Reject invalid transitions before calling a provider. External providers
+        # may perform an irreversible side effect before the inventory transition
+        # is recorded, so validating only in InfrastructureStore is too late.
+        allowed_states = {
+            "start": {"provisioned", "stopped"},
+            "stop": {"running"},
+            "delete": {"provisioned", "running", "stopped"},
+        }
+        if action not in allowed_states or row["state"] not in allowed_states[action]:
+            raise LifecycleConflict("Invalid infrastructure transition")
         provider = self.providers.get(row["provider_id"])
         if provider is None:
             raise ProviderUnavailable("Recorded provider is not configured")
