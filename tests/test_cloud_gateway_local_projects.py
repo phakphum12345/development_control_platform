@@ -106,6 +106,11 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(result["project_id"], self.project["project_id"])
 
+    def test_operator_cannot_read_github_app_project_catalog(self):
+        status, result = self.request("/api/github/repositories", role="operator")
+        self.assertEqual(status, 403)
+        self.assertEqual(result["error"], "owner role required")
+
     def test_operator_cannot_read_local_filesystem_metadata(self):
         status, result = self.request("/api/local-projects", role="operator")
         self.assertEqual(status, 403)
