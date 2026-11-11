@@ -9,6 +9,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -25,10 +26,67 @@ PORT = int(os.getenv("DCP_LOCAL_PORT", "8789"))
 GATEWAY_PORT = int(os.getenv("DCP_GATEWAY_PORT", "18790"))
 SESSION_TTL = 12 * 60 * 60
 PBKDF2_ROUNDS = 600_000
+MIN_PASSWORD_LENGTH = 14
 COOKIE = "DCP_LOCAL_SESSION"
 MAX_BODY = 32_768
 ALLOWED_GET = ("/api/cloud-runners/status", "/api/cloud-runners")
 CREDENTIALS = Path(os.getenv("DCP_LOCAL_AUTH_CREDENTIAL_FILE", str(Path(os.getenv("LOCALAPPDATA", str(Path.home()))) / "DCP" / "owner-auth.json")))
+
+
+RUNNER_TOKENS_FILE = CREDENTIALS.parent / "runner-tokens.json"
+MAX_RUNNER_TOKEN_FILE_BYTES = 64 * 1024
+
+
+def _unique_runner_token_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate worker ID")
+        result[key] = value
+    return result
+
+
+def load_runner_tokens(path: Path | None = None) -> dict[str, str]:
+    """Load the protected local Runner token map without logging or exposing secrets."""
+    target = Path(path) if path is not None else RUNNER_TOKENS_FILE
+    if target.is_symlink():
+        raise SystemExit("Local Runner credential file must not be a symlink")
+    if not target.exists():
+        return {}
+    if not target.is_file():
+        raise SystemExit("Local Runner credential file must be a regular non-symlink file")
+    if target.stat().st_size > MAX_RUNNER_TOKEN_FILE_BYTES:
+        raise SystemExit("Local Runner credential file exceeds its size limit")
+    try:
+        value = json.loads(
+            target.read_text(encoding="utf-8"),
+            object_pairs_hook=_unique_runner_token_object,
+        )
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        raise SystemExit("Local Runner credential file is unreadable or invalid JSON") from None
+    if not isinstance(value, dict) or not 1 <= len(value) <= 16:
+        raise SystemExit("Local Runner credential file must contain 1..16 worker credentials")
+    for worker, token in value.items():
+        if (
+            not isinstance(worker, str)
+            or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", worker)
+            or not isinstance(token, str)
+            or len(token) < 32
+            or len(token) > 256
+        ):
+            raise SystemExit("Local Runner credential file contains an invalid worker credential")
+    if len(set(value.values())) != len(value):
+        raise SystemExit("Local Runner credentials must be unique per worker")
+    return value
+
+
+def gateway_child_environment(base_environment=None) -> dict[str, str]:
+    """Prepare the Gateway environment, overriding any inherited Runner map with the protected file."""
+    env = dict(os.environ if base_environment is None else base_environment)
+    runner_tokens = load_runner_tokens()
+    if runner_tokens:
+        env["DCP_RUNNER_TOKENS"] = json.dumps(runner_tokens, separators=(",", ":"))
+    return env
 
 
 def password_record(username: str, password: str, salt: bytes | None = None) -> dict:
@@ -75,8 +133,8 @@ def load_or_create_credentials(path: Path = CREDENTIALS) -> dict:
         raise SystemExit("Username must be 1..64 ASCII letters, digits, dot, underscore, @, or hyphen.")
     while True:
         password = getpass.getpass("Choose owner password (minimum 14 characters): ")
-        if len(password) < 14:
-            print("Password is too short.", flush=True)
+        if len(password) < MIN_PASSWORD_LENGTH:
+            print(f"Password must contain at least {MIN_PASSWORD_LENGTH} characters.", flush=True)
             continue
         confirmation = getpass.getpass("Confirm owner password: ")
         if not hmac.compare_digest(password, confirmation):
@@ -303,6 +361,7 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                     app.failures[ip] = attempts
                     return self.send_json(401, {"error": "invalid username or password"})
                 with app.lock:
+                    app.failures.pop(ip, None)
                     app.sessions.pop(session["id"], None)
                 sid, new_session = app.new_session(True)
                 cookie = f"{COOKIE}={sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age={SESSION_TTL}"
@@ -352,7 +411,7 @@ def main():
     credentials = load_or_create_credentials()
     gateway_token = secrets.token_urlsafe(48)
     proxy_secret = secrets.token_urlsafe(48)
-    env = os.environ.copy()
+    env = gateway_child_environment()
     env.update({
         "DCP_GATEWAY_HOST": HOST, "DCP_GATEWAY_PORT": str(GATEWAY_PORT),
         "DCP_GATEWAY_API_TOKEN": gateway_token, "DCP_TRUSTED_PROXY_HMAC_SECRET": proxy_secret,

@@ -245,5 +245,403 @@ class GitHubAppBootstrapTests(unittest.TestCase):
             app.remove_runner("phakphum12345/generated-A4-pdf", 42)
 
 
+    def test_catalog_token_is_limited_to_metadata_read(self):
+        app = GitHubAppRunnerBootstrap("123456", 987654, self.pem, [])
+        app._app_jwt = lambda: "app-jwt"
+        calls = []
+
+        def request(method, path, token, payload=None):
+            calls.append((method, path, token, payload))
+            return {
+                "token": "catalog-token",
+                "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat(),
+                "permissions": {"metadata": "read"},
+            }
+
+        app._request = request
+        self.assertEqual(app._installation_catalog_token(), "catalog-token")
+        self.assertEqual(calls[0][0:3], (
+            "POST", "/app/installations/987654/access_tokens", "app-jwt"
+        ))
+        self.assertEqual(calls[0][3], {"permissions": {"metadata": "read"}})
+
+    def test_dynamic_installation_catalog_lists_only_installed_repositories(self):
+        app = GitHubAppRunnerBootstrap(
+            "123456", 987654, self.pem, [],
+            clock=lambda: 1_800_000_000,
+        )
+        app._installation_catalog_token = lambda: "catalog-token"
+        calls = []
+
+        def request(method, path, token, payload=None):
+            calls.append((method, path, token))
+            return {
+                "total_count": 2,
+                "repositories": [
+                    {
+                        "full_name": "example/private-app",
+                        "private": True,
+                        "default_branch": "main",
+                        "permissions": {"admin": True, "push": True, "metadata": "read"},
+                        "html_url": "https://github.com/example/private-app",
+                    },
+                    {
+                        "full_name": "example/public-app",
+                        "private": False,
+                        "default_branch": "trunk",
+                        "permissions": {"pull": True, "push": False},
+                    },
+                ],
+            }
+
+        app._request = request
+        catalog = app.list_installation_repositories()
+        self.assertEqual([item["full_name"] for item in catalog], [
+            "example/private-app", "example/public-app"
+        ])
+        self.assertTrue(catalog[0]["private"])
+        self.assertEqual(catalog[0]["permissions"], {"admin": True, "push": True})
+        self.assertNotIn("html_url", catalog[0])
+        self.assertTrue(app.is_repository_accessible("example/private-app"))
+        self.assertFalse(app.is_repository_accessible("example/not-installed"))
+        self.assertEqual(len(calls), 1, "catalog should be cached for its short TTL")
+
+    def test_dynamic_installation_catalog_fails_closed_on_malformed_repository(self):
+        app = GitHubAppRunnerBootstrap(
+            "123456", 987654, self.pem, [],
+            clock=lambda: 1_800_000_000,
+        )
+        app._installation_catalog_token = lambda: "catalog-token"
+        app._request = lambda *args, **kwargs: {
+            "total_count": 1,
+            "repositories": [{"full_name": "invalid-name", "private": True}],
+        }
+        with self.assertRaisesRegex(GitHubAppError, "malformed"):
+            app.list_installation_repositories()
+
+    def test_dynamic_registration_refuses_repository_outside_installation(self):
+        app = GitHubAppRunnerBootstrap(
+            "123456", 987654, self.pem, [],
+            clock=lambda: 1_800_000_000,
+        )
+        app._installation_catalog_token = lambda: "catalog-token"
+        app._request = lambda method, path, token, payload=None: {
+            "total_count": 1,
+            "repositories": [{
+                "full_name": "example/installed",
+                "private": True,
+                "default_branch": "main",
+            }],
+        }
+        with self.assertRaisesRegex(GitHubAppError, "not accessible"):
+            app.create_registration_token("attacker/repo")
+
+
+    def test_request_accepts_repository_catalog_response_over_64_kib(self):
+        app = self.make()
+
+        class Response:
+            def __init__(self, body):
+                self.body = body
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+            def read(self, limit):
+                return self.body[:limit]
+
+        body = json.dumps({"repositories": [], "padding": "x" * 70000}).encode()
+        app.opener = lambda request, timeout: Response(body)
+        result = app._request("GET", "/installation/repositories", "catalog-token")
+        self.assertEqual(result["repositories"], [])
+        self.assertGreater(len(body), 65536)
+
+    def test_request_rejects_response_over_configured_limit(self):
+        app = self.make()
+
+        class Response:
+            def __init__(self, body):
+                self.body = body
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+            def read(self, limit):
+                return self.body[:limit]
+
+        body = json.dumps({"padding": "x" * (app.MAX_RESPONSE_BYTES + 1)}).encode()
+        app.opener = lambda request, timeout: Response(body)
+        with self.assertRaisesRegex(GitHubAppError, "size limit"):
+            app._request("GET", "/installation/repositories", "catalog-token")
+
+
+    def test_request_accepts_github_array_response(self):
+        app = self.make()
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self, limit): return b'[{"name":"main"}]'
+        app.opener = lambda request, timeout: Response()
+        self.assertEqual(app._request("GET", "/repos/example/repo/branches", "token"), [{"name": "main"}])
+
+    def test_resolve_repository_commit_rejects_mismatched_response_sha(self):
+        app = self.make()
+        future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
+        def request(method, path, token, payload=None):
+            if method == "POST":
+                return {"token": "contents-token", "expires_at": future,
+                        "permissions": {"contents": "read"}}
+            return {"sha": "c" * 40}
+        app._app_jwt = lambda: "app-jwt"
+        app._request = request
+        with self.assertRaisesRegex(GitHubAppError, "did not match"):
+            app.resolve_repository_commit("phakphum12345/generated-A4-pdf", "b" * 40)
+
+    def test_repository_branch_catalog_uses_scoped_contents_read_token(self):
+        app = self.make()
+        calls = []
+        future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
+        def request(method, path, token, payload=None):
+            calls.append((method, path, token, payload))
+            if method == "POST":
+                return {
+                    "token": "contents-read-token",
+                    "expires_at": future,
+                    "permissions": {"contents": "read"},
+                }
+            return [{
+                "name": "feature/example",
+                "commit": {"sha": "A" * 40},
+            }]
+        app._app_jwt = lambda: "app-jwt"
+        app._request = request
+        refs = app.list_repository_refs("phakphum12345/generated-A4-pdf", "branches")
+        self.assertEqual(refs, [{"name": "feature/example", "commit_sha": "a" * 40}])
+        self.assertEqual(calls[0][3], {
+            "repositories": ["phakphum12345/generated-A4-pdf"],
+            "permissions": {"contents": "read"},
+        })
+        self.assertIn("/branches?per_page=100&page=1", calls[1][1])
+        self.assertEqual(calls[1][2], "contents-read-token")
+
+    def test_repository_ref_catalog_paginates_across_pages(self):
+        app = self.make()
+        future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
+        calls = []
+        def request(method, path, token, payload=None):
+            calls.append(path)
+            if method == "POST":
+                return {"token": "contents-token", "expires_at": future,
+                        "permissions": {"contents": "read"}}
+            if path.endswith("page=1"):
+                return [{"name": "branch-" + str(i), "commit": {"sha": ("%040x" % (i + 1))}}
+                        for i in range(100)]
+            return [{"name": "branch-100", "commit": {"sha": "f" * 40}}]
+        app._app_jwt = lambda: "app-jwt"
+        app._request = request
+        refs = app.list_repository_refs("phakphum12345/generated-A4-pdf", "branches")
+        self.assertEqual(len(refs), 101)
+        self.assertEqual(len([path for path in calls if "branches?" in path]), 2)
+
+    def test_repository_ref_catalog_rejects_duplicate_names(self):
+        app = self.make()
+        future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
+        def request(method, path, token, payload=None):
+            if method == "POST":
+                return {"token": "contents-token", "expires_at": future,
+                        "permissions": {"contents": "read"}}
+            return [
+                {"name": "main", "commit": {"sha": "a" * 40}},
+                {"name": "main", "commit": {"sha": "b" * 40}},
+            ]
+        app._app_jwt = lambda: "app-jwt"
+        app._request = request
+        with self.assertRaisesRegex(GitHubAppError, "duplicates"):
+            app.list_repository_refs("phakphum12345/generated-A4-pdf", "branches")
+
+    def test_repository_project_inspection_detects_flutter_macos_runner(self):
+        app = self.make()
+        app.is_repository_accessible = lambda repository, refresh=False: repository == "example/flutter-app"
+        future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
+        sha = "e" * 40
+        tree_sha = "f" * 40
+        calls = []
+        def request(method, path, token, payload=None):
+            calls.append((method, path, token, payload))
+            if method == "POST":
+                return {"token": "contents-token", "expires_at": future,
+                        "permissions": {"contents": "read"}}
+            if "/commits/" in path:
+                return {"sha": sha, "commit": {"tree": {"sha": tree_sha}}}
+            if "/contents/" in path:
+                raw = b"dependencies:\n  flutter:\n    sdk: flutter\n"
+                return {"encoding": "base64", "content": base64.b64encode(raw).decode(), "size": len(raw)}
+            return {"truncated": False, "tree": [
+                {"path": "pubspec.yaml", "type": "blob", "mode": "100644"},
+                {"path": "lib/main.dart", "type": "blob", "mode": "100644"},
+                {"path": "macos/Runner.xcodeproj/project.pbxproj", "type": "blob", "mode": "100644"},
+                {"path": "macos/Runner/Info.plist", "type": "blob", "mode": "100644"},
+            ]}
+        app._app_jwt = lambda: "app-jwt"
+        app._request = request
+        result = app.inspect_repository_project("example/flutter-app", sha)
+        self.assertEqual(result["status"], "target_detected")
+        self.assertEqual(result["project_types"], ["flutter"])
+        self.assertTrue(result["flutter"]["macos_supported"])
+        self.assertTrue(any("/git/trees/" + tree_sha + "?recursive=1" in call[1] for call in calls))
+
+    def test_repository_project_inspection_reports_flutter_macos_setup_needed(self):
+        app = self.make()
+        app.is_repository_accessible = lambda repository, refresh=False: True
+        future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
+        sha = "e" * 40
+        def request(method, path, token, payload=None):
+            if method == "POST":
+                return {"token": "contents-token", "expires_at": future,
+                        "permissions": {"contents": "read"}}
+            if "/commits/" in path:
+                return {"sha": sha, "commit": {"tree": {"sha": "f" * 40}}}
+            if "/contents/" in path:
+                raw = b"dependencies:\n  flutter:\n    sdk: flutter\n"
+                return {"encoding": "base64", "content": base64.b64encode(raw).decode(), "size": len(raw)}
+            return {"truncated": False, "tree": [
+                {"path": "pubspec.yaml", "type": "blob", "mode": "100644"},
+                {"path": "lib/main.dart", "type": "blob", "mode": "100644"},
+            ]}
+        app._app_jwt = lambda: "app-jwt"
+        app._request = request
+        result = app.inspect_repository_project("owner/repo", sha)
+        self.assertEqual(result["status"], "needs_setup")
+        self.assertFalse(result["flutter"]["macos_supported"])
+
+    def test_repository_project_inspection_does_not_misclassify_dart_package_as_flutter(self):
+        app = self.make()
+        app.is_repository_accessible = lambda repository, refresh=False: True
+        future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
+        sha = "e" * 40
+        def request(method, path, token, payload=None):
+            if method == "POST":
+                return {"token": "contents-token", "expires_at": future,
+                        "permissions": {"contents": "read"}}
+            if "/commits/" in path:
+                return {"sha": sha, "commit": {"tree": {"sha": "f" * 40}}}
+            if "/contents/" in path:
+                raw = b"name: pure_dart\n"
+                return {"encoding": "base64", "content": base64.b64encode(raw).decode(), "size": len(raw)}
+            return {"truncated": False, "tree": [
+                {"path": "pubspec.yaml", "type": "blob", "mode": "100644"},
+                {"path": "lib/main.dart", "type": "blob", "mode": "100644"},
+            ]}
+        app._app_jwt = lambda: "app-jwt"
+        app._request = request
+        result = app.inspect_repository_project("owner/repo", sha)
+        self.assertEqual(result["status"], "detected")
+        self.assertEqual(result["project_types"], ["dart"])
+        self.assertFalse(result["flutter"]["detected"])
+        self.assertIsNone(result["flutter"]["macos_supported"])
+
+    def test_repository_project_inspection_marks_flutter_support_not_applicable_for_other_stacks(self):
+        app = self.make()
+        app.is_repository_accessible = lambda repository, refresh=False: True
+        future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
+        sha = "e" * 40
+        def request(method, path, token, payload=None):
+            if method == "POST":
+                return {"token": "contents-token", "expires_at": future,
+                        "permissions": {"contents": "read"}}
+            if "/commits/" in path:
+                return {"sha": sha, "commit": {"tree": {"sha": "f" * 40}}}
+            return {"truncated": False, "tree": [
+                {"path": "package.json", "type": "blob", "mode": "100644"},
+                {"path": "src/index.js", "type": "blob", "mode": "100644"},
+            ]}
+        app._app_jwt = lambda: "app-jwt"
+        app._request = request
+        result = app.inspect_repository_project("owner/repo", sha)
+        self.assertEqual(result["project_types"], ["node"])
+        self.assertIsNone(result["flutter"]["macos_supported"])
+
+    def test_repository_project_inspection_rejects_unsafe_tree_paths(self):
+        app = self.make()
+        app.is_repository_accessible = lambda repository, refresh=False: True
+        future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
+        sha = "e" * 40
+        def request(method, path, token, payload=None):
+            if method == "POST":
+                return {"token": "contents-token", "expires_at": future,
+                        "permissions": {"contents": "read"}}
+            if "/commits/" in path:
+                return {"sha": sha, "commit": {"tree": {"sha": "f" * 40}}}
+            return {"truncated": False, "tree": [
+                {"path": "../pubspec.yaml", "type": "blob", "mode": "100644"},
+            ]}
+        app._app_jwt = lambda: "app-jwt"
+        app._request = request
+        with self.assertRaisesRegex(GitHubAppError, "unsafe path"):
+            app.inspect_repository_project("owner/repo", sha)
+
+    def test_repository_project_inspection_treats_truncated_tree_as_unknown(self):
+        app = self.make()
+        app.is_repository_accessible = lambda repository, refresh=False: True
+        future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
+        sha = "e" * 40
+        def request(method, path, token, payload=None):
+            if method == "POST":
+                return {"token": "contents-token", "expires_at": future,
+                        "permissions": {"contents": "read"}}
+            if "/commits/" in path:
+                return {"sha": sha, "commit": {"tree": {"sha": "f" * 40}}}
+            return {"truncated": True, "tree": [
+                {"path": "pubspec.yaml", "type": "blob", "mode": "100644"},
+            ]}
+        app._app_jwt = lambda: "app-jwt"
+        app._request = request
+        result = app.inspect_repository_project("owner/repo", sha)
+        self.assertEqual(result["status"], "unknown")
+        self.assertIsNone(result["flutter"]["macos_supported"])
+
+    def test_resolve_repository_commit_uses_scoped_contents_token(self):
+        app = self.make()
+        future = (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat()
+        calls = []
+        def request(method, path, token, payload=None):
+            calls.append((method, path, token, payload))
+            if method == "POST":
+                return {"token": "contents-token", "expires_at": future,
+                        "permissions": {"contents": "read"}}
+            return {"sha": "b" * 40}
+        app._app_jwt = lambda: "app-jwt"
+        app._request = request
+        result = app.resolve_repository_commit(
+            "phakphum12345/generated-A4-pdf", "b" * 40
+        )
+        self.assertEqual(result, {"commit_sha": "b" * 40})
+        self.assertIn("/commits/" + "b" * 40, calls[1][1])
+
+    def test_resolve_repository_commit_rejects_malformed_sha_before_network(self):
+        app = self.make()
+        app._request = lambda *args, **kwargs: self.fail("network must not be called")
+        with self.assertRaisesRegex(GitHubAppError, "40 hexadecimal"):
+            app.resolve_repository_commit("phakphum12345/generated-A4-pdf", "not-a-sha")
+
+    def test_repository_ref_catalog_rejects_unsupported_kind_before_network(self):
+        app = self.make()
+        app._request = lambda *args, **kwargs: self.fail("network must not be called")
+        with self.assertRaisesRegex(GitHubAppError, "Unsupported"):
+            app.list_repository_refs("phakphum12345/generated-A4-pdf", "commits")
+
+    def test_repository_ref_catalog_fails_closed_without_contents_permission(self):
+        app = self.make()
+        app._app_jwt = lambda: "app-jwt"
+        app._request = lambda *args, **kwargs: {
+            "token": "metadata-only",
+            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=40)).isoformat(),
+            "permissions": {"metadata": "read"},
+        }
+        with self.assertRaisesRegex(GitHubAppError, "Contents read"):
+            app.list_repository_refs("phakphum12345/generated-A4-pdf", "tags")
+
+
+
 if __name__ == "__main__":
     unittest.main()

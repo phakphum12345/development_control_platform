@@ -108,10 +108,13 @@ class ProxyMutationAuthorizationTests(unittest.TestCase):
         )
         with self.assertRaises(HTTPError) as caught:
             urlopen(request)
-        self.assertEqual(caught.exception.code, 403)
-        self.assertEqual(
-            json.loads(caught.exception.read())["error"], "owner role required"
-        )
+        try:
+            self.assertEqual(caught.exception.code, 403)
+            self.assertEqual(
+                json.loads(caught.exception.read())["error"], "owner role required"
+            )
+        finally:
+            caught.exception.close()
 
     def test_operator_cannot_terminate_runner(self):
         path = "/api/cloud-runners/runner-123"
@@ -122,10 +125,13 @@ class ProxyMutationAuthorizationTests(unittest.TestCase):
         )
         with self.assertRaises(HTTPError) as caught:
             urlopen(request)
-        self.assertEqual(caught.exception.code, 403)
-        self.assertEqual(
-            json.loads(caught.exception.read())["error"], "owner role required"
-        )
+        try:
+            self.assertEqual(caught.exception.code, 403)
+            self.assertEqual(
+                json.loads(caught.exception.read())["error"], "owner role required"
+            )
+        finally:
+            caught.exception.close()
 
 
 if __name__ == "__main__":
