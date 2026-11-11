@@ -284,7 +284,7 @@ def discover_project(root: str | os.PathLike[str], task_description: str = "",
     for current, dirs, filenames in os.walk(workspace, topdown=True, followlinks=False):
         current_path = Path(current)
         dirs[:] = sorted(name for name in dirs
-                         if name not in IGNORED_DIRS and not (current_path / name).is_symlink())
+                         if name.lower() not in IGNORED_DIRS and not (current_path / name).is_symlink())
         for filename in sorted(filenames):
             candidate = current_path / filename
             if candidate.is_symlink() or not candidate.is_file():
