@@ -548,19 +548,9 @@ components:
         project_id: { type: string, format: uuid }
         root_id: { type: string, format: uuid }
         relative_path: { type: string, minLength: 1, maxLength: 2048 }
-        snapshot_sha256: { type: string, pattern: '^[0-9a-f]{64}      additionalProperties: true
-      properties:
-        error: { type: string }
-        detail: { type: string }
-  responses:
-    BadRequest:
-      description: Invalid request.
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
-    Unauthorized: { description: Missing or invalid gateway bearer token. }
-    Forbidden: { description: Caller or repository is not authorized. }
- }
+        snapshot_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
         file_count: { type: integer, minimum: 0, maximum: 100000 }
         total_bytes: { type: integer, minimum: 0, maximum: 1073741824 }
     Error:
