@@ -61,3 +61,11 @@ Each phase is a separate feature branch and Draft PR, with narrowly scoped chang
 - Build output is packaged as a bounded ZIP artifact and uploaded through the existing authenticated artifact channel.
 - Framework detection, job target validation, runner scheduling, and local Runner dispatch are connected.
 - Next: dashboard build-job controls, actual Windows-host acceptance, SHA-256 provenance verification, runtime manager and real preview.
+
+
+## Runtime Manager — initial local static runtime slice
+- Added a loopback-only static runtime supervisor for already-built output.
+- Starts the Python standard-library HTTP server with an argv array; no shell or project server code is executed.
+- Allocates an ephemeral loopback port, verifies HTTP health, records bounded logs, supervises process-tree shutdown and expires runtime sessions.
+- Runtime session capabilities are random and required for local status/log/stop operations.
+- This is a local supervisor primitive, not yet a Gateway-authenticated Preview Proxy or Dashboard workflow.

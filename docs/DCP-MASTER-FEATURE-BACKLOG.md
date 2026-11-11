@@ -15,7 +15,7 @@ Status labels describe the initial source review only; revalidate against the ex
 | IMP-03 | Framework/toolchain detection | PARTIAL | P0 | Existing bounded inventory now reports evidence-based framework, package manager, manifest constraints and scripts; installed toolchain readiness and job integration remain. |
 | BUILD-01 | Flutter fixed-target executor | EXISTING/PARTIAL | P1 | Opt-in, trusted-repository allowlist, disabled by default; verify artifacts and cleanup. |
 | BUILD-02 | Generic web build adapters | PARTIAL | P0 | Static HTML/JS and React/Vite + Vue/Vite Local Runner targets implemented; dashboard UX, host acceptance and broader build matrix remain. |
-| RUN-01 | Runtime Manager | MISSING | P0 | Start/stop supervised process trees with port isolation, timeout and logs. |
+| RUN-01 | Runtime Manager | PARTIAL | P0 | Added loopback-only static runtime supervisor with ephemeral port, process-tree stop, health, bounded logs and expiring session capability; Gateway/Preview Proxy integration remains. |
 | RUN-02 | Real application preview | MISSING/PARTIAL | P0 | Preview actual runtime via owner-bound expiring proxy session. |
 | TERM-01 | Terminal Studio UI | MISSING | P1 | Tabs, shell selection, working directory, output, exit code, stop and history. |
 | TERM-02 | Import Command / Template Library | MISSING | P1 | Import text/JSON/script as inert data; never auto-execute; validate schema and provenance. |
@@ -65,3 +65,8 @@ A feature is complete only when implementation, unit/integration tests, security
 ## Universal Build Engine progress
 - Static web and Vite targets are now wired through existing Job Control Plane, Runner Scheduler, Local Runner Pipeline and Artifact Store.
 - Dependency installation is intentionally not automated; Vite must already exist in the workspace. Unknown frameworks remain unsupported.
+
+
+## Runtime Manager progress
+- Initial static runtime supervisor implemented for built output only; no arbitrary project server scripts are started.
+- Preview session tokens are local capability tokens and must be wrapped by authenticated Gateway owner authorization before Dashboard exposure.
