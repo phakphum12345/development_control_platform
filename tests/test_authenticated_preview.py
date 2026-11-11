@@ -41,7 +41,7 @@ class AuthenticatedPreviewManagerTests(unittest.TestCase):
         self.assertNotIn("session_token", row)
         self.assertNotIn("url", row)
         self.assertNotIn("port", row)
-        self.assertIn("/api/previews/", row["preview_path"])
+        self.assertIn(f"/api/jobs/{self.job_id}/previews/", row["preview_path"])
         self.assertNotIn("private-capability", repr(row))
 
     def test_one_preview_per_job_and_job_binding(self):
