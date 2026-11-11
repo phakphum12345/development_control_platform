@@ -1,3 +1,4 @@
+import re
 import unittest
 from pathlib import Path
 
@@ -172,8 +173,8 @@ class DashboardContractTests(unittest.TestCase):
             'id="account"', 'id="auth-login-form"',
             './api/auth/session', './api/auth/login', './api/auth/logout',
             'credentials:"same-origin"', 'X-CSRF-Token', 'csrfToken=null', 'data.csrfToken', 'Sign-in blocked: missing server-issued CSRF token', 'type="password"',
-            'GitHub Pages is static hosting',
-            'No password login will be simulated',
+            'GitHub Pages remains static-only',
+            'Start-DCP-Local.cmd',
         ):
             with self.subTest(expected=expected):
                 self.assertIn(expected, HTML)
@@ -231,8 +232,56 @@ class LocalResearchOSApiContractTests(unittest.TestCase):
                 self.assertIn(expected, HTML)
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
+
+class DashboardControlCenterV2Tests(unittest.TestCase):
+    def test_colorful_control_center_and_quick_navigation_contract(self):
+        for expected in (
+            'id="dcp-control-center-v2"',
+            'id="dcp-nav-search"',
+            'id="dcp-nav-count"',
+            'id="dcp-selfcheck"',
+            'id="dcp-selfcheck-run"',
+            'id="dcp-nav-reset"',
+            'data-quick-tab="repo"',
+            'data-quick-tab="pr"',
+            'data-quick-tab="evidence"',
+            'data-quick-tab="gates"',
+            'data-quick-tab="audit"',
+            'Control Center',
+            'START', 'IDENTITY', 'DEVELOPMENT', 'DESIGN & SIMULATION',
+            'INTEGRATIONS', 'GITHUB', 'ASSURANCE',
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, HTML)
+
+    def test_control_center_self_check_is_structural_and_preserves_read_only(self):
+        for expected in (
+            "Duplicate ID:",
+            "Missing tab target:",
+            "Expected exactly one active navigation item",
+            "READ-ONLY indicator missing",
+            "UI self-check: PASS",
+            "does not prove backend, OAuth, CI, or every external integration",
+            "No token, private repository access, push, branch creation, approval, merge or deployment is available",
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, HTML)
+
+    def test_control_center_accessibility_responsiveness_and_keyboard_shortcuts(self):
+        for expected in (
+            'aria-label="Dashboard control center"',
+            'aria-live="polite"',
+            'role="status"',
+            "focus-visible",
+            "prefers-reduced-motion:reduce",
+            "@media(max-width:900px)",
+            "@media(max-width:600px)",
+            "event.ctrlKey||event.metaKey",
+            "event.key.toLowerCase()==='k'",
+            "event.key==='/'",
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, HTML)
 
     def test_shared_github_account_and_repository_selector_contract(self):
         for expected in (
@@ -242,7 +291,7 @@ if __name__ == "__main__":
             'api("/users/"+encodeURIComponent(owner))',
             'api("/users/"+encodeURIComponent(owner)+"/repos?type=public&sort=updated&per_page=100")',
             '["repo-name","pr-repo","ev-repo","ros-api-repository"]',
-            'Permission: UNKNOWN', 'does not switch linked GitHub connector account',
+            'Permission: UNKNOWN', 'ไม่สลับ linked GitHub connector account',
             'Private repositories',
         ):
             with self.subTest(expected=expected):

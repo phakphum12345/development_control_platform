@@ -19,6 +19,29 @@ try {
   await page.goto(`http://127.0.0.1:${address.port}/`);
   await page.getByRole("heading", { name: "Development Control Platform" }).waitFor();
 
+  // Control Center v2: structural self-check, searchable navigation,
+  // quick actions, reset behavior, and keyboard shortcuts.
+  await page.locator("#dcp-selfcheck-run").click();
+  assert.match(await page.locator("#dcp-selfcheck").textContent(), /UI self-check: PASS/);
+  await page.locator("#dcp-nav-search").fill("Repository");
+  assert.equal(await page.locator('[data-tab="repo"]').isVisible(), true);
+  assert.equal(await page.locator('[data-tab="pr"]').isVisible(), false);
+  await page.locator('[data-quick-tab="pr"]').click();
+  assert.equal(await page.locator("#pr").evaluate((el) => el.classList.contains("active")), true);
+  assert.equal(await page.locator("#dcp-nav-search").inputValue(), "");
+  await page.keyboard.press("Control+k");
+  assert.equal(await page.locator("#dcp-nav-search").evaluate((el) => el === document.activeElement), true);
+  await page.locator("#dcp-nav-search").fill("Evidence");
+  await page.locator('[data-quick-tab="evidence"]').click();
+  assert.equal(await page.locator("#evidence").evaluate((el) => el.classList.contains("active")), true);
+  await page.keyboard.press("/");
+  assert.equal(await page.locator("#dcp-nav-search").evaluate((el) => el === document.activeElement), true);
+  await page.locator("#dcp-nav-search").fill("no-such-menu");
+  await page.locator("#dcp-nav-reset").click();
+  assert.equal(await page.locator("#dcp-nav-search").inputValue(), "");
+  assert.equal(await page.locator("#evidence").evaluate((el) => el.classList.contains("active")), true);
+
+
   // Route colors must preview, persist locally, and restore their matching controls.
   await page.locator('[data-tab="route-colors"]').click();
   const readColor = page.locator('[data-route-color="route_read"]');
@@ -109,8 +132,8 @@ try {
   assert.equal(await page.locator("#pwa-install").isVisible(), false);
   await page.locator('[data-tab="account"]').click();
   assert.equal(await page.locator("#auth-submit").isDisabled(), true);
-  await page.waitForFunction(() => document.querySelector("#auth-backend-status")?.textContent.includes("Authentication backend unavailable"));
-  assert.match(await page.locator("#auth-backend-status").textContent(), /Authentication backend unavailable/);
+  await page.waitForFunction(() => document.querySelector("#auth-backend-status")?.textContent.includes("Local authentication service unavailable"));
+  assert.match(await page.locator("#auth-backend-status").textContent(), /Local authentication service unavailable/);
   await page.locator("#auth-username").fill("test@example.invalid");
   await page.locator("#auth-password").fill("never-store-this");
   assert.equal(await page.evaluate(() => localStorage.getItem("auth-token")), null);

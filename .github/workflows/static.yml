@@ -1,0 +1,11 @@
+name: Disable duplicate Pages workflow
+
+on:
+  workflow_dispatch:
+
+jobs:
+  notice:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain
+        run: echo "Use deploy-pages.yml for GitHub Pages deployment."

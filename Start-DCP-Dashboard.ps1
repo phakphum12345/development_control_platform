@@ -13,7 +13,16 @@ $dashboard = [System.IO.Path]::GetFullPath((Join-Path $project 'dashboard'))
 $indexFile = Join-Path $dashboard 'index.html'
 $requestedPort = $Port
 $autoPort = $requestedPort -eq 0
-$stateName = if ($autoPort -or $Port -eq 8000) { 'DCP' } else { "DCP-Test-$Port" }
+$stateName = if ($autoPort -or $Port -eq 8000) {
+    # Each checkout owns an independent record. A shared %LOCALAPPDATA%\\DCP
+    # record caused one clone to block or overwrite another clone's dashboard.
+    $pathBytes = [System.Text.Encoding]::UTF8.GetBytes($dashboard.ToUpperInvariant())
+    $pathHash = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $projectKey = ([System.BitConverter]::ToString($pathHash.ComputeHash($pathBytes))).Replace('-', '').Substring(0, 12)
+    } finally { $pathHash.Dispose() }
+    "DCP-Dashboard-$projectKey"
+} else { "DCP-Test-$Port" }
 $stateDir = Join-Path $env:LOCALAPPDATA $stateName
 $pidFile = Join-Path $stateDir 'dashboard-server.json'
 
@@ -171,7 +180,16 @@ if ($oldRecord) {
 
 $python = 'C:\Program Files\Python314\python.exe'
 if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
-    $python = (Get-Command python.exe -ErrorAction Stop).Source
+    $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
+    if ($pythonCommand) {
+        $python = $pythonCommand.Source
+    } else {
+        $pyLauncher = Get-Command py.exe -ErrorAction Stop
+        $python = (& $pyLauncher.Source -3 -c 'import sys; print(sys.executable)' | Select-Object -Last 1).Trim()
+        if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
+            throw 'Python Launcher found, but it could not resolve a Python 3 executable.'
+        }
+    }
 }
 
 $startedPid = 0

@@ -8,7 +8,7 @@ class CloudRunnerOpenAPITests(unittest.TestCase):
     def setUpClass(cls): cls.spec = yaml.safe_load(SPEC_PATH.read_text(encoding="utf-8"))
     def test_openapi_and_placeholder_server(self):
         self.assertEqual(self.spec["openapi"],"3.1.0")
-        self.assertEqual(self.spec["info"]["version"],"1.1.0")
+        self.assertEqual(self.spec["info"]["version"],"1.2.0")
         self.assertIn("Placeholder only",self.spec["servers"][0]["description"])
     def test_lifecycle_requires_bearer_auth(self):
         self.assertEqual(self.spec["security"],[{"GatewayBearerAuth":[]}])
@@ -26,12 +26,43 @@ class CloudRunnerOpenAPITests(unittest.TestCase):
         self.assertEqual(p["network_policy"]["const"],"restricted-egress")
         self.assertEqual(p["registration_token_handling"]["const"],"provider-side-only")
         self.assertEqual(p["max_runtime_minutes"]["minimum"],5); self.assertEqual(p["max_runtime_minutes"]["maximum"],180)
+    def test_repository_catalog_refs_and_commit_routes_are_documented(self):
+        paths = self.spec["paths"]
+        self.assertIn("/api/github/repositories", paths)
+        self.assertIn("/api/github/repositories/{owner}/{repo}/refs", paths)
+        self.assertIn("/api/github/repositories/{owner}/{repo}/commits/{sha}", paths)
+        self.assertIn("/api/github/repositories/{owner}/{repo}/projects/{sha}", paths)
+        refs = paths["/api/github/repositories/{owner}/{repo}/refs"]["get"]
+        self.assertEqual(refs["parameters"][-1]["schema"]["enum"], ["branches", "tags"])
+        self.assertIn("TrustedProxyAssertion", refs["security"][0])
+        commit = paths["/api/github/repositories/{owner}/{repo}/commits/{sha}"]["get"]
+        self.assertIn("TrustedProxyAssertion", commit["security"][0])
+    def test_local_project_api_is_owner_only_read_only_and_path_free(self):
+        paths = self.spec["paths"]
+        self.assertIn("/api/local-projects", paths)
+        self.assertIn("/api/local-projects/roots", paths)
+        self.assertIn("/api/local-projects/{project_id}", paths)
+        for path in (
+            "/api/local-projects",
+            "/api/local-projects/roots",
+            "/api/local-projects/{project_id}",
+        ):
+            operation = paths[path]["get"]
+            self.assertEqual(operation["security"], [{"TrustedProxyAssertion": []}])
+            self.assertIn("403", operation["responses"])
+        project = self.spec["components"]["schemas"]["LocalProject"]
+        self.assertFalse(project["additionalProperties"])
+        self.assertNotIn("path", project["properties"])
+        self.assertIn("snapshot_sha256", project["required"])
+        root = self.spec["components"]["schemas"]["LocalProjectRoot"]
+        self.assertNotIn("path", root["properties"])
+
     def test_responses_and_gateway_lifecycle_requirements(self):
         responses=self.spec["paths"]["/v1/runners"]["post"]["responses"]
         for code in ("202","400","401","403","409","429","503"): self.assertIn(code,responses)
         self.assertIn("not yet verified",responses["202"]["description"].lower())
-        desc=self.spec["paths"]["/v1/runners"]["post"]["description"].lower()
-        for word in ("authenticate","allowlisting","idempotency","billing","teardown","ttl","not evidence","server-side"):
+        desc=" ".join(self.spec["paths"]["/v1/runners"]["post"]["description"].lower().split())
+        for word in ("authenticate","installation membership","idempotency","billing","teardown","ttl","not evidence","server-side"):
             self.assertIn(word,desc)
 
 if __name__ == "__main__": unittest.main()

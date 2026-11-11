@@ -14,6 +14,10 @@ $powerShellExe = Join-Path $PSHOME 'powershell.exe'
 $ownedPid = 0
 $validRecordJson = $null
 $testPassed = $false
+$legacyPath = Join-Path (Join-Path $env:LOCALAPPDATA 'DCP') 'dashboard-server.json'
+$legacyExisted = $false
+$legacyOriginal = $null
+$legacyFixtureCreated = $false
 
 function Assert-Check($condition, [string]$message) {
     if (-not $condition) { throw "FAIL: $message" }
@@ -68,6 +72,41 @@ try {
     Assert-Check ((Get-TestListeners).Count -eq 0) 'Test port 8001 is free before test'
     Assert-Check (-not (Test-Path -LiteralPath $recordPath)) 'Test ownership record does not already exist'
 
+    Write-Output "`n=== Per-checkout ownership isolation ==="
+    $legacyDir = Join-Path $env:LOCALAPPDATA 'DCP'
+    $legacyPath = Join-Path $legacyDir 'dashboard-server.json'
+    New-Item -ItemType Directory -Path $legacyDir -Force | Out-Null
+    $legacyExisted = Test-Path -LiteralPath $legacyPath -PathType Leaf
+    $legacyOriginal = if ($legacyExisted) { [System.IO.File]::ReadAllBytes($legacyPath) } else { $null }
+    if (-not $legacyExisted) {
+        $legacyFixture = [ordered]@{
+            schema_version = 1
+            port = 8000
+            pid = 42424242
+            dashboard = 'C:\\OtherCheckout\\dashboard'
+            startedAt = (Get-Date).ToString('o')
+            processCreatedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+        } | ConvertTo-Json -Depth 4
+        [System.IO.File]::WriteAllText($legacyPath, $legacyFixture, [System.Text.Encoding]::UTF8)
+        $legacyFixtureCreated = $true
+    }
+    $legacyExpected = [System.IO.File]::ReadAllBytes($legacyPath)
+    $dashboardPath = [System.IO.Path]::GetFullPath((Join-Path $project 'dashboard'))
+    $pathHash = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $projectKey = ([System.BitConverter]::ToString($pathHash.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($dashboardPath.ToUpperInvariant())))).Replace('-', '').Substring(0, 12)
+    } finally { $pathHash.Dispose() }
+    $isolatedRecord = Join-Path (Join-Path $env:LOCALAPPDATA "DCP-Dashboard-$projectKey") 'dashboard-server.json'
+    Assert-Check (-not (Test-Path -LiteralPath $isolatedRecord)) 'Per-checkout auto-port ownership record starts clean'
+    $autoStartCode = Invoke-ChildScript $startScript @('-Port', '0')
+    Assert-Check ($autoStartCode -eq 0) 'Auto-port Start ignores a foreign legacy ownership record'
+    Assert-Check (Test-Path -LiteralPath $isolatedRecord) 'Auto-port Start writes a per-checkout ownership record'
+    $legacyAfter = [System.IO.File]::ReadAllBytes($legacyPath)
+    $legacyUnchanged = [Convert]::ToBase64String($legacyAfter) -eq [Convert]::ToBase64String($legacyExpected)
+    Assert-Check $legacyUnchanged 'Legacy ownership record remains untouched'
+    $autoStopCode = Invoke-ChildScript $stopScript @('-Port', '0')
+    Assert-Check ($autoStopCode -eq 0) 'Auto-port Stop reads the matching per-checkout ownership record'
+    Assert-Check (-not (Test-Path -LiteralPath $isolatedRecord)) 'Auto-port Stop removes only this checkout record'
     Write-Output "`n=== Start test server on isolated port $port ==="
     $startCode = 0
     try {
@@ -152,6 +191,11 @@ try {
     Write-Output $_.Exception.Message
     Write-Output 'No unverified process will be terminated.'
 } finally {
+    if ($legacyExisted -and $null -ne $legacyOriginal) {
+        [System.IO.File]::WriteAllBytes($legacyPath, $legacyOriginal)
+    } elseif ($legacyFixtureCreated -and (Test-Path -LiteralPath $legacyPath)) {
+        Remove-Item -LiteralPath $legacyPath -Force -ErrorAction SilentlyContinue
+    }
     # If the verified test server remains alive after a test failure, restore
     # its ownership record only after rechecking exact command line and path.
     if ($ownedPid -gt 0) {

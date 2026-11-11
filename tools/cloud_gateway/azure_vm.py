@@ -19,7 +19,8 @@ class AzureArmClient:
  def request(self,method,url,payload=None,allow_missing=False):
   token=self.credential.get_token("https://management.azure.com/")
   body=None if payload is None else json.dumps(payload,separators=(",",":")).encode()
-  req=Request(url,data=body,method=method,headers={"Authorization":"Bearer "+token,"Accept":"application/json","Content-Type":"application/json","User-Agent":"DCP-Azure-VM-Provisioner/1.0"})
+  req=Request(url,data=body,method=method,headers={"Accept":"application/json","Content-Type":"application/json","User-Agent":"DCP-Azure-VM-Provisioner/1.0"})
+  req.add_unredirected_header("Authorization","Bearer "+token)
   try:
    with urlopen(req,timeout=self.timeout) as response: raw=response.read(65537)
   except HTTPError as exc:
@@ -33,10 +34,13 @@ class AzureArmClient:
   if not isinstance(data,dict): raise AzureProvisionError("Azure returned an invalid response shape")
   return data
 class AzureVMProvider:
- def __init__(self,arm,location,subnet_id,nsg_id,vm_sizes,image_references,bootstrap_factory,runner_online_checker=None):
+ budget_provider="azure"
+ requires_runner_cleanup=True
+ requires_budget_guard=True
+ def __init__(self,arm,location,subnet_id,nsg_id,vm_sizes,image_references,bootstrap_factory,runner_online_checker=None,network_policy_checker=None):
   self.arm=arm; self.location=location; self.subnet_id=subnet_id; self.nsg_id=nsg_id
   self.vm_sizes=dict(vm_sizes); self.image_references={k:dict(v) for k,v in image_references.items()}
-  self.bootstrap_factory=bootstrap_factory; self.online=runner_online_checker
+  self.bootstrap_factory=bootstrap_factory; self.online=runner_online_checker; self.network_policy=network_policy_checker
   sub=arm.subscription_id; scope=r"^/subscriptions/"+re.escape(sub)+r"/resourceGroups/[A-Za-z0-9_.()-]+/providers/Microsoft\.Network/"
   if not re.match(scope,subnet_id,re.I) or "/virtualNetworks/" not in subnet_id or "/subnets/" not in subnet_id: raise ValueError("Subnet must be a resource ID in the configured subscription")
   if not re.match(scope,nsg_id,re.I) or "/networkSecurityGroups/" not in nsg_id: raise ValueError("NSG must be a resource ID in the configured subscription")
@@ -46,6 +50,22 @@ class AzureVMProvider:
   if set(self.image_references)!={"linux","windows"}: raise ValueError("Exact image references for Linux and Windows are required")
   for ref in self.image_references.values():
    if set(ref)!={"publisher","offer","sku","version"} or any(not isinstance(v,str) or not v or v.lower()=="latest" for v in ref.values()): raise ValueError("Marketplace image must be explicitly version-pinned; latest is forbidden")
+ def readiness(self,os_name):
+  if os_name not in ("linux","windows"):
+   return {"ready":False,"message":"Azure supports only approved Linux or Windows runner profiles"}
+  if not callable(self.bootstrap_factory):
+   return {"ready":False,"message":"Protected GitHub runner bootstrap is not configured"}
+  if not callable(self.online):
+   return {"ready":False,"message":"Independent GitHub runner-online verification is not configured"}
+  if not callable(self.network_policy):
+   return {"ready":False,"message":"Subnet and NSG egress policy verification is not configured"}
+  try:
+   verified=self.network_policy(os_name,self.subnet_id,self.nsg_id)
+  except Exception:
+   verified=False
+  if verified is not True:
+   return {"ready":False,"message":"Runner network egress policy has not been verified"}
+  return {"ready":True,"message":"Protected bootstrap, runner-online check, and network policy are configured"}
  def _url(self,provider,kind,name,version=API_COMPUTE): return self.arm.resource_url(provider,kind,name,version)
  def _names(self,run_id):
   suffix=uuid.uuid4().hex[:8]; return "dcp-"+str(run_id)+"-"+suffix,"dcpnic"+suffix
@@ -62,15 +82,33 @@ class AzureVMProvider:
   nic_url=self._url("Microsoft.Network","networkInterfaces",nic_name,API_NETWORK)
   nic_id=self.arm.resource_id("Microsoft.Network","networkInterfaces",nic_name)
   nic_body={"location":self.location,"tags":tags,"properties":{"networkSecurityGroup":{"id":self.nsg_id},"ipConfigurations":[{"name":"primary","properties":{"primary":True,"privateIPAllocationMethod":"Dynamic","subnet":{"id":self.subnet_id}}}]}}
-  vm_body={"location":self.location,"tags":tags,"identity":{"type":"SystemAssigned"},"hardwareProfile":{"vmSize":self.vm_sizes[os_name]},
+  vm_body={"location":self.location,"tags":tags,"hardwareProfile":{"vmSize":self.vm_sizes[os_name]},
    "storageProfile":{"imageReference":self.image_references[os_name],"osDisk":{"name":vm_name+"-os","createOption":"FromImage","caching":"ReadOnly","managedDisk":{"storageAccountType":"Standard_LRS"},"diffDiskSettings":{"option":"Local"}}},
    "osProfile":bootstrap["os_profile"],"networkProfile":{"networkInterfaces":[{"id":nic_id,"properties":{"primary":True}}]},
    "securityProfile":{"uefiSettings":{"secureBootEnabled":True,"vTpmEnabled":True},"securityType":"TrustedLaunch"},"resources":[bootstrap["extension"]]}
+  vm_url=self._url("Microsoft.Compute","virtualMachines",vm_name)
+  vm_create_started=False
   try:
-   self.arm.request("PUT",nic_url,nic_body); self.arm.request("PUT",self._url("Microsoft.Compute","virtualMachines",vm_name),vm_body)
-  except Exception:
-   try: self.arm.request("DELETE",nic_url,allow_missing=True)
-   except Exception: pass
+   self.arm.request("PUT",nic_url,nic_body)
+   vm_create_started=True
+   self.arm.request("PUT",vm_url,vm_body)
+  except Exception as original:
+   cleanup_pending=False
+   if vm_create_started:
+    try:
+     self.arm.request("DELETE",vm_url,allow_missing=True)
+     if self.arm.request("GET",vm_url,allow_missing=True) is not None: cleanup_pending=True
+    except Exception:
+     cleanup_pending=True
+   try:
+    self.arm.request("DELETE",nic_url,allow_missing=True)
+    if self.arm.request("GET",nic_url,allow_missing=True) is not None: cleanup_pending=True
+   except Exception:
+    cleanup_pending=True
+   if cleanup_pending:
+    error=AzureProvisionError("Azure provisioning failed; resource cleanup is pending")
+    error.provider_id=vm_name
+    raise error from original
    raise
   return RunnerInstance(vm_name,"provisioning",vm_name,tuple(payload.get("labels",[])),"Azure VM create accepted; runner registration pending")
  def status(self,provider_id):
@@ -78,12 +116,27 @@ class AzureVMProvider:
   data=self.arm.request("GET",self._url("Microsoft.Compute","virtualMachines",provider_id)+"&$expand=instanceView",allow_missing=True)
   if data is None:
    nic="dcpnic"+provider_id.rsplit("-",1)[1]
-   self.arm.request("DELETE",self._url("Microsoft.Network","networkInterfaces",nic,API_NETWORK),allow_missing=True)
-   return RunnerInstance(provider_id,"terminated")
+   nic_url=self._url("Microsoft.Network","networkInterfaces",nic,API_NETWORK)
+   nic_data=self.arm.request("GET",nic_url,allow_missing=True)
+   if nic_data is None:
+    return RunnerInstance(provider_id,"terminated",provider_id)
+   self.arm.request("DELETE",nic_url,allow_missing=True)
+   remaining=self.arm.request("GET",nic_url,allow_missing=True)
+   if remaining is None:
+    return RunnerInstance(provider_id,"terminated",provider_id)
+   return RunnerInstance(provider_id,"terminating",provider_id,detail="NIC cleanup pending")
+
   state=str(data.get("properties",{}).get("provisioningState","")).lower()
-  if state=="failed": result="failed"
-  elif self.online and self.online(provider_id): result="online"
-  else: result="provisioning"
+  if state=="failed":
+   self.arm.request("DELETE",self._url("Microsoft.Compute","virtualMachines",provider_id),allow_missing=True)
+   return RunnerInstance(provider_id,"terminating",provider_id,detail="failed VM cleanup requested")
+  else:
+   tags=data.get("tags",{})
+   repository=tags.get("repository") if isinstance(tags,dict) else None
+   target_os=tags.get("target-os") if isinstance(tags,dict) else None
+   try: online=callable(self.online) and self.online(provider_id,repository,target_os) is True
+   except Exception: online=False
+   result="online" if online else "provisioning"
   return RunnerInstance(provider_id,result,provider_id)
  def terminate(self,provider_id):
   if not isinstance(provider_id,str) or not re.fullmatch(r"dcp-[0-9]+-[a-f0-9]{8}",provider_id): raise AzureProvisionError("Invalid DCP Azure VM identifier")
