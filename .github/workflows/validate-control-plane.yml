@@ -99,7 +99,6 @@ jobs:
             '  userns,' \
             '}' | sudo tee "$profile" >/dev/null
           sudo apparmor_parser -r "$profile"
-          sudo aa-status --profiled | grep -F 'dcp-playwright-chromium'
           echo "APPARMOR_CHROMIUM_PROFILE=loaded"
           echo "APPARMOR_CHROMIUM_PATH=$browser"
 
