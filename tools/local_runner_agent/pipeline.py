@@ -126,11 +126,11 @@ class RunnerPipeline:
                     )
                 if outcome == "succeeded" and job["target"] in ("build_static_web", "build_vite"):
                     self.workspaces.retain_for_preview(job_id, worker_id, ttl_seconds=3600)
-                    retained_for_preview = True
-                    result["workspace_retained_for_preview"] = True
                     self.client.append_log(
                         job_id, "Successful web build workspace retained for a bounded local preview window", "system"
                     )
+                    retained_for_preview = True
+                    result["workspace_retained_for_preview"] = True
                 error_code = None
         except (ArtifactPackageError, CheckoutError, ExecutionError, WorkspaceError) as exc:
             self.client.append_log(
