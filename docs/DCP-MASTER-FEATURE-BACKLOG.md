@@ -14,8 +14,8 @@ Status labels describe the initial source review only; revalidate against the ex
 | IMP-02 | Local Folder import via Local Agent | PARTIAL | P0 | Local registry, explicit CLI enrollment and owner-only read API exist; Dashboard picker and immutable job snapshot remain. |
 | IMP-03 | Framework/toolchain detection | PARTIAL | P0 | Detect from manifests and tool availability; unknown stays UNKNOWN. |
 | BUILD-01 | Flutter fixed-target executor | EXISTING/PARTIAL | P1 | Opt-in, trusted-repository allowlist, disabled by default; verify artifacts and cleanup. |
-| BUILD-02 | Generic web build adapters | MISSING | P0 | Start with static HTML/JS and Node/Vite stacks; no arbitrary shell command. |
-| RUN-01 | Runtime Manager | MISSING | P0 | Start/stop supervised process trees with port isolation, timeout and logs. |
+| BUILD-02 | Generic web build adapters | PARTIAL | P0 | Static HTML/JS and React/Vite + Vue/Vite Local Runner targets implemented; dashboard UX, host acceptance and broader build matrix remain. |
+| RUN-01 | Runtime Manager | PARTIAL | P0 | Added loopback-only static runtime supervisor with ephemeral port, process-tree stop, health, bounded logs and expiring session capability; Gateway/Preview Proxy integration remains. |
 | RUN-02 | Real application preview | MISSING/PARTIAL | P0 | Preview actual runtime via owner-bound expiring proxy session. |
 | TERM-01 | Terminal Studio UI | MISSING | P1 | Tabs, shell selection, working directory, output, exit code, stop and history. |
 | TERM-02 | Import Command / Template Library | MISSING | P1 | Import text/JSON/script as inert data; never auto-execute; validate schema and provenance. |

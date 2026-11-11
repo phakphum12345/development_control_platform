@@ -11,6 +11,7 @@ from pathlib import Path
 from .client import GatewayClient, RunnerAgentConfig, RunnerGatewayError
 from .checkout import GitHubCommitCheckout
 from .execution import FlutterBuildExecutor
+from .web_build import WebBuildExecutor
 from .pipeline import RunnerPipeline
 from .workspace import WorkspaceManager
 from .local_project import LocalProjectError, LocalProjectRegistry, default_registry_path
@@ -134,6 +135,11 @@ def main(argv=None) -> int:
             trusted_repositories=frozenset(raw_repositories),
             worker_os=host_os,
             capabilities=frozenset(capabilities),
+            web_executor=WebBuildExecutor(
+                manager, enabled=True,
+                timeout_seconds=_positive_int("DCP_RUNNER_BUILD_TIMEOUT_SECONDS", 1800),
+                max_output_bytes=_positive_int("DCP_RUNNER_MAX_OUTPUT_BYTES", 5 * 1024 * 1024),
+            ),
         )
         result = pipeline.run_once()
         if result is None:

@@ -217,7 +217,7 @@ class LocalAuthProxy:
 
     def gateway_request(self, method: str, path: str, session: dict, body: bytes = b"",
                         csrf_token: str = "") -> tuple[int, bytes]:
-        headers = self.sign_gateway(method, path, session)
+        headers = self.sign_gateway(method, urlparse(path).path, session)
         if csrf_token:
             expected = hmac.new(
                 self.proxy_secret,
@@ -298,7 +298,8 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
             return bool(supplied) and hmac.compare_digest(supplied, expected)
 
         def do_GET(self):
-            path = urlparse(self.path).path
+            parsed = urlparse(self.path)
+            path = parsed.path
             if path == "/healthz":
                 return self.send_json(200, {"status": "ok", "auth_proxy": "ready",
                                             "gateway": "local", "provisioning_enabled": False})
@@ -322,7 +323,8 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                     path.startswith("/api/cloud-runners/") and path.count("/") == 3
                 ) and not re.fullmatch(r"/api/local-projects/[0-9a-f-]{36}", path):
                     return self.send_json(404, {"error": "not found"})
-                status, data = app.gateway_request("GET", path, session)
+                gateway_path = path + (("?" + parsed.query) if parsed.query else "")
+                status, data = app.gateway_request("GET", gateway_path, session)
                 return self.send_bytes(status, data)
             relative = "index.html" if path == "/" else unquote(path.lstrip("/"))
             target = (root / relative).resolve()

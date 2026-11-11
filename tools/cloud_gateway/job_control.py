@@ -83,7 +83,7 @@ class JobStore:
             raise ValueError("Invalid repository")
         if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
             raise ValueError("Invalid commit SHA")
-        if target not in ("test", "build", "package", "build_android", "build_web", "build_windows", "build_linux", "build_macos", "build_ios"):
+        if target not in ("test", "build", "package", "build_android", "build_web", "build_windows", "build_linux", "build_macos", "build_ios", "build_static_web", "build_vite"):
             raise ValueError("Unsupported target")
         normalized = {"repository": repository, "commit_sha": sha, "target": target}
         fingerprint = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
@@ -148,7 +148,8 @@ class JobStore:
             raise ValueError("Invalid lease")
         if allowed_targets is not None:
             supported = {"test", "build", "package", "build_android", "build_web",
-                         "build_windows", "build_linux", "build_macos", "build_ios"}
+                         "build_windows", "build_linux", "build_macos", "build_ios",
+                         "build_static_web", "build_vite"}
             if (not isinstance(allowed_targets, (list, tuple, set, frozenset))
                     or any(not isinstance(item, str) or item not in supported for item in allowed_targets)):
                 raise ValueError("Invalid allowed target list")

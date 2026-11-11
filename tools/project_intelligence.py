@@ -4,7 +4,10 @@ This module inspects repository structure and common manifests. It never imports
 project code, executes project commands, follows symlinks, or reads credentials.
 """
 from __future__ import annotations
+import json
 import os
+import re
+import stat
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -88,6 +91,152 @@ def _classify_path(relative: str) -> str:
     return "other"
 
 
+
+
+def _is_regular_file(path: Path) -> bool:
+    """Check a manifest without following symbolic links."""
+    try:
+        return stat.S_ISREG(path.lstat().st_mode)
+    except OSError:
+        return False
+
+
+def detect_frameworks(workspace: Path) -> dict[str, Any]:
+    """Return explicit framework/toolchain evidence from root manifests only.
+
+    This is static inspection: it never checks installed tools, resolves
+    dependencies, imports project modules, or executes manifest scripts.
+    """
+    package_text = _read_small(workspace / "package.json")
+    package: dict[str, Any] = {}
+    warnings: list[str] = []
+    if package_text:
+        try:
+            parsed = json.loads(package_text)
+            if isinstance(parsed, dict):
+                package = parsed
+            else:
+                warnings.append("package.json must contain an object")
+        except json.JSONDecodeError:
+            warnings.append("package.json is invalid JSON")
+
+    dependencies: dict[str, Any] = {}
+    for group in ("dependencies", "devDependencies", "optionalDependencies"):
+        values = package.get(group, {})
+        if isinstance(values, dict):
+            dependencies.update(values)
+    names = {name.lower() for name in dependencies if isinstance(name, str)}
+    framework = "UNKNOWN"
+    language = "UNKNOWN"
+    project_type = "UNKNOWN"
+
+    if "@angular/core" in names or _is_regular_file(workspace / "angular.json"):
+        framework, language, project_type = "Angular", "JavaScript/TypeScript", "web"
+    elif "next" in names or any(_is_regular_file(workspace / name) for name in (
+        "next.config.js", "next.config.mjs", "next.config.ts"
+    )):
+        framework, language, project_type = "Next.js", "JavaScript/TypeScript", "web"
+    elif "vite" in names and "vue" in names:
+        framework, language, project_type = "Vue + Vite", "JavaScript/TypeScript", "web"
+    elif "vite" in names and ({"react", "react-dom"} & names):
+        framework, language, project_type = "React + Vite", "JavaScript/TypeScript", "web"
+    elif "vue" in names:
+        framework, language, project_type = "Vue", "JavaScript/TypeScript", "web"
+    elif {"react", "react-dom"} & names:
+        framework, language, project_type = "React", "JavaScript/TypeScript", "web"
+    elif package_text and not warnings:
+        framework, language, project_type = "JavaScript application", "JavaScript/TypeScript", "web"
+
+    pubspec = _read_small(workspace / "pubspec.yaml")
+    if framework == "UNKNOWN" and pubspec:
+        if re.search(r"(?m)^\s*flutter\s*:", pubspec) and re.search(
+            r"(?m)^\s*sdk\s*:\s*flutter\s*$", pubspec
+        ):
+            framework, language, project_type = "Flutter", "Dart", "mobile"
+        else:
+            framework, language, project_type = "Dart application", "Dart", "unknown"
+
+    python_manifest = _read_small(workspace / "pyproject.toml")
+    requirements = _read_small(workspace / "requirements.txt")
+    python_text = "\n".join(value for value in (python_manifest, requirements) if value).lower()
+    if framework == "UNKNOWN" and python_text:
+        if re.search(r"(?i)\bfastapi\b", python_text):
+            framework = "FastAPI"
+        elif re.search(r"(?i)\bdjango\b", python_text) or _is_regular_file(workspace / "manage.py"):
+            framework = "Django"
+        elif re.search(r"(?i)\bflask\b", python_text):
+            framework = "Flask"
+        else:
+            framework = "Python"
+        language = "Python"
+        project_type = "web" if framework in {"FastAPI", "Django", "Flask"} else "python"
+
+    if framework == "UNKNOWN" and _is_regular_file(workspace / "index.html"):
+        framework, language, project_type = "Static HTML/CSS/JS", "HTML/CSS/JavaScript", "web"
+
+    package_manager = "UNKNOWN"
+    lockfiles = (
+        ("pnpm-lock.yaml", "pnpm"), ("yarn.lock", "yarn"),
+        ("bun.lock", "bun"), ("bun.lockb", "bun"),
+        ("package-lock.json", "npm"),
+    )
+    for filename, manager in lockfiles:
+        if _is_regular_file(workspace / filename):
+            package_manager = manager
+            break
+    if package_manager == "UNKNOWN" and package_text:
+        declared = package.get("packageManager")
+        package_manager = declared if isinstance(declared, str) else "npm (lockfile missing)"
+    if framework in {"Python", "FastAPI", "Django", "Flask"}:
+        package_manager = (
+            "uv" if (workspace / "uv.lock").is_file() else
+            "poetry" if (workspace / "poetry.lock").is_file() else
+            "pipenv" if (workspace / "Pipfile.lock").is_file() else "pip"
+        )
+
+    toolchain: dict[str, str] = {}
+    engines = package.get("engines", {})
+    if isinstance(engines, dict) and isinstance(engines.get("node"), str):
+        toolchain["node"] = engines["node"]
+    if pubspec:
+        environment = re.search(r"(?ms)^environment:\s*\n((?:^[ \t]+.*\n?)*)", pubspec)
+        if environment:
+            match = re.search(r"(?m)^[ \t]+sdk:\s*['\"]([^'\"]+)['\"]", environment.group(1))
+            if match:
+                toolchain["dart"] = match.group(1).strip()
+    if python_manifest:
+        match = re.search(r"""(?m)^requires-python\s*=\s*['"]([^'"]+)['"]""", python_manifest)
+        if match:
+            toolchain["python"] = match.group(1).strip()
+
+    scripts = package.get("scripts", {})
+    if not isinstance(scripts, dict):
+        scripts = {}
+    available_scripts = sorted(
+        key for key, value in scripts.items()
+        if isinstance(key, str) and isinstance(value, str)
+    )
+    return {
+        "framework": framework,
+        "language": language,
+        "project_type": project_type,
+        "confidence": "high" if framework != "UNKNOWN" else "unknown",
+        "package_manager": package_manager,
+        "toolchain_requirements": toolchain,
+        "available_scripts": available_scripts,
+        "build_scripts": [name for name in ("build", "build:web") if name in available_scripts],
+        "test_scripts": [name for name in ("test", "test:e2e", "e2e") if name in available_scripts],
+        "evidence": sorted(name for name in (
+            "package.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb",
+            "package-lock.json", "angular.json", "next.config.js", "next.config.mjs",
+            "next.config.ts", "pubspec.yaml", "pyproject.toml", "requirements.txt", "index.html"
+        ) if _is_regular_file(workspace / name)),
+        "warnings": warnings,
+        "toolchain_readiness": "NOT_CHECKED",
+        "execution_performed": False,
+    }
+
+
 def discover_project(root: str | os.PathLike[str], task_description: str = "",
                      max_files: int = DEFAULT_MAX_FILES) -> dict[str, Any]:
     """Inspect a workspace without executing code or following symlinks."""
@@ -137,6 +286,7 @@ def discover_project(root: str | os.PathLike[str], task_description: str = "",
             break
 
     all_manifest_text = "\n".join(manifest_texts)
+    framework_detection = detect_frameworks(workspace)
     for framework, markers in FRAMEWORK_MARKERS.items():
         if any(marker in all_manifest_text for marker in markers):
             frameworks.add(framework)
@@ -205,6 +355,7 @@ def discover_project(root: str | os.PathLike[str], task_description: str = "",
                       "languages": dict(sorted(languages.items())),
                       "architecture_areas": dict(sorted(areas.items())),
                       "manifests": manifests, "frameworks": sorted(frameworks),
+                      "framework_detection": framework_detection,
                       "sample_paths": samples},
         "task": {"description": task_description, "detected_topics": topics},
         "runner_profile": {"profile_version": 1, "stack": sorted(kinds | set(languages)),
