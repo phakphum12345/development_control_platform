@@ -18,7 +18,8 @@ class DashboardContractTests(unittest.TestCase):
     def test_public_research_and_private_github_app_import_are_separate(self):
         self.assertIn("https://api.github.com", HTML)
         self.assertIn("PUBLIC API", HTML)
-        self.assertIn("Public GitHub research views use no token", HTML)
+        self.assertIn("Public GitHub research:", HTML)
+        self.assertIn("No token, private repository access", HTML)
         self.assertIn("Private repository access is available only through the authenticated", HTML)
         self.assertIn("does not prove", HTML)
 
