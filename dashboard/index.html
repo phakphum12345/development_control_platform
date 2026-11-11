@@ -1266,27 +1266,62 @@ async function buildJobPreviewStop(jobId){
  }catch(error){runnerText("build-job-result","Preview stop failed: "+error.message)}
 }
 async function buildJobCreate(){
- try{await buildJobsSession();if(!runnerUI.repositories.length)await runnerLoadRepositories()}catch(error){runnerText("build-job-result","BLOCKED: "+error.message);return}
+ const localSource=projectImportState.selectedSource&&projectImportState.selectedSource.source_type==="local_folder";
+ try{
+  await buildJobsSession();
+  if(!localSource&&!runnerUI.repositories.length)await runnerLoadRepositories();
+ }catch(error){runnerText("build-job-result","BLOCKED: "+error.message);return}
  const repository=$("runner-repository").value;
  const sha=$("runner-commit-sha").value.trim();
  const target=$("build-job-target").value;
  if(!runnerUI.session||!runnerUI.csrf){runnerText("build-job-result","BLOCKED: sign in and refresh the session first.");return}
- if(!runnerUI.repositories.some(item=>item.full_name===repository)){runnerText("build-job-result","BLOCKED: choose a GitHub App installation repository above.");return}
- if(!/^[a-f0-9]{40}$/.test(sha)||runnerUI.verifiedCommit!==sha){runnerText("build-job-result","BLOCKED: verify the immutable commit SHA above first.");return}
- if(!runnerUI.project||!runnerUI.project.flutter||runnerUI.project.flutter.detected!==true){runnerText("build-job-result","BLOCKED: selected commit is not confirmed as a Flutter project.");return}
+ let payload;
+ if(localSource){
+  const selected=projectImportState.selectedSource;
+  const localProject=projectImportState.projects.find(item=>item.project_id===selected.project_id);
+  if(!localProject||localProject.snapshot_sha256!==selected.snapshot_sha256){
+   runnerText("build-job-result","BLOCKED: refresh the Local Project catalog and select its current snapshot.");return;
+  }
+  if(target!=="build_static_web"||!localProject.framework_detection||
+     localProject.framework_detection.framework!=="Static HTML/CSS/JS"){
+   runnerText("build-job-result","BLOCKED: Local Folder currently supports detected dependency-free Static HTML/CSS/JS projects only.");return;
+  }
+  payload={
+   source_type:"local_folder",project_id:localProject.project_id,
+   snapshot_sha256:localProject.snapshot_sha256,target:"build_static_web"
+  };
+ }else{
+  if(!runnerUI.repositories.some(item=>item.full_name===repository)){runnerText("build-job-result","BLOCKED: choose a GitHub App installation repository above.");return}
+  if(!/^[a-f0-9]{40}$/.test(sha)||runnerUI.verifiedCommit!==sha){runnerText("build-job-result","BLOCKED: verify the immutable commit SHA above first.");return}
+  if(!runnerUI.project||!runnerUI.project.flutter||runnerUI.project.flutter.detected!==true){runnerText("build-job-result","BLOCKED: selected commit is not confirmed as a Flutter project.");return}
+  payload={source_type:"github",repository,commit_sha:sha,target};
+ }
  const button=$("build-job-create");button.disabled=true;
  try{
-  const payload={repository,commit_sha:sha,target};
   const job=await runnerJson("./api/jobs",{method:"POST",headers:{
    "Content-Type":"application/json",
    "X-CSRF-Token":runnerUI.csrf,"Idempotency-Key":crypto.randomUUID()
   },body:JSON.stringify(payload)});
-  runnerText("build-job-result","Job queued: "+job.id+" · "+job.state);
+  runnerText("build-job-result","Job queued: "+job.id+" · "+job.state+" · "+job.source_type);
   await buildJobsRefresh();
  }catch(error){runnerText("build-job-result","Job creation failed: "+error.message)}
- finally{button.disabled=false}
+ finally{button.disabled=false;buildJobsUpdateGate()}
 }
 function buildJobsUpdateGate(){
+ const localSource=projectImportState.selectedSource&&projectImportState.selectedSource.source_type==="local_folder";
+ if(localSource){
+  const selected=projectImportState.selectedSource;
+  const localProject=projectImportState.projects.find(item=>item.project_id===selected.project_id);
+  const ready=projectImportState.authenticated&&projectImportState.csrf&&localProject&&
+   localProject.snapshot_sha256===selected.snapshot_sha256&&
+   localProject.framework_detection&&localProject.framework_detection.framework==="Static HTML/CSS/JS"&&
+   $("build-job-target").value==="build_static_web";
+  $("build-job-create").disabled=!ready;
+  $("build-job-selected-commit").textContent=ready
+   ?"Local Folder · "+localProject.relative_path+" · SHA-256 "+localProject.snapshot_sha256
+   :"Local Folder selected; static HTML/CSS/JS detection and build_static_web target are required";
+  return;
+ }
  const repository=$("runner-repository").value;
  const sha=$("runner-commit-sha").value.trim();
  const verified=runnerUI.session&&runnerUI.csrf&&runnerUI.repositories.some(item=>item.full_name===repository)&&
