@@ -20,7 +20,7 @@ class DashboardContractTests(unittest.TestCase):
         self.assertIn("PUBLIC API", HTML)
         self.assertIn("Public GitHub research:", HTML)
         self.assertIn("No token, private repository access", HTML)
-        self.assertIn("Private repository access is available only through the authenticated", HTML)
+        self.assertIn("Private repository reads are separately available only through the authenticated", HTML)
         self.assertIn("does not prove", HTML)
 
     def test_evidence_requires_full_sha_and_url_for_pass(self):
