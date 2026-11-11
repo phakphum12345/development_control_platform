@@ -73,7 +73,7 @@ class AuthenticatedPreviewManager:
                 "runtime_id": runtime_id,
                 "job_id": job_id,
                 "state": "running",
-                "preview_path": f"/api/previews/{runtime_id}/content/",
+                "preview_path": f"/api/jobs/{job_id}/previews/{runtime_id}/content/",
                 "expires_in_seconds": row["expires_in_seconds"],
                 "started_at": row["started_at"],
             }
