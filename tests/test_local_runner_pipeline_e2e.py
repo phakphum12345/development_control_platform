@@ -213,6 +213,37 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
         self.assertTrue((workspace / "source" / "dist" / "index.html").is_file())
         self.assertTrue((workspace / ".dcp-preview-retention.json").is_file())
 
+    def test_local_folder_job_fails_closed_without_explicit_project_trust(self):
+        approved = self.root / "approved-untrusted"
+        project = approved / "untrusted-app"
+        project.mkdir(parents=True)
+        (project / "index.html").write_text("<h1>Do not execute by default</h1>", encoding="utf-8")
+        local_registry = LocalProjectRegistry(self.root / "untrusted-projects.json")
+        root = local_registry.enroll_root(approved)
+        registered = local_registry.register_project(root["root_id"], project)
+        job, _ = self.jobs.create({
+            "source_type": "local_folder",
+            "project_id": registered["project_id"],
+            "snapshot_sha256": registered["snapshot_sha256"],
+            "target": "build_static_web",
+        }, "runner-local-folder-untrusted-001")
+        from tools.local_runner_agent.web_build import WebBuildExecutor
+        host_os = "windows" if os.name == "nt" else "linux"
+        pipeline = RunnerPipeline(
+            self.client, self.manager, _FixtureCheckout(self.manager),
+            FlutterBuildExecutor(self.manager, enabled=False),
+            trusted_repositories=set(),
+            trusted_local_projects=set(),
+            local_project_checkout=LocalProjectCheckout(self.manager, local_registry),
+            worker_os=host_os,
+            capabilities={"web", host_os},
+            web_executor=WebBuildExecutor(self.manager, enabled=True),
+        )
+        result = pipeline.run_once()
+        self.assertEqual(result["outcome"], "failed")
+        self.assertEqual(result["job"]["state"], "failed")
+        self.assertFalse((self.root / "workspaces" / job["id"]).exists())
+
     def test_static_web_job_runs_through_scheduler_and_uploads_artifact(self):
         job, created = self.jobs.create({
             "repository": "owner/static-site",
