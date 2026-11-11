@@ -5,7 +5,7 @@ import unittest
 import uuid
 from pathlib import Path
 
-from tools.local_runner_agent.workspace import WorkspaceManager, WorkspaceError
+from tools.local_runner_agent.workspace import WorkspaceManager
 from tools.local_runner_agent.runtime import RuntimeManager, RuntimeErrorDCP
 
 
@@ -72,7 +72,7 @@ class RuntimeManagerTests(unittest.TestCase):
         self.assertEqual(manager.list_for_job(self.job, self.worker), [])
 
     def test_runtime_is_bound_to_existing_workspace_and_job(self):
-        with self.assertRaises(WorkspaceError):
+        with self.assertRaises(RuntimeErrorDCP):
             self.manager.start_static(str(uuid.uuid4()), self.worker)
 
 
