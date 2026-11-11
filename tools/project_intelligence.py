@@ -195,7 +195,7 @@ def detect_frameworks(workspace: Path) -> dict[str, Any]:
             if match:
                 toolchain["dart"] = match.group(1).strip()
     if python_manifest:
-        match = re.search(r"(?m)^requires-python\s*=\s*['\\"]([^'\\"]+)['\\"]", python_manifest)
+        match = re.search(r"""(?m)^requires-python\s*=\s*['"]([^'"]+)['"]""", python_manifest)
         if match:
             toolchain["python"] = match.group(1).strip()
 
