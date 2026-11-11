@@ -1005,12 +1005,13 @@ def main():
         repository_commit_resolver=github_app.resolve_repository_commit if github_app else None,
         repository_project_inspector=github_app.inspect_repository_project if github_app else None,
     )
-    try:
-        service.local_project_registry = LocalProjectRegistry(
-            os.getenv("DCP_LOCAL_PROJECT_REGISTRY", str(default_registry_path()))
-        )
-    except (ValueError, OSError, LocalProjectError) as exc:
-        raise SystemExit("DCP Local Project Registry configuration is invalid") from exc
+    registry_path = os.getenv("DCP_LOCAL_PROJECT_REGISTRY", "").strip()
+    service.local_project_registry = None
+    if registry_path:
+        try:
+            service.local_project_registry = LocalProjectRegistry(registry_path)
+        except (ValueError, OSError, LocalProjectError) as exc:
+            raise SystemExit("DCP Local Project Registry configuration is invalid") from exc
     service.job_store = jobs_store
     artifact_root = os.getenv("DCP_GATEWAY_ARTIFACTS_ROOT") or os.path.abspath(database_path + ".artifacts")
     try:
