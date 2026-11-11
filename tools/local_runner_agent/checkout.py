@@ -5,7 +5,10 @@ package scripts, or any repository code during extraction.
 """
 from __future__ import annotations
 
+import hashlib
 import os
+import shutil
+import stat
 import tempfile
 import urllib.error
 import urllib.request
@@ -13,6 +16,7 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 from .workspace import WorkspaceError, WorkspaceManager
+from .local_project import LocalProjectError, LocalProjectRegistry
 
 
 class CheckoutError(RuntimeError):
@@ -29,6 +33,107 @@ class _SafeRedirect(urllib.request.HTTPRedirectHandler):
         if redirected and old.hostname != new.hostname:
             redirected.remove_header("Authorization")
         return redirected
+
+
+
+class LocalProjectCheckout:
+    """Materialize a registered Local Folder snapshot and create a writable build copy."""
+
+    def __init__(self, workspace_manager: WorkspaceManager, registry: LocalProjectRegistry,
+                 *, max_bytes: int = 2 * 1024 * 1024 * 1024):
+        if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or not 1 <= max_bytes <= 10 * 1024 * 1024 * 1024:
+            raise ValueError("max_bytes is outside the allowed range")
+        self.workspaces = workspace_manager
+        self.registry = registry
+        self.max_bytes = max_bytes
+
+    def _copy_snapshot(self, snapshot: Path, destination: Path) -> int:
+        root = snapshot.resolve(strict=True)
+        if not root.is_dir() or root.is_symlink() or destination.exists() or destination.is_symlink():
+            raise CheckoutError("local snapshot copy paths are unsafe")
+        destination.mkdir(mode=0o700)
+        total = 0
+        for current, dirs, files in os.walk(root, topdown=True, followlinks=False):
+            current_path = Path(current)
+            relative_dir = current_path.relative_to(root)
+            output_dir = destination.joinpath(*relative_dir.parts) if relative_dir.parts else destination
+            for name in sorted(dirs):
+                source_dir = current_path / name
+                info = source_dir.lstat()
+                if not stat.S_ISDIR(info.st_mode):
+                    raise CheckoutError("local snapshot contains a symlink or special directory")
+                (output_dir / name).mkdir(mode=0o700)
+            for name in sorted(files):
+                source_file = current_path / name
+                info = source_file.lstat()
+                if not stat.S_ISREG(info.st_mode):
+                    raise CheckoutError("local snapshot contains a symlink or special file")
+                relative = source_file.relative_to(root)
+                if any(part in ("", ".", "..") for part in relative.parts):
+                    raise CheckoutError("local snapshot contains an unsafe path")
+                output_file = destination.joinpath(*relative.parts)
+                output_file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                source_flags = os.O_RDONLY
+                output_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                if hasattr(os, "O_NOFOLLOW"):
+                    source_flags |= os.O_NOFOLLOW
+                    output_flags |= os.O_NOFOLLOW
+                source_fd = os.open(source_file, source_flags)
+                try:
+                    output_fd = os.open(output_file, output_flags, 0o600)
+                except Exception:
+                    os.close(source_fd)
+                    raise
+                file_hash = hashlib.sha256()
+                copied = 0
+                with os.fdopen(source_fd, "rb") as source_handle, os.fdopen(output_fd, "wb") as output_handle:
+                    opened = os.fstat(source_handle.fileno())
+                    if not stat.S_ISREG(opened.st_mode):
+                        raise CheckoutError("local snapshot file changed type")
+                    while True:
+                        chunk = source_handle.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        copied += len(chunk)
+                        total += len(chunk)
+                        if total > self.max_bytes:
+                            raise CheckoutError("local snapshot copy exceeds byte limit")
+                        output_handle.write(chunk)
+                        file_hash.update(chunk)
+                    after = os.fstat(source_handle.fileno())
+                    output_handle.flush()
+                    os.fsync(output_handle.fileno())
+                if (opened.st_ino, opened.st_size, opened.st_mtime_ns) != (
+                    after.st_ino, after.st_size, after.st_mtime_ns
+                ) or copied != after.st_size:
+                    raise CheckoutError("local snapshot changed during writable copy")
+                os.chmod(output_file, 0o600)
+        return total
+
+    def checkout(self, job_id: str, worker_id: str, project_id: str,
+                 snapshot_sha256: str) -> tuple[Path, dict]:
+        workspace = self.workspaces.get(job_id, worker_id)
+        snapshot = workspace / "source-snapshot"
+        source = workspace / "source"
+        try:
+            metadata = self.registry.materialize_project(
+                project_id, snapshot, snapshot_sha256
+            )
+            copied_bytes = self._copy_snapshot(snapshot, source)
+            copy_sha, copy_count, copy_bytes = self.registry._fingerprint(source)
+            if (copy_sha != snapshot_sha256 or copy_count != metadata["file_count"]
+                    or copy_bytes != metadata["total_bytes"] or copied_bytes != copy_bytes):
+                raise CheckoutError("writable Local Folder copy failed snapshot integrity verification")
+            self.workspaces.check_quota(job_id, worker_id)
+            return source, {
+                "project_id": project_id,
+                "snapshot_sha256": snapshot_sha256,
+                "file_count": copy_count,
+                "total_bytes": copy_bytes,
+                "snapshot_directory": "source-snapshot",
+            }
+        except (LocalProjectError, OSError, ValueError):
+            raise CheckoutError("Local Folder snapshot could not be materialized safely") from None
 
 
 class GitHubCommitCheckout:
