@@ -52,6 +52,13 @@ class AuthenticatedPreviewManagerTests(unittest.TestCase):
             self.previews.status(row["runtime_id"], str(uuid.uuid4()))
         self.assertEqual(self.runtime.started, 1)
 
+    def test_stale_runtime_is_pruned_before_a_new_preview_starts(self):
+        first = self.previews.start(self.job_id, "local-worker")
+        self.runtime.rows[first["runtime_id"]]["state"] = "exited"
+        second = self.previews.start(self.job_id, "local-worker")
+        self.assertNotEqual(first["runtime_id"], second["runtime_id"])
+        self.assertEqual(self.runtime.started, 2)
+
     def test_status_and_stop_keep_capability_server_side(self):
         row = self.previews.start(self.job_id, "local-worker")
         status = self.previews.status(row["runtime_id"], self.job_id)
