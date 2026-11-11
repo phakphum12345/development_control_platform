@@ -61,14 +61,22 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
         nonce = secrets.token_urlsafe(24)
         canonical = "\n".join((method, path, subject, role, session, timestamp, nonce)).encode()
         signature = hmac.new(self.secret.encode(), canonical, hashlib.sha256).hexdigest()
-        request = Request(self.base + path, method=method, headers={
+        headers = {
             "X-DCP-User": subject,
             "X-DCP-Role": role,
             "X-DCP-Session": session,
             "X-DCP-Auth-Timestamp": timestamp,
             "X-DCP-Auth-Nonce": nonce,
             "X-DCP-Auth-Signature": signature,
-        })
+        }
+        if method != "GET":
+            headers["Origin"] = self.origin
+            headers["X-CSRF-Token"] = hmac.new(
+                self.secret.encode(),
+                ("csrf\n" + subject + "\n" + session).encode(),
+                hashlib.sha256,
+            ).hexdigest()
+        request = Request(self.base + path, method=method, headers=headers)
         try:
             with urlopen(request, timeout=5) as response:
                 return response.status, json.loads(response.read())
@@ -122,7 +130,7 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
 
     def test_local_project_api_is_read_only(self):
         status, result = self.request("/api/local-projects", method="POST")
-        self.assertEqual(status, 501 if status == 501 else 404)
+        self.assertEqual(status, 404)
         self.assertIn("error", result)
 
 
