@@ -30,6 +30,9 @@ from .infrastructure import (FakeInfrastructureProvider, InfrastructureManager,
 from tools.local_runner_agent.local_project import (
     LocalProjectError, LocalProjectRegistry,
 )
+from tools.local_runner_agent.workspace import WorkspaceManager
+from tools.local_runner_agent.runtime import RuntimeManager
+from .preview import AuthenticatedPreviewManager, PreviewError
 
 
 class DisabledProvider:
@@ -465,6 +468,30 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                     except Exception:
                         return self.send_json(503, {"error": "GitHub repository refs unavailable"})
                     return self.send_json(200, {"repository": repository, "kind": kinds[0], "refs": refs})
+                preview_match = re.fullmatch(
+                    r"/api/jobs/([0-9a-f-]{36})/previews/([0-9a-f-]{36})(?:/content/(.*))?",
+                    path,
+                )
+                if preview_match:
+                    if identity.get("role") != "owner":
+                        return self.send_json(403, {"error": "owner role required"})
+                    job_id, runtime_id, relative_path = preview_match.groups()
+                    jobs = self.job_store()
+                    previews = getattr(service, "preview_manager", None)
+                    job = jobs.get(job_id) if jobs is not None else None
+                    if not job or not previews or not job.get("worker"):
+                        return self.send_json(404, {"error": "preview not found"})
+                    try:
+                        if relative_path is None:
+                            return self.send_json(200, previews.status(runtime_id, job_id))
+                        status, content_type, body = previews.get_content(runtime_id, job_id, relative_path)
+                        import base64
+                        return self.send_json(status, {
+                            "content_type": content_type,
+                            "body_base64": base64.b64encode(body).decode("ascii"),
+                        })
+                    except PreviewError as exc:
+                        return self.send_json(404, {"error": str(exc)})
                 if path == "/api/cloud-runners/status":
                     return self.send_json(200, self.control_status())
                 if path == "/api/cloud-runners":
@@ -642,6 +669,23 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                 if jobs is None:
                     return self.send_json(503, {"error": "job control plane unavailable"})
                 try:
+                    preview_start = re.fullmatch(r"/api/jobs/([0-9a-f-]{36})/previews", path)
+                    if preview_start:
+                        if identity.get("role") != "owner":
+                            return self.send_json(403, {"error": "owner role required"})
+                        job_id = preview_start.group(1)
+                        job = jobs.get(job_id)
+                        previews = getattr(service, "preview_manager", None)
+                        if not job or job.get("state") != "succeeded":
+                            return self.send_json(409, {"error": "job must succeed before preview"})
+                        if not previews or not job.get("worker"):
+                            return self.send_json(503, {"error": "local preview runtime is not configured"})
+                        payload = self.body()
+                        try:
+                            row = previews.start(job_id, job["worker"], payload.get("output_relative", "source/dist"))
+                            return self.send_json(201, row)
+                        except PreviewError as exc:
+                            return self.send_json(409, {"error": str(exc)})
                     if path == "/api/jobs":
                         payload = self.body()
                         repository = payload.get("repository")
@@ -857,6 +901,25 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
 
         def do_DELETE(self):
             path = urlparse(self.path).path
+            preview_stop = re.fullmatch(r"/api/jobs/([0-9a-f-]{36})/previews/([0-9a-f-]{36})", path)
+            if preview_stop:
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if identity.get("role") != "owner":
+                    return self.send_json(403, {"error": "owner role required"})
+                if not self.same_origin() or not self.csrf_valid(identity):
+                    return self.send_json(403, {"error": "same-origin CSRF validation failed"})
+                job_id, runtime_id = preview_stop.groups()
+                jobs = self.job_store()
+                previews = getattr(service, "preview_manager", None)
+                job = jobs.get(job_id) if jobs is not None else None
+                if not job or not previews:
+                    return self.send_json(404, {"error": "preview not found"})
+                try:
+                    return self.send_json(200, previews.stop(runtime_id, job_id))
+                except PreviewError as exc:
+                    return self.send_json(404, {"error": str(exc)})
             if path.startswith("/api/infrastructure/"):
                 identity = self.proxy_identity()
                 if not identity:
@@ -1013,6 +1076,20 @@ def main():
         except (ValueError, OSError, LocalProjectError) as exc:
             raise SystemExit("DCP Local Project Registry configuration is invalid") from exc
     service.job_store = jobs_store
+    service.preview_manager = None
+    workspace_root = os.getenv("DCP_RUNNER_WORKSPACE_ROOT", "").strip()
+    if workspace_root:
+        try:
+            if not os.path.isabs(workspace_root):
+                raise ValueError("workspace root must be absolute")
+            workspace_manager = WorkspaceManager(
+                workspace_root,
+                max_active=int(os.getenv("DCP_RUNNER_MAX_ACTIVE_WORKSPACES", "8")),
+                max_workspace_bytes=int(os.getenv("DCP_RUNNER_MAX_WORKSPACE_BYTES", str(2 * 1024 * 1024 * 1024))),
+            )
+            service.preview_manager = AuthenticatedPreviewManager(RuntimeManager(workspace_manager))
+        except (ValueError, OSError, RuntimeError) as exc:
+            raise SystemExit("DCP preview workspace configuration is invalid") from exc
     artifact_root = os.getenv("DCP_GATEWAY_ARTIFACTS_ROOT") or os.path.abspath(database_path + ".artifacts")
     try:
         artifact_limit = int(os.getenv("DCP_GATEWAY_MAX_ARTIFACT_BYTES", str(100 * 1024 * 1024)))
