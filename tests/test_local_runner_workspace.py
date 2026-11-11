@@ -1,4 +1,5 @@
 """Tests for isolated local Runner Agent workspaces; no code is executed."""
+import json
 import os
 import re
 import subprocess
@@ -107,6 +108,31 @@ class WorkspaceManagerTests(unittest.TestCase):
             self.skipTest("symlinks are unavailable on this platform")
         with self.assertRaises(WorkspaceError):
             self.manager.check_quota(self.job_a, "worker-a")
+
+    def test_preview_retention_expires_and_cleans_only_the_marked_workspace(self):
+        a = self.manager.create(self.job_a, "worker-a")
+        b = self.manager.create(self.job_b, "worker-b")
+        retained = self.manager.retain_for_preview(self.job_a, "worker-a", ttl_seconds=60)
+        self.assertEqual(retained["expires_in_seconds"], 60)
+        marker = a / ".dcp-preview-retention.json"
+        data = json.loads(marker.read_text(encoding="utf-8"))
+        self.assertEqual(data["job_id"], self.job_a)
+        data["expires_at"] = 0
+        marker.write_text(json.dumps(data), encoding="utf-8")
+        self.assertEqual(self.manager.cleanup_expired_preview_workspaces(now_epoch=1), 1)
+        self.assertFalse(a.exists())
+        self.assertTrue(b.exists())
+
+    def test_preview_retention_rejects_symlink_marker(self):
+        workspace = self.manager.create(self.job_a, "worker-a")
+        target = Path(self.temp.name) / "outside.json"
+        target.write_text("{}", encoding="utf-8")
+        try:
+            (workspace / ".dcp-preview-retention.json").symlink_to(target)
+        except OSError:
+            self.skipTest("Symlink creation is unavailable on this host")
+        with self.assertRaises(WorkspaceError):
+            self.manager.retain_for_preview(self.job_a, "worker-a")
 
     def test_cleanup_removes_only_owned_workspace(self):
         a = self.manager.create(self.job_a, "worker-a")
