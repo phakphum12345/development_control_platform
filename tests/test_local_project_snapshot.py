@@ -2,8 +2,11 @@
 import os
 import tempfile
 import unittest
+import uuid
 from pathlib import Path
 
+from tools.local_runner_agent.checkout import CheckoutError, LocalProjectCheckout
+from tools.local_runner_agent.workspace import WorkspaceManager
 from tools.local_runner_agent.local_project import (
     LocalProjectError,
     LocalProjectRegistry,
@@ -24,6 +27,10 @@ class LocalProjectSnapshotTests(unittest.TestCase):
         self.project_record = self.registry.register_project(self.root["root_id"], self.project)
         self.workspace = self.base / "workspace"
         self.workspace.mkdir()
+        self.workspaces = WorkspaceManager(self.base / "workspaces")
+        self.job_id = str(uuid.uuid4())
+        self.worker_id = "local-project-runner"
+        self.workspaces.create(self.job_id, self.worker_id)
 
     def tearDown(self):
         self.temp.cleanup()
@@ -65,6 +72,30 @@ class LocalProjectSnapshotTests(unittest.TestCase):
             self.registry._fingerprint(self.project)[0],
             self.registry._fingerprint(destination)[0],
         )
+
+    def test_local_checkout_preserves_read_only_snapshot_and_creates_writable_build_copy(self):
+        checkout = LocalProjectCheckout(self.workspaces, self.registry)
+        source, metadata = checkout.checkout(
+            self.job_id, self.worker_id, self.project_record["project_id"],
+            self.project_record["snapshot_sha256"],
+        )
+        snapshot = self.workspaces.get(self.job_id, self.worker_id) / "source-snapshot"
+        self.assertEqual(metadata["snapshot_sha256"], self.project_record["snapshot_sha256"])
+        self.assertEqual(self.registry._fingerprint(source)[0], self.project_record["snapshot_sha256"])
+        self.assertEqual((source / "index.html").read_text(encoding="utf-8"), "<h1>snapshot</h1>\\n")
+        (source / "index.html").write_text("<h1>built copy</h1>", encoding="utf-8")
+        self.assertEqual((snapshot / "index.html").read_text(encoding="utf-8"), "<h1>snapshot</h1>\\n")
+
+    def test_local_checkout_refuses_changed_source_before_build_copy(self):
+        (self.project / "index.html").write_text("changed", encoding="utf-8")
+        checkout = LocalProjectCheckout(self.workspaces, self.registry)
+        with self.assertRaises(CheckoutError):
+            checkout.checkout(
+                self.job_id, self.worker_id, self.project_record["project_id"],
+                self.project_record["snapshot_sha256"],
+            )
+        workspace = self.workspaces.get(self.job_id, self.worker_id)
+        self.assertFalse((workspace / "source").exists())
 
     def test_refuses_source_changed_after_registration(self):
         (self.project / "index.html").write_text("edited", encoding="utf-8")
