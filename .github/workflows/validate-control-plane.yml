@@ -64,6 +64,45 @@ jobs:
           npx playwright install chromium
           python -m playwright install chromium
 
+      - name: Allow Chromium user namespaces with a path-scoped AppArmor profile
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          restriction=/proc/sys/kernel/apparmor_restrict_unprivileged_userns
+          if [[ ! -r "$restriction" ]] || [[ "$(cat "$restriction")" != "1" ]]; then
+            echo "APPARMOR_USERNS_RESTRICTION=not-active"
+            exit 0
+          fi
+
+          browser="$(find "$HOME/.cache/ms-playwright" -type f \
+            -path '*/chrome-headless-shell-linux64/chrome-headless-shell' \
+            -print -quit)"
+          if [[ -z "$browser" ]]; then
+            echo "::error::Playwright headless Chromium executable was not found."
+            exit 1
+          fi
+          case "$browser" in
+            "$HOME"/.cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell) ;;
+            *)
+              echo "::error::Refusing to authorize an unexpected Chromium path: $browser"
+              exit 1
+              ;;
+          esac
+
+          profile=/etc/apparmor.d/dcp-playwright-chromium
+          printf '%s\n' \
+            'abi <abi/4.0>,' \
+            'include <tunables/global>' \
+            '' \
+            "profile dcp-playwright-chromium $browser flags=(unconfined) {" \
+            '  userns,' \
+            '}' | sudo tee "$profile" >/dev/null
+          sudo apparmor_parser -r "$profile"
+          sudo aa-status --profiled | grep -F 'dcp-playwright-chromium'
+          echo "APPARMOR_CHROMIUM_PROFILE=loaded"
+          echo "APPARMOR_CHROMIUM_PATH=$browser"
+
       - name: Inspect Linux Chromium sandbox prerequisites (read-only)
         if: runner.os == 'Linux'
         run: |
@@ -74,6 +113,7 @@ jobs:
           for name in (
               "/proc/sys/kernel/unprivileged_userns_clone",
               "/proc/sys/user/max_user_namespaces",
+              "/proc/sys/kernel/apparmor_restrict_unprivileged_userns",
               "/proc/self/status",
           ):
               path = Path(name)
