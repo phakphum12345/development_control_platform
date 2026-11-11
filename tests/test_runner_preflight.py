@@ -49,9 +49,12 @@ class RunnerPreflightTests(unittest.TestCase):
 
 
     @patch("tools.runner_agent.preflight.platform.system", return_value="Linux")
+    @patch("tools.runner_agent.preflight._playwright_tool", return_value={
+        "installed": False, "version": None, "browser_installed": False,
+    })
     @patch("tools.runner_agent.preflight.shutil.which")
     @patch("tools.runner_agent.preflight.subprocess.run")
-    def test_node_and_git_allow_web_only_runner_without_flutter(self, run, which, _system):
+    def test_node_and_git_allow_web_only_runner_without_flutter(self, run, which, _playwright, _system):
         which.side_effect = lambda name: f"/usr/bin/{name}" if name in {"git", "node"} else None
         run.return_value.stdout = "version"
         run.return_value.stderr = ""
