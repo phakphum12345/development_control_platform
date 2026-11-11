@@ -8,11 +8,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import stat
 import tempfile
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 class LocalProjectError(RuntimeError):
@@ -251,6 +252,172 @@ class LocalProjectRegistry:
         self._data["projects"][project_id] = record
         self._save()
         return {"project_id": project_id, **record}
+
+    def materialize_project(
+        self,
+        project_id: str,
+        destination: str | os.PathLike,
+        expected_sha256: str,
+    ) -> dict:
+        """Copy a registered source into a new read-only snapshot directory.
+
+        The caller must provide the fingerprint recorded when the job was queued.
+        The source is revalidated before and after copying; a changed source fails
+        closed. The snapshot is never executed by this method.
+        """
+        if not isinstance(expected_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_sha256):
+            raise LocalProjectError("expected snapshot SHA-256 is invalid")
+        self.reload()
+        record = self._data["projects"].get(project_id)
+        if not isinstance(record, dict):
+            raise LocalProjectError("project is not registered")
+        if record.get("snapshot_sha256") != expected_sha256:
+            raise LocalProjectError("queued snapshot fingerprint no longer matches the registry")
+        root_record = self._data["roots"].get(record.get("root_id"))
+        if not isinstance(root_record, dict):
+            raise LocalProjectError("approved root is no longer enrolled")
+        root = _canonical_directory(root_record.get("path", ""), "enrolled root")
+        project = _canonical_directory(record.get("path", ""), "selected project")
+        try:
+            relative_project = project.relative_to(root)
+        except ValueError:
+            raise LocalProjectError("registered project moved outside its approved root") from None
+        if not relative_project.parts:
+            raise LocalProjectError("registered project cannot be the approved root itself")
+
+        before_sha, file_count, total_bytes = self._fingerprint(project)
+        if before_sha != expected_sha256:
+            raise LocalProjectError("project changed after it was registered; refresh before queueing")
+
+        raw_destination = Path(destination).expanduser()
+        if not raw_destination.is_absolute() or raw_destination.name in ("", ".", ".."):
+            raise LocalProjectError("snapshot destination must be a new absolute directory")
+        parent = raw_destination.parent
+        try:
+            _reject_link_components(parent, "snapshot destination parent")
+            parent = parent.resolve(strict=True)
+        except (OSError, RuntimeError):
+            raise LocalProjectError("snapshot destination parent is unavailable") from None
+        if not parent.is_dir():
+            raise LocalProjectError("snapshot destination parent is not a directory")
+        target = parent / raw_destination.name
+        if target.exists() or target.is_symlink():
+            raise LocalProjectError("snapshot destination already exists")
+
+        entries: list[tuple[str, Path]] = []
+        stack = [project]
+        while stack:
+            current = stack.pop()
+            try:
+                children = sorted(os.scandir(current), key=lambda entry: entry.name)
+            except OSError:
+                raise LocalProjectError("project directory cannot be inspected") from None
+            for entry in children:
+                if entry.name in _IGNORED_DIRS and entry.is_dir(follow_symlinks=False):
+                    continue
+                path = Path(entry.path)
+                try:
+                    info = entry.stat(follow_symlinks=False)
+                except OSError:
+                    raise LocalProjectError("project entry cannot be inspected") from None
+                if stat.S_ISLNK(info.st_mode):
+                    raise LocalProjectError("project contains a symlink; snapshot rejected")
+                if stat.S_ISDIR(info.st_mode):
+                    stack.append(path)
+                elif stat.S_ISREG(info.st_mode):
+                    relative = path.relative_to(project).as_posix()
+                    if "\\" in relative:
+                        raise LocalProjectError("project path contains a platform-ambiguous separator")
+                    posix = PurePosixPath(relative)
+                    if posix.is_absolute() or not posix.parts or any(part in ("", ".", "..") for part in posix.parts):
+                        raise LocalProjectError("project contains an unsafe relative path")
+                    entries.append((relative, path))
+                else:
+                    raise LocalProjectError("project contains a special filesystem entry")
+        entries.sort(key=lambda item: item[0])
+        if len(entries) != file_count:
+            raise LocalProjectError("project file list changed during snapshot preparation")
+
+        created = False
+        try:
+            target.mkdir(mode=0o700)
+            created = True
+            for relative, source_file in entries:
+                relative_path = PurePosixPath(relative)
+                output_file = target.joinpath(*relative_path.parts)
+                output_file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                resolved_parent = output_file.parent.resolve(strict=True)
+                if resolved_parent != target.resolve(strict=True) and target.resolve(strict=True) not in resolved_parent.parents:
+                    raise LocalProjectError("snapshot output path escaped destination")
+                source_flags = os.O_RDONLY
+                output_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                if hasattr(os, "O_NOFOLLOW"):
+                    source_flags |= os.O_NOFOLLOW
+                    output_flags |= os.O_NOFOLLOW
+                source_fd = os.open(source_file, source_flags)
+                output_fd = os.open(output_file, output_flags, 0o600)
+                file_hash = hashlib.sha256()
+                copied = 0
+                with os.fdopen(source_fd, "rb") as source_handle, os.fdopen(output_fd, "wb") as output_handle:
+                    opened = os.fstat(source_handle.fileno())
+                    if not stat.S_ISREG(opened.st_mode):
+                        raise LocalProjectError("source file changed type during snapshot")
+                    while True:
+                        chunk = source_handle.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        copied += len(chunk)
+                        if copied > self.max_bytes or total_bytes > self.max_bytes:
+                            raise LocalProjectError("snapshot byte limit exceeded")
+                        output_handle.write(chunk)
+                        file_hash.update(chunk)
+                    source_after = os.fstat(source_handle.fileno())
+                    output_handle.flush()
+                    os.fsync(output_handle.fileno())
+                if (opened.st_ino, opened.st_size, opened.st_mtime_ns) != (
+                    source_after.st_ino, source_after.st_size, source_after.st_mtime_ns
+                ) or copied != source_after.st_size:
+                    raise LocalProjectError("source file changed while snapshot was copied")
+                os.chmod(output_file, 0o400)
+
+            source_after_sha, source_after_count, source_after_bytes = self._fingerprint(project)
+            snapshot_sha, snapshot_count, snapshot_bytes = self._fingerprint(target)
+            if (source_after_sha != expected_sha256 or snapshot_sha != expected_sha256
+                    or source_after_count != file_count or snapshot_count != file_count
+                    or source_after_bytes != total_bytes or snapshot_bytes != total_bytes):
+                raise LocalProjectError("source or materialized snapshot failed integrity verification")
+
+            for current, dirs, _files in os.walk(target, topdown=False, followlinks=False):
+                for name in dirs:
+                    os.chmod(Path(current) / name, 0o500)
+                os.chmod(current, 0o500)
+            return {
+                "project_id": project_id,
+                "snapshot_sha256": snapshot_sha,
+                "snapshot_directory": str(target),
+                "file_count": snapshot_count,
+                "total_bytes": snapshot_bytes,
+                "read_only": True,
+            }
+        except Exception:
+            if created and target.exists():
+                for current, dirs, files in os.walk(target, topdown=False, followlinks=False):
+                    for name in files:
+                        try:
+                            os.chmod(Path(current) / name, 0o600)
+                        except OSError:
+                            pass
+                    for name in dirs:
+                        try:
+                            os.chmod(Path(current) / name, 0o700)
+                        except OSError:
+                            pass
+                    try:
+                        os.chmod(current, 0o700)
+                    except OSError:
+                        pass
+                shutil.rmtree(target, ignore_errors=True)
+            raise
 
     def refresh_project(self, project_id: str) -> dict:
         """Revalidate containment and produce a new content fingerprint."""
