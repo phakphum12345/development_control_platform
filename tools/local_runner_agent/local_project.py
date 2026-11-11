@@ -100,6 +100,10 @@ class LocalProjectRegistry:
             raise LocalProjectError("registry schema is invalid")
         return data
 
+    def reload(self) -> None:
+        """Refresh persisted enrollment state so CLI changes become visible to Gateway."""
+        self._data = self._load()
+
     def _save(self) -> None:
         payload = json.dumps(self._data, sort_keys=True, separators=(",", ":")) + "\n"
         fd, temporary = tempfile.mkstemp(prefix=".dcp-projects-", dir=self.registry_file.parent)
