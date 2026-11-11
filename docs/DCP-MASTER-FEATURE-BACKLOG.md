@@ -11,7 +11,7 @@ Status labels describe the initial source review only; revalidate against the ex
 | CORE-05 | Backend-enforced Cloud Provisioning OFF | PARTIAL/VERIFY | P0 | Inspect all API/provider paths; reject create requests server-side and persist OFF. |
 | CORE-06 | Backend-enforced VM Creation OFF | PARTIAL/VERIFY | P0 | Separate gate from Cloud Provisioning; tests prove no provider create call. |
 | IMP-01 | GitHub App repository/ref/SHA import | EXISTING/PARTIAL | P0 | Revalidate installation membership and immutable SHA at job acceptance. |
-| IMP-02 | Local Folder import via Local Agent | MISSING | P0 | Explicit allowed-root enrollment; no arbitrary browser path; record fingerprint. |
+| IMP-02 | Local Folder import via Local Agent | PARTIAL | P0 | Local registry, explicit CLI enrollment and owner-only read API exist; Dashboard picker and immutable job snapshot remain. |
 | IMP-03 | Framework/toolchain detection | PARTIAL | P0 | Detect from manifests and tool availability; unknown stays UNKNOWN. |
 | BUILD-01 | Flutter fixed-target executor | EXISTING/PARTIAL | P1 | Opt-in, trusted-repository allowlist, disabled by default; verify artifacts and cleanup. |
 | BUILD-02 | Generic web build adapters | MISSING | P0 | Start with static HTML/JS and Node/Vite stacks; no arbitrary shell command. |
@@ -47,3 +47,7 @@ Status labels describe the initial source review only; revalidate against the ex
 
 ## Definition of Done
 A feature is complete only when implementation, unit/integration tests, security tests, UI tests where applicable, documentation, failure behavior and evidence are present on the same commit. A UI-only control is not completion of a backend capability.
+
+
+## 2026-11-11 implementation status update
+- IMP-02 advanced from MISSING to PARTIAL: explicit root enrollment, local project IDs, bounded SHA-256 fingerprints, symlink/path containment checks, CLI registration and owner-only read APIs are implemented on feature branches and covered by focused tests. The full Dashboard import workflow and immutable per-job snapshot are not yet implemented.
