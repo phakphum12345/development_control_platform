@@ -76,6 +76,7 @@ class RunnerPipeline:
         error_code = "RUNNER_EXECUTION_FAILED"
         result = {}
         last_heartbeat = 0.0
+        browser_test_artifact_path = None
         try:
             job_payload = job.get("payload") if isinstance(job.get("payload"), dict) else {}
             # The Gateway's public claim response deliberately omits the private payload.
@@ -149,6 +150,7 @@ class RunnerPipeline:
                 if self.browser_test_executor is None:
                     raise BrowserTestError("Playwright test capability is not configured on this Runner")
                 browser_result = self.browser_test_executor.run(job_id, worker_id)
+                browser_test_artifact_path = browser_result.get("artifact_path")
                 result["browser_test"] = {
                     key: value for key, value in browser_result.items()
                     if key not in ("artifact_path",)
@@ -178,10 +180,8 @@ class RunnerPipeline:
                         job_id, f"Artifact stored: {artifact_name} ({metadata['size']} bytes)", "system"
                     )
                 if job["target"] == "test_static_web" and self.browser_test_executor is not None:
-                    test_artifact = result.get("browser_test")
-                    artifact_path = getattr(self.browser_test_executor, "last_artifact_path", None)
-                    if artifact_path is not None:
-                        metadata = self.client.upload_artifact(job_id, str(artifact_path), "web-test-results.zip")
+                    if browser_test_artifact_path is not None:
+                        metadata = self.client.upload_artifact(job_id, str(browser_test_artifact_path), "web-test-results.zip")
                         result["test_artifact"] = metadata
                         self.client.append_log(
                             job_id, f"Test evidence stored: web-test-results.zip ({metadata['size']} bytes)", "system"
