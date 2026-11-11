@@ -55,10 +55,14 @@ class WebBuildExecutor:
         if target == "build_vite":
             package = source / "package.json"
             cli = source / "node_modules" / "vite" / "bin" / "vite.js"
-            if package.is_symlink() or cli.is_symlink() or not package.is_file() or not cli.is_file():
+            if (package.is_symlink() or cli.is_symlink() or not package.is_file() or not cli.is_file()
+                    or any((source / part).is_symlink() for part in ("node_modules", "node_modules/vite", "node_modules/vite/bin"))):
                 raise ExecutionError("Vite project and preinstalled local Vite CLI are required")
             try:
                 import json
+                package_info = package.lstat()
+                if not stat.S_ISREG(package_info.st_mode) or package_info.st_size > 1024 * 1024:
+                    raise ExecutionError("package.json is not a bounded regular file")
                 data = json.loads(package.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 raise ExecutionError("package.json is invalid or unavailable") from None
@@ -118,8 +122,16 @@ class WebBuildExecutor:
             if destination.exists() or destination.is_symlink():
                 raise ExecutionError("static build destination already exists")
             destination.mkdir(mode=0o700)
+            excluded_dirs = {"dist", "node_modules", ".git", ".dcp-artifacts"}
+            def safe_public_name(name: str) -> bool:
+                lowered = name.lower()
+                return not (
+                    name.startswith(".") or lowered in {"id_rsa", "id_ed25519"}
+                    or lowered.endswith((".pem", ".key", ".p12", ".pfx", ".secret", ".sqlite", ".sqlite3"))
+                    or lowered.startswith(".env")
+                )
             for item in source.iterdir():
-                if item.name in {"dist", "node_modules", ".git", ".dcp-artifacts"}:
+                if item.name in excluded_dirs or not safe_public_name(item.name):
                     continue
                 info = item.lstat()
                 if stat.S_ISLNK(info.st_mode):
@@ -132,10 +144,15 @@ class WebBuildExecutor:
                     for current, dirs, files in os.walk(item, followlinks=False):
                         current_path = Path(current)
                         for dirname in list(dirs):
-                            if (current_path / dirname).is_symlink():
+                            child = current_path / dirname
+                            if child.is_symlink():
                                 raise ExecutionError("static source contains a symlink directory")
+                            if dirname.startswith(".") or dirname in excluded_dirs:
+                                dirs.remove(dirname)
                         for filename in files:
                             path = current_path / filename
+                            if not safe_public_name(filename):
+                                continue
                             meta = path.lstat()
                             if not stat.S_ISREG(meta.st_mode):
                                 raise ExecutionError("static source contains a non-regular file")
