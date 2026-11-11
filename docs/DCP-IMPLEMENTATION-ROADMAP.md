@@ -44,3 +44,10 @@ Each phase is a separate feature branch and Draft PR, with narrowly scoped chang
 - Remaining: Dashboard project catalog/picker, authenticated project selection UX, immutable job snapshot/materialization, and end-to-end import-to-job binding.
 
 - Dashboard Project Import workspace added: authenticated owner-only GitHub App repository/ref/commit inspection and Local Project catalog selection. This is a read-only source-selection UI; immutable snapshot materialization and job binding remain outstanding.
+
+
+## Phase 2 progress — read-only project intelligence
+- Extended the existing bounded project inventory with evidence-based primary framework detection for static HTML/JS, React/Vite, Vue/Vite, Next.js, Angular, Flutter, Python, FastAPI, Django and Flask.
+- Reports package manager, declared Node/Python/Dart constraints and declared npm scripts without running them.
+- Toolchain readiness remains NOT_CHECKED; unknown or malformed evidence is not promoted to a supported build.
+- No dependency installation, network access, source execution or build command is performed during detection.
