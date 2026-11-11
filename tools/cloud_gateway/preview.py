@@ -95,6 +95,29 @@ class AuthenticatedPreviewManager:
                 "expires_in_seconds": row["expires_in_seconds"],
             }
 
+    def list_for_job(self, job_id: str) -> list[dict]:
+        with self._lock:
+            self._prune_stale()
+            rows = []
+            for runtime_id, bound_job in self._jobs.items():
+                if bound_job != job_id:
+                    continue
+                token = self._tokens.get(runtime_id)
+                if not token:
+                    continue
+                try:
+                    status = self.runtime_manager.status(runtime_id, token)
+                except RuntimeErrorDCP:
+                    continue
+                rows.append({
+                    "runtime_id": runtime_id,
+                    "job_id": job_id,
+                    "state": status["state"],
+                    "preview_path": f"/api/jobs/{job_id}/previews/{runtime_id}/content/",
+                    "expires_in_seconds": status["expires_in_seconds"],
+                })
+            return rows
+
     def stop(self, runtime_id: str, job_id: str) -> dict:
         with self._lock:
             token = self._tokens.get(runtime_id)
