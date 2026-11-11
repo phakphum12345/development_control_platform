@@ -143,6 +143,30 @@ class WorkspaceManager:
         return total
 
     def cleanup(self, job_id: str, worker_id: str) -> None:
-        """Remove only the exact workspace whose marker proves matching ownership."""
+        """Remove only the exact owned workspace, including read-only snapshots."""
         target = self.get(job_id, worker_id)
+        # Local source snapshots carry read-only permissions. Make only regular
+        # files and real directories writable again; never chmod through symlinks.
+        for current, dirs, files in os.walk(target, topdown=False, followlinks=False):
+            for name in files:
+                path = Path(current) / name
+                try:
+                    info = path.lstat()
+                    if stat.S_ISREG(info.st_mode) and info.st_nlink <= 1:
+                        os.chmod(path, 0o600)
+                except OSError:
+                    pass
+            for name in dirs:
+                path = Path(current) / name
+                try:
+                    if not path.is_symlink() and not (
+                        hasattr(path, "is_junction") and path.is_junction()
+                    ):
+                        os.chmod(path, 0o700)
+                except OSError:
+                    pass
+            try:
+                os.chmod(current, 0o700)
+            except OSError:
+                pass
         shutil.rmtree(target)
