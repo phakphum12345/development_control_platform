@@ -468,6 +468,17 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                     except Exception:
                         return self.send_json(503, {"error": "GitHub repository refs unavailable"})
                     return self.send_json(200, {"repository": repository, "kind": kinds[0], "refs": refs})
+                preview_list = re.fullmatch(r"/api/jobs/([0-9a-f-]{36})/previews", path)
+                if preview_list:
+                    if identity.get("role") != "owner":
+                        return self.send_json(403, {"error": "owner role required"})
+                    job_id = preview_list.group(1)
+                    jobs = self.job_store()
+                    previews = getattr(service, "preview_manager", None)
+                    job = jobs.get(job_id) if jobs is not None else None
+                    if not job or not previews:
+                        return self.send_json(404, {"error": "preview not found"})
+                    return self.send_json(200, {"previews": previews.list_for_job(job_id)})
                 preview_match = re.fullmatch(
                     r"/api/jobs/([0-9a-f-]{36})/previews/([0-9a-f-]{36})(?:/content/(.*))?",
                     path,
