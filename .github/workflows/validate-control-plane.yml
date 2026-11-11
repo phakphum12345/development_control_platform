@@ -56,8 +56,16 @@ jobs:
       - name: Install Playwright for browser smoke tests
         run: npm install --no-save --no-package-lock playwright
 
+      - name: Install Python Playwright for DCP application tests
+        run: python -m pip install "playwright>=1.48"
+
       - name: Install Chromium browser
-        run: npx playwright install --with-deps chromium
+        run: |
+          npx playwright install --with-deps chromium
+          python -m playwright install chromium
+
+      - name: Test DCP local static application with real Chromium
+        run: python -m unittest tests.test_browser_test.StaticWebPlaywrightTesterTests.test_real_chromium_smoke_creates_screenshots_report_and_evidence -v
 
       - name: Test dashboard in a real browser
         run: node tests/browser_smoke.mjs
