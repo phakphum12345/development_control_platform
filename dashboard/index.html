@@ -1207,7 +1207,6 @@ async function buildJobsRefresh(){
  list.innerHTML='<div class="empty">Loading authenticated Job queue…</div>';
  try{
   await buildJobsSession();
-  if(!runnerUI.repositories.length)await runnerLoadRepositories();
   const data=await runnerJson("./api/jobs?limit=25");
   if(!Array.isArray(data.jobs))throw new Error("Invalid Job queue response");
   const rows=data.jobs;
@@ -1224,13 +1223,16 @@ async function buildJobsRefresh(){
    }catch(_){delete runnerUI.previews[job.id]}
   }));
   if(!rows.length){list.innerHTML='<div class="empty">No Jobs in the queue.</div>';return}
-  list.innerHTML='<table><thead><tr><th>Job</th><th>Repository / Commit</th><th>Target</th><th>Status</th><th>Artifacts</th><th>Local Preview</th></tr></thead><tbody>'+
+  list.innerHTML='<table><thead><tr><th>Job</th><th>Source / Revision</th><th>Target</th><th>Status</th><th>Artifacts</th><th>Local Preview</th></tr></thead><tbody>'+
    rows.map(job=>{
     const artifacts=artifactsByJob[job.id]||[];
     const links=artifacts.map(item=>'<a href="./api/artifacts/'+encodeURIComponent(item.id)+'/download" download>'+runnerEsc(item.name)+' · '+runnerEsc(item.size)+' bytes</a>').join('<br>')||'<span class="muted">—</span>';
+    const sourceLabel=job.source_type==="local_folder"
+     ?'Local Folder <code>'+runnerEsc(job.source_id)+'</code><br>SHA-256 <code>'+runnerEsc(job.source_sha256)+'</code>'
+     :runnerEsc(job.repository)+'<br><code>'+runnerEsc(job.commit_sha)+'</code>';
      const preview=runnerUI.previews[job.id];
      const previewCell=preview?'<a href="'+runnerEsc(preview.preview_path)+'" target="_blank" rel="noopener noreferrer">Open isolated preview</a> <button type="button" data-job-preview-stop="'+runnerEsc(job.id)+'">Stop</button>':(job.state==="succeeded"?'<button type="button" data-job-preview="'+runnerEsc(job.id)+'">Start preview</button>':'<span class="muted">Available after successful build</span>');
-     return '<tr><td><code>'+runnerEsc(job.id)+'</code></td><td>'+runnerEsc(job.repository)+'<br><code>'+runnerEsc(job.commit_sha)+'</code></td><td>'+runnerEsc(job.target)+'</td><td>'+runnerEsc(job.state)+'</td><td>'+links+'</td><td>'+previewCell+'</td></tr>';
+     return '<tr><td><code>'+runnerEsc(job.id)+'</code></td><td>'+sourceLabel+'</td><td>'+runnerEsc(job.target)+'</td><td>'+runnerEsc(job.state)+'</td><td>'+links+'</td><td>'+previewCell+'</td></tr>';
    }).join('')+'</tbody></table>';
   list.querySelectorAll("[data-job-preview]").forEach(button=>button.addEventListener("click",()=>buildJobPreview(button.dataset.jobPreview)));
   list.querySelectorAll("[data-job-preview-stop]").forEach(button=>button.addEventListener("click",()=>buildJobPreviewStop(button.dataset.jobPreviewStop)));
