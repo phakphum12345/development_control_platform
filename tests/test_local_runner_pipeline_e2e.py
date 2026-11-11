@@ -173,6 +173,46 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
         self.assertFalse((self.root / "workspaces" / job["id"]).exists())
 
 
+    def test_static_web_job_runs_through_scheduler_and_uploads_artifact(self):
+        job, created = self.jobs.create({
+            "repository": "owner/static-site",
+            "commit_sha": "e" * 40,
+            "target": "build_static_web",
+        }, "runner-static-web-e2e-001")
+        self.assertTrue(created)
+
+        class StaticCheckout:
+            def __init__(self, manager):
+                self.manager = manager
+            def checkout(self, job_id, worker_id, repository, commit_sha):
+                source = self.manager.get(job_id, worker_id) / "source"
+                source.mkdir()
+                (source / "index.html").write_text("<h1>Real static build</h1>", encoding="utf-8")
+                (source / "assets").mkdir()
+                (source / "assets" / "app.js").write_text("window.ready=true", encoding="utf-8")
+                return source
+
+        flutter_executor = FlutterBuildExecutor(self.manager, enabled=False)
+        from tools.local_runner_agent.web_build import WebBuildExecutor
+        pipeline = RunnerPipeline(
+            self.client, self.manager, StaticCheckout(self.manager), flutter_executor,
+            trusted_repositories={"owner/static-site"},
+            capabilities={"web", "linux"},
+            web_executor=WebBuildExecutor(self.manager, enabled=True),
+        )
+        result = pipeline.run_once()
+        self.assertEqual(result["outcome"], "succeeded")
+        self.assertEqual(result["job"]["state"], "succeeded")
+        artifact = result["result"]["artifact"]
+        self.assertEqual(artifact["name"], "web-build.zip")
+        metadata, handle = self.artifacts.open(artifact["id"])
+        with handle:
+            payload = handle.read()
+        self.assertIn(b"index.html", payload)
+        self.assertEqual(metadata["sha256"], artifact["sha256"])
+        self.assertFalse((self.root / "workspaces" / job["id"]).exists())
+
+
 @unittest.skipUnless(os.name == "nt", "Requires the real Windows cmd.exe batch-file launcher")
 class WindowsRunnerPipelineAcceptanceTests(RunnerPipelineEndToEndTests):
     def test_windows_cmd_flutter_build_runs_through_gateway_and_artifact_pipeline(self):
@@ -230,44 +270,5 @@ class WindowsRunnerPipelineAcceptanceTests(RunnerPipelineEndToEndTests):
 
 
     @unittest.skipIf(os.name == "nt", "POSIX fixture executable used for deterministic process tests")
-    def test_static_web_job_runs_through_scheduler_and_uploads_artifact(self):
-        job, created = self.jobs.create({
-            "repository": "owner/static-site",
-            "commit_sha": "e" * 40,
-            "target": "build_static_web",
-        }, "runner-static-web-e2e-001")
-        self.assertTrue(created)
-
-        class StaticCheckout:
-            def __init__(self, manager):
-                self.manager = manager
-            def checkout(self, job_id, worker_id, repository, commit_sha):
-                source = self.manager.get(job_id, worker_id) / "source"
-                source.mkdir()
-                (source / "index.html").write_text("<h1>Real static build</h1>", encoding="utf-8")
-                (source / "assets").mkdir()
-                (source / "assets" / "app.js").write_text("window.ready=true", encoding="utf-8")
-                return source
-
-        flutter_executor = FlutterBuildExecutor(self.manager, enabled=False)
-        from tools.local_runner_agent.web_build import WebBuildExecutor
-        pipeline = RunnerPipeline(
-            self.client, self.manager, StaticCheckout(self.manager), flutter_executor,
-            trusted_repositories={"owner/static-site"},
-            capabilities={"web", "linux"},
-            web_executor=WebBuildExecutor(self.manager, enabled=True),
-        )
-        result = pipeline.run_once()
-        self.assertEqual(result["outcome"], "succeeded")
-        self.assertEqual(result["job"]["state"], "succeeded")
-        artifact = result["result"]["artifact"]
-        self.assertEqual(artifact["name"], "web-build.zip")
-        metadata, handle = self.artifacts.open(artifact["id"])
-        with handle:
-            payload = handle.read()
-        self.assertIn(b"index.html", payload)
-        self.assertEqual(metadata["sha256"], artifact["sha256"])
-        self.assertFalse((self.root / "workspaces" / job["id"]).exists())
-
 if __name__ == "__main__":
     unittest.main()
