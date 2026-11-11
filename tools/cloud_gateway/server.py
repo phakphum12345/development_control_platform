@@ -774,7 +774,7 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                                 return self.send_json(409, {"error": "local project inventory is truncated; narrow the selected project before queueing"})
                             detection = inspection["inventory"]["framework_detection"]
                             framework = detection.get("framework")
-                            if target == "build_static_web" and framework != "Static HTML/CSS/JS":
+                            if target in ("build_static_web", "test_static_web") and framework != "Static HTML/CSS/JS":
                                 return self.send_json(409, {"error": "selected project is not a detected static web project"})
 
                             row, created = jobs.create(payload, self.headers.get("Idempotency-Key", ""))
