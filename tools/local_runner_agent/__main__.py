@@ -13,6 +13,7 @@ from .client import GatewayClient, RunnerAgentConfig, RunnerGatewayError
 from .checkout import GitHubCommitCheckout, LocalProjectCheckout
 from .execution import FlutterBuildExecutor
 from .web_build import WebBuildExecutor
+from .browser_test import StaticWebPlaywrightTester
 from .pipeline import RunnerPipeline
 from .workspace import WorkspaceManager
 from .local_project import LocalProjectError, LocalProjectRegistry, default_registry_path
@@ -151,6 +152,13 @@ def main(argv=None) -> int:
             json.loads(raw_capabilities) if raw_capabilities is not None else None
         )
         capabilities = resolve_capabilities(preflight, configured_capabilities)
+        playwright_enabled = os.environ.get("DCP_RUNNER_PLAYWRIGHT_ENABLED") == "1"
+        if not playwright_enabled:
+            if configured_capabilities is not None and "playwright" in configured_capabilities:
+                raise ValueError("DCP_RUNNER_PLAYWRIGHT_ENABLED=1 is required to advertise Playwright capability")
+            capabilities = [item for item in capabilities if item != "playwright"]
+        elif "playwright" not in capabilities:
+            raise ValueError("Playwright package and Chromium browser must pass host preflight before opt-in")
         pipeline = RunnerPipeline(
             client, manager, checkout, executor,
             trusted_repositories=frozenset(raw_repositories),
@@ -163,6 +171,12 @@ def main(argv=None) -> int:
             ),
             local_project_checkout=local_project_checkout,
             trusted_local_projects=frozenset(raw_local_projects),
+            browser_test_executor=(
+                StaticWebPlaywrightTester(
+                    manager, enabled=True,
+                    timeout_ms=_positive_int("DCP_RUNNER_PLAYWRIGHT_TIMEOUT_MS", 15000),
+                ) if playwright_enabled else None
+            ),
         )
         result = pipeline.run_once()
         if result is None:
