@@ -4,10 +4,24 @@ import uuid
 from tools.cloud_gateway.preview import AuthenticatedPreviewManager, PreviewError
 
 
+class FakeWorkspace:
+    def __init__(self):
+        self.retained = []
+        self.cleanup_calls = 0
+    def retain_for_preview(self, job_id, worker_id, *, ttl_seconds):
+        self.retained.append((job_id, worker_id, ttl_seconds))
+    def cleanup_expired_preview_workspaces(self):
+        self.cleanup_calls += 1
+        return 0
+
+
 class FakeRuntime:
     def __init__(self):
         self.rows = {}
         self.started = 0
+        self.workspaces = FakeWorkspace()
+        self.session_ttl_seconds = 1800
+        self.reaped = 0
     def start_static(self, job_id, worker_id, *, output_relative):
         self.started += 1
         runtime_id = str(uuid.uuid4())
@@ -28,6 +42,9 @@ class FakeRuntime:
         self.status(runtime_id, token)
         self.rows[runtime_id]["state"] = "stopped"
         return {"runtime_id": runtime_id, "state": "stopped"}
+    def reap_expired(self):
+        self.reaped += 1
+        return 0
 
 
 class AuthenticatedPreviewManagerTests(unittest.TestCase):
@@ -35,6 +52,18 @@ class AuthenticatedPreviewManagerTests(unittest.TestCase):
         self.runtime = FakeRuntime()
         self.previews = AuthenticatedPreviewManager(self.runtime)
         self.job_id = str(uuid.uuid4())
+
+    def test_reaper_stops_expired_runtime_manager_and_cleans_expired_workspaces(self):
+        self.assertEqual(self.previews.reap_expired(), 0)
+        self.assertEqual(self.runtime.reaped, 1)
+        self.assertEqual(self.runtime.workspaces.cleanup_calls, 1)
+
+    def test_preview_start_renews_workspace_retention_for_runtime_ttl(self):
+        self.previews.start(self.job_id, "local-worker")
+        self.assertEqual(
+            self.runtime.workspaces.retained,
+            [(self.job_id, "local-worker", 1860)],
+        )
 
     def test_browser_response_never_contains_runtime_capability_or_upstream_url(self):
         row = self.previews.start(self.job_id, "local-worker")

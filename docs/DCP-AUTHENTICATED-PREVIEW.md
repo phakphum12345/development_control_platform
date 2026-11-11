@@ -16,9 +16,11 @@ The first authenticated preview release serves an already-built static output di
 
 ## Configuration
 
-Run-DCP-Gateway.ps1 defaults DCP_RUNNER_WORKSPACE_ROOT to %LOCALAPPDATA%/DCP/workspaces when the variable is not already set. Configure the Local Runner Agent with the exact same absolute path. The Gateway creates no project workspaces; it only opens a workspace whose job/worker marker already exists. If the variable is not configured when launching the Gateway outside the supported local startup script, preview endpoints fail closed as unavailable.
+The supported Local Auth Proxy launcher defaults DCP_RUNNER_WORKSPACE_ROOT to CREDENTIALS.parent/workspaces (normally %LOCALAPPDATA%/DCP/workspaces) when the variable is not already set. Run-DCP-Gateway.ps1 uses the same default. Configure the Local Runner Agent with the exact same absolute path. The Gateway creates no project workspaces; it only opens a workspace whose job/worker marker already exists. If the variable is not configured when launching the Gateway outside the supported local startup script, preview endpoints fail closed as unavailable.
 
 The Gateway also reads DCP_RUNNER_MAX_ACTIVE_WORKSPACES and DCP_RUNNER_MAX_WORKSPACE_BYTES to validate the shared workspace root using the same bounds as the agent.
+
+Successful Static Web and Vite jobs retain their workspace for up to one hour so the built output remains available after the Runner pipeline finishes. Starting a preview renews the retention marker to the runtime session TTL plus a short cleanup margin. The Gateway's periodic reaper stops expired preview processes and removes only workspaces with a valid, expired DCP retention marker. The Runner also prunes expired retained workspaces before allocating a new job workspace. Non-web jobs continue to clean their workspaces immediately.
 
 ## API
 

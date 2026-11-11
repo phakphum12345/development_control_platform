@@ -84,6 +84,8 @@ def load_runner_tokens(path: Path | None = None) -> dict[str, str]:
 def gateway_child_environment(base_environment=None) -> dict[str, str]:
     """Prepare the Gateway environment, overriding any inherited Runner map with the protected file."""
     env = dict(os.environ if base_environment is None else base_environment)
+    if not str(env.get("DCP_RUNNER_WORKSPACE_ROOT", "")).strip():
+        env["DCP_RUNNER_WORKSPACE_ROOT"] = str(CREDENTIALS.parent / "workspaces")
     runner_tokens = load_runner_tokens()
     if runner_tokens:
         env["DCP_RUNNER_TOKENS"] = json.dumps(runner_tokens, separators=(",", ":"))

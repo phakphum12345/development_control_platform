@@ -212,7 +212,10 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
             payload = handle.read()
         self.assertIn(b"index.html", payload)
         self.assertEqual(metadata["sha256"], artifact["sha256"])
-        self.assertFalse((self.root / "workspaces" / job["id"]).exists())
+        self.assertTrue(result["result"]["workspace_retained_for_preview"])
+        retained_workspace = self.manager.get(job["id"], "runner-e2e")
+        self.assertTrue((retained_workspace / "source" / "dist" / "index.html").is_file())
+        self.assertTrue((retained_workspace / ".dcp-preview-retention.json").is_file())
 
 
 @unittest.skipUnless(os.name == "nt", "Requires the real Windows cmd.exe batch-file launcher")
