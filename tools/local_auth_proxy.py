@@ -29,6 +29,7 @@ PBKDF2_ROUNDS = 600_000
 MIN_PASSWORD_LENGTH = 14
 COOKIE = "DCP_LOCAL_SESSION"
 MAX_BODY = 32_768
+MAX_PREVIEW_RESPONSE_BYTES = 12 * 1024 * 1024
 ALLOWED_GET = ("/api/cloud-runners/status", "/api/cloud-runners", "/api/local-projects", "/api/local-projects/roots", "/api/github/repositories")
 CREDENTIALS = Path(os.getenv("DCP_LOCAL_AUTH_CREDENTIAL_FILE", str(Path(os.getenv("LOCALAPPDATA", str(Path.home()))) / "DCP" / "owner-auth.json")))
 
@@ -216,7 +217,7 @@ class LocalAuthProxy:
         }
 
     def gateway_request(self, method: str, path: str, session: dict, body: bytes = b"",
-                        csrf_token: str = "") -> tuple[int, bytes]:
+                        csrf_token: str = "", max_response_bytes: int = MAX_BODY) -> tuple[int, bytes]:
         headers = self.sign_gateway(method, urlparse(path).path, session)
         if csrf_token:
             expected = hmac.new(
@@ -234,9 +235,9 @@ class LocalAuthProxy:
                           headers=headers, method=method)
         try:
             with urlopen(request, timeout=5) as response:
-                return response.status, response.read(MAX_BODY + 1)
+                return response.status, response.read(max_response_bytes + 1)
         except HTTPError as exc:
-            return exc.code, exc.read(MAX_BODY + 1)
+            return exc.code, exc.read(max_response_bytes + 1)
         except (URLError, TimeoutError, OSError):
             return 503, b'{"error":"Gateway unavailable"}'
 
@@ -251,15 +252,22 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
             return
 
         def send_bytes(self, status: int, data: bytes, content_type: str = "application/json",
-                       cookie: str | None = None):
+                       cookie: str | None = None, allow_same_origin_frame: bool = False):
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("X-Frame-Options", "SAMEORIGIN" if allow_same_origin_frame else "DENY")
             self.send_header("Referrer-Policy", "no-referrer")
-            self.send_header("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'")
+            self.send_header("Content-Security-Policy",
+                             ("sandbox allow-scripts; default-src * data: blob:; "
+                              "script-src * 'unsafe-inline' 'unsafe-eval'; "
+                              "style-src * 'unsafe-inline'; img-src * data: blob:; "
+                              "connect-src *; font-src * data:; media-src *; "
+                              "form-action 'none'; base-uri 'none'; frame-ancestors 'self'")
+                             if allow_same_origin_frame
+                             else "frame-ancestors 'none'; base-uri 'self'")
             if cookie:
                 self.send_header("Set-Cookie", cookie)
             self.end_headers()
@@ -315,6 +323,49 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                     "csrfToken": app.csrf(session),
                     "user": {"displayName": session["username"], "role": "owner"} if session["authenticated"] else None,
                 }, cookie)
+            preview_list = re.fullmatch(r"/api/jobs/([0-9a-f-]{36})/previews", path)
+            if preview_list:
+                session = self.require_session()
+                if not session:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if parsed.query:
+                    return self.send_json(400, {"error": "preview query parameters are not supported"})
+                status, data = app.gateway_request("GET", path, session)
+                return self.send_bytes(status, data)
+            preview_match = re.fullmatch(
+                r"/api/jobs/([0-9a-f-]{36})/previews/([0-9a-f-]{36})(?:/content/(.*))?",
+                path,
+            )
+            if preview_match:
+                session = self.require_session()
+                if not session:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if parsed.query:
+                    return self.send_json(400, {"error": "preview query parameters are not supported"})
+                job_id, runtime_id, relative_path = preview_match.groups()
+                if relative_path is not None:
+                    gateway_path = f"/api/jobs/{job_id}/previews/{runtime_id}/content/{relative_path}"
+                    status, data = app.gateway_request(
+                        "GET", gateway_path, session,
+                        max_response_bytes=MAX_PREVIEW_RESPONSE_BYTES,
+                    )
+                    if len(data) > MAX_PREVIEW_RESPONSE_BYTES:
+                        return self.send_json(502, {"error": "preview response exceeds proxy limit"})
+                    try:
+                        envelope = json.loads(data.decode("utf-8"))
+                        import base64
+                        payload = base64.b64decode(envelope["body_base64"], validate=True)
+                        content_type = envelope["content_type"]
+                    except (ValueError, KeyError, TypeError, UnicodeDecodeError):
+                        return self.send_json(status if status >= 400 else 502,
+                                               {"error": "invalid preview proxy response"})
+                    if len(payload) > 8 * 1024 * 1024:
+                        return self.send_json(502, {"error": "preview response exceeds proxy limit"})
+                    return self.send_bytes(status, payload, content_type,
+                                           allow_same_origin_frame=True)
+                gateway_path = f"/api/jobs/{job_id}/previews/{runtime_id}"
+                status, data = app.gateway_request("GET", gateway_path, session)
+                return self.send_bytes(status, data)
             if path.startswith("/api/"):
                 session = self.require_session()
                 if not session:
@@ -389,6 +440,18 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                     app.sessions.pop(session["id"], None)
                 return self.send_json(200, {"authenticated": False},
                                       f"{COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0")
+            preview_start = re.fullmatch(r"/api/jobs/([0-9a-f-]{36})/previews", path)
+            if preview_start:
+                if not session or not session["authenticated"] or not self.csrf_ok(session):
+                    return self.send_json(403, {"error": "authenticated session and CSRF token required"})
+                try:
+                    _, raw = self.body()
+                except Exception:
+                    return self.send_json(400, {"error": "invalid JSON body"})
+                status, data = app.gateway_request(
+                    "POST", path, session, raw, self.headers.get("X-CSRF-Token", "")
+                )
+                return self.send_bytes(status, data)
             if path.startswith("/api/cloud-runners"):
                 if not session or not session["authenticated"] or not self.csrf_ok(session):
                     return self.send_json(403, {"error": "authenticated session and CSRF token required"})
@@ -410,6 +473,12 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
             session = self.require_session()
             if not session or not self.csrf_ok(session):
                 return self.send_json(403, {"error": "authenticated session and CSRF token required"})
+            if re.fullmatch(r"/api/jobs/[0-9a-f-]{36}/previews/[0-9a-f-]{36}", path):
+                status, data = app.gateway_request(
+                    "DELETE", path, session,
+                    csrf_token=self.headers.get("X-CSRF-Token", ""),
+                )
+                return self.send_bytes(status, data)
             if not (path.startswith("/api/cloud-runners/") and path.count("/") == 3):
                 return self.send_json(404, {"error": "not found"})
             status, data = app.gateway_request("DELETE", path, session, csrf_token=self.headers.get("X-CSRF-Token", ""))

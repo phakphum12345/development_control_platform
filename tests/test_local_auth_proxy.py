@@ -334,6 +334,45 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
         )
         self.assertEqual(denied_after_logout, 401)
 
+    def test_preview_proxy_requires_session_and_sandboxes_preview_documents(self):
+        import base64
+        import uuid
+
+        job_id = str(uuid.uuid4())
+        runtime_id = str(uuid.uuid4())
+        path = f"/api/jobs/{job_id}/previews/{runtime_id}/content/index.html"
+        denied, _, _ = self.request(path)
+        self.assertEqual(denied, 401)
+
+        _, _, preauth_body = self.request("/api/auth/session")
+        csrf = json.loads(preauth_body)["csrfToken"]
+        logged_in, _, _ = self.request(
+            "/api/auth/login",
+            "POST",
+            {"username": "owner-test", "password": "correct horse battery staple 2026!"},
+            csrf,
+        )
+        self.assertEqual(logged_in, 200)
+
+        payload = json.dumps({
+            "content_type": "text/html; charset=utf-8",
+            "body_base64": base64.b64encode(b"<h1>Preview</h1>").decode("ascii"),
+        }).encode("utf-8")
+        with patch.object(self.app, "gateway_request", return_value=(200, payload)) as gateway:
+            status, headers, body = self.request(path)
+        self.assertEqual(status, 200)
+        self.assertEqual(body, b"<h1>Preview</h1>")
+        self.assertIn("sandbox allow-scripts", headers.get("Content-Security-Policy", ""))
+        self.assertEqual(headers.get("X-Frame-Options"), "SAMEORIGIN")
+        self.assertNotIn("session_token", body.decode("utf-8", "ignore"))
+        gateway.assert_called_once()
+        _, _, session_body = self.request("/api/auth/session")
+        logout_csrf = json.loads(session_body)["csrfToken"]
+        logged_out, _, _ = self.request(
+            "/api/auth/logout", "POST", csrf=logout_csrf
+        )
+        self.assertEqual(logged_out, 200)
+
     def test_origin_and_csrf_protections_fail_closed(self):
         _, _, body = self.request(
             "/api/auth/session"
