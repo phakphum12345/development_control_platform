@@ -343,6 +343,7 @@ class LocalProjectRegistry:
         try:
             target.mkdir(mode=0o700)
             created = True
+            copied_total = 0
             for relative, source_file in entries:
                 relative_path = PurePosixPath(relative)
                 output_file = target.joinpath(*relative_path.parts)
@@ -372,7 +373,8 @@ class LocalProjectRegistry:
                         if not chunk:
                             break
                         copied += len(chunk)
-                        if copied > self.max_bytes or total_bytes > self.max_bytes:
+                        copied_total += len(chunk)
+                        if copied > self.max_bytes or copied_total > self.max_bytes:
                             raise LocalProjectError("snapshot byte limit exceeded")
                         output_handle.write(chunk)
                         file_hash.update(chunk)
@@ -389,7 +391,8 @@ class LocalProjectRegistry:
             snapshot_sha, snapshot_count, snapshot_bytes = self._fingerprint(target)
             if (source_after_sha != expected_sha256 or snapshot_sha != expected_sha256
                     or source_after_count != file_count or snapshot_count != file_count
-                    or source_after_bytes != total_bytes or snapshot_bytes != total_bytes):
+                    or source_after_bytes != total_bytes or snapshot_bytes != total_bytes
+                    or copied_total != total_bytes):
                 raise LocalProjectError("source or materialized snapshot failed integrity verification")
 
             for current, dirs, _files in os.walk(target, topdown=False, followlinks=False):
