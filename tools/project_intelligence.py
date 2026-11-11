@@ -148,13 +148,13 @@ def detect_frameworks(workspace: Path) -> dict[str, Any]:
 
     python_manifest = _read_small(workspace / "pyproject.toml")
     requirements = _read_small(workspace / "requirements.txt")
-    python_text = "\\n".join(value for value in (python_manifest, requirements) if value).lower()
+    python_text = "\n".join(value for value in (python_manifest, requirements) if value).lower()
     if framework == "UNKNOWN" and python_text:
-        if re.search(r"(?i)\\bfastapi\\b", python_text):
+        if re.search(r"(?i)\bfastapi\b", python_text):
             framework = "FastAPI"
-        elif re.search(r"(?i)\\bdjango\\b", python_text) or (workspace / "manage.py").is_file():
+        elif re.search(r"(?i)\bdjango\b", python_text) or (workspace / "manage.py").is_file():
             framework = "Django"
-        elif re.search(r"(?i)\\bflask\\b", python_text):
+        elif re.search(r"(?i)\bflask\b", python_text):
             framework = "Flask"
         else:
             framework = "Python"
