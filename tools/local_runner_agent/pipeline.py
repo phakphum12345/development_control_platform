@@ -164,6 +164,9 @@ class RunnerPipeline:
                 job_id, f"Runner rejected job safely: {type(exc).__name__}", "stderr"
             )
             result = {"error": type(exc).__name__}
+            if isinstance(exc, ExecutionError):
+                # ExecutionError messages are fixed policy diagnostics, not subprocess output.
+                result["reason"] = str(exc)
             error_code = "RUNNER_POLICY_OR_BUILD_ERROR"
         except Exception as exc:
             # Do not echo exception text: transport and provider errors can contain secrets.
