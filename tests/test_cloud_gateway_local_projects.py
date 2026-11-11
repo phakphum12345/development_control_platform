@@ -158,7 +158,7 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
             "/api/jobs", method="POST", payload=invalid_target,
             idempotency_key="local-project-job-0003",
         )
-        self.assertEqual(status, 409)
+        self.assertEqual(status, 400)
 
     def test_changed_local_project_requires_refresh_before_queue(self):
         payload = {
