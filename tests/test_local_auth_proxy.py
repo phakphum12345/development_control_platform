@@ -440,9 +440,22 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
         _, _, session_body = self.request("/api/auth/session")
         csrf = json.loads(session_body)["csrfToken"]
 
-        listed, _, list_body = self.request(
-            f"/api/jobs/{job['id']}/previews"
+        preview_list_path = f"/api/jobs/{job['id']}/previews"
+        self.assertRegex(job["id"], r"^[0-9a-f-]{36}$")
+        cookie_header = "; ".join(
+            f"{cookie.name}={cookie.value}" for cookie in self.cookie_jar
         )
+        owner_session = self.app.get_session(cookie_header)
+        self.assertTrue(owner_session and owner_session["authenticated"])
+        direct_status, direct_body = self.app.gateway_request(
+            "GET", preview_list_path, owner_session
+        )
+        self.assertEqual(
+            direct_status, 200,
+            "Gateway preview-list route failed: " + direct_body.decode(errors="replace"),
+        )
+
+        listed, _, list_body = self.request(preview_list_path)
         self.assertEqual(listed, 200, list_body.decode(errors="replace"))
         self.assertEqual(json.loads(list_body)["previews"], [])
 
