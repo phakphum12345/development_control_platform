@@ -743,8 +743,8 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                                 return self.send_json(400, {"error": "invalid local project ID"})
                             if not isinstance(expected_sha, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_sha):
                                 return self.send_json(400, {"error": "invalid local snapshot SHA-256"})
-                            if target not in ("build_static_web", "build_vite"):
-                                return self.send_json(400, {"error": "Local Folder supports only static web and Vite targets"})
+                            if target != "build_static_web":
+                                return self.send_json(400, {"error": "Local Folder currently supports dependency-free static web builds only"})
                             try:
                                 registry.reload()
                                 current = registry.refresh_project(project_id)
@@ -763,8 +763,7 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                             framework = detection.get("framework")
                             if target == "build_static_web" and framework != "Static HTML/CSS/JS":
                                 return self.send_json(409, {"error": "selected project is not a detected static web project"})
-                            if target == "build_vite" and framework not in ("React + Vite", "Vue + Vite"):
-                                return self.send_json(409, {"error": "selected project is not a detected React/Vue + Vite project"})
+
                             row, created = jobs.create(payload, self.headers.get("Idempotency-Key", ""))
                             return self.send_json(202 if created else 200, self.public_job(row))
                         repository = payload.get("repository")
