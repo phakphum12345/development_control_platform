@@ -79,7 +79,9 @@ class RunnerPipeline:
         copied = 0
         with os.fdopen(source_fd, "rb") as src, os.fdopen(destination_fd, "wb") as dst:
             opened = os.fstat(src.fileno())
-            if not stat.S_ISREG(opened.st_mode):
+            if not stat.S_ISREG(opened.st_mode) or (
+                before.st_ino and opened.st_ino and before.st_ino != opened.st_ino
+            ):
                 raise ExecutionError("snapshot file changed type during worktree copy")
             while True:
                 chunk = src.read(1024 * 1024)
