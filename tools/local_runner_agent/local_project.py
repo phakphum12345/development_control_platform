@@ -46,6 +46,22 @@ def _reject_link_components(path: Path, label: str) -> None:
             raise LocalProjectError(f"{label} path cannot be inspected") from None
 
 
+def _detect_frameworks(project: Path) -> list[str]:
+    frameworks = []
+    for filename, framework in (("pubspec.yaml", "flutter"), ("index.html", "static_html")):
+        candidate = project / filename
+        try:
+            info = candidate.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError:
+            raise LocalProjectError("project manifest cannot be inspected") from None
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+            raise LocalProjectError("project manifest is not a regular file")
+        frameworks.append(framework)
+    return frameworks
+
+
 def _canonical_directory(value: str | os.PathLike, label: str) -> Path:
     raw = Path(value).expanduser()
     if not raw.is_absolute():
@@ -249,6 +265,7 @@ class LocalProjectRegistry:
             "snapshot_sha256": fingerprint,
             "file_count": file_count,
             "total_bytes": total_bytes,
+            "frameworks": _detect_frameworks(project),
         }
         self._data["projects"][project_id] = record
         self._save()
@@ -296,28 +313,16 @@ class LocalProjectRegistry:
             raise LocalProjectError("project is not registered")
         expected = expected_sha256 or record.get("snapshot_sha256")
         verified = self.validate_project(project_id, expected)
-        project = Path(verified["path"])
-        frameworks = []
-        for filename, framework in (
-            ("pubspec.yaml", "flutter"),
-            ("index.html", "static_html"),
-        ):
-            candidate = project / filename
-            try:
-                info = candidate.lstat()
-            except FileNotFoundError:
-                continue
-            except OSError:
-                raise LocalProjectError("project manifest cannot be inspected") from None
-            if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
-                raise LocalProjectError("project manifest is not a regular file")
-            frameworks.append(framework)
+        frameworks = record.get("frameworks")
+        if not isinstance(frameworks, list) or any(not isinstance(item, str) for item in frameworks):
+            frameworks = _detect_frameworks(Path(verified["path"]))
         return {
             "project_id": project_id,
             "snapshot_sha256": verified["snapshot_sha256"],
             "frameworks": frameworks,
             "supports_flutter": "flutter" in frameworks,
         }
+
 
     def materialize_project(
         self,
