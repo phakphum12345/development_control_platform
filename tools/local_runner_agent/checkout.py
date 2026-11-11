@@ -46,8 +46,12 @@ class LocalProjectCheckout:
         self.max_bytes = max_bytes
 
     def _copy_snapshot(self, snapshot: Path, destination: Path) -> int:
+        if snapshot.is_symlink() or (
+            hasattr(snapshot, "is_junction") and snapshot.is_junction()
+        ):
+            raise CheckoutError("local snapshot directory must not be a link or junction")
         root = snapshot.resolve(strict=True)
-        if not root.is_dir() or root.is_symlink() or destination.exists() or destination.is_symlink():
+        if not root.is_dir() or destination.exists() or destination.is_symlink():
             raise CheckoutError("local snapshot copy paths are unsafe")
         destination.mkdir(mode=0o700)
         total = 0
