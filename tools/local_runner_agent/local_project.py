@@ -254,6 +254,71 @@ class LocalProjectRegistry:
         self._save()
         return {"project_id": project_id, **record}
 
+    def validate_project(self, project_id: str, expected_sha256: str) -> dict:
+        """Verify the currently enrolled source still matches a queued fingerprint."""
+        if not isinstance(expected_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_sha256):
+            raise LocalProjectError("expected snapshot SHA-256 is invalid")
+        self.reload()
+        record = self._data["projects"].get(project_id)
+        if not isinstance(record, dict):
+            raise LocalProjectError("project is not registered")
+        if record.get("snapshot_sha256") != expected_sha256:
+            raise LocalProjectError("queued snapshot fingerprint no longer matches the registry")
+        root_record = self._data["roots"].get(record.get("root_id"))
+        if not isinstance(root_record, dict):
+            raise LocalProjectError("approved root is no longer enrolled")
+        root = _canonical_directory(root_record.get("path", ""), "enrolled root")
+        project = _canonical_directory(record.get("path", ""), "selected project")
+        try:
+            relative = project.relative_to(root)
+        except ValueError:
+            raise LocalProjectError("registered project moved outside its approved root") from None
+        if not relative.parts:
+            raise LocalProjectError("registered project cannot be the approved root itself")
+        fingerprint, file_count, total_bytes = self._fingerprint(project)
+        if fingerprint != expected_sha256:
+            raise LocalProjectError("project changed after it was registered; refresh before queueing")
+        return {
+            "project_id": project_id,
+            "root_id": record["root_id"],
+            "path": str(project),
+            "relative_path": relative.as_posix(),
+            "snapshot_sha256": fingerprint,
+            "file_count": file_count,
+            "total_bytes": total_bytes,
+        }
+
+    def detect_project(self, project_id: str, expected_sha256: str | None = None) -> dict:
+        """Read known manifest filenames without executing or installing anything."""
+        self.reload()
+        record = self._data["projects"].get(project_id)
+        if not isinstance(record, dict):
+            raise LocalProjectError("project is not registered")
+        expected = expected_sha256 or record.get("snapshot_sha256")
+        verified = self.validate_project(project_id, expected)
+        project = Path(verified["path"])
+        frameworks = []
+        for filename, framework in (
+            ("pubspec.yaml", "flutter"),
+            ("index.html", "static_html"),
+        ):
+            candidate = project / filename
+            try:
+                info = candidate.lstat()
+            except FileNotFoundError:
+                continue
+            except OSError:
+                raise LocalProjectError("project manifest cannot be inspected") from None
+            if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+                raise LocalProjectError("project manifest is not a regular file")
+            frameworks.append(framework)
+        return {
+            "project_id": project_id,
+            "snapshot_sha256": verified["snapshot_sha256"],
+            "frameworks": frameworks,
+            "supports_flutter": "flutter" in frameworks,
+        }
+
     def materialize_project(
         self,
         project_id: str,
