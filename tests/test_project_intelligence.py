@@ -118,7 +118,7 @@ class ProjectIntelligenceTests(unittest.TestCase):
             (root / "service-account-prod.json").write_text('{"private_key":"never-index"}', encoding="utf-8")
             (root / ".env.example").write_text("API_URL=https://example.invalid", encoding="utf-8")
             result = discover_project(root)
-            samples = result["inventory"]["sample_files"]
+            samples = result["inventory"]["sample_paths"]
             self.assertIn(".env.example", samples)
             self.assertNotIn(".env", samples)
             self.assertNotIn(".env.local", samples)
