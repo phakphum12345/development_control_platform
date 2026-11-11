@@ -119,6 +119,7 @@ def collect_preflight() -> dict:
         "python": {"installed": True, "version": platform.python_version()},
         "git": _tool("git"),
         "flutter": _tool("flutter"),
+        "node": _tool("node"),
         "java": _tool("java", ("-version",)),
         "android_sdk": {
             "installed": android_sdk_root is not None,
@@ -141,7 +142,9 @@ def collect_preflight() -> dict:
     git_ok = tools["git"]["installed"]
     capabilities = []
     if flutter_ok and git_ok:
-        capabilities.extend(["flutter", "web"])
+        capabilities.append("flutter")
+    if git_ok and tools["node"]["installed"]:
+        capabilities.append("web")
     if flutter_ok and git_ok and tools["java"]["installed"] and tools["android_sdk"]["installed"] and tools["adb"]["installed"]:
         capabilities.append("android")
     if host == "windows" and flutter_ok and git_ok and tools.get("visual_studio", {}).get("installed"):
