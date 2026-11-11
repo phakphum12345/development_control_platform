@@ -20,6 +20,8 @@ Run-DCP-Gateway.ps1 defaults DCP_RUNNER_WORKSPACE_ROOT to %LOCALAPPDATA%/DCP/wor
 
 The Gateway also reads DCP_RUNNER_MAX_ACTIVE_WORKSPACES and DCP_RUNNER_MAX_WORKSPACE_BYTES to validate the shared workspace root using the same bounds as the agent.
 
+Successful Static Web and Vite jobs retain their workspace for up to one hour so the built output remains available after the Runner pipeline finishes. Starting a preview renews the retention marker to the runtime session TTL plus a short cleanup margin. The Gateway's periodic reaper stops expired preview processes and removes only workspaces with a valid, expired DCP retention marker. The Runner also prunes expired retained workspaces before allocating a new job workspace. Non-web jobs continue to clean their workspaces immediately.
+
 ## API
 
 All routes are exposed through the Local Auth Proxy:
