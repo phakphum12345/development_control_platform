@@ -29,10 +29,27 @@ Acceptance evidence must be produced on the exact commit under review. A passing
 - Cancellation terminates child processes and confirms cleanup.
 
 ## UI testing and artifacts
-- Playwright runs against actual preview URL.
-- Verify navigation, form interaction, responsive viewport and browser console/network errors.
-- Save screenshot, trace, report and logs with job/source provenance and SHA-256.
-- Verify artifact access authorization, tamper detection and retention.
+
+### Implemented static-project test slice
+- `test_static_web` accepts only detected dependency-free Static HTML/CSS/JS projects.
+- The pipeline builds static output, starts the DCP loopback RuntimeManager against generated output, and runs a DCP-owned Playwright suite. It does not run project test scripts/configuration or install dependencies.
+- Verify page load/title/language, 360/768/1366 viewport overflow, basic image/button/link naming signals, console/page errors, failed requests and blocked external requests.
+- Save three viewport screenshots and a JSON report in a bounded ZIP evidence artifact; upload through the Artifact Store.
+- This path tests the actual generated static runtime, but it starts RuntimeManager directly. It does **not** prove Playwright access through the authenticated Preview Proxy.
+- Trace capture, form/navigation interaction coverage, full WCAG conformance and visual baselines are not part of this implemented slice.
+
+### Required PR #71 acceptance
+- Run the real Chromium smoke test with `chromium_sandbox=True` on the exact PR head commit.
+- Confirm that missing host sandbox support fails closed and produces actionable diagnostics; never use `--no-sandbox` as a workaround.
+- Confirm the JSON report and ZIP evidence are generated and uploaded for normal test completion; failed test or upload must not become PASS.
+- Run Dashboard browser smoke and registry/schema validation after the Chromium test succeeds.
+- Bind all reported results to the exact full commit SHA and inspect every required CI check.
+
+### Deferred authenticated-preview acceptance
+- Start a preview through the owner-authenticated Preview Proxy API and test using that browser-facing URL rather than calling RuntimeManager directly.
+- Verify unauthenticated access, cross-owner/cross-job access, CSRF-protected mutations, expiry, stop/reap, and that runtime bearer/session tokens and upstream ports never reach browser-visible data.
+- Verify the proxy blocks traversal, arbitrary upstream host/port selection, unsupported methods and oversized responses.
+- Add trace/log evidence and provenance only when implemented and covered by tests.
 
 ## Infrastructure safety
 - Cloud Provisioning gate starts OFF after fresh install and restart.
