@@ -75,8 +75,8 @@ class RunnerRegistry:
             raise ValueError("capabilities must be a non-empty array")
         if any(not isinstance(item, str) or item not in _CAPABILITIES for item in capabilities):
             raise ValueError("unsupported Runner capability")
-        if len(set(capabilities)) != len(capabilities) or "flutter" not in capabilities:
-            raise ValueError("capabilities must be unique and include flutter")
+        if len(set(capabilities)) != len(capabilities) or not ({"flutter", "web"} & set(capabilities)):
+            raise ValueError("capabilities must be unique and include a supported build toolchain")
         # Host identity is stored separately from verified build capabilities.
         # A Windows host without Visual Studio may still build Android/Web, but
         # must not advertise the Windows desktop target.
