@@ -40,7 +40,10 @@ class WebBuildExecutorTests(unittest.TestCase):
         (self.source / "index.html").write_text("ok", encoding="utf-8")
         target = self.root / "outside.txt"
         target.write_text("outside", encoding="utf-8")
-        (self.source / "outside.txt").symlink_to(target)
+        try:
+            (self.source / "outside.txt").symlink_to(target)
+        except OSError:
+            self.skipTest("Symlink creation is unavailable on this host")
         with self.assertRaises((ExecutionError, WorkspaceError)):
             WebBuildExecutor(self.manager, enabled=True).run(self.job, self.worker, "build_static_web")
 
@@ -61,6 +64,7 @@ class WebBuildExecutorTests(unittest.TestCase):
         command = WebBuildExecutor.command_for("build_vite", self.source)
         self.assertEqual(command[1:], (str(cli / "vite.js"), "build"))
 
+    @unittest.skipIf(os.name == "nt", "POSIX fixture executable used for deterministic Node process test")
     def test_vite_build_runs_fixed_local_cli_and_captures_output(self):
         (self.source / "package.json").write_text(json.dumps({
             "dependencies": {"vue": "^3"}, "devDependencies": {"vite": "^7"}
