@@ -951,6 +951,8 @@ async function projectImportLoadLocal(){
    if(!refreshed||refreshed.snapshot_sha256!==projectImportState.selectedSource.snapshot_sha256){
     projectImportState.selectedSource=null;
     projectImportRenderSelected(null);
+   }else{
+    projectImportState.selectedSource.framework_detection=refreshed.framework_detection;
    }
   }
   $("registered-projects-count").textContent=String(projects.projects.length);
@@ -971,7 +973,8 @@ async function projectImportLoadLocal(){
     '<code>'+esc(row.snapshot_sha256)+'</code>',esc(row.file_count),esc(row.total_bytes)
    ])
   );
-  projectImportStatus("Local registry refreshed. Absolute host paths are not returned by the API.","ready");
+  projectImportStatus("Local registry refreshed. Absolute host paths and excluded credential files are not returned by the API.","ready");
+  buildJobsUpdateGate();
  }catch(error){
   $("project-import-local-roots").textContent="Enrolled roots unavailable: "+error.message;
   $("project-import-local-projects").textContent="Local projects unavailable: "+error.message;
@@ -990,6 +993,7 @@ function projectImportSelectLocal(){
  };
  projectImportState.selectedSource=selected;
  projectImportState.verifiedCommit=null;projectImportState.inspection=null;
+ $("build-job-target").value="build_static_web";
  runnerUI.project=null;runnerUI.verifiedCommit=null;
  projectImportRenderSelected(selected);
  buildJobsUpdateGate();
