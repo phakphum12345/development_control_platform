@@ -189,9 +189,11 @@ def detect_frameworks(workspace: Path) -> dict[str, Any]:
     if isinstance(engines, dict) and isinstance(engines.get("node"), str):
         toolchain["node"] = engines["node"]
     if pubspec:
-        match = re.search(r"(?m)^\s*sdk:\s*['\\"]?([^'\\"]+)['\\"]?\s*$", pubspec)
-        if match:
-            toolchain["dart"] = match.group(1).strip()
+        environment = re.search(r"(?ms)^environment:\s*\n((?:^[ \t]+.*\n?)*)", pubspec)
+        if environment:
+            match = re.search(r"(?m)^[ \t]+sdk:\s*['\"]([^'\"]+)['\"]", environment.group(1))
+            if match:
+                toolchain["dart"] = match.group(1).strip()
     if python_manifest:
         match = re.search(r"(?m)^requires-python\s*=\s*['\\"]([^'\\"]+)['\\"]", python_manifest)
         if match:
