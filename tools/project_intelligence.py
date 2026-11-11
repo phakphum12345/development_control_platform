@@ -139,8 +139,8 @@ def detect_frameworks(workspace: Path) -> dict[str, Any]:
 
     pubspec = _read_small(workspace / "pubspec.yaml")
     if framework == "UNKNOWN" and pubspec:
-        if re.search(r"(?m)^\\s*flutter\\s*:", pubspec) and re.search(
-            r"(?m)^\\s*sdk\\s*:\\s*flutter\\s*$", pubspec
+        if re.search(r"(?m)^\s*flutter\s*:", pubspec) and re.search(
+            r"(?m)^\s*sdk\s*:\s*flutter\s*$", pubspec
         ):
             framework, language, project_type = "Flutter", "Dart", "mobile"
         else:
@@ -189,11 +189,11 @@ def detect_frameworks(workspace: Path) -> dict[str, Any]:
     if isinstance(engines, dict) and isinstance(engines.get("node"), str):
         toolchain["node"] = engines["node"]
     if pubspec:
-        match = re.search(r"(?m)^\\s*sdk:\\s*['\\"]?([^'\\"]+)['\\"]?\\s*$", pubspec)
+        match = re.search(r"(?m)^\s*sdk:\s*['\\"]?([^'\\"]+)['\\"]?\s*$", pubspec)
         if match:
             toolchain["dart"] = match.group(1).strip()
     if python_manifest:
-        match = re.search(r"(?m)^requires-python\\s*=\\s*['\\"]([^'\\"]+)['\\"]", python_manifest)
+        match = re.search(r"(?m)^requires-python\s*=\s*['\\"]([^'\\"]+)['\\"]", python_manifest)
         if match:
             toolchain["python"] = match.group(1).strip()
 
@@ -274,6 +274,7 @@ def discover_project(root: str | os.PathLike[str], task_description: str = "",
             break
 
     all_manifest_text = "\n".join(manifest_texts)
+    framework_detection = detect_frameworks(workspace)
     for framework, markers in FRAMEWORK_MARKERS.items():
         if any(marker in all_manifest_text for marker in markers):
             frameworks.add(framework)
