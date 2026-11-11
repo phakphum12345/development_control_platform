@@ -162,3 +162,19 @@ If the credential file is created or changed while the Gateway is running, resta
 - Dashboard operators can Drain a worker to stop new claims while allowing its active Job to finish, then Enable it again. A stale worker becomes online again only after it checks in.
 - `host_os` is recorded separately from build capabilities. Configure `DCP_RUNNER_CAPABILITIES` as a JSON array containing only targets actually detected by local preflight (for example `flutter`, `android`, `web`, `windows`, `linux`, `macos`, `ios`). A Windows host without Visual Studio may still register for Android/Web work but will not advertise Windows desktop builds. The default uses the full preflight-detected capability set; cross-platform targets are never assumed.
 - The CLI remains one-shot (`--once`); continuous polling/daemon supervision is a separate deployment decision.
+
+
+## M7 — Explicit Local Folder project registry
+
+`tools/local_runner_agent/local_project.py` provides the first Local Folder intake foundation.
+
+- An operator explicitly enrolls an existing absolute directory as an allowed root.
+- A project must be selected beneath an enrolled root; the root itself and paths outside it are rejected.
+- The registry stores a local project ID, root ID, relative path and SHA-256 source fingerprint.
+- Fingerprints include sorted relative paths and file contents; known generated/dependency directories are excluded.
+- Symlinks/junctions and special filesystem entries are rejected; file count and total bytes are bounded.
+- Files are opened without following symlinks where the platform supports `O_NOFOLLOW`, and metadata is checked for mutation during hashing.
+- Registry writes are atomic and use restrictive POSIX file permissions.
+- Registration and refresh are metadata/read operations only. They do not copy, execute, install dependencies, or contact GitHub/cloud services.
+
+This is a Local Agent library capability, not yet a complete Dashboard import workflow. A later integration must expose only enrolled project IDs through an authenticated, owner-authorized API; the browser must never submit arbitrary local paths. A stable snapshot fingerprint identifies observed content but does not freeze files against subsequent edits, so jobs must revalidate or materialize an immutable snapshot before execution.
