@@ -193,8 +193,14 @@ class StaticWebPlaywrightTester:
                         )
                     filename = f"viewport-{viewport['name']}.png"
                     screenshot = results_dir / filename
+                    page_height = page.evaluate("() => document.documentElement.scrollHeight")
+                    full_page = isinstance(page_height, int) and page_height <= 12000
+                    if not full_page:
+                        report["checks"]["accessibility_issues"].append(
+                            viewport["name"] + ": page height exceeds the 12000px screenshot safety limit"
+                        )
                     page.screenshot(
-                        path=str(screenshot), full_page=True, animations="disabled",
+                        path=str(screenshot), full_page=full_page, animations="disabled",
                         timeout=self.timeout_ms,
                     )
                     if screenshot.stat().st_size > self.MAX_SCREENSHOT_BYTES:
