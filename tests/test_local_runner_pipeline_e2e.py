@@ -188,7 +188,7 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
             "source_type": "local_folder",
             "project_id": registered["project_id"],
             "snapshot_sha256": registered["snapshot_sha256"],
-            "target": "build_static_web",
+            "target": "test_static_web",
         }, "runner-local-folder-static-001")
         self.assertTrue(created)
         from tools.local_runner_agent.web_build import WebBuildExecutor
@@ -200,6 +200,19 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
                     self.last_error = f"{type(exc).__name__}: {exc}"
                     raise
         web_executor = DiagnosticWebBuildExecutor(self.manager, enabled=True)
+        class BrowserTestFixture:
+            def run(self, job_id, worker_id):
+                evidence = self.manager.get(job_id, worker_id) / ".dcp-artifacts" / "web-test-results.zip"
+                evidence.parent.mkdir(mode=0o700, exist_ok=True)
+                evidence.write_bytes(b"local-folder-playwright-evidence")
+                return {
+                    "status": "PASS", "duration_seconds": 0.1,
+                    "screenshots": ["viewport-mobile.png", "viewport-tablet.png", "viewport-desktop.png"],
+                    "accessibility_issue_count": 0, "blocked_external_request_count": 0,
+                    "console_error_count": 0, "page_error_count": 0,
+                    "report_path": "source/.dcp-test-results/report.json",
+                    "artifact_path": evidence, "artifact_name": "web-test-results.zip",
+                }
         host_os = "windows" if os.name == "nt" else "linux"
         pipeline = RunnerPipeline(
             self.client, self.manager, _FixtureCheckout(self.manager),
@@ -208,8 +221,9 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
             trusted_local_projects={registered["project_id"]},
             local_project_checkout=LocalProjectCheckout(self.manager, local_registry),
             worker_os=host_os,
-            capabilities={"web", host_os},
+            capabilities={"web", "playwright", host_os},
             web_executor=web_executor,
+            browser_test_executor=BrowserTestFixture(),
         )
         result = pipeline.run_once()
         self.assertEqual(
@@ -222,6 +236,12 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
         workspace = self.manager.get(job["id"], "runner-e2e")
         self.assertTrue((workspace / "source-snapshot" / "index.html").is_file())
         self.assertTrue((workspace / "source" / "dist" / "index.html").is_file())
+        self.assertEqual(result["result"]["browser_test"]["status"], "PASS")
+        test_artifact = result["result"]["test_artifact"]
+        metadata, handle = self.artifacts.open(test_artifact["id"])
+        with handle:
+            self.assertEqual(handle.read(), b"local-folder-playwright-evidence")
+        self.assertEqual(metadata["sha256"], test_artifact["sha256"])
         self.assertTrue((workspace / ".dcp-preview-retention.json").is_file())
 
     def test_local_folder_job_fails_closed_without_explicit_project_trust(self):
