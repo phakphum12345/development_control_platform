@@ -165,19 +165,19 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
   <label class="control-search"><span class="sr-only" style="position:absolute;left:-9999px">ค้นหาเมนู</span><input id="dcp-nav-search" type="search" placeholder="ค้นหาเมนู เช่น Repository, Evidence, Audit…" autocomplete="off"></label>
  </div>
  <div class="quick-actions" aria-label="Quick actions">
-  <button type="button" data-quick-tab="repo" data-tone="blue">⌕ Repository Explorer</button>
+  <button type="button" data-quick-tab="project-import" data-tone="blue">⇧ Project Import</button><button type="button" data-quick-tab="repo" data-tone="blue">⌕ Repository Explorer</button>
   <button type="button" data-quick-tab="pr" data-tone="violet">◇ Pull Request Review</button>
   <button type="button" data-quick-tab="evidence" data-tone="teal">✓ SHA & Evidence</button>
   <button type="button" data-quick-tab="gates" data-tone="green">▣ Quality Gates</button>
   <button type="button" data-quick-tab="audit" data-tone="amber">◎ Audit & Safety</button>
  </div>
- <div class="control-center-meta"><span>Navigation: <strong id="dcp-nav-count">18 tools</strong></span><span>Write actions: <strong>0 · Disabled</strong></span><span>Evidence default: <strong>UNKNOWN</strong></span><span>Mode: <strong>READ-ONLY</strong></span></div>
+ <div class="control-center-meta"><span>Navigation: <strong id="dcp-nav-count">19 tools</strong></span><span>Write actions: <strong>0 · Disabled</strong></span><span>Evidence default: <strong>UNKNOWN</strong></span><span>Mode: <strong>READ-ONLY</strong></span></div>
  <div class="dcp-selfcheck" id="dcp-selfcheck" data-status="UNKNOWN" role="status" aria-live="polite">UI self-check: UNKNOWN — ยังไม่ได้ตรวจสอบเมนู</div>
  <div class="quick-actions"><button type="button" id="dcp-selfcheck-run" class="primary">Run UI self-check</button><button type="button" id="dcp-nav-reset">Clear search / Reset menu</button></div>
 </section>
 
 <div class="layout"><nav class="nav" aria-label="Tools">
-<button class="active" data-tab="home">Overview</button> <button data-tab="account">Password Login</button> <button data-tab="code-navigator">Code Navigator</button><button data-tab="cloud-runners">Cloud Runner Control</button> <button data-tab="infrastructure">Infrastructure Manager</button> <button data-tab="dev-tools">Emulators & VS Code</button> <button data-tab="ui-routes">UI Route Manager</button><button data-tab="ui-simulator">UI Simulator</button><button data-tab="route-colors">Route Color Manager</button><button data-tab="github-api">Research OS API</button><button data-tab="repo-selector">Account & Repo</button><button data-tab="repo">Repository Explorer</button><button data-tab="pr">Pull Request Review</button><button data-tab="user">User Explorer</button><button data-tab="workspace">GitHub Workspace</button><button data-tab="evidence">SHA & Evidence</button><button data-tab="gates">Quality Gate Planner</button><button data-tab="checkpoint">Checkpoint Builder</button><button data-tab="audit">Audit & Safety</button>
+<button class="active" data-tab="home">Overview</button> <button data-tab="account">Password Login</button> <button data-tab="project-import">Project Import</button> <button data-tab="code-navigator">Code Navigator</button><button data-tab="cloud-runners">Cloud Runner Control</button> <button data-tab="infrastructure">Infrastructure Manager</button> <button data-tab="dev-tools">Emulators & VS Code</button> <button data-tab="ui-routes">UI Route Manager</button><button data-tab="ui-simulator">UI Simulator</button><button data-tab="route-colors">Route Color Manager</button><button data-tab="github-api">Research OS API</button><button data-tab="repo-selector">Account & Repo</button><button data-tab="repo">Repository Explorer</button><button data-tab="pr">Pull Request Review</button><button data-tab="user">User Explorer</button><button data-tab="workspace">GitHub Workspace</button><button data-tab="evidence">SHA & Evidence</button><button data-tab="gates">Quality Gate Planner</button><button data-tab="checkpoint">Checkpoint Builder</button><button data-tab="audit">Audit & Safety</button>
 </nav><div>
 <section class="view" id="dev-tools">
 <div class="panel"><h2>Emulators & VS Code</h2><p>This page provides local commands and readiness guidance. A browser cannot inspect or launch processes on your computer; run these tasks from the repository in VS Code. Results from local checks are not automatically uploaded or treated as CI evidence.</p><div class="warn"><b>Safety:</b> emulator launch is explicit and local. The helper never installs SDKs, changes PATH, edits Android/iOS projects, or launches an app without an app-specific project being present.</div></div>
@@ -208,6 +208,40 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
 <div id="auth-session-status" class="output" role="status" aria-live="polite">Session: UNKNOWN — not authenticated.</div>
 <p class="small muted">Backend contract: <code>GET /api/auth/session</code>, <code>POST /api/auth/login</code>, <code>POST /api/auth/logout</code>. The local stack validates passwords server-side. GitHub Pages remains static-only and does not provide this authentication service.</p>
 </div></section>
+<section class="view" id="project-import">
+ <div class="panel">
+  <div class="row"><div><h2>Project Import & Catalog</h2><p>นำเข้าและเลือกโปรเจกต์จาก GitHub App หรือ Local Folder ที่ลงทะเบียนไว้ในเครื่อง</p></div><span class="pill" id="project-import-auth-state">AUTH · UNKNOWN</span></div>
+  <div class="warn"><b>Local-first safety:</b> หน้านี้เป็นการอ่านรายการและเลือก Source เท่านั้น ไม่รัน Source Code, ไม่ติดตั้ง Dependencies และไม่ส่ง Absolute Path จาก Browser. Cloud Provisioning, VM Creation และ Cloud Deployment ยังคง OFF.</div>
+  <div class="actions"><button class="primary" id="project-import-session-refresh" type="button">Check Owner Session</button><button id="project-import-github-refresh" type="button" disabled>Load GitHub App Repositories</button><button id="project-import-local-refresh" type="button" disabled>Load Local Projects</button></div>
+  <div id="project-import-status" class="output" role="status" aria-live="polite">Session and source catalogs have not been checked.</div>
+ </div>
+ <div class="panel">
+  <h3>GitHub App Repository Import</h3>
+  <p class="small muted">แสดงเฉพาะ repositories ที่ GitHub App Installation อนุญาต ไม่ใช่ public-only browser search. เลือก Branch หรือ Tag แล้วตรวจสอบ Full Commit SHA ก่อนดูข้อมูลโปรเจกต์.</p>
+  <div class="grid">
+   <div class="field"><label for="project-import-github-repo">Installed Repository</label><select id="project-import-github-repo" disabled><option value="">Load repositories first</option></select></div>
+   <div class="field"><label for="project-import-ref-kind">Reference Type</label><select id="project-import-ref-kind" disabled><option value="branches">Branches</option><option value="tags">Tags</option></select></div>
+   <div class="field"><label for="project-import-ref">Branch / Tag</label><select id="project-import-ref" disabled><option value="">Select repository first</option></select></div>
+  </div>
+  <div class="actions"><button id="project-import-refs-load" type="button" disabled>Load Branches / Tags</button><button id="project-import-verify" type="button" disabled>Verify Commit SHA</button><button id="project-import-inspect" type="button" disabled>Inspect Project</button></div>
+  <div id="project-import-github-result" class="empty">GitHub App repository catalog: UNKNOWN.</div>
+ </div>
+ <div class="panel">
+  <h3>Local Folder Projects</h3>
+  <p>ลงทะเบียนโฟลเดอร์ผ่าน Local Agent CLI บนเครื่องก่อน จากนั้นกด Load Local Projects เพื่อดู Project ID และ Fingerprint. Browser จะไม่สามารถส่ง Path ของเครื่องเข้ามาได้.</p>
+  <div class="grid">
+   <div class="field"><label>Enroll an allowed root (run locally in PowerShell)</label><code>python -m tools.local_runner_agent --enroll-root "C:\\Development\\Projects"</code><div class="actions"><button type="button" data-copy-command='python -m tools.local_runner_agent --enroll-root "C:\\Development\\Projects"'>Copy enrollment command</button></div></div>
+   <div class="field"><label>Register a project beneath the approved root</label><code>python -m tools.local_runner_agent --register-project "&lt;ROOT_ID&gt;" "C:\\Development\\Projects\\sample-app"</code><div class="actions"><button type="button" data-copy-command='python -m tools.local_runner_agent --register-project "&lt;ROOT_ID&gt;" "C:\\Development\\Projects\\sample-app"'>Copy registration command</button></div></div>
+  </div>
+  <div id="project-import-local-roots" class="empty">Enrolled roots: UNKNOWN.</div>
+  <div id="project-import-local-projects" class="empty">Local projects: UNKNOWN.</div>
+ </div>
+ <div class="panel">
+  <h3>Source Selection Evidence</h3>
+  <div id="project-import-selected" class="empty">No source selected or verified.</div>
+  <p class="small muted">This Dashboard view does not yet create an immutable job snapshot or queue a generic build. Source-to-job binding will be added after snapshot materialization and framework detection are implemented.</p>
+ </div>
+</section>
 <section class="view" id="infrastructure">
 <div class="panel">
  <div class="row"><div><h2>DCP Infrastructure Manager</h2><p>จัดการ VM Inventory และ Lifecycle ผ่าน DCP Gateway โดยใช้ Fake Provider ในโหมดจำลองเท่านั้น</p></div><span class="pill" id="infra-mode">SIMULATION · UNKNOWN</span></div>
