@@ -64,6 +64,7 @@ class RunnerPipeline:
         job_id = job["id"]
         worker_id = job["worker"]
         allocated = False
+        retained_for_preview = False
         outcome = "failed"
         error_code = "RUNNER_EXECUTION_FAILED"
         result = {}
@@ -71,6 +72,7 @@ class RunnerPipeline:
         try:
             if job["repository"] not in self.trusted_repositories:
                 raise ExecutionError("repository is not in the Runner trusted-repository allowlist")
+            self.workspaces.cleanup_expired_preview_workspaces()
             self.workspaces.create(job_id, worker_id)
             allocated = True
             self.client.append_log(job_id, "Runner claimed job; workspace allocated", "system")
@@ -122,6 +124,13 @@ class RunnerPipeline:
                     self.client.append_log(
                         job_id, f"Artifact stored: {artifact_name} ({metadata['size']} bytes)", "system"
                     )
+                if outcome == "succeeded" and job["target"] in ("build_static_web", "build_vite"):
+                    self.workspaces.retain_for_preview(job_id, worker_id, ttl_seconds=3600)
+                    retained_for_preview = True
+                    result["workspace_retained_for_preview"] = True
+                    self.client.append_log(
+                        job_id, "Successful web build workspace retained for a bounded local preview window", "system"
+                    )
                 error_code = None
         except (ArtifactPackageError, CheckoutError, ExecutionError, WorkspaceError) as exc:
             self.client.append_log(
@@ -140,7 +149,7 @@ class RunnerPipeline:
             result = {"error": type(exc).__name__}
             error_code = "RUNNER_INTERNAL_ERROR"
         finally:
-            if allocated:
+            if allocated and not retained_for_preview:
                 try:
                     self.workspaces.cleanup(job_id, worker_id)
                     self.client.append_log(job_id, "Workspace cleaned", "system")
