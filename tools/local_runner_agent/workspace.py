@@ -142,6 +142,65 @@ class WorkspaceManager:
                     raise WorkspaceError("workspace byte quota exceeded")
         return total
 
+    def retain_for_preview(self, job_id: str, worker_id: str, *, ttl_seconds: int = 3600) -> dict:
+        """Retain a successful web-build workspace for a bounded local preview window."""
+        self._identity(job_id, worker_id)
+        if isinstance(ttl_seconds, bool) or not isinstance(ttl_seconds, int) or not 60 <= ttl_seconds <= 86400:
+            raise WorkspaceError("preview retention TTL must be between 60 and 86400 seconds")
+        target = self.get(job_id, worker_id)
+        marker = target / ".dcp-preview-retention.json"
+        if marker.is_symlink():
+            raise WorkspaceError("preview retention marker must not be a symlink")
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            fd = os.open(marker, flags, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump({
+                    "job_id": job_id, "worker_id": worker_id,
+                    "expires_at": time.time() + ttl_seconds, "version": 1,
+                }, handle, sort_keys=True)
+                handle.write("\\n")
+        except OSError:
+            raise WorkspaceError("preview retention marker could not be secured") from None
+        return {"job_id": job_id, "expires_in_seconds": ttl_seconds}
+
+    def cleanup_expired_preview_workspaces(self, now_epoch: float | None = None) -> int:
+        """Remove only workspaces with a valid, expired DCP preview-retention marker."""
+        now = time.time() if now_epoch is None else now_epoch
+        removed = 0
+        try:
+            entries = list(os.scandir(self.root))
+        except OSError:
+            raise WorkspaceError("workspace root cannot be scanned for expired previews") from None
+        for entry in entries:
+            if not entry.is_dir(follow_symlinks=False):
+                continue
+            target = Path(entry.path)
+            retention = target / ".dcp-preview-retention.json"
+            if retention.is_symlink() or not retention.is_file():
+                continue
+            try:
+                value = json.loads(retention.read_text(encoding="utf-8"))
+                job_id, worker_id = value.get("job_id"), value.get("worker_id")
+                expires_at = value.get("expires_at")
+                if (value != {
+                    "job_id": job_id, "worker_id": worker_id,
+                    "expires_at": expires_at, "version": 1,
+                } or not isinstance(expires_at, (int, float)) or isinstance(expires_at, bool)
+                        or expires_at > now):
+                    continue
+                owned = self.get(job_id, worker_id)
+                if owned != target:
+                    continue
+                self.cleanup(job_id, worker_id)
+                removed += 1
+            except (OSError, ValueError, TypeError, WorkspaceError, json.JSONDecodeError):
+                # Invalid or concurrently changing markers are retained for manual inspection.
+                continue
+        return removed
+
     def cleanup(self, job_id: str, worker_id: str) -> None:
         """Remove only the exact workspace whose marker proves matching ownership."""
         target = self.get(job_id, worker_id)
