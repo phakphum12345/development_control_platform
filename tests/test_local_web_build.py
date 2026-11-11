@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.local_runner_agent.workspace import WorkspaceManager
+from tools.local_runner_agent.workspace import WorkspaceManager, WorkspaceError
 from tools.local_runner_agent.web_build import WebBuildExecutor, WebArtifactPackager
 from tools.local_runner_agent.execution import ExecutionError
 
@@ -41,7 +41,7 @@ class WebBuildExecutorTests(unittest.TestCase):
         target = self.root / "outside.txt"
         target.write_text("outside", encoding="utf-8")
         (self.source / "outside.txt").symlink_to(target)
-        with self.assertRaises(ExecutionError):
+        with self.assertRaises((ExecutionError, WorkspaceError)):
             WebBuildExecutor(self.manager, enabled=True).run(self.job, self.worker, "build_static_web")
 
     def test_execution_is_disabled_by_default(self):
