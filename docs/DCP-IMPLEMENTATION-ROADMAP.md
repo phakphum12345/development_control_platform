@@ -60,7 +60,7 @@ Each phase is a separate feature branch and Draft PR, with narrowly scoped chang
 - Vite config/application build code is still executable project code and requires the Runner's explicit execution opt-in and trusted-repository allowlist.
 - Build output is packaged as a bounded ZIP artifact and uploaded through the existing authenticated artifact channel.
 - Framework detection, job target validation, runner scheduling, and local Runner dispatch are connected.
-- Next: dashboard build-job controls, actual Windows-host acceptance, SHA-256 provenance verification, runtime manager and real preview.
+- Follow-up acceptance: verify the complete host build workflow and SHA-256 provenance on supported local Windows hosts. The initial static Runtime Manager and authenticated static Preview Proxy slices have since been implemented; broader framework runtimes remain out of scope.
 
 
 ## Runtime Manager — initial local static runtime slice
@@ -68,4 +68,25 @@ Each phase is a separate feature branch and Draft PR, with narrowly scoped chang
 - Starts the Python standard-library HTTP server with an argv array; no shell or project server code is executed.
 - Allocates an ephemeral loopback port, verifies HTTP health, records bounded logs, supervises process-tree shutdown and expires runtime sessions.
 - Runtime session capabilities are random and required for local status/log/stop operations.
-- This is a local supervisor primitive, not yet a Gateway-authenticated Preview Proxy or Dashboard workflow.
+- An authenticated static Preview Proxy service is now present for owner-bound preview sessions. The PR #71 Playwright implementation still starts RuntimeManager directly, so Playwright-through-Preview-Proxy and the complete Dashboard preview workflow remain separate acceptance work.
+
+
+## 2026-11-12 implementation checkpoint — PR #71
+
+This checkpoint is tied to the DCP repository branch `feature/real-project-playwright-testing`, not to the user's local machine or a deployed service.
+
+| Workstream | Current evidence-backed state | Remaining acceptance |
+|---|---|---|
+| Import foundation | Local Folder enrollment, owner-only catalog, verified snapshot materialization and GitHub commit inspection exist in prior slices. | Persisted job binding and end-to-end source-to-runner provenance still require focused acceptance. |
+| Project intelligence | Read-only manifest-backed framework detection exists. | Toolchain readiness and broader adapter coverage remain separate. |
+| Universal Web Build | Static HTML/CSS/JS and React/Vite + Vue/Vite targets exist; dependency install is not automatic. | Broader framework support and host-specific acceptance. |
+| Runtime | Loopback static Runtime Manager exists with bounded health/log/session/process lifecycle. | General application servers and additional runtime adapters. |
+| Preview | Authenticated owner-bound static Preview Proxy primitives exist. | Full Dashboard path and browser automation through the proxy. |
+| Playwright | Opt-in static-project smoke suite, three viewport screenshots, JSON report and bounded ZIP evidence exist. | Current CI sandbox launch blocker, actionable host diagnostics, and Preview Proxy E2E. |
+| Quality/security | Existing baseline controls remain in place. | Dedicated scanners, full accessibility, visual regression and cross-browser suites. |
+
+### PR #71 release gate
+
+The latest observed CI result on `52a99f2403c7ffc5c8d82fe44cbb477f8189b325` installed Python Playwright and Chromium successfully, but the real Chromium smoke test failed at sandboxed browser launch. Later Dashboard browser smoke and registry validation steps were skipped. Windows dynamic-port and Windows Auth Proxy/Gateway checks passed; self-hosted Windows Runner acceptance was skipped. A subsequent code change adds bounded launch-error diagnostics; its exact-commit CI result is still required.
+
+Do not merge PR #71 until the real Chromium sandbox test, Dashboard browser smoke, registry validation, and all required checks pass on the same final head SHA. Do not disable Chromium sandboxing as a CI workaround.
