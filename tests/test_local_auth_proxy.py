@@ -419,6 +419,20 @@ class LocalRunnerCredentialFileTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             self.assertEqual(auth.load_runner_tokens(Path(temp) / "missing.json"), {})
 
+    def test_gateway_environment_defaults_shared_workspace_root_to_local_data_dir(self):
+        with tempfile.TemporaryDirectory() as temp:
+            credentials_file = Path(temp) / "owner-auth.json"
+            with patch.object(auth, "CREDENTIALS", credentials_file):
+                env = auth.gateway_child_environment({"PATH": "safe-path"})
+            self.assertEqual(env["DCP_RUNNER_WORKSPACE_ROOT"], str(Path(temp) / "workspaces"))
+
+    def test_gateway_environment_preserves_explicit_shared_workspace_root(self):
+        with tempfile.TemporaryDirectory() as temp:
+            explicit = str(Path(temp) / "runner-workspaces")
+            with patch.object(auth, "CREDENTIALS", Path(temp) / "owner-auth.json"):
+                env = auth.gateway_child_environment({"DCP_RUNNER_WORKSPACE_ROOT": explicit})
+            self.assertEqual(env["DCP_RUNNER_WORKSPACE_ROOT"], explicit)
+
     def test_gateway_environment_uses_protected_file_runner_map(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "runner-tokens.json"
