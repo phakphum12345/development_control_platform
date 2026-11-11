@@ -28,7 +28,7 @@ from .scheduler import RunnerScheduler, RunnerNotEligible, RunnerNotRegistered
 from .infrastructure import (FakeInfrastructureProvider, InfrastructureManager,
                              InfrastructureStore, ProviderUnavailable, ResourceNotFound)
 from tools.local_runner_agent.local_project import (
-    LocalProjectError, LocalProjectRegistry, default_registry_path,
+    LocalProjectError, LocalProjectRegistry,
 )
 
 
