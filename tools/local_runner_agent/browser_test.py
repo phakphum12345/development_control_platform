@@ -134,10 +134,17 @@ class StaticWebPlaywrightTester:
                 )
                 if not callable(getattr(context, "route_web_socket", None)):
                     raise BrowserTestError("Playwright lacks WebSocket routing; upgrade the local Playwright package explicitly")
-                context.route_web_socket(
-                    "**/*",
-                    lambda websocket: websocket.close(code=1008, reason="DCP local test network policy"),
-                )
+                blocked_external = []
+
+                def block_websocket(websocket):
+                    target = urlsplit(websocket.url)
+                    blocked_external.append({
+                        "host": target.hostname or "unknown",
+                        "resource_type": "websocket",
+                    })
+                    websocket.close(code=1008, reason="DCP local test network policy")
+
+                context.route_web_socket("**/*", block_websocket)
                 context.add_init_script("""(() => {
                   const deny = () => { throw new Error("WebRTC is disabled by DCP local test policy"); };
                   for (const name of ["RTCPeerConnection", "webkitRTCPeerConnection"]) {
@@ -157,7 +164,6 @@ class StaticWebPlaywrightTester:
                 console_errors = []
                 page_errors = []
                 failed_requests = []
-                blocked_external = []
 
                 page.on("console", lambda message: console_errors.append("console_error")
                         if message.type == "error" else None)
