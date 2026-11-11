@@ -27,6 +27,12 @@ _MAX_FILES = 100_000
 _MAX_BYTES = 1024 * 1024 * 1024
 
 
+def default_registry_path() -> Path:
+    """Return the same per-user DCP data location used by the Windows/local stack."""
+    base = Path(os.environ.get("LOCALAPPDATA") or Path.home())
+    return base / "DCP" / "local-projects.json"
+
+
 def _reject_link_components(path: Path, label: str) -> None:
     current = Path(path.anchor)
     for part in path.parts[1:]:
