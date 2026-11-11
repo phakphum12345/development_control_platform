@@ -261,7 +261,12 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
             self.send_header("X-Frame-Options", "SAMEORIGIN" if allow_same_origin_frame else "DENY")
             self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("Content-Security-Policy",
-                             "frame-ancestors 'self'; base-uri 'self'" if allow_same_origin_frame
+                             ("sandbox allow-scripts; default-src * data: blob:; "
+                              "script-src * 'unsafe-inline' 'unsafe-eval'; "
+                              "style-src * 'unsafe-inline'; img-src * data: blob:; "
+                              "connect-src *; font-src * data:; media-src *; "
+                              "form-action 'none'; base-uri 'none'; frame-ancestors 'self'")
+                             if allow_same_origin_frame
                              else "frame-ancestors 'none'; base-uri 'self'")
             if cookie:
                 self.send_header("Set-Cookie", cookie)
