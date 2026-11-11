@@ -749,7 +749,6 @@ function initCodeNavigator(){$("code-nav-search").addEventListener("input",codeN
 initCodeNavigator();
 initPWA();
 initPasswordAuth();
-initProjectImport();
 
 let pwaInstallPrompt=null;
 function initPWA(){
@@ -996,6 +995,8 @@ function initProjectImport(){
  $("project-import-local-select").addEventListener("click",projectImportSelectLocal);
  projectImportCheckSession();
 }
+
+initProjectImport();
 
 /* Cloud Runner Control — fail closed; all secrets remain server-side. */
 const runnerUI={os:"linux",session:false,csrf:null,status:null,ready:false,repositories:[],verifiedCommit:null,project:null,projectRequestId:0};
