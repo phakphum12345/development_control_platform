@@ -416,6 +416,9 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                         "csrfToken": verifier.csrf_token(identity),
                         "user": {"displayName": identity["subject"], "role": identity["role"]},
                     })
+                if path == "/api/github/repositories" or path.startswith("/api/github/repositories/"):
+                    if identity.get("role") != "owner":
+                        return self.send_json(403, {"error": "owner role required"})
                 if path == "/api/github/repositories":
                     try:
                         repositories = service.list_repositories()
