@@ -59,6 +59,16 @@ class AuthenticatedPreviewManagerTests(unittest.TestCase):
         self.assertNotEqual(first["runtime_id"], second["runtime_id"])
         self.assertEqual(self.runtime.started, 2)
 
+    def test_lists_only_active_previews_for_the_requested_job(self):
+        row = self.previews.start(self.job_id, "local-worker")
+        other_job = str(uuid.uuid4())
+        self.previews.start(other_job, "local-worker")
+        listed = self.previews.list_for_job(self.job_id)
+        self.assertEqual(len(listed), 1)
+        self.assertEqual(listed[0]["runtime_id"], row["runtime_id"])
+        self.assertNotIn("session_token", listed[0])
+        self.assertNotIn("port", listed[0])
+
     def test_status_and_stop_keep_capability_server_side(self):
         row = self.previews.start(self.job_id, "local-worker")
         status = self.previews.status(row["runtime_id"], self.job_id)
