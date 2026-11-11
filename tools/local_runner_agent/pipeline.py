@@ -91,8 +91,9 @@ class RunnerPipeline:
                 last_heartbeat = now
                 return current.get("state") == "cancel_requested"
 
-            self.executor.log = lambda stream, message: self.client.append_log(job_id, message, stream)
-            build = self.executor.run(
+            selected_executor = self.web_executor if job["target"] in ("build_static_web", "build_vite") else self.executor
+            selected_executor.log = lambda stream, message: self.client.append_log(job_id, message, stream)
+            build = selected_executor.run(
                 job_id, worker_id, job["target"],
                 cancel_requested=cancellation_requested,
             )
