@@ -35,6 +35,8 @@ class RunnerPipeline:
         capabilities: set[str] | frozenset[str] | None = None,
         web_executor: WebBuildExecutor | None = None,
         web_artifact_packager: WebArtifactPackager | None = None,
+        local_project_checkout=None,
+        trusted_local_projects: set[str] | frozenset[str] = frozenset(),
     ):
         if isinstance(heartbeat_interval_seconds, bool) or not isinstance(heartbeat_interval_seconds, int) or not 5 <= heartbeat_interval_seconds <= 60:
             raise ValueError("heartbeat interval must be between 5 and 60 seconds")
@@ -46,6 +48,8 @@ class RunnerPipeline:
         self.web_artifact_packager = web_artifact_packager or WebArtifactPackager(workspaces)
         self.heartbeat_interval_seconds = heartbeat_interval_seconds
         self.trusted_repositories = frozenset(trusted_repositories)
+        self.local_project_checkout = local_project_checkout
+        self.trusted_local_projects = frozenset(trusted_local_projects)
         self.artifact_packager = artifact_packager or FlutterArtifactPackager(workspaces)
         detected_os = "windows" if sys.platform == "win32" else "macos" if sys.platform == "darwin" else "linux"
         self.worker_os = worker_os or detected_os
@@ -70,18 +74,46 @@ class RunnerPipeline:
         result = {}
         last_heartbeat = 0.0
         try:
-            if job["repository"] not in self.trusted_repositories:
-                raise ExecutionError("repository is not in the Runner trusted-repository allowlist")
+            job_payload = job.get("payload") if isinstance(job.get("payload"), dict) else {}
+            # The Gateway's public claim response deliberately omits the private payload.
+            # Source identity and immutable revision are exposed as sanitized top-level fields.
+            source_type = job.get("source_type") or job_payload.get("source_type", "github")
+            if source_type == "github":
+                if job["repository"] not in self.trusted_repositories:
+                    raise ExecutionError("repository is not in the Runner trusted-repository allowlist")
+            elif source_type == "local_folder":
+                project_id = job.get("source_id") or job_payload.get("source_id")
+                snapshot_sha256 = job.get("source_sha256") or job_payload.get("source_sha256")
+                if project_id not in self.trusted_local_projects:
+                    raise ExecutionError("local project is not in the Runner trusted-project allowlist")
+                if self.local_project_checkout is None:
+                    raise CheckoutError("Local Project snapshot checkout is not configured")
+                if not isinstance(snapshot_sha256, str):
+                    raise CheckoutError("Local Project snapshot revision is unavailable")
+            else:
+                raise ExecutionError("job source type is not supported by this Runner")
             self.workspaces.cleanup_expired_preview_workspaces()
             self.workspaces.create(job_id, worker_id)
             allocated = True
             self.client.append_log(job_id, "Runner claimed job; workspace allocated", "system")
-            source = self.checkout_provider.checkout(
-                job_id, worker_id, job["repository"], job["commit_sha"]
-            )
-            self.client.append_log(
-                job_id, f"Checked out immutable commit {job['commit_sha']}", "system"
-            )
+            if source_type == "local_folder":
+                source, snapshot = self.local_project_checkout.checkout(
+                    job_id, worker_id, project_id, snapshot_sha256
+                )
+                result["source_type"] = "local_folder"
+                result["source_sha256"] = snapshot["snapshot_sha256"]
+                self.client.append_log(
+                    job_id, "Materialized owner-approved Local Folder snapshot SHA-256 "
+                    + snapshot["snapshot_sha256"], "system"
+                )
+            else:
+                source = self.checkout_provider.checkout(
+                    job_id, worker_id, job["repository"], job["commit_sha"]
+                )
+                result["source_type"] = "github"
+                self.client.append_log(
+                    job_id, f"Checked out immutable commit {job['commit_sha']}", "system"
+                )
 
             def cancellation_requested():
                 nonlocal last_heartbeat
@@ -101,13 +133,13 @@ class RunnerPipeline:
             )
             outcome = build.outcome
             error_code = build.error_code
-            result = {
+            result.update({
                 "command": list(build.command),
                 "return_code": build.return_code,
                 "duration_seconds": build.duration_seconds,
                 "output_bytes": build.output_bytes,
                 "source_directory": str(source.relative_to(self.workspaces.get(job_id, worker_id))),
-            }
+            })
             self.client.append_log(
                 job_id,
                 f"Build execution {outcome}; exit={build.return_code}; "
@@ -137,6 +169,9 @@ class RunnerPipeline:
                 job_id, f"Runner rejected job safely: {type(exc).__name__}", "stderr"
             )
             result = {"error": type(exc).__name__}
+            if isinstance(exc, ExecutionError):
+                # ExecutionError messages are fixed policy diagnostics, not subprocess output.
+                result["reason"] = str(exc)
             error_code = "RUNNER_POLICY_OR_BUILD_ERROR"
         except Exception as exc:
             # Do not echo exception text: transport and provider errors can contain secrets.

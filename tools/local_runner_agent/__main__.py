@@ -5,11 +5,12 @@ import argparse
 import json
 import os
 import platform
+import re
 import sys
 from pathlib import Path
 
 from .client import GatewayClient, RunnerAgentConfig, RunnerGatewayError
-from .checkout import GitHubCommitCheckout
+from .checkout import GitHubCommitCheckout, LocalProjectCheckout
 from .execution import FlutterBuildExecutor
 from .web_build import WebBuildExecutor
 from .pipeline import RunnerPipeline
@@ -89,13 +90,24 @@ def main(argv=None) -> int:
 
         if os.environ.get("DCP_RUNNER_EXECUTION_ENABLED") != "1":
             raise ValueError("DCP_RUNNER_EXECUTION_ENABLED=1 is required for --once")
-        root = os.environ.get("DCP_RUNNER_WORKSPACE_ROOT", "")
-        if not root or not Path(root).is_absolute():
+        root = os.environ.get("DCP_RUNNER_WORKSPACE_ROOT", "").strip()
+        if not root:
+            root = str(default_registry_path().parent / "workspaces")
+            os.environ["DCP_RUNNER_WORKSPACE_ROOT"] = root
+        if not Path(root).is_absolute():
             raise ValueError("DCP_RUNNER_WORKSPACE_ROOT must be an absolute path")
         raw_repositories = json.loads(os.environ.get("DCP_RUNNER_TRUSTED_REPOSITORIES", "[]"))
-        if (not isinstance(raw_repositories, list) or not raw_repositories
-                or any(not isinstance(item, str) for item in raw_repositories)):
-            raise ValueError("DCP_RUNNER_TRUSTED_REPOSITORIES must be a non-empty JSON string array")
+        raw_local_projects = json.loads(os.environ.get("DCP_RUNNER_TRUSTED_LOCAL_PROJECTS", "[]"))
+        if (not isinstance(raw_repositories, list)
+                or any(not isinstance(item, str) or not item for item in raw_repositories)):
+            raise ValueError("DCP_RUNNER_TRUSTED_REPOSITORIES must be a JSON string array")
+        if (not isinstance(raw_local_projects, list)
+                or any(not isinstance(item, str) or not re.fullmatch(
+                    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", item
+                ) for item in raw_local_projects)):
+            raise ValueError("DCP_RUNNER_TRUSTED_LOCAL_PROJECTS must be a JSON array of canonical project UUIDs")
+        if not raw_repositories and not raw_local_projects:
+            raise ValueError("configure at least one trusted GitHub repository or Local Project ID")
         manager = WorkspaceManager(
             root,
             max_active=_positive_int("DCP_RUNNER_MAX_ACTIVE_WORKSPACES", 8),
@@ -110,6 +122,15 @@ def main(argv=None) -> int:
                 "DCP_RUNNER_MAX_EXPANDED_BYTES", 1024 * 1024 * 1024
             ),
         )
+        local_project_checkout = None
+        if raw_local_projects:
+            local_registry = LocalProjectRegistry(
+                os.environ.get("DCP_LOCAL_PROJECT_REGISTRY", str(default_registry_path()))
+            )
+            local_project_checkout = LocalProjectCheckout(
+                manager, local_registry,
+                max_bytes=_positive_int("DCP_RUNNER_MAX_LOCAL_PROJECT_BYTES", 2 * 1024 * 1024 * 1024),
+            )
         executor = FlutterBuildExecutor(
             manager, enabled=True,
             timeout_seconds=_positive_int("DCP_RUNNER_BUILD_TIMEOUT_SECONDS", 1800),
@@ -140,6 +161,8 @@ def main(argv=None) -> int:
                 timeout_seconds=_positive_int("DCP_RUNNER_BUILD_TIMEOUT_SECONDS", 1800),
                 max_output_bytes=_positive_int("DCP_RUNNER_MAX_OUTPUT_BYTES", 5 * 1024 * 1024),
             ),
+            local_project_checkout=local_project_checkout,
+            trusted_local_projects=frozenset(raw_local_projects),
         )
         result = pipeline.run_once()
         if result is None:

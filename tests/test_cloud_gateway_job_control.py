@@ -1,4 +1,5 @@
 """Tests for the local-first DCP job queue; no repository code is executed."""
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -43,6 +44,41 @@ class JobStoreTests(unittest.TestCase):
                 )
                 self.assertTrue(created)
                 self.assertEqual(row["target"], target)
+
+    def test_local_folder_job_uses_immutable_snapshot_identity(self):
+        project_id = "12345678-1234-4234-8234-123456789abc"
+        payload = {
+            "source_type": "local_folder",
+            "project_id": project_id,
+            "snapshot_sha256": "b" * 64,
+            "target": "build_static_web",
+        }
+        row, created = self.store.create(payload, "local-folder-job-01")
+        self.assertTrue(created)
+        self.assertEqual(row["payload"]["source_type"], "local_folder")
+        self.assertEqual(row["payload"]["source_id"], project_id)
+        self.assertEqual(row["payload"]["source_sha256"], "b" * 64)
+        self.assertEqual(row["repository"], "local-folder/" + project_id)
+        self.assertRegex(row["commit_sha"], r"^[0-9a-f]{40}$")
+        again, created_again = self.store.create(payload, "local-folder-job-01")
+        self.assertFalse(created_again)
+        self.assertEqual(again["id"], row["id"])
+
+    def test_local_folder_job_rejects_invalid_snapshot_and_non_web_targets(self):
+        base = {
+            "source_type": "local_folder",
+            "project_id": "12345678-1234-4234-8234-123456789abc",
+            "snapshot_sha256": "c" * 64,
+            "target": "build_static_web",
+        }
+        for payload in (
+            {**base, "snapshot_sha256": "bad"},
+            {**base, "project_id": "../outside"},
+            {**base, "target": "build_android"},
+            {**base, "path": "C:/Users/owner"},
+        ):
+            with self.subTest(payload=payload), self.assertRaises(ValueError):
+                self.store.create(payload, "local-folder-invalid-" + str(len(json.dumps(payload))))
 
     def test_claim_heartbeat_logs_and_finish(self):
         job, _ = self.create()

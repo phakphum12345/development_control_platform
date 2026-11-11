@@ -24,7 +24,37 @@ class LocalProjectError(RuntimeError):
 _IGNORED_DIRS = frozenset({
     ".git", ".hg", ".svn", "node_modules", ".venv", "venv",
     "__pycache__", ".dart_tool", "build", "dist", ".next", "coverage",
+    ".ssh", ".aws", ".azure", ".gnupg", ".kube", ".terraform",
+    ".docker", ".npm", ".config", ".secrets", "secrets", "credentials",
 })
+_IGNORED_EXAMPLE_ENV = frozenset({".env.example", ".env.sample", ".env.template"})
+_IGNORED_EXACT_FILES = frozenset({
+    ".env", ".envrc", ".npmrc", ".pypirc", ".netrc", ".git-credentials",
+    ".dockerconfigjson", "credentials.json", "secrets.json", "secrets.yaml",
+    "secrets.yml", "secrets.toml", "vault-password.txt", "id_rsa",
+    "id_ed25519", "id_ecdsa", "id_dsa", "authorized_keys", "known_hosts",
+})
+_IGNORED_SUFFIXES = (
+    ".pem", ".key", ".p12", ".pfx", ".keystore", ".jks", ".tfstate",
+    ".tfvars", ".sqlite", ".sqlite3", ".db", ".dump", ".log", ".bak",
+    ".backup", ".secret", ".secrets",
+)
+
+
+def _ignored_project_file(relative_path: str) -> bool:
+    name = PurePosixPath(relative_path).name.lower()
+    if name in _IGNORED_EXAMPLE_ENV:
+        return False
+    if name in _IGNORED_EXACT_FILES:
+        return True
+    if name.startswith(".env.") or name.endswith(".env"):
+        return True
+    if name.endswith(_IGNORED_SUFFIXES):
+        return True
+    if ((name.startswith("service-account") or name.startswith("firebase-adminsdk"))
+            and name.endswith(".json")):
+        return True
+    return False
 _MAX_FILES = 100_000
 _MAX_BYTES = 1024 * 1024 * 1024
 
@@ -164,7 +194,7 @@ class LocalProjectRegistry:
             except OSError:
                 raise LocalProjectError("project directory cannot be inspected") from None
             for entry in children:
-                if entry.name in _IGNORED_DIRS and entry.is_dir(follow_symlinks=False):
+                if entry.name.lower() in _IGNORED_DIRS and entry.is_dir(follow_symlinks=False):
                     continue
                 path = Path(entry.path)
                 try:
@@ -177,6 +207,8 @@ class LocalProjectRegistry:
                 if stat.S_ISDIR(info.st_mode):
                     stack.append(path)
                 elif stat.S_ISREG(info.st_mode):
+                    if _ignored_project_file(relative):
+                        continue
                     entries.append((relative, path))
                 else:
                     raise LocalProjectError("project contains a special filesystem entry")
@@ -314,7 +346,7 @@ class LocalProjectRegistry:
             except OSError:
                 raise LocalProjectError("project directory cannot be inspected") from None
             for entry in children:
-                if entry.name in _IGNORED_DIRS and entry.is_dir(follow_symlinks=False):
+                if entry.name.lower() in _IGNORED_DIRS and entry.is_dir(follow_symlinks=False):
                     continue
                 path = Path(entry.path)
                 try:
@@ -327,6 +359,8 @@ class LocalProjectRegistry:
                     stack.append(path)
                 elif stat.S_ISREG(info.st_mode):
                     relative = path.relative_to(project).as_posix()
+                    if _ignored_project_file(relative):
+                        continue
                     if "\\" in relative:
                         raise LocalProjectError("project path contains a platform-ambiguous separator")
                     posix = PurePosixPath(relative)

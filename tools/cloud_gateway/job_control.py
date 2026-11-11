@@ -1,4 +1,5 @@
 """Local-first durable job queue. This module never executes repository code."""
+import hashlib
 import json
 import re
 import sqlite3
@@ -75,17 +76,46 @@ class JobStore:
             raise ValueError("Invalid Idempotency-Key")
         if not isinstance(payload, dict):
             raise ValueError("Job payload must be an object")
-        if not set(payload).issubset({"repository", "commit_sha", "target"}):
-            raise ValueError("Unsupported job payload fields")
-        repository, sha = payload.get("repository"), payload.get("commit_sha")
+        source_type = payload.get("source_type", "github")
         target = payload.get("target", "test")
-        if not isinstance(repository, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}", repository):
-            raise ValueError("Invalid repository")
-        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
-            raise ValueError("Invalid commit SHA")
-        if target not in ("test", "build", "package", "build_android", "build_web", "build_windows", "build_linux", "build_macos", "build_ios", "build_static_web", "build_vite"):
+        if target not in ("test", "build", "package", "build_android", "build_web", "build_windows",
+                          "build_linux", "build_macos", "build_ios", "build_static_web", "build_vite"):
             raise ValueError("Unsupported target")
-        normalized = {"repository": repository, "commit_sha": sha, "target": target}
+        if source_type == "github":
+            if not set(payload).issubset({"source_type", "repository", "commit_sha", "target"}):
+                raise ValueError("Unsupported GitHub job payload fields")
+            repository, sha = payload.get("repository"), payload.get("commit_sha")
+            if not isinstance(repository, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}", repository):
+                raise ValueError("Invalid repository")
+            if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+                raise ValueError("Invalid commit SHA")
+            normalized = {
+                "source_type": "github", "source_id": repository, "source_sha256": None,
+                "repository": repository, "commit_sha": sha, "target": target,
+            }
+        elif source_type == "local_folder":
+            if set(payload) != {"source_type", "project_id", "snapshot_sha256", "target"}:
+                raise ValueError("Local Folder jobs require only project_id, snapshot_sha256, and target")
+            project_id, snapshot_sha = payload.get("project_id"), payload.get("snapshot_sha256")
+            try:
+                parsed_project_id = uuid.UUID(project_id)
+            except (ValueError, TypeError, AttributeError):
+                raise ValueError("Invalid local project ID") from None
+            if str(parsed_project_id) != project_id:
+                raise ValueError("Local project ID must use canonical lowercase UUID form")
+            if not isinstance(snapshot_sha, str) or not re.fullmatch(r"[0-9a-f]{64}", snapshot_sha):
+                raise ValueError("Invalid local project snapshot SHA-256")
+            if target != "build_static_web":
+                raise ValueError("Local Folder jobs currently support only static web builds; dependency-managed frameworks are deferred")
+            repository = "local-folder/" + project_id
+            sha = hashlib.sha1(("dcp-local-folder:" + project_id + ":" + snapshot_sha).encode("utf-8")).hexdigest()
+            normalized = {
+                "source_type": "local_folder", "source_id": project_id,
+                "source_sha256": snapshot_sha, "repository": repository,
+                "commit_sha": sha, "target": target,
+            }
+        else:
+            raise ValueError("Unsupported job source type")
         fingerprint = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
         job_id, timestamp = str(uuid.uuid4()), utcnow().isoformat()
         with self.lock, self.db() as db:
@@ -101,7 +131,7 @@ class JobStore:
                 (job_id, idempotency_key, fingerprint, repository, sha, target,
                  json.dumps(normalized), timestamp, timestamp),
             )
-            self._event(db, job_id, "queued")
+            self._event(db, job_id, "queued", {"source_type": normalized["source_type"]})
             db.execute("COMMIT")
         return self.get(job_id), True
 

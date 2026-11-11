@@ -15,6 +15,8 @@ from tools.local_runner_agent.client import GatewayClient, RunnerAgentConfig
 from tools.local_runner_agent.execution import FlutterBuildExecutor
 from tools.local_runner_agent.pipeline import RunnerPipeline
 from tools.local_runner_agent.workspace import WorkspaceManager
+from tools.local_runner_agent.local_project import LocalProjectRegistry
+from tools.local_runner_agent.checkout import LocalProjectCheckout
 
 
 TOKEN = "runner-pipeline-e2e-token-which-is-long-enough"
@@ -105,7 +107,7 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
             result = pipeline.run_once()
         finally:
             os.environ["PATH"] = old_path
-        self.assertEqual(result["outcome"], "succeeded")
+        self.assertEqual(result["outcome"], "succeeded", result)
         self.assertEqual(result["job"]["state"], "succeeded")
         self.assertTrue(any("fixture-flutter-build-ok" in row["message"] for row in self.jobs.logs(job["id"])))
         self.assertFalse((self.root / "workspaces" / job["id"]).exists())
@@ -172,6 +174,86 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
         self.assertEqual(metadata["sha256"], artifact["sha256"])
         self.assertFalse((self.root / "workspaces" / job["id"]).exists())
 
+
+    def test_local_folder_static_build_uses_immutable_snapshot_and_trusted_project_allowlist(self):
+        approved = self.root / "approved"
+        project = approved / "static-local-app"
+        project.mkdir(parents=True)
+        (project / "index.html").write_text("<h1>Local snapshot</h1>", encoding="utf-8")
+        (project / "app.js").write_text("window.localSnapshot=true;", encoding="utf-8")
+        local_registry = LocalProjectRegistry(self.root / "local-projects.json")
+        root = local_registry.enroll_root(approved)
+        registered = local_registry.register_project(root["root_id"], project)
+        job, created = self.jobs.create({
+            "source_type": "local_folder",
+            "project_id": registered["project_id"],
+            "snapshot_sha256": registered["snapshot_sha256"],
+            "target": "build_static_web",
+        }, "runner-local-folder-static-001")
+        self.assertTrue(created)
+        from tools.local_runner_agent.web_build import WebBuildExecutor
+        class DiagnosticWebBuildExecutor(WebBuildExecutor):
+            def run(self, *args, **kwargs):
+                try:
+                    return super().run(*args, **kwargs)
+                except Exception as exc:
+                    self.last_error = f"{type(exc).__name__}: {exc}"
+                    raise
+        web_executor = DiagnosticWebBuildExecutor(self.manager, enabled=True)
+        host_os = "windows" if os.name == "nt" else "linux"
+        pipeline = RunnerPipeline(
+            self.client, self.manager, _FixtureCheckout(self.manager),
+            FlutterBuildExecutor(self.manager, enabled=False),
+            trusted_repositories=set(),
+            trusted_local_projects={registered["project_id"]},
+            local_project_checkout=LocalProjectCheckout(self.manager, local_registry),
+            worker_os=host_os,
+            capabilities={"web", host_os},
+            web_executor=web_executor,
+        )
+        result = pipeline.run_once()
+        self.assertEqual(
+            result["outcome"], "succeeded",
+            {"pipeline": result, "web_build_error": getattr(web_executor, "last_error", None)},
+        )
+        self.assertEqual(result["job"]["state"], "succeeded")
+        self.assertEqual(result["result"]["source_type"], "local_folder")
+        self.assertEqual(result["result"]["source_sha256"], registered["snapshot_sha256"])
+        workspace = self.manager.get(job["id"], "runner-e2e")
+        self.assertTrue((workspace / "source-snapshot" / "index.html").is_file())
+        self.assertTrue((workspace / "source" / "dist" / "index.html").is_file())
+        self.assertTrue((workspace / ".dcp-preview-retention.json").is_file())
+
+    def test_local_folder_job_fails_closed_without_explicit_project_trust(self):
+        approved = self.root / "approved-untrusted"
+        project = approved / "untrusted-app"
+        project.mkdir(parents=True)
+        (project / "index.html").write_text("<h1>Do not execute by default</h1>", encoding="utf-8")
+        local_registry = LocalProjectRegistry(self.root / "untrusted-projects.json")
+        root = local_registry.enroll_root(approved)
+        registered = local_registry.register_project(root["root_id"], project)
+        job, _ = self.jobs.create({
+            "source_type": "local_folder",
+            "project_id": registered["project_id"],
+            "snapshot_sha256": registered["snapshot_sha256"],
+            "target": "build_static_web",
+        }, "runner-local-folder-untrusted-001")
+        from tools.local_runner_agent.web_build import WebBuildExecutor
+        host_os = "windows" if os.name == "nt" else "linux"
+        pipeline = RunnerPipeline(
+            self.client, self.manager, _FixtureCheckout(self.manager),
+            FlutterBuildExecutor(self.manager, enabled=False),
+            trusted_repositories=set(),
+            trusted_local_projects=set(),
+            local_project_checkout=LocalProjectCheckout(self.manager, local_registry),
+            worker_os=host_os,
+            capabilities={"web", host_os},
+            web_executor=WebBuildExecutor(self.manager, enabled=True),
+        )
+        result = pipeline.run_once()
+        self.assertEqual(result["outcome"], "failed")
+        self.assertEqual(result["job"]["state"], "failed")
+        self.assertFalse((self.root / "workspaces" / job["id"]).exists())
 
     def test_static_web_job_runs_through_scheduler_and_uploads_artifact(self):
         job, created = self.jobs.create({

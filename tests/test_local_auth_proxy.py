@@ -192,6 +192,7 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
         data=None,
         csrf=None,
         origin=True,
+        idempotency_key=None,
     ):
         headers = {
             "Accept": "application/json",
@@ -205,6 +206,8 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
 
         if csrf:
             headers["X-CSRF-Token"] = csrf
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
 
         req = Request(
             self.base + path,
@@ -372,6 +375,39 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
             "/api/auth/logout", "POST", csrf=logout_csrf
         )
         self.assertEqual(logged_out, 200)
+
+    def test_job_creation_proxy_forwards_idempotency_key_and_owner_csrf(self):
+        _, _, preauth_body = self.request("/api/auth/session")
+        csrf = json.loads(preauth_body)["csrfToken"]
+        status, _, _ = self.request(
+            "/api/auth/login", "POST",
+            {"username": "owner-test", "password": "correct horse battery staple 2026!"},
+            csrf,
+        )
+        self.assertEqual(status, 200)
+        _, _, session_body = self.request("/api/auth/session")
+        csrf = json.loads(session_body)["csrfToken"]
+        payload = {
+            "source_type": "local_folder",
+            "project_id": "12345678-1234-4234-8234-123456789abc",
+            "snapshot_sha256": "a" * 64,
+            "target": "build_static_web",
+        }
+        with patch.object(self.app, "gateway_request", return_value=(202, b'{"id":"job"}')) as gateway:
+            status, _, body = self.request(
+                "/api/jobs", "POST", payload, csrf,
+                idempotency_key="local-proxy-job-0001",
+            )
+        self.assertEqual(status, 202)
+        self.assertEqual(json.loads(body)["id"], "job")
+        args, kwargs = gateway.call_args
+        self.assertEqual(args[:2], ("POST", "/api/jobs"))
+        self.assertTrue(args[2]["authenticated"])
+        self.assertEqual(kwargs["idempotency_key"], "local-proxy-job-0001")
+        self.assertEqual(json.loads(args[3]), payload)
+        _, _, session_body = self.request("/api/auth/session")
+        logout_csrf = json.loads(session_body)["csrfToken"]
+        self.assertEqual(self.request("/api/auth/logout", "POST", csrf=logout_csrf)[0], 200)
 
     def test_origin_and_csrf_protections_fail_closed(self):
         _, _, body = self.request(

@@ -30,6 +30,7 @@ from .infrastructure import (FakeInfrastructureProvider, InfrastructureManager,
 from tools.local_runner_agent.local_project import (
     LocalProjectError, LocalProjectRegistry,
 )
+from tools.project_intelligence import DiscoveryError, discover_project
 from tools.local_runner_agent.workspace import WorkspaceManager
 from tools.local_runner_agent.runtime import RuntimeManager
 from .preview import AuthenticatedPreviewManager, PreviewError
@@ -196,10 +197,39 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
 
         @staticmethod
         def public_local_project(row):
-            return {key: row.get(key) for key in (
+            public = {key: row.get(key) for key in (
                 "project_id", "root_id", "relative_path", "snapshot_sha256",
                 "file_count", "total_bytes",
             )}
+            raw_path = row.get("path")
+            if isinstance(raw_path, str) and os.path.isabs(raw_path):
+                try:
+                    inspection = discover_project(raw_path, max_files=5000)
+                    if inspection.get("truncated"):
+                        public["framework_detection"] = {
+                            "framework": "UNKNOWN", "language": "UNKNOWN",
+                            "project_type": "UNKNOWN", "confidence": "unknown",
+                            "package_manager": "UNKNOWN", "toolchain_readiness": "NOT_CHECKED",
+                        }
+                        public["inspection_status"] = "truncated"
+                    else:
+                        public["framework_detection"] = inspection["inventory"]["framework_detection"]
+                        public["inspection_status"] = inspection["status"]
+                except (DiscoveryError, OSError, ValueError):
+                    public["framework_detection"] = {
+                        "framework": "UNKNOWN", "language": "UNKNOWN",
+                        "project_type": "UNKNOWN", "confidence": "unknown",
+                        "package_manager": "UNKNOWN", "toolchain_readiness": "NOT_CHECKED",
+                    }
+                    public["inspection_status"] = "unknown"
+            else:
+                public["framework_detection"] = {
+                    "framework": "UNKNOWN", "language": "UNKNOWN",
+                    "project_type": "UNKNOWN", "confidence": "unknown",
+                    "package_manager": "UNKNOWN", "toolchain_readiness": "NOT_CHECKED",
+                }
+                public["inspection_status"] = "unknown"
+            return public
 
         @staticmethod
         def public_local_root(row):
@@ -222,7 +252,15 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
             keys = ("id", "repository", "commit_sha", "target", "state",
                     "created_at", "updated_at", "worker", "lease_until",
                     "cancel_at", "result", "error_code")
-            return {key: row.get(key) for key in keys}
+            public = {key: row.get(key) for key in keys}
+            payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+            public["source_type"] = payload.get("source_type", "github")
+            public["source_id"] = payload.get("source_id", row.get("repository"))
+            public["source_sha256"] = payload.get("source_sha256")
+            if public["source_type"] == "local_folder":
+                public["repository"] = None
+                public["commit_sha"] = None
+            return public
 
         def proxy_identity(self):
             return verifier.verify(self) if verifier else None
@@ -699,6 +737,48 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                             return self.send_json(409, {"error": str(exc)})
                     if path == "/api/jobs":
                         payload = self.body()
+                        if payload.get("source_type") == "local_folder":
+                            if identity.get("role") != "owner":
+                                return self.send_json(403, {"error": "owner role required for Local Folder jobs"})
+                            if set(payload) != {"source_type", "project_id", "snapshot_sha256", "target"}:
+                                return self.send_json(400, {"error": "invalid Local Folder job payload"})
+                            registry = self.local_project_registry()
+                            if registry is None:
+                                return self.send_json(503, {"error": "Local Project Registry unavailable"})
+                            project_id = payload.get("project_id")
+                            expected_sha = payload.get("snapshot_sha256")
+                            target = payload.get("target")
+                            if not isinstance(project_id, str) or not re.fullmatch(
+                                r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", project_id
+                            ):
+                                return self.send_json(400, {"error": "invalid local project ID"})
+                            if not isinstance(expected_sha, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_sha):
+                                return self.send_json(400, {"error": "invalid local snapshot SHA-256"})
+                            if target != "build_static_web":
+                                return self.send_json(400, {"error": "Local Folder currently supports dependency-free static web builds only"})
+                            try:
+                                registry.reload()
+                                current = registry.refresh_project(project_id)
+                            except LocalProjectError:
+                                return self.send_json(404, {"error": "local project is not registered under an approved root"})
+                            if current.get("snapshot_sha256") != expected_sha:
+                                return self.send_json(409, {
+                                    "error": "local project changed; refresh the project catalog and select the new snapshot",
+                                    "current_snapshot_sha256": current.get("snapshot_sha256"),
+                                })
+                            try:
+                                inspection = discover_project(current["path"], max_files=5000)
+                            except (DiscoveryError, OSError, ValueError):
+                                return self.send_json(409, {"error": "local project could not be inspected safely"})
+                            if inspection.get("truncated"):
+                                return self.send_json(409, {"error": "local project inventory is truncated; narrow the selected project before queueing"})
+                            detection = inspection["inventory"]["framework_detection"]
+                            framework = detection.get("framework")
+                            if target == "build_static_web" and framework != "Static HTML/CSS/JS":
+                                return self.send_json(409, {"error": "selected project is not a detected static web project"})
+
+                            row, created = jobs.create(payload, self.headers.get("Idempotency-Key", ""))
+                            return self.send_json(202 if created else 200, self.public_job(row))
                         repository = payload.get("repository")
                         authorizer = getattr(service, "repository_authorizer", None)
                         if callable(authorizer):

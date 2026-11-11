@@ -19,8 +19,34 @@ IGNORED_DIRS = {
     ".git", ".hg", ".svn", ".venv", "venv", "node_modules", "__pycache__",
     ".mypy_cache", ".pytest_cache", ".ruff_cache", ".tox", ".idea", ".vscode",
     "dist", "build", "target", "coverage", ".next", ".dart_tool", "Pods",
-    "DerivedData", ".gradle",
+    "DerivedData", ".gradle", ".ssh", ".aws", ".azure", ".gnupg", ".kube",
+    ".terraform", ".docker", ".npm", ".config", ".secrets", "secrets",
+    "credentials", "private",
 }
+IGNORED_EXACT_FILES = {
+    ".env", ".envrc", ".npmrc", ".pypirc", ".netrc", ".git-credentials",
+    ".dockerconfigjson", "credentials.json", "secrets.json", "secrets.yaml",
+    "secrets.yml", "secrets.toml", "vault-password.txt", "id_rsa",
+    "id_ed25519", "id_ecdsa", "id_dsa", "authorized_keys", "known_hosts",
+}
+IGNORED_EXAMPLE_ENV = {".env.example", ".env.sample", ".env.template"}
+IGNORED_SUFFIXES = (
+    ".pem", ".key", ".p12", ".pfx", ".keystore", ".jks", ".tfstate",
+    ".tfvars", ".sqlite", ".sqlite3", ".db", ".dump", ".log", ".bak",
+    ".backup", ".secret", ".secrets",
+)
+
+
+def _ignored_project_file(filename: str) -> bool:
+    name = Path(filename).name.lower()
+    if name in IGNORED_EXAMPLE_ENV:
+        return False
+    if name in IGNORED_EXACT_FILES or name.startswith(".env.") or name.endswith(".env"):
+        return True
+    if name.endswith(IGNORED_SUFFIXES):
+        return True
+    return ((name.startswith("service-account") or name.startswith("firebase-adminsdk"))
+            and name.endswith(".json"))
 MANIFESTS = {
     "pyproject.toml": "python", "requirements.txt": "python",
     "Pipfile": "python", "setup.py": "python", "package.json": "node",
@@ -258,13 +284,15 @@ def discover_project(root: str | os.PathLike[str], task_description: str = "",
     for current, dirs, filenames in os.walk(workspace, topdown=True, followlinks=False):
         current_path = Path(current)
         dirs[:] = sorted(name for name in dirs
-                         if name not in IGNORED_DIRS and not (current_path / name).is_symlink())
+                         if name.lower() not in IGNORED_DIRS and not (current_path / name).is_symlink())
         for filename in sorted(filenames):
             candidate = current_path / filename
             if candidate.is_symlink() or not candidate.is_file():
                 continue
-            file_count += 1
             relative = candidate.relative_to(workspace).as_posix()
+            if _ignored_project_file(relative):
+                continue
+            file_count += 1
             areas[_classify_path(relative)] += 1
             language = EXTENSIONS.get(candidate.suffix.lower())
             if language:
