@@ -96,7 +96,7 @@ class AuthenticatedPreviewManager:
         if not isinstance(relative_path, str) or len(relative_path) > 2048:
             raise PreviewError("invalid preview path")
         decoded = relative_path
-        if (decoded.startswith("/") or "\\\\" in decoded or "\\x00" in decoded
+        if (decoded.startswith("/") or chr(92) in decoded or chr(0) in decoded
                 or any(ord(ch) < 32 for ch in decoded)):
             raise PreviewError("invalid preview path")
         parts = decoded.split("/")
