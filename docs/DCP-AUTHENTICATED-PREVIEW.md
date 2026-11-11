@@ -25,6 +25,7 @@ The Gateway also reads DCP_RUNNER_MAX_ACTIVE_WORKSPACES and DCP_RUNNER_MAX_WORKS
 All routes are exposed through the Local Auth Proxy:
 
 - POST /api/jobs/{job_id}/previews with JSON {} or {"output_relative":"source/dist"} starts a preview.
+- GET /api/jobs/{job_id}/previews lists sanitized active preview sessions for that job.
 - GET /api/jobs/{job_id}/previews/{runtime_id} returns sanitized runtime status.
 - GET /api/jobs/{job_id}/previews/{runtime_id}/content/{path} serves a bounded static asset through the authenticated proxy.
 - DELETE /api/jobs/{job_id}/previews/{runtime_id} stops the runtime.
