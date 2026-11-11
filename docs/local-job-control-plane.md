@@ -215,3 +215,19 @@ The Dashboard now has a Project Import view with separate authenticated read-onl
 - GitHub App import catalog and ref/commit/project inspection routes are owner-only at the Gateway.
 
 The selected source evidence is currently a Dashboard view state only. It is not yet a persisted unified project record or an immutable job snapshot. That requires the next Project Snapshot/Import-to-Job workstream.
+
+
+## M10 — Verified Local Project Snapshot Materialization
+
+`LocalProjectRegistry.materialize_project(project_id, destination, expected_sha256)` creates a new, bounded, read-only-permissions snapshot copy for a future job workspace.
+
+- Requires an existing registered project ID and the exact SHA-256 fingerprint captured at queue time.
+- Revalidates root containment and source fingerprint before copying.
+- Copies only regular files; rejects symlinks, special entries, unsafe relative paths and destination links.
+- Uses no-follow file opens where supported, exclusive destination creation, streaming SHA-256 and file metadata checks.
+- Revalidates the source after copying and verifies the materialized snapshot has the exact expected fingerprint, file count and byte count.
+- Refuses to overwrite an existing destination and cleans up only the newly created partial snapshot on failure.
+- Applies read-only file/directory permissions as a best-effort integrity guard. This is not an OS sandbox and does not make the snapshot tamper-proof against the same local user.
+- Does not execute source, install dependencies, contact the network or create a job.
+
+The next integration step is to bind the project ID and expected fingerprint into the durable job payload, then have the Local Runner materialize the verified snapshot before executing only an explicitly approved, supported build adapter.
