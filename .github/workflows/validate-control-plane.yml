@@ -64,7 +64,40 @@ jobs:
           npx playwright install chromium
           python -m playwright install chromium
 
+      - name: Inspect Linux Chromium sandbox prerequisites (read-only)
+        if: runner.os == 'Linux'
+        run: |
+          id
+          uname -a
+          python - <<'PY'
+          from pathlib import Path
+          for name in (
+              "/proc/sys/kernel/unprivileged_userns_clone",
+              "/proc/sys/user/max_user_namespaces",
+              "/proc/self/status",
+          ):
+              path = Path(name)
+              print(f"===== {name} =====")
+              try:
+                  text = path.read_text(encoding="utf-8")
+                  if name.endswith("/status"):
+                      text = "\\n".join(
+                          line for line in text.splitlines()
+                          if line.startswith(("Uid:", "Gid:", "NoNewPrivs:", "Seccomp:", "CapEff:"))
+                      )
+                  print(text.strip())
+              except OSError as exc:
+                  print(f"UNAVAILABLE: {type(exc).__name__}")
+          PY
+          if command -v unshare >/dev/null 2>&1; then
+            unshare -Ur true && echo "USER_NAMESPACE_PROBE=PASS" || echo "USER_NAMESPACE_PROBE=FAIL"
+          else
+            echo "USER_NAMESPACE_PROBE=UNKNOWN (unshare command unavailable)"
+          fi
+
       - name: Test DCP local static application with real Chromium
+        env:
+          DEBUG: pw:browser
         run: python -m unittest tests.test_browser_test.StaticWebPlaywrightTesterTests.test_real_chromium_smoke_creates_screenshots_report_and_evidence -v
 
       - name: Test dashboard in a real browser
