@@ -90,8 +90,11 @@ def main(argv=None) -> int:
 
         if os.environ.get("DCP_RUNNER_EXECUTION_ENABLED") != "1":
             raise ValueError("DCP_RUNNER_EXECUTION_ENABLED=1 is required for --once")
-        root = os.environ.get("DCP_RUNNER_WORKSPACE_ROOT", "")
-        if not root or not Path(root).is_absolute():
+        root = os.environ.get("DCP_RUNNER_WORKSPACE_ROOT", "").strip()
+        if not root:
+            root = str(default_registry_path().parent / "workspaces")
+            os.environ["DCP_RUNNER_WORKSPACE_ROOT"] = root
+        if not Path(root).is_absolute():
             raise ValueError("DCP_RUNNER_WORKSPACE_ROOT must be an absolute path")
         raw_repositories = json.loads(os.environ.get("DCP_RUNNER_TRUSTED_REPOSITORIES", "[]"))
         raw_local_projects = json.loads(os.environ.get("DCP_RUNNER_TRUSTED_LOCAL_PROJECTS", "[]"))
