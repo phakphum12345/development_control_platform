@@ -97,6 +97,33 @@ class LocalProjectSnapshotTests(unittest.TestCase):
         workspace = self.workspaces.get(self.job_id, self.worker_id)
         self.assertFalse((workspace / "source").exists())
 
+    def test_snapshot_excludes_secret_files_and_preserves_safe_env_templates(self):
+        secret_files = {
+            ".env": "API_TOKEN=do-not-copy",
+            ".env.local": "PASSWORD=do-not-copy",
+            ".npmrc": "//registry.example/:_authToken=do-not-copy",
+            "id_rsa": "PRIVATE KEY",
+            "service-account-prod.json": '{"private_key":"do-not-copy"}',
+            "database.sqlite": "private database bytes",
+            "application.log": "sensitive log contents",
+            ".env.example": "API_BASE_URL=https://example.invalid",
+        }
+        for name, content in secret_files.items():
+            (self.project / name).write_text(content, encoding="utf-8")
+        refreshed = self.registry.refresh_project(self.project_record["project_id"])
+        self.assertEqual(refreshed["snapshot_sha256"], self.project_record["snapshot_sha256"])
+        self.assertEqual(refreshed["file_count"], 3)
+        destination = self.workspace / "secret-filtered-snapshot"
+        self.registry.materialize_project(
+            self.project_record["project_id"], destination, refreshed["snapshot_sha256"]
+        )
+        for name in secret_files:
+            self.assertEqual((destination / name).exists(), name == ".env.example")
+        self.assertEqual(
+            (destination / ".env.example").read_text(encoding="utf-8"),
+            "API_BASE_URL=https://example.invalid",
+        )
+
     def test_refuses_source_changed_after_registration(self):
         (self.project / "index.html").write_text("edited", encoding="utf-8")
         destination = self.workspace / "must-not-exist"
