@@ -33,7 +33,7 @@ class RunnerPreflightTests(unittest.TestCase):
         self, run, which, _python, _system
     ):
         which.side_effect = lambda name: f"/usr/bin/{name}" if name in {
-            "git", "flutter", "clang", "cmake", "ninja"
+            "git", "flutter", "node", "clang", "cmake", "ninja"
         } else None
         run.return_value.stdout = "tool version"
         run.return_value.stderr = ""
