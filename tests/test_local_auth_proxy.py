@@ -99,6 +99,7 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
             Path(cls.temp.name) / "gateway.sqlite3"
         )
         cls.workspace_root = Path(cls.temp.name) / "workspaces"
+        cls.jobs_db = cls.gateway_db + ".jobs"
 
         env = os.environ.copy()
         env.update({
@@ -110,6 +111,7 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                 f"http://127.0.0.1:{cls.local_port}"
             ),
             "DCP_GATEWAY_DATABASE": cls.gateway_db,
+            "DCP_GATEWAY_JOBS_DATABASE": cls.jobs_db,
             "DCP_RUNNER_WORKSPACE_ROOT": str(cls.workspace_root),
             "DCP_GATEWAY_PROVISIONING_ENABLED": "false",
             "DCP_GATEWAY_OWNER_APPROVED": "false",
@@ -385,7 +387,7 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
         from tools.local_runner_agent.workspace import WorkspaceManager
 
         worker_id = "preview-e2e-worker"
-        jobs = JobStore(self.gateway_db + ".jobs")
+        jobs = JobStore(self.jobs_db)
         job, created = jobs.create(
             {
                 "repository": "example/preview-fixture",
@@ -441,7 +443,7 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
         listed, _, list_body = self.request(
             f"/api/jobs/{job['id']}/previews"
         )
-        self.assertEqual(listed, 200)
+        self.assertEqual(listed, 200, list_body.decode(errors="replace"))
         self.assertEqual(json.loads(list_body)["previews"], [])
 
         started, _, start_body = self.request(
