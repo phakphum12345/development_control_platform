@@ -16,7 +16,7 @@ The first authenticated preview release serves an already-built static output di
 
 ## Configuration
 
-Set DCP_RUNNER_WORKSPACE_ROOT for the Gateway to the exact same absolute workspace root configured for the Local Runner Agent. The Gateway creates no project workspaces; it only opens a workspace whose job/worker marker already exists. If this setting is absent, preview endpoints fail closed as unavailable.
+Run-DCP-Gateway.ps1 defaults DCP_RUNNER_WORKSPACE_ROOT to %LOCALAPPDATA%/DCP/workspaces when the variable is not already set. Configure the Local Runner Agent with the exact same absolute path. The Gateway creates no project workspaces; it only opens a workspace whose job/worker marker already exists. If the variable is not configured when launching the Gateway outside the supported local startup script, preview endpoints fail closed as unavailable.
 
 The Gateway also reads DCP_RUNNER_MAX_ACTIVE_WORKSPACES and DCP_RUNNER_MAX_WORKSPACE_BYTES to validate the shared workspace root using the same bounds as the agent.
 
