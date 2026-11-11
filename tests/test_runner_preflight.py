@@ -65,7 +65,7 @@ class RunnerPreflightTests(unittest.TestCase):
 
     @patch("tools.runner_agent.preflight.platform.system", return_value="Linux")
     @patch("tools.runner_agent.preflight._playwright_tool", return_value={
-        "installed": True, "version": "1.55.0", "browser_installed": True,
+        "installed": True, "version": "1.55.0", "browser_installed": True, "websocket_routing": True,
     })
     @patch("tools.runner_agent.preflight.shutil.which")
     def test_playwright_capability_requires_verified_package_and_chromium(self, which, _playwright, _system):
