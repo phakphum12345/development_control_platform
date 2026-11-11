@@ -64,13 +64,21 @@ class InfrastructureManagerTests(unittest.TestCase):
             self.manager.create(target_os="linux", image_id="dcp-linux-ubuntu-24.04",
                 template_id="flutter-windows-small", idempotency_key="infra-mismatch-001")
 
-    def test_invalid_transitions_are_rejected(self):
+    def test_invalid_transitions_are_rejected_before_provider_side_effects(self):
         row, _ = self.create()
+        calls_before = list(self.provider.calls)
         with self.assertRaises(LifecycleConflict):
             self.manager.stop(row["id"])
+        self.assertEqual(self.provider.calls, calls_before)
+        provider_row = self.provider.resources[row["provider_resource_id"]]
+        self.assertEqual(provider_row["state"], "provisioned")
+        self.assertEqual(self.manager.get(row["id"])["state"], "provisioned")
+
         self.manager.delete(row["id"])
+        calls_after_delete = list(self.provider.calls)
         with self.assertRaises(LifecycleConflict):
             self.manager.start(row["id"])
+        self.assertEqual(self.provider.calls, calls_after_delete)
 
     def test_unknown_resource_is_not_silently_accepted(self):
         with self.assertRaises(ResourceNotFound):
