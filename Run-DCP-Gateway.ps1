@@ -12,6 +12,12 @@ $env:DCP_LOCAL_PORT = '8789'
 $env:DCP_GATEWAY_PORT = '18790'
 $env:DCP_GATEWAY_PROVISIONING_ENABLED = 'false'
 $env:DCP_GATEWAY_OWNER_APPROVED = 'false'
+if ([string]::IsNullOrWhiteSpace($env:DCP_RUNNER_WORKSPACE_ROOT)) {
+    $env:DCP_RUNNER_WORKSPACE_ROOT = Join-Path $dataDir 'workspaces'
+}
+if (-not [System.IO.Path]::IsPathRooted($env:DCP_RUNNER_WORKSPACE_ROOT)) {
+    throw 'DCP_RUNNER_WORKSPACE_ROOT must be an absolute path.'
+}
 
 Write-Host 'Starting DCP Dashboard + Local Auth Proxy + Gateway.'
 Write-Host 'First launch asks you to choose an owner username and password (14+ characters).'
