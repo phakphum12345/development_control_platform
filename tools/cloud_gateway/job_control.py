@@ -148,7 +148,8 @@ class JobStore:
             raise ValueError("Invalid lease")
         if allowed_targets is not None:
             supported = {"test", "build", "package", "build_android", "build_web",
-                         "build_windows", "build_linux", "build_macos", "build_ios"}
+                         "build_windows", "build_linux", "build_macos", "build_ios",
+                         "build_static_web", "build_vite"}
             if (not isinstance(allowed_targets, (list, tuple, set, frozenset))
                     or any(not isinstance(item, str) or item not in supported for item in allowed_targets)):
                 raise ValueError("Invalid allowed target list")
