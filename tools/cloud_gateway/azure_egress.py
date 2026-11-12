@@ -336,6 +336,8 @@ class AzureEgressPolicyVerifier:
         subnet = self._get(subnet_id, API_NETWORK)
         self._state(subnet, "Runner subnet")
         subnet_props = subnet.get("properties", {})
+        if subnet_props.get("natGateway"):
+            raise AzureEgressPolicyError("Runner subnet must not have a NAT Gateway egress path")
         if not self._same_id(subnet_props.get("networkSecurityGroup", {}).get("id"), nsg_id):
             raise AzureEgressPolicyError("Runner subnet is not attached to the configured NSG")
         if not self._same_id(subnet_props.get("routeTable", {}).get("id"), self.route_table_id):
