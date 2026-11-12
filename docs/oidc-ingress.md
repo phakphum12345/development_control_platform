@@ -25,10 +25,12 @@ same-origin.
 The upstream OIDC middleware is responsible for validating the provider's JWT
 signature against its JWKS, exact issuer, audience, expiry, issue time, state,
 nonce, and exact redirect URI. Use Authorization Code flow with PKCE. The
-middleware must create and rotate a random server-side session ID, and set a
-`Secure; HttpOnly; SameSite=Lax` (or stricter compatible) cookie. Do not return
-ID tokens, access tokens, refresh tokens, client secrets, or the HMAC secret to
-browser JavaScript.
+middleware must manage its protected OIDC session cookie and set
+`Secure; HttpOnly; SameSite=Lax` (or stricter compatible) attributes. The DCP
+edge signer separately creates a random, stateless HMAC-protected session cookie
+bound to the verified subject for CSRF session binding. Do not return ID tokens,
+access tokens, refresh tokens, client secrets, or the HMAC secret to browser
+JavaScript.
 
 Pass only the already-verified claims to
 `sign_verified_oidc_assertion`. The helper re-checks issuer, audience, exp,
