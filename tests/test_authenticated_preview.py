@@ -31,6 +31,17 @@ class FakeRuntime:
                                  "token": row["session_token"], "state": "running",
                                  "port": 43210}
         return row
+    def start_next(self, job_id, worker_id, *, owner_approved=False):
+        if owner_approved is not True:
+            raise RuntimeError("Owner approval required")
+        self.started += 1
+        runtime_id = str(uuid.uuid4())
+        row = {"runtime_id": runtime_id, "session_token": "private-capability",
+               "expires_in_seconds": 120, "started_at": "now", "runtime_kind": "next"}
+        self.rows[runtime_id] = {"job_id": job_id, "worker_id": worker_id,
+                                 "token": row["session_token"], "state": "running",
+                                 "port": 43210, "runtime_kind": "next"}
+        return row
     def status(self, runtime_id, token):
         row = self.rows[runtime_id]
         if token != row["token"]:
@@ -97,6 +108,23 @@ class AuthenticatedPreviewManagerTests(unittest.TestCase):
         self.assertEqual(listed[0]["runtime_id"], row["runtime_id"])
         self.assertNotIn("session_token", listed[0])
         self.assertNotIn("port", listed[0])
+
+
+    def test_next_preview_requires_owner_approval_and_reports_runtime_kind(self):
+        with self.assertRaisesRegex(PreviewError, "explicit Owner approval"):
+            self.previews.start(self.job_id, "local-worker", runtime_kind="next")
+        row = self.previews.start(
+            self.job_id, "local-worker", runtime_kind="next", owner_approved=True
+        )
+        self.assertEqual(row["runtime_kind"], "next")
+        status = self.previews.status(row["runtime_id"], self.job_id)
+        self.assertEqual(status["runtime_kind"], "next")
+
+    def test_angular_browser_output_is_an_allowed_static_preview_root(self):
+        row = self.previews.start(
+            self.job_id, "local-worker", "source/dist/browser", runtime_kind="static"
+        )
+        self.assertEqual(row["runtime_kind"], "static")
 
     def test_status_and_stop_keep_capability_server_side(self):
         row = self.previews.start(self.job_id, "local-worker")
