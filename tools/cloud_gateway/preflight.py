@@ -50,8 +50,16 @@ def _valid_amount(value: str) -> bool:
 def _resource_id(value: str, subscription: str, kind: str) -> bool:
     if kind == "subnet":
         suffix = r"/providers/Microsoft\.Network/virtualNetworks/[^/]+/subnets/[^/]+"
-    else:
+    elif kind == "nsg":
         suffix = r"/providers/Microsoft\.Network/networkSecurityGroups/[^/]+"
+    elif kind == "route_table":
+        suffix = r"/providers/Microsoft\.Network/routeTables/[^/]+"
+    elif kind == "firewall":
+        suffix = r"/providers/Microsoft\.Network/azureFirewalls/[^/]+"
+    elif kind == "firewall_policy":
+        suffix = r"/providers/Microsoft\.Network/firewallPolicies/[^/]+"
+    else:
+        return False
     pattern = (
         r"^/subscriptions/" + re.escape(subscription)
         + r"/resourceGroups/[A-Za-z0-9_.()-]{1,90}" + suffix + r"$"
