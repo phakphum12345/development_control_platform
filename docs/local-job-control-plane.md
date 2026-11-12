@@ -35,9 +35,10 @@ Expired leases are recovered before a claim. Old workers are fenced by the lease
 
 ## M3 — Unified Local Runner Agent and service modes
 
-The supported Local Runner path is tools.local_runner_agent. The Windows launcher
-Start-DCP-Gateway-Runner.ps1 invokes this agent (not the legacy tools.runner_agent
-entry point) and supports four explicit modes:
+The supported Local Runner path is tools.local_runner_agent. The agent supports
+four explicit modes; Start-DCP-Gateway-Runner.ps1 maps its Windows workflow to
+offline enrollment, one-shot execution, or supervised execution (not the legacy
+tools.runner_agent entry point):
 
 - --check: read Gateway health only; no registration, claim, or execution.
 - --enroll-only: register the worker as offline; it cannot claim jobs.
@@ -296,7 +297,7 @@ This validates the complete Gateway HTTP path in addition to the JobStore unit
 tests. It uses temporary SQLite stores and test-only Runner credentials.
 
 
-## M9 — Unified Windows Runner launcher and supervised mode
+## M12 — Unified Windows Runner launcher and supervised mode
 
 The supported Windows launcher is Start-DCP-Gateway-Runner.ps1. It loads the
 worker token from the protected LocalAppData credential file, maps WorkerId to
