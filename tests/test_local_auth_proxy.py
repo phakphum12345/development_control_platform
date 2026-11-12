@@ -574,6 +574,7 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                     )
                     self.assertIsNotNone(response)
                     response_body = response.text()
+                    preview_url = browser_base + preview["preview_path"]
                     cookie_metadata = [
                         {
                             "name": item.get("name"),
@@ -582,7 +583,7 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                             "secure": item.get("secure"),
                             "httpOnly": item.get("httpOnly"),
                         }
-                        for item in context.cookies(browser_base)
+                        for item in context.cookies(preview_url)
                     ]
                     self.assertEqual(
                         response.status, 200,
@@ -607,7 +608,7 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                         css_color, "rgb(1, 2, 3)",
                         "CSS diagnostics: responses=%r console=%r requests=%r css_requests=%r failed=%r cookies=%r" % (
                             asset_responses, console_errors, request_urls, css_requests,
-                            failed_requests, context.cookies(browser_base)
+                            failed_requests, context.cookies(preview_url)
                         ),
                     )
                     # Browser engines may revalidate or request the same stylesheet more
