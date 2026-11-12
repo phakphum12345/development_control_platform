@@ -48,6 +48,7 @@ class OrkaRunnerBootstrapFactoryTests(unittest.TestCase):
         self.assertIn("actions-runner-osx-arm64-2.331.0.tar.gz", script)
         self.assertIn("shasum -a 256 -c -", script)
         self.assertIn("for attempt in 1 2 3 4 5 6", script)
+        self.assertIn("TOKEN_EXPIRES_AT", script)
         self.assertIn("--ephemeral --disableupdate --work _work", script)
         self.assertIn("svc.sh install", script)
         self.assertIn("svc.sh start", script)
