@@ -44,3 +44,8 @@ The first Terminal Studio API slice is implemented:
 - No command is executed by catalog or preview requests.
 
 Import, project binding, approved execution, cancellation, logs and history remain outstanding. Do not present this slice as an interactive shell or an execution-capable Terminal Studio.
+
+
+## Dashboard integration checkpoint
+
+The Dashboard now exposes a Terminal Studio view that loads the authenticated catalog and requests exact argv previews through the same-origin Gateway API. The view uses the existing owner session and server-issued CSRF token. It displays preview metadata as text and explicitly does not start processes. The Dashboard slice does not add command execution, project workspace selection or terminal sessions.

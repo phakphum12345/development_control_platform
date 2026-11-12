@@ -171,13 +171,13 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
   <button type="button" data-quick-tab="gates" data-tone="green">▣ Quality Gates</button>
   <button type="button" data-quick-tab="audit" data-tone="amber">◎ Audit & Safety</button>
  </div>
- <div class="control-center-meta"><span>Navigation: <strong id="dcp-nav-count">19 tools</strong></span><span>Write actions: <strong>0 · Disabled</strong></span><span>Evidence default: <strong>UNKNOWN</strong></span><span>Mode: <strong>READ-ONLY</strong></span></div>
+ <div class="control-center-meta"><span>Navigation: <strong id="dcp-nav-count">20 tools</strong></span><span>Write actions: <strong>0 · Disabled</strong></span><span>Evidence default: <strong>UNKNOWN</strong></span><span>Mode: <strong>READ-ONLY</strong></span></div>
  <div class="dcp-selfcheck" id="dcp-selfcheck" data-status="UNKNOWN" role="status" aria-live="polite">UI self-check: UNKNOWN — ยังไม่ได้ตรวจสอบเมนู</div>
  <div class="quick-actions"><button type="button" id="dcp-selfcheck-run" class="primary">Run UI self-check</button><button type="button" id="dcp-nav-reset">Clear search / Reset menu</button></div>
 </section>
 
 <div class="layout"><nav class="nav" aria-label="Tools">
-<button class="active" data-tab="home">Overview</button> <button data-tab="account">Password Login</button> <button data-tab="project-import">Project Import</button> <button data-tab="code-navigator">Code Navigator</button><button data-tab="cloud-runners">Cloud Runner Control</button> <button data-tab="infrastructure">Infrastructure Manager</button> <button data-tab="dev-tools">Emulators & VS Code</button> <button data-tab="ui-routes">UI Route Manager</button><button data-tab="ui-simulator">UI Simulator</button><button data-tab="route-colors">Route Color Manager</button><button data-tab="github-api">Research OS API</button><button data-tab="repo-selector">Account & Repo</button><button data-tab="repo">Repository Explorer</button><button data-tab="pr">Pull Request Review</button><button data-tab="user">User Explorer</button><button data-tab="workspace">GitHub Workspace</button><button data-tab="evidence">SHA & Evidence</button><button data-tab="gates">Quality Gate Planner</button><button data-tab="checkpoint">Checkpoint Builder</button><button data-tab="audit">Audit & Safety</button>
+<button class="active" data-tab="home">Overview</button> <button data-tab="account">Password Login</button> <button data-tab="project-import">Project Import</button> <button data-tab="terminal-studio">Terminal Studio</button> <button data-tab="code-navigator">Code Navigator</button><button data-tab="cloud-runners">Cloud Runner Control</button> <button data-tab="infrastructure">Infrastructure Manager</button> <button data-tab="dev-tools">Emulators & VS Code</button> <button data-tab="ui-routes">UI Route Manager</button><button data-tab="ui-simulator">UI Simulator</button><button data-tab="route-colors">Route Color Manager</button><button data-tab="github-api">Research OS API</button><button data-tab="repo-selector">Account & Repo</button><button data-tab="repo">Repository Explorer</button><button data-tab="pr">Pull Request Review</button><button data-tab="user">User Explorer</button><button data-tab="workspace">GitHub Workspace</button><button data-tab="evidence">SHA & Evidence</button><button data-tab="gates">Quality Gate Planner</button><button data-tab="checkpoint">Checkpoint Builder</button><button data-tab="audit">Audit & Safety</button>
 </nav><div>
 <section class="view" id="dev-tools">
 <div class="panel"><h2>Emulators & VS Code</h2><p>This page provides local commands and readiness guidance. A browser cannot inspect or launch processes on your computer; run these tasks from the repository in VS Code. Results from local checks are not automatically uploaded or treated as CI evidence.</p><div class="warn"><b>Safety:</b> emulator launch is explicit and local. The helper never installs SDKs, changes PATH, edits Android/iOS projects, or launches an app without an app-specific project being present.</div></div>
@@ -364,6 +364,19 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
 <div class="field"><label for="ev-repo">Repository</label><input id="ev-repo" placeholder="owner/repository"></div><div class="grid"><div class="field"><label for="ev-branch">Branch</label><input id="ev-branch" placeholder="feature/example"></div><div class="field"><label for="ev-sha">Full commit SHA (40 hex)</label><input id="ev-sha" maxlength="40" placeholder="40-character SHA"></div></div><div class="grid"><div class="field"><label for="ev-gate">Gate name</label><input id="ev-gate" placeholder="unit-tests"></div><div class="field"><label for="ev-status">Status</label><select id="ev-status"><option>unknown</option><option>pending</option><option>not_run</option><option>fail</option><option>pass</option></select></div></div><div class="grid"><div class="field"><label for="ev-time">Observed at (ISO date/time)</label><input id="ev-time" placeholder="2026-10-22T10:00:00Z"></div><div class="field"><label for="ev-url">Evidence URL (HTTPS)</label><input id="ev-url" placeholder="https://github.com/owner/repo/actions/runs/..."></div></div><div class="actions"><button class="primary" id="ev-check">Validate</button><button id="ev-copy">Copy JSON</button><button id="ev-clear">Clear</button></div><div id="ev-output" class="output">No record validated. Status UNKNOWN.</div></div></section>
 <section class="view" id="gates"><div class="panel"><h2>Quality Gate Planner</h2><div class="field"><label for="gate-sha">Target full commit SHA</label><input id="gate-sha" maxlength="40" placeholder="40-character SHA"></div><div id="gate-list"></div><div class="actions"><button class="primary" id="gate-eval">Evaluate readiness</button><button id="gate-reset">Reset</button><button id="gate-export">Export JSON</button></div><div id="gate-output" class="output">Readiness UNKNOWN — no gate results verified.</div></div></section>
 <section class="view" id="checkpoint"><div class="panel"><h2>Checkpoint Builder</h2><p>Creates a Markdown handoff note; does not write into the repository.</p><div class="grid"><div class="field"><label for="cp-repo">Repository</label><input id="cp-repo" placeholder="owner/repository"></div><div class="field"><label for="cp-branch">Branch</label><input id="cp-branch" placeholder="feature/branch"></div></div><div class="field"><label for="cp-sha">Full commit SHA</label><input id="cp-sha" maxlength="40" placeholder="40-character SHA"></div><div class="field"><label for="cp-goal">Goal</label><textarea id="cp-goal" rows="2"></textarea></div><div class="field"><label for="cp-done">Completed work</label><textarea id="cp-done" rows="3"></textarea></div><div class="field"><label for="cp-pending">Remaining work / blockers</label><textarea id="cp-pending" rows="3"></textarea></div><div class="field"><label for="cp-tests">Tests and evidence URLs</label><textarea id="cp-tests" rows="3"></textarea></div><div class="actions"><button class="primary" id="cp-build">Build checkpoint</button><button id="cp-copy">Copy Markdown</button><button id="cp-download">Download .md</button></div><textarea id="cp-output" class="output" rows="16" aria-label="Generated checkpoint"></textarea></div></section>
+<section class="view" id="terminal-studio">
+ <div class="panel">
+  <div class="row"><div><h2>Terminal Studio</h2><p>Command Library สำหรับตรวจสอบ Git และ Toolchain พร้อมดูคำสั่งแบบ argv ก่อนใช้งาน</p></div><span class="pill" id="terminal-studio-state">PREVIEW ONLY</span></div>
+  <div class="warn"><b>Safety:</b> รุ่นนี้แสดง Catalog และ Preview เท่านั้น ไม่มีการรันคำสั่ง ไม่มี Shell/PTY ไม่มีการติดตั้ง Dependencies และไม่รับคำสั่งอิสระจาก Browser</div>
+  <div class="actions"><button class="primary" id="terminal-load-templates" type="button">Load Command Library</button><label for="terminal-template-select">Command template</label><select id="terminal-template-select" disabled><option value="">Load templates first</option></select><button id="terminal-preview" type="button" disabled>Preview exact argv</button></div>
+  <div id="terminal-status" class="output" role="status" aria-live="polite">Owner session and command catalog have not been checked.</div>
+ </div>
+ <div class="panel">
+  <h3>Exact command preview</h3>
+  <p class="small muted">Preview displays a trusted executable and argument array, not a shell command string. Workspace binding and execution are not implemented in this slice.</p>
+  <pre id="terminal-preview-output" class="output" aria-label="Terminal command preview">No command selected.</pre>
+ </div>
+</section>
 <section class="view" id="code-navigator">
 <div class="panel"><div class="row"><div><h2>Code Navigator</h2><p>ไล่จาก UI route → DOM element → handler ที่ระบุไว้ → service/API → state → tests/evidence โดยใช้ mapping ที่มีหลักฐานเท่านั้น จุดที่ยังไม่ระบุจะแสดง UNKNOWN</p></div><span class="pill">MAPPING · READ-ONLY</span></div>
 <div class="warn">Navigator นี้อ่านโครงสร้าง Dashboard และ mapping ที่กำหนดไว้เท่านั้น ไม่รันโค้ดที่กำลังตรวจ ไม่เขียนไฟล์ และไม่อ้างว่าเป็น call graph แบบ static-analysis เต็มรูปแบบหรือหลักฐาน CI</div>
@@ -746,7 +759,9 @@ const CODE_NAV_MAPPINGS=[
 {id:"cloud-runners",label:"Cloud Runner Control",path:"security",target:"cloud-runners",file:"dashboard/index.html",elements:["cloud-runners","runner-mode","runner-refresh","runner-gateway","runner-auth","runner-budget","runner-provisioning","runner-create","runner-create-result","runner-gate-cloud-provisioning","runner-list"],handlers:["runnerRefresh","runnerRenderGate","runnerLoadList","runnerCreate","runnerStop","runnerVerifyCommit","buildJobsRefresh","buildJobCreate"],service:"Authenticated same-origin Local Auth Proxy → Gateway APIs: /api/cloud-runners, /api/github/repositories and Build Jobs endpoints; provider adapter is fail-closed",state:"runnerUI session/CSRF/status/verifiedCommit/project in browser memory; backend runner registry and job store",tests:["tests/test_cloud_runner_dashboard_contract.py","tests/test_cloud_runner_e2e_acceptance.py","tests/test_local_runner_workspace.py","tests/test_runner_preflight.py"],evidence:"Local status can report Gateway readiness; production provider remains DisabledProvider and live runner/job/teardown acceptance is not established."},
 {id:"infrastructure",label:"Infrastructure Manager",path:"security",target:"infrastructure",file:"dashboard/index.html",elements:["infrastructure","infra-mode","infra-refresh","infra-status","infra-gates-note","infra-gate-cloud","infra-gate-cloud-state","infra-gate-cloud-detail","infra-gate-cloud-toggle","infra-gate-vm","infra-gate-vm-state","infra-gate-vm-detail","infra-gate-vm-toggle","infra-catalog","infra-os","infra-provider","infra-image","infra-template","infra-create","infra-inventory"],handlers:["infraRefresh","infraSession","infraRenderCatalog","infraRenderGates","infraToggleGate","infraRenderInventory","infraAction","infraCreate"],service:"Authenticated same-origin Gateway API and Local Auth Proxy: GET /api/infrastructure/gates, POST /api/infrastructure/gates/{cloud_provisioning|vm_creation}, plus simulation-only inventory/lifecycle routes",state:"infraUI CSRF/role/gates/catalog/resources/ready in browser memory; persistent SQLite gate and inventory state",tests:["tests/test_cloud_gateway_infrastructure.py","tests/test_cloud_gateway_infrastructure_api.py","tests/test_local_auth_proxy.py","tests/test_dashboard_contract.py"],evidence:"Backend-confirmed independent switches; provider readiness required to enable; current live provisioning remains disabled."},
 {id:"repo-selector",label:"Account & Repo",path:"repository",target:"repo-selector",file:"dashboard/index.html",elements:["repo-selector","shared-owner","shared-owner-custom","shared-repo","shared-load","shared-apply","shared-status"],handlers:["sharedOwner","shared-load click handler","shared-repo change handler","shared-apply click handler","shared-clear click handler"],service:"Unauthenticated public GitHub REST API: GET /users/{owner} and GET /users/{owner}/repos?type=public; no OAuth account switching",state:"sharedSelection owner/repository/repositories in browser memory; selected repository copied into tool inputs",tests:["tests/test_dashboard_contract.py::test_shared_github_account_and_repository_selector_contract","tests/test_dashboard_contract.py::test_github_requests_are_public_read_only","tests/browser_smoke.mjs"],evidence:"Public repository discovery only; private repository access and effective permissions remain UNKNOWN."},
-{id:"user",label:"User Explorer",path:"repository",target:"user",file:"dashboard/index.html",elements:["user","user-name","user-load","user-clear","user-msg","user-data"],handlers:["user-load onclick handler","user-clear onclick handler"],service:"Unauthenticated public GitHub REST API: GET /users/{username}",state:"state.user in browser memory; rendered public profile metadata",tests:["tests/test_dashboard_contract.py::test_github_requests_are_public_read_only","tests/browser_smoke.mjs"],evidence:"Public profile only; does not establish organization membership, roles, private access or repository permissions."}
+{id:"user",label:"User Explorer",path:"repository",target:"user",file:"dashboard/index.html",elements:["user","user-name","user-load","user-clear","user-msg","user-data"],handlers:["user-load onclick handler","user-clear onclick handler"],service:"Unauthenticated public GitHub REST API: GET /users/{username}",state:"state.user in browser memory; rendered public profile metadata",tests:["tests/test_dashboard_contract.py::test_github_requests_are_public_read_only","tests/browser_smoke.mjs"],evidence:"Public profile only; does not establish organization membership, roles, private access or repository permissions."},
+{id:"terminal-studio",label:"Terminal Studio",path:"developer",target:"terminal-studio",file:"dashboard/index.html",elements:["terminal-studio","terminal-load-templates","terminal-template-select","terminal-preview","terminal-preview-output"],handlers:["initTerminalStudio","terminalStudioLoad","terminalStudioPreview"],service:"Authenticated Gateway Terminal Catalog and preview endpoints; no command execution",state:"terminalStudioState in browser memory; owner CSRF token held in projectImportState",tests:["tests/test_dashboard_contract.py::test_terminal_studio_dashboard_is_preview_only","tests/test_cloud_gateway_terminal_catalog.py"],evidence:"API and argv preview only; no execution, workspace binding or runtime evidence."},
+
 
 ];
 let codeNavSelected="home";
@@ -1046,6 +1061,77 @@ function initProjectImport(){
 }
 
 initProjectImport();
+
+const terminalStudioState={templates:[],selected:"",loaded:false};
+function terminalStudioStatus(message,state){
+ const el=$("terminal-status");el.textContent=message;el.dataset.state=state||"unknown";
+ $("terminal-studio-state").textContent=state==="ready"?"PREVIEW ONLY · READY":"PREVIEW ONLY";
+}
+async function terminalStudioRequest(path,method="GET",payload=null){
+ if(!projectImportState.authenticated||!projectImportState.csrf)throw new Error("Owner session and server-issued CSRF token are required.");
+ const headers={Accept:"application/json"};
+ const options={method,credentials:"same-origin",cache:"no-store",headers};
+ if(payload!==null){
+  headers["Content-Type"]="application/json";
+  headers["X-CSRF-Token"]=projectImportState.csrf;
+  options.body=JSON.stringify(payload);
+ }
+ const response=await fetch("."+path,options);
+ let data={};try{data=await response.json()}catch(_){}
+ if(!response.ok)throw new Error((data&&data.error)||("HTTP "+response.status));
+ if(!data||typeof data!=="object"||Array.isArray(data))throw new Error("Invalid Terminal Studio API response");
+ return data;
+}
+async function terminalStudioLoad(){
+ const button=$("terminal-load-templates");button.disabled=true;
+ try{
+  if(!projectImportState.authenticated&&!await projectImportCheckSession())throw new Error("Sign in as owner before loading the Command Library.");
+  const data=await terminalStudioRequest("/api/terminal/templates");
+  if(!Array.isArray(data.templates)||data.execution_enabled!==false)throw new Error("Terminal API did not confirm preview-only mode.");
+  terminalStudioState.templates=data.templates;terminalStudioState.loaded=true;
+  const select=$("terminal-template-select");select.replaceChildren(new Option("Choose a command template",""));
+  for(const item of data.templates){
+   if(!item||typeof item.id!=="string"||typeof item.name!=="string"||item.execution_enabled!==false)continue;
+   select.add(new Option(item.name+" · "+item.category,item.id));
+  }
+  select.disabled=select.options.length<=1;
+  $("terminal-preview").disabled=true;
+  terminalStudioStatus("Loaded "+(select.options.length-1)+" curated templates. Execution remains disabled.","ready");
+ }catch(error){terminalStudioStatus("Could not load Command Library: "+error.message,"error");}
+ finally{button.disabled=false;}
+}
+async function terminalStudioPreview(){
+ const id=$("terminal-template-select").value;
+ if(!id){terminalStudioStatus("Select a command template first.","unknown");return}
+ const button=$("terminal-preview");button.disabled=true;
+ try{
+  const data=await terminalStudioRequest("/api/terminal/commands/preview","POST",{template_id:id});
+  if(data.execution_enabled!==false||!data.preview||data.preview.status!=="PREVIEW_ONLY"||!Array.isArray(data.preview.command_preview))throw new Error("API did not return a safe preview-only result.");
+  $("terminal-preview-output").textContent=JSON.stringify({
+   name:data.preview.name,
+   executable:data.preview.executable,
+   argv:data.preview.argv,
+   command_preview:data.preview.command_preview,
+   working_directory_policy:data.preview.working_directory_policy,
+   environment_allowlist:data.preview.environment_allowlist,
+   network:data.preview.network,
+   mutation_class:data.preview.mutation_class,
+   timeout_seconds:data.preview.timeout_seconds,
+   max_output_bytes:data.preview.max_output_bytes,
+   status:data.preview.status,
+   execution_enabled:false
+  },null,2);
+  terminalStudioStatus("Exact argv preview loaded. No process was started.","ready");
+ }catch(error){$("terminal-preview-output").textContent="No verified preview available.";terminalStudioStatus("Preview rejected: "+error.message,"error");}
+ finally{button.disabled=!$("terminal-template-select").value;}
+}
+function initTerminalStudio(){
+ $("terminal-load-templates").addEventListener("click",terminalStudioLoad);
+ $("terminal-template-select").addEventListener("change",()=>{$("terminal-preview").disabled=!$("terminal-template-select").value});
+ $("terminal-preview").addEventListener("click",terminalStudioPreview);
+}
+initTerminalStudio();
+
 
 /* Cloud Runner Control — fail closed; all secrets remain server-side. */
 const runnerUI={os:"linux",session:false,csrf:null,status:null,ready:false,repositories:[],verifiedCommit:null,project:null,projectRequestId:0,previews:{}};

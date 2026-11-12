@@ -23,3 +23,8 @@ The following remain design targets and must not be treated as available endpoin
 - GET /api/terminal/history — project-scoped execution history.
 
 Before any execution feature is enabled, enforce owner authorization, project/workspace scope, CSRF, server-side template resolution, policy approval, idempotency, request limits, bounded logs, secret redaction, audit and verified process-tree cleanup. Arbitrary browser-supplied shell commands remain prohibited.
+
+
+## Dashboard integration
+
+The Dashboard Terminal Studio view calls the implemented catalog and preview endpoints through same-origin requests with the authenticated session cookie and server-issued CSRF token. It renders returned preview metadata as text. It does not execute commands or expose a shell.

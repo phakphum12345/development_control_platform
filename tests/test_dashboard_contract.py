@@ -8,10 +8,10 @@ HTML = (ROOT / "dashboard" / "index.html").read_text(encoding="utf-8")
 
 class DashboardContractTests(unittest.TestCase):
     def test_all_tool_views_exist(self):
-        for view in ("home", "account", "project-import", "repo", "pr", "user", "workspace", "evidence", "gates", "checkpoint", "audit", "route-colors", "ui-routes", "ui-simulator", "dev-tools", "code-navigator"):
+        for view in ("home", "account", "project-import", "terminal-studio", "repo", "pr", "user", "workspace", "evidence", "gates", "checkpoint", "audit", "route-colors", "ui-routes", "ui-simulator", "dev-tools", "code-navigator"):
             with self.subTest(view=view):
                 self.assertIn('id="' + view + '"', HTML)
-        for control in ("repo-load", "pr-load", "user-load", "ws-load", "ws-repo", "ws-branch", "ws-permission", "ws-branches", "ev-check", "gate-eval", "cp-build", "audit-eval", "route-color-save", "route-color-reset", "route-color-export", "route-add", "route-reset", "route-export", "edge-add", "edge-clear", "sim-run", "sim-reset", "sim-download", "dev-tools-copy-status", "code-nav-search", "code-nav-filter", "code-nav-trace-ui", "code-nav-trace-calls", "code-nav-show-ui", "code-nav-compare", "code-nav-run-checks", "code-nav-checkpoint", "code-nav-route-list", "code-nav-mapping", "code-nav-evidence"):
+        for control in ("repo-load", "pr-load", "user-load", "ws-load", "ws-repo", "ws-branch", "ws-permission", "ws-branches", "ev-check", "gate-eval", "cp-build", "audit-eval", "route-color-save", "route-color-reset", "route-color-export", "route-add", "route-reset", "route-export", "edge-add", "edge-clear", "sim-run", "sim-reset", "sim-download", "dev-tools-copy-status", "code-nav-search", "code-nav-filter", "code-nav-trace-ui", "code-nav-trace-calls", "code-nav-show-ui", "code-nav-compare", "code-nav-run-checks", "code-nav-checkpoint", "code-nav-route-list", "code-nav-mapping", "code-nav-evidence", "terminal-load-templates", "terminal-template-select", "terminal-preview", "terminal-preview-output"):
             with self.subTest(control=control):
                 self.assertIn('id="' + control + '"', HTML)
 
@@ -84,6 +84,26 @@ class DashboardContractTests(unittest.TestCase):
         self.assertIn("Local registry is opt-in", HTML)
         self.assertIn("Write actions", HTML)
         self.assertIn("Disabled", HTML)
+
+
+    def test_terminal_studio_dashboard_is_preview_only(self):
+        for expected in (
+            'id="terminal-studio"',
+            'data-tab="terminal-studio"',
+            'function initTerminalStudio()',
+            'function terminalStudioLoad()',
+            'function terminalStudioPreview()',
+            '"/api/terminal/templates"',
+            '"/api/terminal/commands/preview"',
+            'credentials:"same-origin"',
+            '"X-CSRF-Token"',
+            'execution_enabled:false',
+            'No process was started.',
+            'ไม่มี Shell/PTY',
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, HTML)
+
 
     def test_unknown_is_default_for_gate_results(self):
         self.assertIn("<option>unknown</option>", HTML)
@@ -341,7 +361,7 @@ class DashboardControlCenterV2Tests(unittest.TestCase):
 
     def test_code_navigator_covers_all_dashboard_views(self):
         expected = {
-            "home", "account", "code-navigator", "cloud-runners", "infrastructure",
+            "home", "account", "code-navigator", "cloud-runners", "infrastructure", "terminal-studio",
             "dev-tools", "ui-routes", "ui-simulator", "route-colors", "github-api",
             "repo-selector", "repo", "pr", "user", "workspace", "evidence",
             "gates", "checkpoint", "audit",
