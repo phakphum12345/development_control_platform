@@ -16,7 +16,6 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from tools.cloud_gateway.preview import AuthenticatedPreviewManager
 from tools.cloud_gateway.infrastructure import (
     FakeInfrastructureProvider, InfrastructureManager, InfrastructureStore,
 )
