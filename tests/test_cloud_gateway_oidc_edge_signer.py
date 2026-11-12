@@ -96,6 +96,22 @@ class OIDCProxyIdentitySignerTests(unittest.TestCase):
         self.assertEqual(morsel["samesite"], "Strict")
         self.assertEqual(morsel["path"], "/")
 
+
+    def test_collects_repeated_group_headers_from_oidc_proxy(self):
+        class MultiHeaders(dict):
+            def get_all(self, name, default=None):
+                if name.lower() == "x-auth-request-groups":
+                    return [OPERATOR, OWNER]
+                value = self.get(name)
+                return [value] if value is not None else (default or [])
+        upstream = FakeOpener(FakeResponse(headers=MultiHeaders({
+            "X-Auth-Request-User": "immutable-oidc-subject-123",
+        })))
+        headers = signer(upstream).authorize(
+            "GET", "/api/auth/session", COOKIE, now_epoch=NOW
+        )
+        self.assertEqual(headers["X-DCP-Role"], "owner")
+
     def test_reuses_edge_session_cookie_without_reissuing_it(self):
         bridge = signer()
         first = bridge.authorize("GET", "/api/auth/session", COOKIE, now_epoch=NOW)
