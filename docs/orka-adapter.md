@@ -31,12 +31,15 @@ account. The timeout must exceed the bounded download retries, checksum
 verification and runner service setup. The namespace
 must be dedicated to DCP and Kubernetes RBAC must prevent untrusted users and
 service accounts from reading the VM's VirtualMachineInstance resource or pod
-spec. The Orka documentation states that the script is not returned in API
-responses, but Kubernetes-level readers can inspect it; therefore the
-short-lived registration token remains visible to anyone with that access.
-The runtime requires an explicit `userdata_rbac_reviewed` attestation and
-independent cluster, network and budget readiness checkers. Do not enable this
-attestation until the actual namespace RBAC has been reviewed.
+spec. Disable Orka API request-body logging and redact User Data from any
+reverse-proxy, audit or application logs. The Orka documentation states that
+the script is not returned in API responses, but Kubernetes-level readers can
+inspect it; therefore the short-lived registration token remains visible to
+anyone with that access. The runtime requires separate
+`userdata_rbac_reviewed` and `userdata_exposure_reviewed` attestations plus
+independent cluster, network and budget readiness checkers. Do not enable
+either attestation until the namespace RBAC and request/log exposure controls
+have been reviewed.
 
 User Data runs as root in the background and may rerun after an interrupted
 first boot. The factory is idempotent and suppresses bootstrap command output;
