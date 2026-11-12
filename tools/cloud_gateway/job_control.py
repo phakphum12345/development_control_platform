@@ -1,4 +1,5 @@
 """Local-first durable job queue. This module never executes repository code."""
+import hashlib
 import json
 import re
 import sqlite3
@@ -31,8 +32,10 @@ class JobStore:
                     id TEXT PRIMARY KEY, idem TEXT UNIQUE NOT NULL, fingerprint TEXT NOT NULL,
                     repository TEXT NOT NULL, commit_sha TEXT NOT NULL, target TEXT NOT NULL,
                     state TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL, worker TEXT, lease_until TEXT,
-                    cancel_at TEXT, result TEXT, error_code TEXT
+                    updated_at TEXT NOT NULL, worker TEXT, last_worker TEXT, lease_until TEXT,
+                    cancel_at TEXT, result TEXT, error_code TEXT,
+                    attempt_count INTEGER NOT NULL DEFAULT 0,
+                    max_attempts INTEGER NOT NULL DEFAULT 3
                 );
                 CREATE INDEX IF NOT EXISTS jobs_queue_idx ON jobs(state, created_at);
                 CREATE TABLE IF NOT EXISTS job_events (
@@ -44,6 +47,14 @@ class JobStore:
                     message TEXT NOT NULL, created_at TEXT NOT NULL
                 );
             """)
+            # Preserve execution provenance separately from the active lease owner.
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(jobs)")}
+            if "last_worker" not in columns:
+                db.execute("ALTER TABLE jobs ADD COLUMN last_worker TEXT")
+            if "attempt_count" not in columns:
+                db.execute("ALTER TABLE jobs ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0")
+            if "max_attempts" not in columns:
+                db.execute("ALTER TABLE jobs ADD COLUMN max_attempts INTEGER NOT NULL DEFAULT 3")
 
     @contextmanager
     def db(self):
@@ -75,17 +86,46 @@ class JobStore:
             raise ValueError("Invalid Idempotency-Key")
         if not isinstance(payload, dict):
             raise ValueError("Job payload must be an object")
-        if not set(payload).issubset({"repository", "commit_sha", "target"}):
-            raise ValueError("Unsupported job payload fields")
-        repository, sha = payload.get("repository"), payload.get("commit_sha")
+        source_type = payload.get("source_type", "github")
         target = payload.get("target", "test")
-        if not isinstance(repository, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}", repository):
-            raise ValueError("Invalid repository")
-        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
-            raise ValueError("Invalid commit SHA")
-        if target not in ("test", "build", "package", "build_android", "build_web", "build_windows", "build_linux", "build_macos", "build_ios", "build_static_web", "build_vite"):
+        if target not in ("test", "build", "package", "build_android", "build_web", "build_windows",
+                          "build_linux", "build_macos", "build_ios", "build_static_web", "build_vite", "build_next", "build_angular", "test_static_web"):
             raise ValueError("Unsupported target")
-        normalized = {"repository": repository, "commit_sha": sha, "target": target}
+        if source_type == "github":
+            if not set(payload).issubset({"source_type", "repository", "commit_sha", "target"}):
+                raise ValueError("Unsupported GitHub job payload fields")
+            repository, sha = payload.get("repository"), payload.get("commit_sha")
+            if not isinstance(repository, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}", repository):
+                raise ValueError("Invalid repository")
+            if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+                raise ValueError("Invalid commit SHA")
+            normalized = {
+                "source_type": "github", "source_id": repository, "source_sha256": None,
+                "repository": repository, "commit_sha": sha, "target": target,
+            }
+        elif source_type == "local_folder":
+            if set(payload) != {"source_type", "project_id", "snapshot_sha256", "target"}:
+                raise ValueError("Local Folder jobs require only project_id, snapshot_sha256, and target")
+            project_id, snapshot_sha = payload.get("project_id"), payload.get("snapshot_sha256")
+            try:
+                parsed_project_id = uuid.UUID(project_id)
+            except (ValueError, TypeError, AttributeError):
+                raise ValueError("Invalid local project ID") from None
+            if str(parsed_project_id) != project_id:
+                raise ValueError("Local project ID must use canonical lowercase UUID form")
+            if not isinstance(snapshot_sha, str) or not re.fullmatch(r"[0-9a-f]{64}", snapshot_sha):
+                raise ValueError("Invalid local project snapshot SHA-256")
+            if target not in ("build_static_web", "test_static_web"):
+                raise ValueError("Local Folder jobs support static web build or Playwright test targets only; dependency-managed frameworks are deferred")
+            repository = "local-folder/" + project_id
+            sha = hashlib.sha1(("dcp-local-folder:" + project_id + ":" + snapshot_sha).encode("utf-8")).hexdigest()
+            normalized = {
+                "source_type": "local_folder", "source_id": project_id,
+                "source_sha256": snapshot_sha, "repository": repository,
+                "commit_sha": sha, "target": target,
+            }
+        else:
+            raise ValueError("Unsupported job source type")
         fingerprint = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
         job_id, timestamp = str(uuid.uuid4()), utcnow().isoformat()
         with self.lock, self.db() as db:
@@ -101,7 +141,7 @@ class JobStore:
                 (job_id, idempotency_key, fingerprint, repository, sha, target,
                  json.dumps(normalized), timestamp, timestamp),
             )
-            self._event(db, job_id, "queued")
+            self._event(db, job_id, "queued", {"source_type": normalized["source_type"]})
             db.execute("COMMIT")
         return self.get(job_id), True
 
@@ -123,20 +163,26 @@ class JobStore:
         with self.lock, self.db() as db:
             db.execute("BEGIN IMMEDIATE")
             rows = db.execute(
-                "SELECT id,state FROM jobs WHERE state IN ('running','cancel_requested') "
+                "SELECT id,state,worker,attempt_count,max_attempts FROM jobs WHERE state IN ('running','cancel_requested') "
                 "AND lease_until IS NOT NULL AND lease_until<=? ORDER BY lease_until,id",
                 (current,),
             ).fetchall()
             for row in rows:
                 if row["state"] == "cancel_requested":
-                    state, event = "cancelled", "cancelled_after_lease_expiry"
+                    state, event, error_code = "cancelled", "cancelled_after_lease_expiry", None
+                elif row["attempt_count"] >= row["max_attempts"]:
+                    state, event, error_code = "failed", "lease_expired_failed", "LEASE_EXPIRED"
                 else:
-                    state, event = "queued", "lease_expired_requeued"
+                    state, event, error_code = "queued", "lease_expired_requeued", None
                 db.execute(
-                    "UPDATE jobs SET state=?,worker=NULL,lease_until=NULL,updated_at=? WHERE id=?",
-                    (state, current, row["id"]),
+                    "UPDATE jobs SET state=?,last_worker=worker,worker=NULL,lease_until=NULL,updated_at=?,error_code=? WHERE id=?",
+                    (state, current, error_code, row["id"]),
                 )
-                self._event(db, row["id"], event)
+                self._event(db, row["id"], event, {
+                    "worker": row["worker"],
+                    "attempt_count": row["attempt_count"],
+                    "max_attempts": row["max_attempts"],
+                })
                 recovered.append({"id": row["id"], "state": state})
             db.execute("COMMIT")
         return recovered
@@ -149,7 +195,7 @@ class JobStore:
         if allowed_targets is not None:
             supported = {"test", "build", "package", "build_android", "build_web",
                          "build_windows", "build_linux", "build_macos", "build_ios",
-                         "build_static_web", "build_vite"}
+                         "build_static_web", "build_vite", "build_next", "build_angular", "test_static_web"}
             if (not isinstance(allowed_targets, (list, tuple, set, frozenset))
                     or any(not isinstance(item, str) or item not in supported for item in allowed_targets)):
                 raise ValueError("Invalid allowed target list")
@@ -172,13 +218,17 @@ class JobStore:
                 db.execute("COMMIT")
                 return None
             changed = db.execute(
-                "UPDATE jobs SET state='running',worker=?,lease_until=?,updated_at=? WHERE id=? AND state='queued'",
+                "UPDATE jobs SET state='running',worker=?,lease_until=?,updated_at=?,attempt_count=attempt_count+1 WHERE id=? AND state='queued'",
                 (worker, expiry, current.isoformat(), row["id"]),
             ).rowcount
             if changed != 1:
                 db.execute("ROLLBACK")
                 return None
-            self._event(db, row["id"], "running", {"worker": worker})
+            self._event(db, row["id"], "running", {
+                "worker": worker,
+                "attempt_count": row["attempt_count"] + 1,
+                "max_attempts": row["max_attempts"],
+            })
             db.execute("COMMIT")
         return self.get(row["id"])
 
@@ -230,8 +280,9 @@ class JobStore:
             if row["state"] == "cancel_requested" and outcome == "succeeded":
                 raise JobConflict("Cancellation must be acknowledged")
             db.execute(
-                "UPDATE jobs SET state=?,updated_at=?,worker=NULL,lease_until=NULL,result=?,error_code=? WHERE id=?",
-                (outcome, utcnow().isoformat(), json.dumps(result) if result is not None else None, error_code, job_id),
+                "UPDATE jobs SET state=?,updated_at=?,worker=NULL,last_worker=?,lease_until=NULL,result=?,error_code=? WHERE id=?",
+                (outcome, utcnow().isoformat(), worker,
+                 json.dumps(result) if result is not None else None, error_code, job_id),
             )
             self._event(db, job_id, outcome, {"error_code": error_code} if error_code else {})
             db.execute("COMMIT")

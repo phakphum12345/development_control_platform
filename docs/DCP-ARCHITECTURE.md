@@ -1,4 +1,4 @@
-# DCP Target Architecture
+# DCP Architecture — Current Slices and Target State
 
 ## Architectural rule
 Extend the existing local Gateway, authentication, Job Control Plane, Runner Agent, workspace and artifact contracts. Avoid a second queue, command executor or project registry.
@@ -24,10 +24,29 @@ The browser never invokes a shell directly. It submits a typed job/command reque
 Imported shell scripts and command packs are inert until reviewed and explicitly approved. Avoid shell=True and arbitrary command strings; prefer executable + argv arrays and fixed adapters.
 
 ## Preview and test
-Runtime Manager supervises actual application processes in job workspaces. Preview Proxy maps a random, expiring session to a single job runtime and checks owner/session authorization. Playwright targets that preview URL, not DCP's prototype iframe. Screenshots, traces, console/network events and reports become job artifacts.
+
+### Implemented slices
+- Runtime Manager currently supervises generated static output through a loopback-only Python static server. It does not launch arbitrary project server scripts.
+- Authenticated Preview Proxy primitives retain runtime capabilities server-side and enforce owner/job/session checks for supported static preview content.
+- The PR #71 `test_static_web` path currently starts RuntimeManager directly and runs DCP-owned Playwright checks against that loopback URL. It records viewport screenshots and a JSON report in a bounded ZIP artifact.
+- The Playwright browser path enables Chromium sandboxing and applies browser-level loopback request routing, WebSocket blocking, WebRTC API denial and service-worker blocking. These controls are defense-in-depth, not an OS sandbox or host egress firewall.
+
+### Target integration and explicit gaps
+- The target architecture is for Playwright to navigate the authenticated Preview Proxy URL, not call RuntimeManager directly or use DCP's prototype iframe. This integration is not yet proven by PR #71.
+- Browser traces, full interaction coverage, cross-browser testing, visual baselines and full accessibility audits remain future work.
+- Preview Proxy support is static-output focused; arbitrary server runtimes, HMR and WebSocket proxying are not implied.
+- Screenshots and reports are evidence of only the implemented checks, not WCAG, security or production-readiness certification.
 
 ## Terminal Studio
 Terminal UI is a client for the execution broker, not a privileged shell endpoint. Interactive PTY support, if implemented, must be local-agent mediated, owner-authorized, project-scoped, resource-limited and auditable. A constrained task-template mode is the initial release; arbitrary interactive shell is a separate high-risk capability requiring a threat-model review.
 
 ## Infrastructure boundary
 Local adapters are the default. Cloud Provisioning, VM Creation and Cloud Deployment are independent server-side gates, default OFF. Provider adapters may be mocked/tested without composing an active provider. There is no implicit fallback from local failure to cloud.
+
+
+## Status discipline
+
+This document contains both implemented slices and target architecture. A target-layer
+or future integration statement is not evidence that the feature is available today.
+Use the dated Repository Audit and Master Feature Backlog for exact branch/commit
+status, and require source plus same-commit tests before marking a capability PASS.

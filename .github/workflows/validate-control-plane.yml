@@ -56,8 +56,93 @@ jobs:
       - name: Install Playwright for browser smoke tests
         run: npm install --no-save --no-package-lock playwright
 
+      - name: Install Python Playwright for DCP application tests
+        run: python -m pip install "playwright>=1.48"
+
       - name: Install Chromium browser
-        run: npx playwright install --with-deps chromium
+        run: |
+          npx playwright install chromium
+          python -m playwright install chromium
+
+      - name: Allow Chromium user namespaces with a path-scoped AppArmor profile
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          restriction=/proc/sys/kernel/apparmor_restrict_unprivileged_userns
+          if [[ ! -r "$restriction" ]] || [[ "$(cat "$restriction")" != "1" ]]; then
+            echo "APPARMOR_USERNS_RESTRICTION=not-active"
+            exit 0
+          fi
+
+          browser="$(find "$HOME/.cache/ms-playwright" -type f \
+            -path '*/chrome-headless-shell-linux64/chrome-headless-shell' \
+            -print -quit)"
+          if [[ -z "$browser" ]]; then
+            echo "::error::Playwright headless Chromium executable was not found."
+            exit 1
+          fi
+          case "$browser" in
+            "$HOME"/.cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell) ;;
+            *)
+              echo "::error::Refusing to authorize an unexpected Chromium path: $browser"
+              exit 1
+              ;;
+          esac
+
+          profile=/etc/apparmor.d/dcp-playwright-chromium
+          printf '%s\n' \
+            'abi <abi/4.0>,' \
+            'include <tunables/global>' \
+            '' \
+            "profile dcp-playwright-chromium $browser flags=(unconfined) {" \
+            '  userns,' \
+            '}' | sudo tee "$profile" >/dev/null
+          sudo apparmor_parser -r "$profile"
+          echo "APPARMOR_CHROMIUM_PROFILE=loaded"
+          echo "APPARMOR_CHROMIUM_PATH=$browser"
+
+      - name: Inspect Linux Chromium sandbox prerequisites (read-only)
+        if: runner.os == 'Linux'
+        run: |
+          id
+          uname -a
+          python - <<'PY'
+          from pathlib import Path
+          for name in (
+              "/proc/sys/kernel/unprivileged_userns_clone",
+              "/proc/sys/user/max_user_namespaces",
+              "/proc/sys/kernel/apparmor_restrict_unprivileged_userns",
+              "/proc/self/status",
+          ):
+              path = Path(name)
+              print(f"===== {name} =====")
+              try:
+                  text = path.read_text(encoding="utf-8")
+                  if name.endswith("/status"):
+                      text = "\\n".join(
+                          line for line in text.splitlines()
+                          if line.startswith(("Uid:", "Gid:", "NoNewPrivs:", "Seccomp:", "CapEff:"))
+                      )
+                  print(text.strip())
+              except OSError as exc:
+                  print(f"UNAVAILABLE: {type(exc).__name__}")
+          PY
+          if command -v unshare >/dev/null 2>&1; then
+            unshare -Ur true && echo "USER_NAMESPACE_PROBE=PASS" || echo "USER_NAMESPACE_PROBE=FAIL"
+          else
+            echo "USER_NAMESPACE_PROBE=UNKNOWN (unshare command unavailable)"
+          fi
+
+      - name: Test DCP local static application with real Chromium
+        env:
+          DEBUG: pw:browser
+        run: python -m unittest tests.test_browser_test.StaticWebPlaywrightTesterTests.test_real_chromium_smoke_creates_screenshots_report_and_evidence -v
+
+      - name: Test authenticated Preview Proxy in sandboxed Chromium
+        env:
+          DEBUG: pw:browser
+        run: python -m unittest tests.test_local_auth_proxy.LocalAuthProxyEndToEndTests.test_real_chromium_loads_app_through_authenticated_preview_proxy -v
 
       - name: Test dashboard in a real browser
         run: node tests/browser_smoke.mjs

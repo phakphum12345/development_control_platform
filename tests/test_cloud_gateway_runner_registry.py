@@ -71,8 +71,19 @@ class RunnerRegistryTests(unittest.TestCase):
         targets = self.registry.allowed_targets("node-web-runner")
         self.assertIn("build_static_web", targets)
         self.assertIn("build_vite", targets)
+        self.assertIn("build_next", targets)
+        self.assertIn("build_angular", targets)
         self.assertNotIn("test", targets)
         self.assertNotIn("build_android", targets)
+
+    def test_playwright_target_requires_explicit_web_and_browser_capabilities(self):
+        self.registry.register("web-no-browser", "linux", ["web"])
+        self.assertNotIn("test_static_web", self.registry.allowed_targets("web-no-browser"))
+        self.registry.register("web-playwright", "linux", ["web", "playwright"])
+        targets = self.registry.allowed_targets("web-playwright")
+        self.assertIn("build_static_web", targets)
+        self.assertIn("test_static_web", targets)
+        self.assertNotIn("test", targets)
 
     def test_stale_runner_is_reported_offline_and_cannot_claim(self):
         self.registry.register("runner-stale", "linux", ["flutter", "linux"])

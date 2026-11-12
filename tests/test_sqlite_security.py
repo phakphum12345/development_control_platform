@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from tools.cloud_gateway.infrastructure import InfrastructureStore
+from tools.cloud_gateway.infrastructure_gates import InfrastructureGateStore
 from tools.cloud_gateway.job_control import JobStore
 from tools.cloud_gateway.runner_registry import RunnerRegistry
 from tools.cloud_gateway.sqlite_security import prepare_private_sqlite_file
@@ -21,6 +22,7 @@ class PrivateSQLitePermissionsTests(unittest.TestCase):
                 (JobStore, "jobs.sqlite3"),
                 (RunnerRegistry, "runners.sqlite3"),
                 (InfrastructureStore, "infrastructure.sqlite3"),
+                (InfrastructureGateStore, "infrastructure-gates.sqlite3"),
                 (RunnerStore, "lifecycle.sqlite3"),
             )
             for store_type, filename in stores:

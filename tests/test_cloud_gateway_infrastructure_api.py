@@ -19,10 +19,12 @@ from urllib.request import Request, urlopen
 from tools.cloud_gateway.infrastructure import (
     FakeInfrastructureProvider, InfrastructureManager, InfrastructureStore,
 )
+from tools.cloud_gateway.infrastructure_gates import InfrastructureGateStore
 from tools.cloud_gateway.policy import GatewaySettings
 from tools.cloud_gateway.server import make_handler
 from tools.cloud_gateway.service import GatewayService
 from tools.cloud_gateway.store import RunnerStore
+from tools.cloud_gateway.terminal_templates import TerminalTemplateStore
 
 
 class NoopProvider:
@@ -36,6 +38,26 @@ class NoopProvider:
         raise AssertionError("unexpected legacy provider termination")
 
 
+class FakeJobStore:
+    def __init__(self):
+        self.rows = {}
+
+    def get(self, job_id):
+        return self.rows.get(job_id)
+
+
+class FakePreviewManager:
+    def __init__(self):
+        self.calls = []
+
+    def start(self, job_id, worker_id, output_relative="source/dist", *, runtime_kind="static", owner_approved=False):
+        self.calls.append({
+            "job_id": job_id, "worker_id": worker_id, "output_relative": output_relative,
+            "runtime_kind": runtime_kind, "owner_approved": owner_approved,
+        })
+        return {"runtime_id": "runtime-1", "runtime_kind": runtime_kind, "state": "running"}
+
+
 class InfrastructureApiTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -43,10 +65,18 @@ class InfrastructureApiTests(unittest.TestCase):
         self.origin = "https://dcp.example.test"
         store = RunnerStore(str(Path(self.temp.name) / "gateway.sqlite"))
         service = GatewayService(GatewaySettings(), store, NoopProvider())
-        service.infrastructure_manager = InfrastructureManager(
-            InfrastructureStore(Path(self.temp.name) / "infra.sqlite"),
-            {"fake": FakeInfrastructureProvider()},
+        self.service = service
+        self.infrastructure_store = InfrastructureStore(
+            Path(self.temp.name) / "infra.sqlite"
         )
+        self.infrastructure_provider = FakeInfrastructureProvider()
+        service.infrastructure_manager = InfrastructureManager(
+            self.infrastructure_store, {"fake": self.infrastructure_provider},
+        )
+        self.gates_path = Path(self.temp.name) / "gates.sqlite"
+        service.infrastructure_gate_store = InfrastructureGateStore(self.gates_path)
+        self.terminal_template_store = TerminalTemplateStore(Path(self.temp.name) / "terminal.sqlite")
+        service.terminal_template_store = self.terminal_template_store
         self.server = ThreadingHTTPServer(
             ("127.0.0.1", 0),
             make_handler(service, "unused-token", self.secret, self.origin),
@@ -97,6 +127,74 @@ class InfrastructureApiTests(unittest.TestCase):
             finally:
                 exc.close()
 
+    def assert_provider_and_inventory_state(self, resource_id, provider_resource_id,
+                                             expected_state):
+        inventory = self.infrastructure_store.get(resource_id)
+        provider = self.infrastructure_provider.resources[provider_resource_id]
+        self.assertEqual(inventory["state"], expected_state)
+        self.assertEqual(provider["state"], expected_state)
+
+
+    def test_next_preview_requires_completed_build_and_explicit_owner_approval(self):
+        import uuid
+        job_id = str(uuid.uuid4())
+        jobs = FakeJobStore()
+        jobs.rows[job_id] = {
+            "id": job_id, "state": "succeeded", "last_worker": "runner-next",
+            "target": "build_next",
+        }
+        previews = FakePreviewManager()
+        self.service.job_store = jobs
+        self.service.preview_manager = previews
+
+        status, denied = self.request(
+            "POST", f"/api/jobs/{job_id}/previews",
+            payload={"runtime_kind": "next"},
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(previews.calls, [])
+
+        status, started = self.request(
+            "POST", f"/api/jobs/{job_id}/previews", role="operator",
+            payload={"runtime_kind": "next", "confirm_code_execution": True},
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(previews.calls, [])
+
+        status, started = self.request(
+            "POST", f"/api/jobs/{job_id}/previews",
+            payload={"runtime_kind": "next", "confirm_code_execution": True},
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(started["runtime_kind"], "next")
+        self.assertTrue(previews.calls[-1]["owner_approved"])
+
+    def test_next_preview_rejects_non_next_jobs_and_static_angular_uses_browser_output(self):
+        import uuid
+        job_id = str(uuid.uuid4())
+        jobs = FakeJobStore()
+        jobs.rows[job_id] = {
+            "id": job_id, "state": "succeeded", "last_worker": "runner-angular",
+            "target": "build_angular",
+        }
+        previews = FakePreviewManager()
+        self.service.job_store = jobs
+        self.service.preview_manager = previews
+
+        status, denied = self.request(
+            "POST", f"/api/jobs/{job_id}/previews",
+            payload={"runtime_kind": "next", "confirm_code_execution": True},
+        )
+        self.assertEqual(status, 409)
+        self.assertEqual(previews.calls, [])
+
+        status, started = self.request(
+            "POST", f"/api/jobs/{job_id}/previews", payload={"runtime_kind": "static"}
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(previews.calls[-1]["output_relative"], "source/dist/browser")
+        self.assertEqual(started["runtime_kind"], "static")
+
     def test_owner_can_create_list_start_stop_and_delete_fake_resource(self):
         status, created = self.request(
             "POST", "/api/infrastructure",
@@ -106,8 +204,15 @@ class InfrastructureApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 201)
         resource_id = created["id"]
+        # Provider identifiers are intentionally private in the public API response.
+        provider_resource_id = self.infrastructure_store.get(resource_id)[
+            "provider_resource_id"
+        ]
         self.assertEqual(created["state"], "provisioned")
         self.assertEqual(created["provider_id"], "fake")
+        self.assert_provider_and_inventory_state(
+            resource_id, provider_resource_id, "provisioned"
+        )
 
         status, inventory = self.request("GET", "/api/infrastructure")
         self.assertEqual(status, 200)
@@ -118,16 +223,25 @@ class InfrastructureApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertEqual(running["state"], "running")
+        self.assert_provider_and_inventory_state(
+            resource_id, provider_resource_id, "running"
+        )
 
         status, stopped = self.request(
             "POST", "/api/infrastructure/" + resource_id + "/stop", payload={}
         )
         self.assertEqual(status, 200)
         self.assertEqual(stopped["state"], "stopped")
+        self.assert_provider_and_inventory_state(
+            resource_id, provider_resource_id, "stopped"
+        )
 
         status, deleted = self.request("DELETE", "/api/infrastructure/" + resource_id)
         self.assertEqual(status, 200)
         self.assertEqual(deleted["state"], "deleted")
+        self.assert_provider_and_inventory_state(
+            resource_id, provider_resource_id, "deleted"
+        )
 
     def test_operator_cannot_delete_resource(self):
         status, created = self.request(
@@ -143,8 +257,279 @@ class InfrastructureApiTests(unittest.TestCase):
         self.assertEqual(status, 403)
         self.assertEqual(result["error"], "owner role required")
 
+    def test_independent_gates_default_off_and_persist(self):
+        status, result = self.request("GET", "/api/infrastructure/gates")
+        self.assertEqual(status, 200)
+        gates = result["gates"]
+        self.assertEqual(set(gates), {"cloud_provisioning", "vm_creation"})
+        for gate in gates.values():
+            self.assertFalse(gate["enabled"])
+            self.assertFalse(gate["effective_enabled"])
+            self.assertFalse(gate["ready"])
+
+        reopened = InfrastructureGateStore(self.gates_path)
+        persisted = reopened.status({"cloud_provisioning": False, "vm_creation": False})
+        self.assertFalse(persisted["cloud_provisioning"]["enabled"])
+        self.assertFalse(persisted["vm_creation"]["enabled"])
+
+    def test_gate_enable_requires_owner_confirmation_and_ready_provider(self):
+        status, wrong = self.request(
+            "POST", "/api/infrastructure/gates/cloud_provisioning",
+            payload={"enabled": True, "confirmation": "yes"},
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("confirmation", wrong["error"].lower())
+
+        status, unavailable = self.request(
+            "POST", "/api/infrastructure/gates/cloud_provisioning",
+            payload={"enabled": True, "confirmation": "ENABLE CLOUD PROVISIONING"},
+        )
+        self.assertEqual(status, 503)
+        self.assertIn("not ready", unavailable["error"])
+
+        status, result = self.request(
+            "GET", "/api/infrastructure/gates"
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(result["gates"]["cloud_provisioning"]["enabled"])
+
+    def test_gate_changes_are_owner_only_and_csrf_protected(self):
+        status, denied = self.request(
+            "POST", "/api/infrastructure/gates/vm_creation", role="operator",
+            payload={"enabled": False},
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(denied["error"], "owner role required")
+
+        # A valid owner request can explicitly keep a gate OFF and is audited.
+        status, result = self.request(
+            "POST", "/api/infrastructure/gates/vm_creation",
+            payload={"enabled": False},
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(result["gate"]["enabled"])
+        events = InfrastructureGateStore(self.gates_path).events("vm_creation")
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["actor"], self.subject)
+        self.assertFalse(bool(events[0]["enabled"]))
+
     def test_unauthenticated_inventory_is_rejected(self):
         request = Request(self.base + "/api/infrastructure")
+        with self.assertRaises(HTTPError) as caught:
+            urlopen(request)
+        try:
+            self.assertEqual(caught.exception.code, 401)
+        finally:
+            caught.exception.close()
+
+
+    def test_terminal_catalog_and_preview_are_authenticated_and_inert(self):
+        status, catalog = self.request("GET", "/api/terminal/templates")
+        self.assertEqual(status, 200)
+        self.assertFalse(catalog["execution_enabled"])
+        templates = {item["id"]: item for item in catalog["templates"]}
+        self.assertIn("git_status", templates)
+        self.assertIn("python_version", templates)
+        self.assertTrue(all(not item["execution_enabled"] for item in templates.values()))
+
+        status, preview = self.request(
+            "POST", "/api/terminal/commands/preview",
+            payload={"template_id": "git_status"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            preview["preview"]["command_preview"], ["git", "status", "--short"]
+        )
+        self.assertEqual(preview["preview"]["status"], "PREVIEW_ONLY")
+        self.assertFalse(preview["execution_enabled"])
+
+    def test_terminal_preview_rejects_arbitrary_command_fields_and_unknown_templates(self):
+        status, result = self.request(
+            "POST", "/api/terminal/commands/preview",
+            payload={"template_id": "git_status", "command": "whoami"},
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("only template_id", result["error"])
+
+        status, result = self.request(
+            "POST", "/api/terminal/commands/preview",
+            payload={"template_id": "not_a_template"},
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("unknown terminal template", result["error"])
+
+    def test_terminal_catalog_denies_unauthenticated_access(self):
+        request = Request(self.base + "/api/terminal/templates")
+        with self.assertRaises(HTTPError) as caught:
+            urlopen(request)
+        try:
+            self.assertEqual(caught.exception.code, 401)
+        finally:
+            caught.exception.close()
+
+
+    @staticmethod
+    def terminal_pack():
+        return {
+            "schema_version": 1,
+            "templates": [{
+                "id": "custom-api-git-status",
+                "name": "Imported Git status",
+                "description": "Imported read-only Git status template.",
+                "category": "Git",
+                "executable_id": "git",
+                "argv": ["status", "--short"],
+                "platforms": ["windows", "linux"],
+                "timeout_seconds": 15,
+                "max_output_bytes": 65536,
+                "network": "denied",
+                "mutation_class": "read-only",
+            }],
+        }
+
+    def test_owner_can_import_inert_pack_and_preview_stays_disabled(self):
+        status, result = self.request(
+            "POST", "/api/terminal/templates/import", payload=self.terminal_pack()
+        )
+        self.assertEqual(status, 201)
+        self.assertFalse(result["imported"][0]["enabled"])
+        self.assertFalse(result["imported"][0]["execution_enabled"])
+        self.assertEqual(result["imported"][0]["approval_status"], "pending_review")
+
+        status, catalog = self.request("GET", "/api/terminal/templates")
+        self.assertEqual(status, 200)
+        imported = next(row for row in catalog["templates"] if row["id"] == "custom-api-git-status")
+        self.assertFalse(imported["execution_enabled"])
+
+        status, preview = self.request(
+            "POST", "/api/terminal/commands/preview",
+            payload={"template_id": "custom-api-git-status"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(preview["preview"]["status"], "PENDING_REVIEW")
+        self.assertEqual(
+            preview["preview"]["command_preview"], ["git", "status", "--short"]
+        )
+        self.assertFalse(preview["execution_enabled"])
+
+        status, duplicate = self.request(
+            "POST", "/api/terminal/templates/import", payload=self.terminal_pack()
+        )
+        self.assertEqual(status, 409)
+        self.assertIn("already exists", duplicate["error"])
+
+    def test_command_pack_import_is_owner_only_and_rejects_unsafe_pack(self):
+        status, denied = self.request(
+            "POST", "/api/terminal/templates/import", role="operator",
+            payload=self.terminal_pack(),
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(denied["error"], "owner role required")
+
+        unsafe = self.terminal_pack()
+        unsafe["templates"][0]["argv"] = ["status", "&&", "whoami"]
+        status, rejected = self.request(
+            "POST", "/api/terminal/templates/import", payload=unsafe
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("shell metacharacters", rejected["error"])
+
+    def test_command_pack_import_requires_same_origin_and_csrf(self):
+        status, result = self.request(
+            "POST", "/api/terminal/templates/import",
+            payload=self.terminal_pack(),
+            extra={"X-CSRF-Token": "invalid"},
+        )
+        self.assertEqual(status, 403)
+        self.assertIn("CSRF", result["error"])
+
+        status, result = self.request(
+            "POST", "/api/terminal/templates/import",
+            payload=self.terminal_pack(),
+            extra={"Origin": "https://attacker.example.test"},
+        )
+        self.assertEqual(status, 403)
+        self.assertIn("same-origin", result["error"])
+        self.assertEqual(self.service_template_rows(), [])
+
+    def service_template_rows(self):
+        return self.terminal_template_store.list_imported()
+
+
+    def test_owner_review_is_explicit_audited_and_never_enables_execution(self):
+        status, imported = self.request(
+            "POST", "/api/terminal/templates/import", payload=self.terminal_pack()
+        )
+        self.assertEqual(status, 201)
+        digest = imported["source_sha256"]
+        path = "/api/terminal/templates/custom-api-git-status/review"
+
+        status, denied = self.request(
+            "POST", path, role="operator",
+            payload={
+                "decision": "approve",
+                "confirmation": "APPROVE TEMPLATE custom-api-git-status",
+                "source_sha256": digest,
+            },
+        )
+        self.assertEqual(status, 403)
+
+        status, bad = self.request(
+            "POST", path,
+            payload={
+                "decision": "approve",
+                "confirmation": "yes",
+                "source_sha256": digest,
+            },
+        )
+        self.assertEqual(status, 400)
+
+        status, stale = self.request(
+            "POST", path,
+            payload={
+                "decision": "approve",
+                "confirmation": "APPROVE TEMPLATE custom-api-git-status",
+                "source_sha256": "0" * 64,
+            },
+        )
+        self.assertEqual(status, 409)
+
+        status, approved = self.request(
+            "POST", path,
+            payload={
+                "decision": "approve",
+                "confirmation": "APPROVE TEMPLATE custom-api-git-status",
+                "source_sha256": digest,
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(approved["template"]["approval_status"], "approved")
+        self.assertFalse(approved["template"]["enabled"])
+        self.assertFalse(approved["template"]["execution_enabled"])
+
+        status, preview = self.request(
+            "POST", "/api/terminal/commands/preview",
+            payload={"template_id": "custom-api-git-status"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(preview["preview"]["status"], "APPROVED_NOT_EXECUTABLE")
+        self.assertFalse(preview["execution_enabled"])
+
+        status, events = self.request(
+            "GET", "/api/terminal/templates/custom-api-git-status/events"
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            [event["event"] for event in events["events"]],
+            ["imported_pending_review", "approved_not_executable"],
+        )
+    def test_command_pack_import_denies_unauthenticated_access(self):
+        request = Request(
+            self.base + "/api/terminal/templates/import",
+            data=json.dumps(self.terminal_pack()).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
         with self.assertRaises(HTTPError) as caught:
             urlopen(request)
         try:

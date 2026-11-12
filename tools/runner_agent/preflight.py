@@ -111,6 +111,25 @@ def _visual_studio() -> dict:
     return {"installed": bool(version), "version": version}
 
 
+def _playwright_tool() -> dict:
+    """Detect the optional Python Playwright package and its installed Chromium binary."""
+    try:
+        from importlib.metadata import version
+        from playwright.sync_api import BrowserContext, sync_playwright
+        websocket_routing = callable(getattr(BrowserContext, "route_web_socket", None))
+        with sync_playwright() as playwright:
+            executable = Path(playwright.chromium.executable_path)
+            browser_installed = executable.is_file()
+        return {
+            "installed": browser_installed and websocket_routing,
+            "version": version("playwright"),
+            "browser_installed": browser_installed,
+            "websocket_routing": websocket_routing,
+        }
+    except Exception:
+        return {"installed": False, "version": None, "browser_installed": False, "websocket_routing": False}
+
+
 def collect_preflight() -> dict:
     system = platform.system().lower()
     host = {"darwin": "macos", "windows": "windows", "linux": "linux"}.get(system, system)
@@ -120,6 +139,7 @@ def collect_preflight() -> dict:
         "git": _tool("git"),
         "flutter": _tool("flutter"),
         "node": _tool("node"),
+        "playwright": _playwright_tool(),
         "java": _tool("java", ("-version",)),
         "android_sdk": {
             "installed": android_sdk_root is not None,
@@ -145,6 +165,8 @@ def collect_preflight() -> dict:
         capabilities.append("flutter")
     if git_ok and tools["node"]["installed"]:
         capabilities.append("web")
+    if tools["playwright"]["installed"]:
+        capabilities.append("playwright")
     if flutter_ok and git_ok and tools["java"]["installed"] and tools["android_sdk"]["installed"] and tools["adb"]["installed"]:
         capabilities.append("android")
     if host == "windows" and flutter_ok and git_ok and tools.get("visual_studio", {}).get("installed"):

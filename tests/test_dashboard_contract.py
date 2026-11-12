@@ -4,16 +4,38 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HTML = (ROOT / "dashboard" / "index.html").read_text(encoding="utf-8")
+SERVER = (ROOT / "tools" / "cloud_gateway" / "server.py").read_text(encoding="utf-8")
 
 
 class DashboardContractTests(unittest.TestCase):
     def test_all_tool_views_exist(self):
-        for view in ("home", "account", "project-import", "repo", "pr", "user", "workspace", "evidence", "gates", "checkpoint", "audit", "route-colors", "ui-routes", "ui-simulator", "dev-tools", "code-navigator"):
+        for view in ("home", "account", "project-import", "terminal-studio", "repo", "pr", "user", "workspace", "evidence", "gates", "checkpoint", "audit", "route-colors", "ui-routes", "ui-simulator", "dev-tools", "code-navigator"):
             with self.subTest(view=view):
                 self.assertIn('id="' + view + '"', HTML)
-        for control in ("repo-load", "pr-load", "user-load", "ws-load", "ws-repo", "ws-branch", "ws-permission", "ws-branches", "ev-check", "gate-eval", "cp-build", "audit-eval", "route-color-save", "route-color-reset", "route-color-export", "route-add", "route-reset", "route-export", "edge-add", "edge-clear", "sim-run", "sim-reset", "sim-download", "dev-tools-copy-status", "code-nav-search", "code-nav-filter", "code-nav-trace-ui", "code-nav-trace-calls", "code-nav-show-ui", "code-nav-compare", "code-nav-run-checks", "code-nav-checkpoint", "code-nav-route-list", "code-nav-mapping", "code-nav-evidence"):
+        for control in ("repo-load", "pr-load", "user-load", "ws-load", "ws-repo", "ws-branch", "ws-permission", "ws-branches", "ev-check", "gate-eval", "cp-build", "audit-eval", "route-color-save", "route-color-reset", "route-color-export", "route-add", "route-reset", "route-export", "edge-add", "edge-clear", "sim-run", "sim-reset", "sim-download", "dev-tools-copy-status", "code-nav-search", "code-nav-filter", "code-nav-trace-ui", "code-nav-trace-calls", "code-nav-show-ui", "code-nav-compare", "code-nav-run-checks", "code-nav-checkpoint", "code-nav-route-list", "code-nav-mapping", "code-nav-evidence", "terminal-load-templates", "terminal-template-select", "terminal-preview", "terminal-preview-output"):
             with self.subTest(control=control):
                 self.assertIn('id="' + control + '"', HTML)
+
+    def test_independent_infrastructure_gate_controls_are_backend_driven(self):
+        for control in (
+            "infra-gate-cloud", "infra-gate-cloud-state", "infra-gate-cloud-detail",
+            "infra-gate-cloud-toggle", "infra-gate-vm", "infra-gate-vm-state",
+            "infra-gate-vm-detail", "infra-gate-vm-toggle", "infra-gates-note",
+            "runner-gate-cloud-provisioning",
+        ):
+            with self.subTest(control=control):
+                self.assertIn('id="' + control + '"', HTML)
+        for contract in (
+            'infraRequest("/infrastructure/gates")',
+            'infraRequest("/infrastructure/gates/"+name',
+            'window.prompt("Type exactly to confirm: "+phrase)',
+            'infraUI.role!=="owner"',
+            'cloudGate&&cloudGate.effective_enabled===true',
+            'GET /api/infrastructure/gates',
+            'POST /api/infrastructure/gates/{cloud_provisioning|vm_creation}',
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, HTML)
 
     def test_public_research_and_private_github_app_import_are_separate(self):
         self.assertIn("https://api.github.com", HTML)
@@ -55,7 +77,7 @@ class DashboardContractTests(unittest.TestCase):
             'function projectImportVerifyCommit()',
             'function projectImportInspectProject()',
             'Absolute host paths are not returned by the API',
-            'does not yet create an immutable job snapshot',
+            'Snapshot SHA-256',
         ):
             with self.subTest(expected=expected):
                 self.assertIn(expected, HTML)
@@ -63,6 +85,47 @@ class DashboardContractTests(unittest.TestCase):
         self.assertIn("Local registry is opt-in", HTML)
         self.assertIn("Write actions", HTML)
         self.assertIn("Disabled", HTML)
+
+
+    def test_dashboard_exposes_supported_next_and_angular_build_targets(self):
+        self.assertIn('<option value="build_next">Next.js (preinstalled dependencies)</option>', HTML)
+        self.assertIn('<option value="build_angular">Angular (preinstalled dependencies)</option>', HTML)
+
+    def test_terminal_studio_dashboard_is_preview_only(self):
+        for expected in (
+            'id="terminal-studio"',
+            'data-tab="terminal-studio"',
+            'function initTerminalStudio()',
+            'function terminalStudioLoad()',
+            'function terminalStudioPreview()',
+            'function terminalStudioImport()',
+            'function terminalStudioReview(decision)',
+            'function terminalStudioLoadEvents(id)',
+            'id="terminal-pack-json"',
+            'id="terminal-import-pack"',
+            'id="terminal-review-panel"',
+            'id="terminal-review-approve"',
+            'id="terminal-review-reject"',
+            'APPROVE TEMPLATE ',
+            'REJECT TEMPLATE ',
+            'APPROVED_NOT_EXECUTABLE',
+            '"/api/terminal/templates/"+encodeURIComponent(item.id)+"/review"',
+            '"/api/terminal/templates/"+encodeURIComponent(id)+"/events"',
+            '"/api/terminal/templates"',
+            '"/api/terminal/templates/import"',
+            '"/api/terminal/commands/preview"',
+            'Imported templates are disabled and pending Owner review.',
+            'credentials:"same-origin"',
+            '"X-CSRF-Token"',
+            'execution_enabled:false',
+            'No process was started.',
+            'PENDING_REVIEW',
+            'Imported template is pending owner review.',
+            'ไม่มี Shell/PTY',
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, HTML)
+
 
     def test_unknown_is_default_for_gate_results(self):
         self.assertIn("<option>unknown</option>", HTML)

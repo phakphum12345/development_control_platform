@@ -149,10 +149,35 @@ the pinned optional dependency before test discovery:
 Run the real-browser smoke tests with Node.js and Playwright Chromium:
 
     npm install --no-save --no-package-lock playwright
-    npx playwright install --with-deps chromium
+    npx playwright install chromium
     node tests/browser_smoke.mjs
 
+On Linux hosts missing browser libraries, an administrator may explicitly run
+`npx playwright install-deps chromium` when package repositories are available.
+The CI workflow installs browser binaries separately and does not run an
+automatic APT dependency installation.
+
 The CI workflow runs static contract tests and browser smoke tests. Browser coverage exercises route-color persistence, route registry add/edit/delete, connection editing, the sandboxed simulator, and registry-route preview. These checks do not replace authenticated integration tests or a production security review.
+
+The optional DCP application-level static web test is a separate Python Playwright
+capability. It is limited to detected dependency-free Static HTML/CSS/JS projects,
+uses the DCP loopback static RuntimeManager, and does not execute imported test
+scripts or install project dependencies. Prepare the Runner explicitly:
+
+```powershell
+python -m pip install "playwright>=1.48"
+python -m playwright install chromium
+$env:DCP_RUNNER_PLAYWRIGHT_ENABLED = "1"
+python -m unittest tests.test_browser_test -v
+```
+
+DCP does not install Python packages or browser binaries automatically. The
+Runner advertises the `playwright` capability only when prerequisites are present
+and the explicit opt-in is enabled. Chromium sandbox support is mandatory for
+this test path; do not disable the sandbox to make CI pass. The current
+`test_static_web` path tests generated output through RuntimeManager directly;
+Playwright-through-authenticated-Preview-Proxy E2E remains deferred. See
+[docs/DCP-PLAYWRIGHT-TESTING.md](docs/DCP-PLAYWRIGHT-TESTING.md).
 
 ## Run the dashboard locally
 

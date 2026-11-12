@@ -27,9 +27,18 @@ from .runner_registry import RunnerRegistry, WorkerNotFound
 from .scheduler import RunnerScheduler, RunnerNotEligible, RunnerNotRegistered
 from .infrastructure import (FakeInfrastructureProvider, InfrastructureManager,
                              InfrastructureStore, ProviderUnavailable, ResourceNotFound)
+from .infrastructure_gates import (
+    GateUnavailable, InfrastructureGateError, InfrastructureGateStore,
+)
 from tools.local_runner_agent.local_project import (
     LocalProjectError, LocalProjectRegistry,
 )
+from tools.project_intelligence import DiscoveryError, discover_project
+from tools.local_runner_agent.workspace import WorkspaceManager
+from tools.local_runner_agent.runtime import RuntimeManager
+from .preview import AuthenticatedPreviewManager, PreviewError
+from .terminal_catalog import (list_templates as list_terminal_templates, preview_template as preview_terminal_template, validate_preview_payload)
+from .terminal_templates import (TerminalTemplateConflict, TerminalTemplateError, TerminalTemplateNotFound, TerminalTemplateStore)
 
 
 class DisabledProvider:
@@ -191,12 +200,44 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
         def local_project_registry(self):
             return getattr(service, "local_project_registry", None)
 
+        def terminal_template_store(self):
+            return getattr(service, "terminal_template_store", None)
+
         @staticmethod
         def public_local_project(row):
-            return {key: row.get(key) for key in (
+            public = {key: row.get(key) for key in (
                 "project_id", "root_id", "relative_path", "snapshot_sha256",
                 "file_count", "total_bytes",
             )}
+            raw_path = row.get("path")
+            if isinstance(raw_path, str) and os.path.isabs(raw_path):
+                try:
+                    inspection = discover_project(raw_path, max_files=5000)
+                    if inspection.get("truncated"):
+                        public["framework_detection"] = {
+                            "framework": "UNKNOWN", "language": "UNKNOWN",
+                            "project_type": "UNKNOWN", "confidence": "unknown",
+                            "package_manager": "UNKNOWN", "toolchain_readiness": "NOT_CHECKED",
+                        }
+                        public["inspection_status"] = "truncated"
+                    else:
+                        public["framework_detection"] = inspection["inventory"]["framework_detection"]
+                        public["inspection_status"] = inspection["status"]
+                except (DiscoveryError, OSError, ValueError):
+                    public["framework_detection"] = {
+                        "framework": "UNKNOWN", "language": "UNKNOWN",
+                        "project_type": "UNKNOWN", "confidence": "unknown",
+                        "package_manager": "UNKNOWN", "toolchain_readiness": "NOT_CHECKED",
+                    }
+                    public["inspection_status"] = "unknown"
+            else:
+                public["framework_detection"] = {
+                    "framework": "UNKNOWN", "language": "UNKNOWN",
+                    "project_type": "UNKNOWN", "confidence": "unknown",
+                    "package_manager": "UNKNOWN", "toolchain_readiness": "NOT_CHECKED",
+                }
+                public["inspection_status"] = "unknown"
+            return public
 
         @staticmethod
         def public_local_root(row):
@@ -217,9 +258,18 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
         @staticmethod
         def public_job(row):
             keys = ("id", "repository", "commit_sha", "target", "state",
-                    "created_at", "updated_at", "worker", "lease_until",
-                    "cancel_at", "result", "error_code")
-            return {key: row.get(key) for key in keys}
+                    "created_at", "updated_at", "worker", "last_worker",
+                    "lease_until", "cancel_at", "result", "error_code",
+                    "attempt_count", "max_attempts")
+            public = {key: row.get(key) for key in keys}
+            payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+            public["source_type"] = payload.get("source_type", "github")
+            public["source_id"] = payload.get("source_id", row.get("repository"))
+            public["source_sha256"] = payload.get("source_sha256")
+            if public["source_type"] == "local_folder":
+                public["repository"] = None
+                public["commit_sha"] = None
+            return public
 
         def proxy_identity(self):
             return verifier.verify(self) if verifier else None
@@ -292,6 +342,34 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                     return self.send_json(404, {"error": "local project not found or invalid"})
                 except Exception:
                     return self.send_json(503, {"error": "Local Project Registry read failed"})
+            terminal_events_match = re.fullmatch(
+                r"/api/terminal/templates/(custom-[a-z0-9][a-z0-9-]{1,62})/events", path
+            )
+            if terminal_events_match:
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if identity.get("role") not in ("owner", "operator"):
+                    return self.send_json(403, {"error": "dashboard role required"})
+                template_store = self.terminal_template_store()
+                if template_store is None:
+                    return self.send_json(503, {"error": "Terminal Template Store unavailable"})
+                return self.send_json(200, {
+                    "events": template_store.events(terminal_events_match.group(1))
+                })
+            if path == "/api/terminal/templates":
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if identity.get("role") not in ("owner", "operator"):
+                    return self.send_json(403, {"error": "dashboard role required"})
+                template_store = self.terminal_template_store()
+                if template_store is None:
+                    return self.send_json(503, {"error": "Terminal Template Store unavailable"})
+                return self.send_json(200, {
+                    "templates": list_terminal_templates() + template_store.list_imported(),
+                    "execution_enabled": False,
+                })
             if path == "/api/jobs" or path.startswith("/api/jobs/"):
                 identity = self.proxy_identity()
                 if not identity:
@@ -308,6 +386,40 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                         return self.send_json(200, {"jobs": [self.public_job(row) for row in jobs.list_recent(limit)]})
                     except (ValueError, TypeError):
                         return self.send_json(400, {"error": "invalid limit"})
+                preview_list = re.fullmatch(r"/api/jobs/([0-9a-f-]{36})/previews", path)
+                if preview_list:
+                    if identity.get("role") != "owner":
+                        return self.send_json(403, {"error": "owner role required"})
+                    job_id = preview_list.group(1)
+                    previews = getattr(service, "preview_manager", None)
+                    job = jobs.get(job_id)
+                    if not job or not previews:
+                        return self.send_json(404, {"error": "preview not found"})
+                    return self.send_json(200, {"previews": previews.list_for_job(job_id)})
+                preview_match = re.fullmatch(
+                    r"/api/jobs/([0-9a-f-]{36})/previews/([0-9a-f-]{36})(?:/content/(.*))?",
+                    path,
+                )
+                if preview_match:
+                    if identity.get("role") != "owner":
+                        return self.send_json(403, {"error": "owner role required"})
+                    job_id, runtime_id, relative_path = preview_match.groups()
+                    previews = getattr(service, "preview_manager", None)
+                    job = jobs.get(job_id)
+                    worker_id = (job.get("last_worker") or job.get("worker")) if job else None
+                    if not job or not previews or not worker_id:
+                        return self.send_json(404, {"error": "preview not found"})
+                    try:
+                        if relative_path is None:
+                            return self.send_json(200, previews.status(runtime_id, job_id))
+                        status, content_type, body = previews.get_content(runtime_id, job_id, relative_path)
+                        import base64
+                        return self.send_json(status, {
+                            "content_type": content_type,
+                            "body_base64": base64.b64encode(body).decode("ascii"),
+                        })
+                    except PreviewError as exc:
+                        return self.send_json(404, {"error": str(exc)})
                 parts = path[len("/api/jobs/"):].split("/")
                 if not parts[0] or not re.fullmatch(r"[0-9a-f-]{36}", parts[0]):
                     return self.send_json(400, {"error": "invalid job id"})
@@ -344,6 +456,16 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                 if registry is None:
                     return self.send_json(503, {"error": "local Runner registry unavailable"})
                 return self.send_json(200, {"runners": registry.list_workers()})
+            if path == "/api/infrastructure/gates":
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated dashboard session required"})
+                if identity.get("role") not in ("owner", "operator"):
+                    return self.send_json(403, {"error": "dashboard role required"})
+                gate_store = getattr(service, "infrastructure_gate_store", None)
+                if gate_store is None:
+                    return self.send_json(503, {"error": "infrastructure gate store unavailable"})
+                return self.send_json(200, {"gates": gate_store.status(self.infrastructure_gate_readiness())})
             if path == "/api/infrastructure" or path.startswith("/api/infrastructure/"):
                 identity = self.proxy_identity()
                 if not identity:
@@ -495,6 +617,36 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                 return self.send_json(503, {"error": "provider status unavailable"})
             return self.send_json(200, result) if result else self.send_json(404, {"error": "not found"})
 
+        def infrastructure_gate_readiness(self):
+            manager = self.infrastructure_manager()
+            try:
+                readiness = getattr(service.provider, "readiness", None)
+                provider_ready = False
+                if callable(readiness):
+                    for os_name in ("linux", "windows", "macos"):
+                        try:
+                            result = readiness(os_name)
+                        except Exception:
+                            result = None
+                        if isinstance(result, dict) and result.get("ready") is True:
+                            provider_ready = True
+                            break
+                cloud_ready = bool(
+                    service.settings.provisioning_enabled
+                    and service.settings.owner_approved
+                    and not service.settings.circuit_breaker_tripped
+                    and provider_ready
+                )
+            except Exception:
+                cloud_ready = False
+            providers = getattr(manager, "providers", {}) if manager else {}
+            vm_ready = bool(
+                manager is not None
+                and getattr(manager, "provisioning_enabled", False)
+                and any(name != "fake" for name in providers)
+            )
+            return {"cloud_provisioning": cloud_ready, "vm_creation": vm_ready}
+
         def control_status(self):
             budget_state = "UNKNOWN"
             budget_message = "Live Azure budget is not configured"
@@ -573,6 +725,10 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                 "gateway": "READY",
                 "owner_approved": service.settings.owner_approved,
                 "provisioning_enabled": service.settings.provisioning_enabled,
+                "infrastructure_gates": (
+                    getattr(service, "infrastructure_gate_store", None).status(self.infrastructure_gate_readiness())
+                    if getattr(service, "infrastructure_gate_store", None) is not None else None
+                ),
                 "budget_gate": budget_state,
                 "budget_message": budget_message,
                 "provider_budget_gates": provider_budget_gates,
@@ -586,6 +742,129 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
 
         def do_POST(self):
             path = urlparse(self.path).path
+            gate_match = re.fullmatch(r"/api/infrastructure/gates/([a-z_]+)", path)
+            if gate_match:
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated dashboard session required"})
+                if identity.get("role") != "owner":
+                    return self.send_json(403, {"error": "owner role required"})
+                if not self.same_origin():
+                    return self.send_json(403, {"error": "same-origin request required"})
+                if not self.csrf_valid(identity):
+                    return self.send_json(403, {"error": "CSRF validation failed"})
+                gate_store = getattr(service, "infrastructure_gate_store", None)
+                if gate_store is None:
+                    return self.send_json(503, {"error": "infrastructure gate store unavailable"})
+                try:
+                    payload = self.body()
+                    row = gate_store.set_enabled(
+                        gate_match.group(1), payload.get("enabled"), identity.get("subject", ""),
+                        payload.get("confirmation", ""),
+                        self.infrastructure_gate_readiness().get(gate_match.group(1), False),
+                    )
+                    return self.send_json(200, {"gate": row})
+                except GateUnavailable as exc:
+                    return self.send_json(503, {"error": str(exc)})
+                except InfrastructureGateError as exc:
+                    return self.send_json(400, {"error": str(exc)})
+            terminal_review_match = re.fullmatch(
+                r"/api/terminal/templates/(custom-[a-z0-9][a-z0-9-]{1,62})/review", path
+            )
+            if terminal_review_match:
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if identity.get("role") != "owner":
+                    return self.send_json(403, {"error": "owner role required"})
+                if not self.same_origin():
+                    return self.send_json(403, {"error": "same-origin request required"})
+                if not self.csrf_valid(identity):
+                    return self.send_json(403, {"error": "CSRF validation failed"})
+                template_store = self.terminal_template_store()
+                if template_store is None:
+                    return self.send_json(503, {"error": "Terminal Template Store unavailable"})
+                try:
+                    payload = self.body()
+                    if set(payload) != {"decision", "confirmation", "source_sha256"}:
+                        return self.send_json(400, {"error": "review request fields are invalid"})
+                    result = template_store.review(
+                        terminal_review_match.group(1),
+                        payload["decision"],
+                        identity.get("subject", ""),
+                        payload["confirmation"],
+                        payload["source_sha256"],
+                    )
+                    return self.send_json(200, {"template": result})
+                except PolicyDenied as exc:
+                    return self.send_json(exc.status_code, {"error": str(exc)})
+                except TerminalTemplateNotFound as exc:
+                    return self.send_json(404, {"error": str(exc)})
+                except TerminalTemplateConflict as exc:
+                    return self.send_json(409, {"error": str(exc)})
+                except TerminalTemplateError as exc:
+                    return self.send_json(400, {"error": str(exc)})
+            if path == "/api/terminal/templates/import":
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if identity.get("role") != "owner":
+                    return self.send_json(403, {"error": "owner role required"})
+                if not self.same_origin():
+                    return self.send_json(403, {"error": "same-origin request required"})
+                if not self.csrf_valid(identity):
+                    return self.send_json(403, {"error": "CSRF validation failed"})
+                template_store = self.terminal_template_store()
+                if template_store is None:
+                    return self.send_json(503, {"error": "Terminal Template Store unavailable"})
+                try:
+                    result = template_store.import_pack(self.body(), identity.get("subject", ""))
+                    return self.send_json(201, result)
+                except PolicyDenied as exc:
+                    return self.send_json(exc.status_code, {"error": str(exc)})
+                except TerminalTemplateError as exc:
+                    status = 409 if "already exists" in str(exc) else 400
+                    return self.send_json(status, {"error": str(exc)})
+            if path == "/api/terminal/commands/preview":
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if identity.get("role") not in ("owner", "operator"):
+                    return self.send_json(403, {"error": "dashboard role required"})
+                if not self.same_origin():
+                    return self.send_json(403, {"error": "same-origin request required"})
+                if not self.csrf_valid(identity):
+                    return self.send_json(403, {"error": "CSRF validation failed"})
+                try:
+                    payload = self.body()
+                    template_id, parameters = validate_preview_payload(payload)
+                    try:
+                        preview = preview_terminal_template(template_id, parameters)
+                    except ValueError as exc:
+                        if str(exc) != "unknown terminal template":
+                            raise
+                        if parameters:
+                            raise ValueError("imported templates do not accept parameters")
+                        template_store = self.terminal_template_store()
+                        imported = template_store.get_imported(template_id) if template_store else None
+                        if imported is None:
+                            raise
+                        preview = dict(imported)
+                        preview["executable"] = preview.pop("executable_id")
+                        preview["command_preview"] = [preview["executable"], *preview["argv"]]
+                        approval_status = preview.get("approval_status")
+                        preview["requires_execution_approval"] = approval_status == "pending_review"
+                        preview["status"] = {
+                            "pending_review": "PENDING_REVIEW",
+                            "approved": "APPROVED_NOT_EXECUTABLE",
+                            "rejected": "REJECTED",
+                        }.get(approval_status, "UNKNOWN")
+                    return self.send_json(200, {
+                        "preview": preview,
+                        "execution_enabled": False,
+                    })
+                except ValueError as exc:
+                    return self.send_json(400, {"error": str(exc)})
             if path == "/api/infrastructure" or path.startswith("/api/infrastructure/"):
                 identity = self.proxy_identity()
                 if not identity:
@@ -602,6 +881,12 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                 try:
                     if path == "/api/infrastructure":
                         payload = self.body()
+                        provider_id = payload.get("provider_id", "fake")
+                        if provider_id != "fake":
+                            gate_store = getattr(service, "infrastructure_gate_store", None)
+                            gates = gate_store.status(self.infrastructure_gate_readiness()) if gate_store else {}
+                            if not gates.get("vm_creation", {}).get("effective_enabled", False):
+                                return self.send_json(503, {"error": "VM Creation gate is OFF or provider is not ready"})
                         key = self.headers.get("Idempotency-Key", "")
                         row, created = manager.create(
                             target_os=payload.get("target_os"),
@@ -642,8 +927,90 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                 if jobs is None:
                     return self.send_json(503, {"error": "job control plane unavailable"})
                 try:
+                    preview_start = re.fullmatch(r"/api/jobs/([0-9a-f-]{36})/previews", path)
+                    if preview_start:
+                        if identity.get("role") != "owner":
+                            return self.send_json(403, {"error": "owner role required"})
+                        job_id = preview_start.group(1)
+                        job = jobs.get(job_id)
+                        previews = getattr(service, "preview_manager", None)
+                        if not job or job.get("state") != "succeeded":
+                            return self.send_json(409, {"error": "job must succeed before preview"})
+                        worker_id = (job.get("last_worker") or job.get("worker")) if job else None
+                        if not previews or not worker_id:
+                            return self.send_json(503, {"error": "local preview runtime is not configured"})
+                        payload = self.body()
+                        if not isinstance(payload, dict):
+                            return self.send_json(400, {"error": "preview request must be an object"})
+                        runtime_kind = payload.get("runtime_kind", "static")
+                        try:
+                            if runtime_kind == "next":
+                                if job.get("target") != "build_next":
+                                    return self.send_json(409, {"error": "Next.js runtime requires a completed build_next job"})
+                                if set(payload) != {"runtime_kind", "confirm_code_execution"} or payload.get("confirm_code_execution") is not True:
+                                    return self.send_json(400, {"error": "explicit confirm_code_execution=true is required"})
+                                row = previews.start(
+                                    job_id, worker_id, runtime_kind="next", owner_approved=True
+                                )
+                            elif runtime_kind == "static":
+                                if job.get("target") == "build_next":
+                                    return self.send_json(409, {"error": "Next.js build requires the explicit Next.js runtime path"})
+                                if set(payload) - {"runtime_kind", "output_relative"}:
+                                    return self.send_json(400, {"error": "unsupported static preview request fields"})
+                                default_output = "source/dist/browser" if job.get("target") == "build_angular" else "source/dist"
+                                output_relative = payload.get("output_relative", default_output)
+                                row = previews.start(
+                                    job_id, worker_id, output_relative, runtime_kind="static"
+                                )
+                            else:
+                                return self.send_json(400, {"error": "unsupported preview runtime kind"})
+                            return self.send_json(201, row)
+                        except PreviewError as exc:
+                            return self.send_json(409, {"error": str(exc)})
                     if path == "/api/jobs":
                         payload = self.body()
+                        if payload.get("source_type") == "local_folder":
+                            if identity.get("role") != "owner":
+                                return self.send_json(403, {"error": "owner role required for Local Folder jobs"})
+                            if set(payload) != {"source_type", "project_id", "snapshot_sha256", "target"}:
+                                return self.send_json(400, {"error": "invalid Local Folder job payload"})
+                            registry = self.local_project_registry()
+                            if registry is None:
+                                return self.send_json(503, {"error": "Local Project Registry unavailable"})
+                            project_id = payload.get("project_id")
+                            expected_sha = payload.get("snapshot_sha256")
+                            target = payload.get("target")
+                            if not isinstance(project_id, str) or not re.fullmatch(
+                                r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", project_id
+                            ):
+                                return self.send_json(400, {"error": "invalid local project ID"})
+                            if not isinstance(expected_sha, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_sha):
+                                return self.send_json(400, {"error": "invalid local snapshot SHA-256"})
+                            if target not in ("build_static_web", "test_static_web"):
+                                return self.send_json(400, {"error": "Local Folder supports static web build or Playwright test targets only"})
+                            try:
+                                registry.reload()
+                                current = registry.refresh_project(project_id)
+                            except LocalProjectError:
+                                return self.send_json(404, {"error": "local project is not registered under an approved root"})
+                            if current.get("snapshot_sha256") != expected_sha:
+                                return self.send_json(409, {
+                                    "error": "local project changed; refresh the project catalog and select the new snapshot",
+                                    "current_snapshot_sha256": current.get("snapshot_sha256"),
+                                })
+                            try:
+                                inspection = discover_project(current["path"], max_files=5000)
+                            except (DiscoveryError, OSError, ValueError):
+                                return self.send_json(409, {"error": "local project could not be inspected safely"})
+                            if inspection.get("truncated"):
+                                return self.send_json(409, {"error": "local project inventory is truncated; narrow the selected project before queueing"})
+                            detection = inspection["inventory"]["framework_detection"]
+                            framework = detection.get("framework")
+                            if target in ("build_static_web", "test_static_web") and framework != "Static HTML/CSS/JS":
+                                return self.send_json(409, {"error": "selected project is not a detected static web project"})
+
+                            row, created = jobs.create(payload, self.headers.get("Idempotency-Key", ""))
+                            return self.send_json(202 if created else 200, self.public_job(row))
                         repository = payload.get("repository")
                         authorizer = getattr(service, "repository_authorizer", None)
                         if callable(authorizer):
@@ -817,8 +1184,10 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                     status = self.control_status()
                     platform = payload.get("target_os")
                     provider_state = status["providers"].get(platform, {})
-                    if not status["provisioning_enabled"] or not status["owner_approved"]:
-                        return self.send_json(503, {"error": "owner approval or provisioning gate is not ready"})
+                    gate_store = getattr(service, "infrastructure_gate_store", None)
+                    gates = gate_store.status(self.infrastructure_gate_readiness()) if gate_store else {}
+                    if not status["provisioning_enabled"] or not status["owner_approved"] or not gates.get("cloud_provisioning", {}).get("effective_enabled", False):
+                        return self.send_json(503, {"error": "owner approval or Cloud Provisioning gate is not ready"})
                     provider_budget_gate = status["provider_budget_gates"].get(
                         platform, "UNKNOWN"
                     )
@@ -857,6 +1226,25 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
 
         def do_DELETE(self):
             path = urlparse(self.path).path
+            preview_stop = re.fullmatch(r"/api/jobs/([0-9a-f-]{36})/previews/([0-9a-f-]{36})", path)
+            if preview_stop:
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if identity.get("role") != "owner":
+                    return self.send_json(403, {"error": "owner role required"})
+                if not self.same_origin() or not self.csrf_valid(identity):
+                    return self.send_json(403, {"error": "same-origin CSRF validation failed"})
+                job_id, runtime_id = preview_stop.groups()
+                jobs = self.job_store()
+                previews = getattr(service, "preview_manager", None)
+                job = jobs.get(job_id) if jobs is not None else None
+                if not job or not previews:
+                    return self.send_json(404, {"error": "preview not found"})
+                try:
+                    return self.send_json(200, previews.stop(runtime_id, job_id))
+                except PreviewError as exc:
+                    return self.send_json(404, {"error": str(exc)})
             if path.startswith("/api/infrastructure/"):
                 identity = self.proxy_identity()
                 if not identity:
@@ -949,6 +1337,12 @@ def _start_expiry_reconciler(service, interval_seconds):
                 service.reconcile_expired()
             except Exception:
                 pass
+            try:
+                previews = getattr(service, "preview_manager", None)
+                if previews is not None:
+                    previews.reap_expired()
+            except Exception:
+                pass
             threading.Event().wait(interval_seconds)
 
     worker = threading.Thread(target=loop, name="dcp-runner-expiry-reconciler", daemon=True)
@@ -1005,6 +1399,9 @@ def main():
         repository_commit_resolver=github_app.resolve_repository_commit if github_app else None,
         repository_project_inspector=github_app.inspect_repository_project if github_app else None,
     )
+    service.terminal_template_store = TerminalTemplateStore(
+        os.getenv("DCP_GATEWAY_TERMINAL_DATABASE", database_path + ".terminal")
+    )
     registry_path = os.getenv("DCP_LOCAL_PROJECT_REGISTRY", "").strip()
     service.local_project_registry = None
     if registry_path:
@@ -1013,6 +1410,20 @@ def main():
         except (ValueError, OSError, LocalProjectError) as exc:
             raise SystemExit("DCP Local Project Registry configuration is invalid") from exc
     service.job_store = jobs_store
+    service.preview_manager = None
+    workspace_root = os.getenv("DCP_RUNNER_WORKSPACE_ROOT", "").strip()
+    if workspace_root:
+        try:
+            if not os.path.isabs(workspace_root):
+                raise ValueError("workspace root must be absolute")
+            workspace_manager = WorkspaceManager(
+                workspace_root,
+                max_active=int(os.getenv("DCP_RUNNER_MAX_ACTIVE_WORKSPACES", "8")),
+                max_workspace_bytes=int(os.getenv("DCP_RUNNER_MAX_WORKSPACE_BYTES", str(2 * 1024 * 1024 * 1024))),
+            )
+            service.preview_manager = AuthenticatedPreviewManager(RuntimeManager(workspace_manager))
+        except (ValueError, OSError, RuntimeError) as exc:
+            raise SystemExit("DCP preview workspace configuration is invalid") from exc
     artifact_root = os.getenv("DCP_GATEWAY_ARTIFACTS_ROOT") or os.path.abspath(database_path + ".artifacts")
     try:
         artifact_limit = int(os.getenv("DCP_GATEWAY_MAX_ARTIFACT_BYTES", str(100 * 1024 * 1024)))
@@ -1025,6 +1436,11 @@ def main():
         service.runner_registry = RunnerRegistry(runner_registry_path, runner_stale_seconds)
     except (ValueError, OSError) as exc:
         raise SystemExit("DCP Runner registry configuration is invalid") from exc
+    gates_path = os.getenv("DCP_GATEWAY_GATES_DATABASE", database_path + ".gates")
+    try:
+        service.infrastructure_gate_store = InfrastructureGateStore(gates_path)
+    except (ValueError, OSError) as exc:
+        raise SystemExit("DCP Infrastructure Gate Store configuration is invalid") from exc
     infrastructure_path = os.getenv("DCP_GATEWAY_INFRA_DATABASE", database_path + ".infra")
     try:
         service.infrastructure_manager = InfrastructureManager(
