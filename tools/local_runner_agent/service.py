@@ -67,9 +67,13 @@ class RunnerAgentService:
                     if outcome in summary["outcomes"]:
                         summary["outcomes"][outcome] += 1
                     delay = 0
-            except RunnerGatewayError:
+            except RunnerGatewayError as exc:
                 summary["cycles"] += 1
                 summary["gateway_errors"] += 1
+                if exc.status_code in (400, 401, 403, 404, 409):
+                    summary["stopped"] = False
+                    summary["reason"] = "runner_not_eligible"
+                    break
                 delay = backoff
                 backoff = min(backoff * 2, self.max_backoff_seconds)
             except ExecutionError:
