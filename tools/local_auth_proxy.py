@@ -736,6 +736,22 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                 status, data = app.gateway_request("POST", path, session, raw,
                                                    self.headers.get("X-CSRF-Token", ""))
                 return self.send_bytes(status, data)
+            runner_control = re.fullmatch(
+                r"/api/runners/([A-Za-z0-9_.:-]{1,100})/(drain|enable)", path
+            )
+            if runner_control:
+                if not session or not session["authenticated"] or not self.csrf_ok(session):
+                    return self.send_json(403, {"error": "authenticated session and CSRF token required"})
+                try:
+                    payload, raw = self.body()
+                except Exception:
+                    return self.send_json(400, {"error": "invalid JSON body"})
+                if payload:
+                    return self.send_json(400, {"error": "runner control payload must be an empty object"})
+                status, data = app.gateway_request(
+                    "POST", path, session, raw, self.headers.get("X-CSRF-Token", "")
+                )
+                return self.send_bytes(status, data)
             return self.send_json(404, {"error": "not found"})
 
         def do_DELETE(self):
