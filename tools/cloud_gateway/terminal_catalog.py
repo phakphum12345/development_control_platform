@@ -193,10 +193,13 @@ def validate_preview_payload(payload: dict) -> tuple[str, dict]:
     if (not isinstance(payload, dict) or "template_id" not in payload
             or not set(payload).issubset({"template_id", "parameters"})):
         raise ValueError("only template_id and optional parameters are accepted")
+    template_id = payload["template_id"]
+    if not isinstance(template_id, str) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", template_id):
+        raise ValueError("invalid template_id")
     parameters = payload.get("parameters", {})
     if not isinstance(parameters, dict):
         raise ValueError("parameters must be an object")
-    return payload["template_id"], parameters
+    return template_id, parameters
 
 
 def preview_template(template_id: str, parameters: dict | None = None) -> dict:
