@@ -837,12 +837,21 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                     return self.send_json(403, {"error": "CSRF validation failed"})
                 try:
                     payload = self.body()
-                    if set(payload) != {"template_id"}:
-                        return self.send_json(400, {"error": "only template_id is accepted"})
+                    if (not isinstance(payload, dict)
+                            or "template_id" not in payload
+                            or not set(payload).issubset({"template_id", "parameters"})):
+                        return self.send_json(400, {"error": "only template_id and optional parameters are accepted"})
                     template_id = payload["template_id"]
+                    parameters = payload.get("parameters", {})
+                    if not isinstance(parameters, dict):
+                        return self.send_json(400, {"error": "parameters must be an object"})
                     try:
-                        preview = preview_terminal_template(template_id)
-                    except ValueError:
+                        preview = preview_terminal_template(template_id, parameters)
+                    except ValueError as exc:
+                        if str(exc) != "unknown terminal template":
+                            raise
+                        if parameters:
+                            raise ValueError("imported templates do not accept parameters")
                         template_store = self.terminal_template_store()
                         imported = template_store.get_imported(template_id) if template_store else None
                         if imported is None:
