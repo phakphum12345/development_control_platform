@@ -351,6 +351,27 @@ class InfrastructureApiTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertIn("shell metacharacters", rejected["error"])
 
+    def test_command_pack_import_requires_same_origin_and_csrf(self):
+        status, result = self.request(
+            "POST", "/api/terminal/templates/import",
+            payload=self.terminal_pack(),
+            extra={"X-CSRF-Token": "invalid"},
+        )
+        self.assertEqual(status, 403)
+        self.assertIn("CSRF", result["error"])
+
+        status, result = self.request(
+            "POST", "/api/terminal/templates/import",
+            payload=self.terminal_pack(),
+            extra={"Origin": "https://attacker.example.test"},
+        )
+        self.assertEqual(status, 403)
+        self.assertIn("same-origin", result["error"])
+        self.assertEqual(self.service_template_rows(), [])
+
+    def service_template_rows(self):
+        return self.terminal_template_store.list_imported()
+
     def test_command_pack_import_denies_unauthenticated_access(self):
         request = Request(
             self.base + "/api/terminal/templates/import",
