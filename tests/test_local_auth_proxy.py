@@ -496,11 +496,13 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
             self.assertEqual(preview_cookie["samesite"], "None")
             self.assertEqual(preview_cookie["path"], preview["preview_path"])
             self.assertGreater(int(preview_cookie["max-age"]), 0)
+            # WebKit treats localhost as a secure loopback origin for Secure
+            # cookies; use it for browser traffic while the server stays IPv4-bound.
+            browser_base = self.base.replace("127.0.0.1", "localhost", 1)
             cookies = [{
                 "name": preview_cookie_name,
                 "value": preview_cookie.value,
-                "domain": "127.0.0.1",
-                "path": preview_cookie["path"],
+                "url": browser_base + preview["preview_path"],
                 "httpOnly": True,
                 "secure": True,
                 "sameSite": "None",
@@ -553,7 +555,7 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
 
                     page.on("response", capture_asset_response)
                     response = page.goto(
-                        self.base + preview["preview_path"],
+                        browser_base + preview["preview_path"],
                         wait_until="networkidle",
                         timeout=15000,
                     )
@@ -571,7 +573,7 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                         css_color, "rgb(1, 2, 3)",
                         "CSS diagnostics: responses=%r console=%r requests=%r css_requests=%r failed=%r cookies=%r" % (
                             asset_responses, console_errors, request_urls, css_requests,
-                            failed_requests, context.cookies(self.base)
+                            failed_requests, context.cookies(browser_base)
                         ),
                     )
                     # Browser engines may revalidate or request the same stylesheet more
@@ -585,7 +587,7 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                     ]
                     self.assertTrue(http_requests)
                     self.assertTrue(
-                        all(url.startswith(self.base + "/") for url in http_requests)
+                        all(url.startswith(browser_base + "/") for url in http_requests)
                     )
                     self.assertEqual(console_errors, [])
                     self.assertEqual(page_errors, [])
@@ -602,7 +604,7 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                     self.assertEqual(stopped, 200, stop_body.decode(errors="replace"))
                     self.assertIn("Max-Age=0", stop_headers.get("Set-Cookie", ""))
                     after_stop = page.goto(
-                        self.base + preview["preview_path"],
+                        browser_base + preview["preview_path"],
                         wait_until="domcontentloaded",
                         timeout=10000,
                     )
