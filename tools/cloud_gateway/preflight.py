@@ -209,6 +209,16 @@ def inspect_environment(env: Mapping[str, str] | None = None) -> dict:
         and _valid_amount(values.get("DCP_AZURE_PROJECTED_RUN_COST_USD", ""))
         and all(re.fullmatch(r"[A-Za-z0-9_]+", values.get(name, "")) for name in
                 ("DCP_AZURE_LINUX_VM_SIZE", "DCP_AZURE_WINDOWS_VM_SIZE"))
+        and all(
+            re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", values.get(name, ""))
+            and values.get(name, "").lower() != "latest"
+            for name in (
+                "DCP_AZURE_LINUX_IMAGE_PUBLISHER", "DCP_AZURE_LINUX_IMAGE_OFFER",
+                "DCP_AZURE_LINUX_IMAGE_SKU", "DCP_AZURE_LINUX_IMAGE_VERSION",
+                "DCP_AZURE_WINDOWS_IMAGE_PUBLISHER", "DCP_AZURE_WINDOWS_IMAGE_OFFER",
+                "DCP_AZURE_WINDOWS_IMAGE_SKU", "DCP_AZURE_WINDOWS_IMAGE_VERSION",
+            )
+        )
         and bool(re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", values.get("DCP_RUNNER_VERSION", "")))
         and all(re.fullmatch(r"[a-fA-F0-9]{64}", values.get(name, "")) for name in
                 ("DCP_RUNNER_LINUX_SHA256", "DCP_RUNNER_WINDOWS_SHA256"))
