@@ -10,7 +10,7 @@ SUBSCRIPTION = "00000000-0000-0000-0000-000000000000"
 
 def ssh_public_key():
     key_type = b"ssh-ed25519"
-    wire = len(key_type).to_bytes(4, "big") + key_type + (32).to_bytes(4, "big") + b"\\x01" * 32
+    wire = len(key_type).to_bytes(4, "big") + key_type + (32).to_bytes(4, "big") + b"\x01" * 32
     return "ssh-ed25519 " + base64.b64encode(wire).decode("ascii") + " preflight-test"
 
 
