@@ -4,6 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HTML = (ROOT / "dashboard" / "index.html").read_text(encoding="utf-8")
+SERVER = (ROOT / "tools" / "cloud_gateway" / "server.py").read_text(encoding="utf-8")
 
 
 class DashboardContractTests(unittest.TestCase):
@@ -425,6 +426,23 @@ class DashboardControlCenterV2Tests(unittest.TestCase):
             'runnerUI.project.flutter.detected!==true){runnerText("build-job-result","BLOCKED: selected commit is not confirmed as a Flutter project.")',
             HTML,
         )
+
+    def test_terminal_visual_command_builder_is_typed_and_preview_only(self):
+        for contract in (
+            'id="terminal-builder-fields"',
+            "function terminalStudioRenderBuilder()",
+            "function terminalStudioCollectParameters()",
+            '["integer","commit_sha"].includes(spec.type)',
+            'parameters:terminalStudioCollectParameters()',
+            'terminalStudioRenderBuilder();$("terminal-preview").disabled',
+            "No Shell/PTY",
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, HTML)
+        self.assertIn("validate_preview_payload(payload)", SERVER)
+        self.assertIn("preview_terminal_template(template_id, parameters)", SERVER)
+        self.assertIn("imported templates do not accept parameters", SERVER)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
