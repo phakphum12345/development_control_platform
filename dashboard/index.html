@@ -367,13 +367,18 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
 <section class="view" id="terminal-studio">
  <div class="panel">
   <div class="row"><div><h2>Terminal Studio</h2><p>Command Library สำหรับตรวจสอบ Git และ Toolchain พร้อมดูคำสั่งแบบ argv ก่อนใช้งาน</p></div><span class="pill" id="terminal-studio-state">PREVIEW ONLY</span></div>
-  <div class="warn"><b>Safety:</b> รุ่นนี้แสดง Catalog และ Preview เท่านั้น ไม่มีการรันคำสั่ง ไม่มี Shell/PTY ไม่มีการติดตั้ง Dependencies และไม่รับคำสั่งอิสระจาก Browser</div>
+  <div class="warn"><b>Safety:</b> รุ่นนี้แสดง Catalog, Visual Builder และ Preview เท่านั้น ไม่มีการรันคำสั่ง ไม่มี Shell/PTY ไม่มีการติดตั้ง Dependencies และไม่รับคำสั่งอิสระจาก Browser. ค่าพารามิเตอร์ต้องผ่าน Schema ที่ Gateway ตรวจซ้ำ</div>
   <div class="actions"><button class="primary" id="terminal-load-templates" type="button">Load Command Library</button><label for="terminal-template-select">Command template</label><select id="terminal-template-select" disabled><option value="">Load templates first</option></select><button id="terminal-preview" type="button" disabled>Preview exact argv</button></div>
   <div id="terminal-status" class="output" role="status" aria-live="polite">Owner session and command catalog have not been checked.</div>
  </div>
+ <div class="panel" id="terminal-builder-panel">
+  <h3>Visual Command Builder</h3>
+  <p class="small muted">กรอกเฉพาะพารามิเตอร์แบบมีชนิดและขอบเขต เช่น จำนวน Commit หรือ Full SHA. ไม่มีช่องให้พิมพ์ Shell Command หรือเพิ่ม argv เอง.</p>
+  <div id="terminal-builder-fields" class="grid"><div class="empty">Load the Command Library and choose a template.</div></div>
+ </div>
  <div class="panel">
   <h3>Exact command preview</h3>
-  <p class="small muted">Preview displays a trusted executable and argument array, not a shell command string. Workspace binding and execution are not implemented in this slice.</p>
+  <p class="small muted">Preview displays the trusted executable, validated parameter values and exact argument array—not a shell command string. This feature never executes the command; workspace binding and execution remain disabled.</p>
   <pre id="terminal-preview-output" class="output" aria-label="Terminal command preview">No command selected.</pre>
  </div>
  <div class="panel" id="terminal-review-panel" hidden>
@@ -774,7 +779,7 @@ const CODE_NAV_MAPPINGS=[
 {id:"infrastructure",label:"Infrastructure Manager",path:"security",target:"infrastructure",file:"dashboard/index.html",elements:["infrastructure","infra-mode","infra-refresh","infra-status","infra-gates-note","infra-gate-cloud","infra-gate-cloud-state","infra-gate-cloud-detail","infra-gate-cloud-toggle","infra-gate-vm","infra-gate-vm-state","infra-gate-vm-detail","infra-gate-vm-toggle","infra-catalog","infra-os","infra-provider","infra-image","infra-template","infra-create","infra-inventory"],handlers:["infraRefresh","infraSession","infraRenderCatalog","infraRenderGates","infraToggleGate","infraRenderInventory","infraAction","infraCreate"],service:"Authenticated same-origin Gateway API and Local Auth Proxy: GET /api/infrastructure/gates, POST /api/infrastructure/gates/{cloud_provisioning|vm_creation}, plus simulation-only inventory/lifecycle routes",state:"infraUI CSRF/role/gates/catalog/resources/ready in browser memory; persistent SQLite gate and inventory state",tests:["tests/test_cloud_gateway_infrastructure.py","tests/test_cloud_gateway_infrastructure_api.py","tests/test_local_auth_proxy.py","tests/test_dashboard_contract.py"],evidence:"Backend-confirmed independent switches; provider readiness required to enable; current live provisioning remains disabled."},
 {id:"repo-selector",label:"Account & Repo",path:"repository",target:"repo-selector",file:"dashboard/index.html",elements:["repo-selector","shared-owner","shared-owner-custom","shared-repo","shared-load","shared-apply","shared-status"],handlers:["sharedOwner","shared-load click handler","shared-repo change handler","shared-apply click handler","shared-clear click handler"],service:"Unauthenticated public GitHub REST API: GET /users/{owner} and GET /users/{owner}/repos?type=public; no OAuth account switching",state:"sharedSelection owner/repository/repositories in browser memory; selected repository copied into tool inputs",tests:["tests/test_dashboard_contract.py::test_shared_github_account_and_repository_selector_contract","tests/test_dashboard_contract.py::test_github_requests_are_public_read_only","tests/browser_smoke.mjs"],evidence:"Public repository discovery only; private repository access and effective permissions remain UNKNOWN."},
 {id:"user",label:"User Explorer",path:"repository",target:"user",file:"dashboard/index.html",elements:["user","user-name","user-load","user-clear","user-msg","user-data"],handlers:["user-load onclick handler","user-clear onclick handler"],service:"Unauthenticated public GitHub REST API: GET /users/{username}",state:"state.user in browser memory; rendered public profile metadata",tests:["tests/test_dashboard_contract.py::test_github_requests_are_public_read_only","tests/browser_smoke.mjs"],evidence:"Public profile only; does not establish organization membership, roles, private access or repository permissions."},
-{id:"terminal-studio",label:"Terminal Studio",path:"developer",target:"terminal-studio",file:"dashboard/index.html",elements:["terminal-studio","terminal-load-templates","terminal-template-select","terminal-preview","terminal-preview-output","terminal-pack-json","terminal-import-pack","terminal-import-status","terminal-review-panel","terminal-review-approve","terminal-review-reject","terminal-review-events"],handlers:["initTerminalStudio","terminalStudioLoad","terminalStudioPreview","terminalStudioImport","terminalStudioReview","terminalStudioLoadEvents"],service:"Authenticated Gateway Terminal Catalog and preview endpoints; no command execution",state:"terminalStudioState in browser memory; owner CSRF token held in projectImportState",tests:["tests/test_dashboard_contract.py::test_terminal_studio_dashboard_is_preview_only","tests/test_cloud_gateway_terminal_catalog.py"],evidence:"API and argv preview only; no execution, workspace binding or runtime evidence."},
+{id:"terminal-studio",label:"Terminal Studio",path:"developer",target:"terminal-studio",file:"dashboard/index.html",elements:["terminal-studio","terminal-load-templates","terminal-template-select","terminal-builder-panel","terminal-builder-fields","terminal-preview","terminal-preview-output","terminal-pack-json","terminal-import-pack","terminal-import-status","terminal-review-panel","terminal-review-approve","terminal-review-reject","terminal-review-events"],handlers:["initTerminalStudio","terminalStudioLoad","terminalStudioRenderBuilder","terminalStudioCollectParameters","terminalStudioPreview","terminalStudioImport","terminalStudioReview","terminalStudioLoadEvents"],service:"Authenticated Gateway Terminal Catalog and typed preview endpoint; parameters validated against curated schemas; no command execution",state:"terminalStudioState and typed form values in browser memory; owner CSRF token held in projectImportState",tests:["tests/test_dashboard_contract.py::test_terminal_studio_dashboard_is_preview_only","tests/test_cloud_gateway_terminal_catalog.py","tests/browser_smoke.mjs"],evidence:"Read-only exact argv preview only; no shell, PTY, execution, workspace binding or runtime evidence."},
 
 
 ];
@@ -1109,6 +1114,7 @@ async function terminalStudioLoad(){
    select.add(new Option(item.name+" · "+item.category,item.id));
   }
   select.disabled=select.options.length<=1;
+  terminalStudioRenderBuilder();
   $("terminal-preview").disabled=true;
   $("terminal-import-pack").disabled=false;
   $("terminal-import-status").textContent="Owner session connected. Imported templates remain disabled pending review.";
@@ -1116,17 +1122,51 @@ async function terminalStudioLoad(){
  }catch(error){terminalStudioStatus("Could not load Command Library: "+error.message,"error");}
  finally{button.disabled=false;}
 }
+function terminalStudioRenderBuilder(){
+ const host=$("terminal-builder-fields");
+ const selected=$("terminal-template-select").value;
+ const item=terminalStudioState.templates.find(row=>row&&row.id===selected);
+ host.replaceChildren();
+ if(!item){host.textContent="Choose a command template to see its typed parameters.";return;}
+ const specs=Array.isArray(item.parameters)?item.parameters:[];
+ if(!specs.length){const note=document.createElement("div");note.className="empty";note.textContent="No parameters. This template uses fixed, curated arguments.";host.append(note);return;}
+ for(const spec of specs){
+  if(!spec||typeof spec.name!=="string"||!["integer","commit_sha"].includes(spec.type))continue;
+  const field=document.createElement("div");field.className="field";
+  const label=document.createElement("label");
+  const input=document.createElement("input");
+  input.id="terminal-param-"+spec.name;
+  input.dataset.terminalParameter=spec.name;
+  input.type=spec.type==="integer"?"number":"text";
+  input.autocomplete="off";input.spellcheck=false;
+  input.required=spec.required===true;
+  if(spec.type==="integer"){input.min=String(spec.minimum);input.max=String(spec.maximum);input.step="1";}
+  if(spec.type==="commit_sha"){input.maxLength=40;input.pattern="[A-Fa-f0-9]{40}";}
+  if(spec.default!==undefined)input.value=String(spec.default);
+  if(typeof spec.placeholder==="string")input.placeholder=spec.placeholder;
+  label.htmlFor=input.id;label.textContent=spec.label||spec.name;
+  field.append(label,input);host.append(field);
+ }
+}
+function terminalStudioCollectParameters(){
+ const values={};
+ $("terminal-builder-fields").querySelectorAll("[data-terminal-parameter]").forEach(input=>{
+  values[input.dataset.terminalParameter]=input.type==="number"&&input.value!==""?Number(input.value):input.value;
+ });
+ return values;
+}
 async function terminalStudioPreview(){
  const id=$("terminal-template-select").value;
  if(!id){terminalStudioStatus("Select a command template first.","unknown");return}
  const button=$("terminal-preview");button.disabled=true;
  try{
-  const data=await terminalStudioRequest("/api/terminal/commands/preview","POST",{template_id:id});
+  const data=await terminalStudioRequest("/api/terminal/commands/preview","POST",{template_id:id,parameters:terminalStudioCollectParameters()});
   if(data.execution_enabled!==false||!data.preview||!["PREVIEW_ONLY","PENDING_REVIEW","APPROVED_NOT_EXECUTABLE","REJECTED"].includes(data.preview.status)||!Array.isArray(data.preview.command_preview))throw new Error("API did not return a safe preview-only result.");
   $("terminal-preview-output").textContent=JSON.stringify({
    name:data.preview.name,
    executable:data.preview.executable,
    argv:data.preview.argv,
+   parameter_values:data.preview.parameter_values||{},
    command_preview:data.preview.command_preview,
    working_directory_policy:data.preview.working_directory_policy,
    environment_allowlist:data.preview.environment_allowlist,
@@ -1170,7 +1210,7 @@ async function terminalStudioReview(decision){
   });
   if(!result.template||result.template.enabled!==false||result.template.execution_enabled!==false)throw new Error("Gateway did not confirm disabled execution state.");
   terminalStudioStatus("Owner review saved: "+result.template.approval_status+". Template remains non-executable.","ready");
-  const select=$("terminal-template-select");select.value=item.id;
+  const select=$("terminal-template-select");select.value=item.id;terminalStudioRenderBuilder();
   await terminalStudioPreview();
  }catch(error){terminalStudioStatus("Owner review rejected: "+error.message,"error");}
  finally{button.disabled=false;}
@@ -1185,7 +1225,7 @@ async function terminalStudioImport(){
   if(!Array.isArray(result.imported)||result.imported.length<1||typeof result.source_sha256!=="string")throw new Error("Gateway did not return verified import metadata.");
   await terminalStudioLoad();
   const first=result.imported[0];
-  $("terminal-template-select").value=first.id;
+  $("terminal-template-select").value=first.id;terminalStudioRenderBuilder();
   $("terminal-preview").disabled=false;
   $("terminal-import-status").textContent="Imported "+result.imported.length+" template(s). SHA-256: "+result.source_sha256+"\nAll imported templates are disabled and pending Owner review. No command was executed.";
   terminalStudioStatus("Command pack imported as inert data. Owner review is required before any future execution feature.","ready");
@@ -1196,7 +1236,7 @@ async function terminalStudioImport(){
 }
 function initTerminalStudio(){
  $("terminal-load-templates").addEventListener("click",terminalStudioLoad);
- $("terminal-template-select").addEventListener("change",()=>{terminalStudioState.lastPreview=null;$("terminal-review-panel").hidden=true;$("terminal-preview").disabled=!$("terminal-template-select").value});
+ $("terminal-template-select").addEventListener("change",()=>{terminalStudioState.lastPreview=null;$("terminal-review-panel").hidden=true;terminalStudioRenderBuilder();$("terminal-preview").disabled=!$("terminal-template-select").value});
  $("terminal-preview").addEventListener("click",terminalStudioPreview);
  $("terminal-import-pack").addEventListener("click",terminalStudioImport);
  $("terminal-review-approve").addEventListener("click",()=>terminalStudioReview("approve"));
