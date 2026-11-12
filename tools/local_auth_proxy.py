@@ -783,7 +783,7 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                 )
                 return self.send_bytes(status, data)
             runner_control = re.fullmatch(
-                r"/api/runners/((?!\\.{1,2}/)(?:[A-Za-z0-9_.:-]|%3[Aa]){1,300})/(drain|enable)", path
+                r"/api/runners/((?!\.{1,2}/)(?:[A-Za-z0-9_.:-]|%3[Aa]){1,300})/(drain|enable)", path
             )
             if runner_control:
                 if not session or not session["authenticated"] or not self.csrf_ok(session):
