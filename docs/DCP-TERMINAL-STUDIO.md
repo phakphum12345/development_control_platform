@@ -32,3 +32,15 @@ Imported scripts and command packs never run on import. Validate schema, file si
 
 ## Release boundary
 MVP begins with read-only diagnostics and curated task templates. Arbitrary interactive shell/PTY is not part of the initial release; it requires a separate threat model, platform-specific isolation and explicit owner policy.
+
+
+## Implementation checkpoint — read-only catalog
+
+The first Terminal Studio API slice is implemented:
+- Authenticated owner/operator catalog endpoint for curated Git and toolchain diagnostics.
+- Exact argv preview endpoint with same-origin and CSRF enforcement.
+- Request schema accepts only a known template ID; arbitrary executable/command fields are rejected.
+- All templates are read-only, network-denied, bounded, and explicitly marked preview-only.
+- No command is executed by catalog or preview requests.
+
+Import, project binding, approved execution, cancellation, logs and history remain outstanding. Do not present this slice as an interactive shell or an execution-capable Terminal Studio.
