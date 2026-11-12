@@ -1,5 +1,5 @@
 """Tests for protected Orka 4.0 User Data bootstrap generation."""
-import unittest
+import shutil\nimport subprocess\nimport unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
@@ -62,6 +62,9 @@ class OrkaRunnerBootstrapFactoryTests(unittest.TestCase):
         self.assertNotIn("echo " + app.token, script)
         self.assertIn(app.token, script)
         self.assertLess(len(script.encode("utf-8")), 48 * 1024)
+        if shutil.which("bash"):
+            parsed = subprocess.run(["bash", "-n"], input=script, text=True, capture_output=True)
+            self.assertEqual(parsed.returncode, 0, parsed.stderr)
 
     def test_rejects_expired_or_malformed_registration_credentials(self):
         expired = FakeGitHubApp(expiry=datetime.now(timezone.utc) + timedelta(seconds=30))
