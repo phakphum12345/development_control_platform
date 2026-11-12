@@ -120,6 +120,6 @@ The corrected implementation passed both PR workflows on head `ab8c558ee4d82f940
 
 - Added real Chromium acceptance that starts a completed job preview through the owner-authenticated Local Auth Proxy API.
 - Browser receives a short-lived HttpOnly/Secure preview cookie scoped to the single preview content path; it is revoked on stop/logout/expiry. Runtime capability token and upstream port remain server-side.
-- Uses chromium_sandbox=True; verifies HTML/title/content, relative CSS, computed style, same-origin requests, browser errors, screenshot capture and HTTP 404 after preview stop.
+- Uses chromium_sandbox=True; verifies HTML/title/content, relative CSS, computed style, same-origin requests, browser errors, screenshot capture and an unavailable response after preview stop.
 - API E2E separately covers unauthenticated denial, cross-job denial, query rejection, CSRF-protected stop and logout denial.
 - Cross-browser engines, trace capture, visual baselines and full WCAG/axe coverage remain future work.
