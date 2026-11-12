@@ -89,8 +89,9 @@ Required topology and policy:
   FQDN tags, explicit deny collections, NAT collections and network allow
   rules are rejected; unmatched traffic relies on Azure Firewall's implicit
   deny behavior.
-- The NSG must not contain custom inbound allow rules. The VM adapter creates
-  no public IP.
+- The NSG must contain a custom inbound deny-all rule that overrides Azure's
+  default `AllowVnetInBound` rule, and must not contain custom inbound allow
+  rules. The VM adapter creates no public IP.
 
 Configure these additional resource references:
 - `DCP_AZURE_ROUTE_TABLE_ID`
