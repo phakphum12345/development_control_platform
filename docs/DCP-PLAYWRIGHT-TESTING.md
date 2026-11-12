@@ -76,9 +76,32 @@ Runner. Workspace separation alone is not an OS sandbox.
 ## Deferred coverage
 
 Cross-browser engines, automated visual baselines, keyboard interaction flows,
-full WCAG/axe audits, API/backend integration tests, authenticated preview
-proxy tests, and arbitrary framework builds remain separate backlog items.
+full WCAG/axe audits, trace capture, API/backend integration tests, and arbitrary
+framework builds remain separate backlog items. Authenticated Preview Proxy
+browser access now has a dedicated real-Chromium acceptance test.
 
+
+## Authenticated Preview Proxy browser acceptance
+
+The authenticated Preview Proxy has a separate browser-facing acceptance path
+in `tests/test_local_auth_proxy.py::LocalAuthProxyEndToEndTests.test_real_chromium_loads_app_through_authenticated_preview_proxy`.
+It creates a completed static job, starts the preview through the owner-authenticated
+Local Auth Proxy API, transfers only the local HttpOnly session cookie into a
+real Chromium context, and navigates to the returned same-origin preview path.
+
+The test uses `chromium_sandbox=True` and verifies:
+- the HTML document, title and primary content load through the proxy;
+- a relative CSS asset is served through the same job/runtime-bound proxy path;
+- computed style is applied and no browser console/page/request errors occur;
+- all browser requests remain on the local Auth Proxy origin;
+- a screenshot is captured;
+- stopping the preview makes the same browser URL return HTTP 404.
+
+The API-level preview E2E separately verifies unauthenticated denial, cross-job
+denial, query rejection, owner CSRF-protected stop, logout denial, and that
+runtime capability tokens/upstream ports are not exposed. The browser test is
+not a cross-browser certification and does not add trace capture, visual
+baselines, full WCAG/axe coverage, or application-specific interaction scripts.
 
 ## CI failure classification and troubleshooting
 
