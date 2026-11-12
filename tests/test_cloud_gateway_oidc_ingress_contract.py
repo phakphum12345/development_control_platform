@@ -34,6 +34,10 @@ class OIDCIngressContractTests(unittest.TestCase):
                 self.assertIn(f"proxy_set_header {name} {variable};", config)
         self.assertIn('proxy_set_header Cookie "";', config)
         self.assertIn('proxy_set_header Authorization "";', config)
+        self.assertIn('proxy_set_header X-Forwarded-User "";', config)
+        self.assertIn('proxy_set_header X-Forwarded-Groups "";', config)
+        self.assertIn('proxy_set_header X-Auth-Request-Access-Token "";', config)
+        self.assertIn("proxy_set_header X-Forwarded-For $remote_addr;", config)
 
     def test_same_origin_csrf_and_origin_are_forwarded_to_gateway(self):
         config = NGINX.read_text(encoding="utf-8")
