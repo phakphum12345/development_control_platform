@@ -524,15 +524,28 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                     request_urls = []
                     css_requests = []
                     asset_responses = []
+                    document_requests = []
                     page.on("console", lambda message: console_errors.append(message.text) if message.type == "error" else None)
                     page.on("pageerror", lambda error: page_errors.append(str(error)))
 
                     def capture_request(request):
                         request_urls.append(request.url)
+                        headers = request.all_headers()
+                        cookie_header = headers.get("cookie", "")
+                        cookie_names = sorted(
+                            part.strip().partition("=")[0]
+                            for part in cookie_header.split(";")
+                            if "=" in part
+                        )
+                        if request.url == browser_base + preview["preview_path"]:
+                            document_requests.append({
+                                "url": request.url,
+                                "cookie_names": cookie_names,
+                            })
                         if "site.css" in request.url:
                             css_requests.append({
                                 "url": request.url,
-                                "headers": request.all_headers(),
+                                "cookie_names": cookie_names,
                             })
 
                     def capture_failed_request(request):
@@ -560,7 +573,28 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                         timeout=15000,
                     )
                     self.assertIsNotNone(response)
-                    self.assertEqual(response.status, 200)
+                    response_body = response.text()
+                    cookie_metadata = [
+                        {
+                            "name": item.get("name"),
+                            "domain": item.get("domain"),
+                            "path": item.get("path"),
+                            "secure": item.get("secure"),
+                            "httpOnly": item.get("httpOnly"),
+                        }
+                        for item in context.cookies(browser_base)
+                    ]
+                    self.assertEqual(
+                        response.status, 200,
+                        "authenticated preview document failed: status=%s body=%r "
+                        "document_requests=%r cookie_metadata=%r preview_cookie_name=%r "
+                        "preview_path=%r browser_base=%r"
+                        % (
+                            response.status, response_body[:500],
+                            document_requests, cookie_metadata,
+                            preview_cookie_name, preview["preview_path"], browser_base,
+                        ),
+                    )
                     self.assertEqual(page.title(), "Preview Proxy Browser E2E")
                     self.assertEqual(
                         page.locator("#preview-ready").inner_text(),
