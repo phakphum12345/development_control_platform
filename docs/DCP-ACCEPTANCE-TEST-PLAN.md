@@ -61,3 +61,13 @@ Acceptance evidence must be produced on the exact commit under review. A passing
 
 ## Release gate
 No phase is accepted until required tests, security checks, documentation, evidence and rollback/cleanup behavior pass on the same commit.
+
+
+## Web build expansion acceptance — Next.js and Angular
+
+- Next.js: require a bounded package.json declaring Next.js and React plus a regular local Next CLI; run the fixed local CLI argv; require a non-symlink `.next/` output; package the output under existing artifact limits.
+- Angular: require Angular Core/CLI, bounded regular package/angular manifests and one unambiguous application build target; invoke the fixed local CLI with an explicit `--output-path dist`; require a non-symlink `dist/` output; package it under existing artifact limits.
+- JobStore must accept both targets, Runner Registry must advertise them only for web-capable runners, Scheduler must include them in its supported target set, and Dashboard must expose them.
+- No dependency installation, package-manager lifecycle scripts, arbitrary command string or shell execution is permitted.
+- Both build adapters remain disabled unless the existing Runner execution opt-in and trusted source allowlist are satisfied.
+- Next.js SSR runtime/preview is not part of this acceptance slice.
