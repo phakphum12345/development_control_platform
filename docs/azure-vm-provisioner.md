@@ -72,7 +72,8 @@ does not create a firewall, route table, NSG, subnet, or policy.
 
 Required topology and policy:
 
-- The runner subnet is associated with the configured NSG and route table.
+- The runner subnet is associated with the configured NSG and route table, and
+  has no NAT Gateway association or alternate direct-internet egress path.
 - The route table has exactly one `0.0.0.0/0` route with
   `nextHopType=VirtualAppliance` and the Azure Firewall private IP.
   `disableBgpRoutePropagation` must be true, and no Internet or other bypass
