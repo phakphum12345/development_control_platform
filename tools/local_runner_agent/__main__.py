@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .client import GatewayClient, RunnerAgentConfig, RunnerGatewayError
 from .checkout import GitHubCommitCheckout, LocalProjectCheckout
-from .execution import ExecutionError, FlutterBuildExecutor
+from .execution import FlutterBuildExecutor
 from .service import RunnerAgentService
 from .web_build import WebBuildExecutor
 from .browser_test import StaticWebPlaywrightTester
