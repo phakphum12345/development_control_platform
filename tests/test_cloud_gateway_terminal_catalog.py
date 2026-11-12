@@ -79,6 +79,7 @@ class TerminalCatalogTests(unittest.TestCase):
             [],
             {},
             {"template_id": "git_status", "shell": "whoami"},
+            {"template_id": []},
             {"template_id": "git_status", "parameters": []},
         ):
             with self.subTest(payload=payload), self.assertRaises(ValueError):
