@@ -117,3 +117,19 @@ effective_enabled is true only while the corresponding provider capability
 is ready. Gate changes are audited with actor and timestamp. These switches
 do not enable any provider in the current deployment and do not authorize
 paid resources. CI uses temporary SQLite databases and fake/no providers only.
+
+
+### Dashboard and Local Auth Proxy controls
+
+The Infrastructure Manager Dashboard reads the gate collection during refresh
+and renders the saved state, provider readiness, and effective state separately.
+Only an authenticated Owner can change a gate. Enabling requires typing the
+exact confirmation phrase; disabling remains available to the Owner. The
+Dashboard disables controls when the API is unavailable, the user is not the
+Owner, or the provider is not ready. The Cloud Runner Dashboard also requires
+the effective Cloud Provisioning gate before enabling its create action.
+
+The loopback Local Auth Proxy explicitly allowlists GET /api/infrastructure/gates
+and POST /api/infrastructure/gates/cloud_provisioning or
+POST /api/infrastructure/gates/vm_creation. It requires an authenticated local
+session, same-origin request, and server-issued CSRF token before forwarding.

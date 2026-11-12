@@ -74,3 +74,13 @@ The corrected implementation passed both PR workflows on head `ab8c558ee4d82f940
 - Cloud runner creation now requires the effective Cloud Provisioning gate in addition to existing budget, approval, repository and circuit-breaker controls.
 - Non-fake Infrastructure Manager creation requires the effective VM Creation gate; the current composition remains fake-only with provisioning disabled.
 - Added persistence, audit, authorization, confirmation, readiness and independent-state tests. No live cloud or VM resources are created.
+
+
+## Phase 4 Dashboard progress — independent safety gates (PR in progress)
+
+- Added separate Cloud Provisioning and VM Creation status cards to Infrastructure Manager.
+- Dashboard shows saved state, provider readiness and effective state independently; API failure is UNKNOWN and controls stay disabled.
+- Only Owner can mutate a gate. Enabling requires typing the exact confirmation phrase; disabling is available to Owner.
+- Cloud Runner creation UI now also requires the effective Cloud Provisioning gate.
+- Local Auth Proxy GET/POST allowlist and CSRF forwarding cover the gate APIs.
+- No provider is activated by this UI; current deployment remains fail-closed.

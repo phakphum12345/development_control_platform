@@ -249,6 +249,25 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
  <div class="warn"><b>Safety boundary:</b> หน้านี้ไม่สร้าง VM จริง ไม่เรียก Azure / Orka / Hyper-V / Mac Host และไม่มีค่าใช้จ่าย การสั่งลบต้องใช้ Owner session เท่านั้น</div>
  <div class="runner-toolbar"><button class="primary" id="infra-refresh" type="button">Refresh Inventory</button><span id="infra-status" class="small muted" role="status" aria-live="polite">ยังไม่ได้เชื่อมต่อ Infrastructure API</span></div>
 </div>
+<div class="panel">
+ <h3>Independent Infrastructure Safety Gates</h3>
+ <p class="small muted">Cloud Provisioning และ VM Creation เป็นคนละสวิตช์ สถานะอ่านจาก Gateway เท่านั้น การเปิดต้องเป็น Owner ยืนยันข้อความ และ Provider ต้องพร้อมจริง</p>
+ <div class="grid">
+  <div class="runner-gate" id="infra-gate-cloud" data-state="unknown">
+   <strong>Cloud Provisioning</strong>
+   <div id="infra-gate-cloud-state">UNKNOWN</div>
+   <p class="small muted" id="infra-gate-cloud-detail">Backend status unavailable</p>
+   <button type="button" id="infra-gate-cloud-toggle" disabled>UNKNOWN</button>
+  </div>
+  <div class="runner-gate" id="infra-gate-vm" data-state="unknown">
+   <strong>VM Creation</strong>
+   <div id="infra-gate-vm-state">UNKNOWN</div>
+   <p class="small muted" id="infra-gate-vm-detail">Backend status unavailable</p>
+   <button type="button" id="infra-gate-vm-toggle" disabled>UNKNOWN</button>
+  </div>
+ </div>
+ <p class="small muted" id="infra-gates-note">Gate state: UNKNOWN — refresh to query the authenticated backend.</p>
+</div>
 <div class="panel"><h3>Provider & Image Catalog</h3><div id="infra-catalog" class="empty">Catalog: UNKNOWN</div></div>
 <div class="panel"><h3>Create simulated VM</h3>
  <div class="grid">
@@ -301,6 +320,7 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
   <h3>Readiness / Safety Gates</h3>
   <div class="runner-gate" data-state="unknown" id="runner-gate-session">User session: UNKNOWN</div>
   <div class="runner-gate" data-state="unknown" id="runner-gate-owner">Owner approval: UNKNOWN</div>
+  <div class="runner-gate" data-state="unknown" id="runner-gate-cloud-provisioning">Cloud Provisioning switch: UNKNOWN</div>
   <div class="runner-gate" data-state="unknown" id="runner-gate-budget">Live budget and forecast: UNKNOWN</div>
   <div class="runner-gate" data-state="unknown" id="runner-gate-bootstrap">Runner bootstrap: UNKNOWN</div>
   <div class="runner-gate" data-state="unknown" id="runner-gate-provider">Selected provider: UNKNOWN</div>
@@ -723,8 +743,8 @@ const CODE_NAV_MAPPINGS=[
 {id:"github-api",label:"Research OS API",path:"security",target:"github-api",file:"dashboard/index.html",elements:["github-api","ros-api-connect","ros-api-load","ros-api-disconnect","ros-api-result"],handlers:["Research OS API button handlers"],service:"Configured Research OS API endpoint; staged read-only integration",state:"Session held in tab memory only",tests:["tests/test_dashboard_contract.py::test_github_requests_are_public_read_only"],evidence:"Pre-production integration; live service/E2E status is UNKNOWN."}
 ,{id:"account",label:"Password Login",path:"security",target:"account",file:"dashboard/index.html",elements:["account","auth-backend-status","auth-login-form","auth-submit","auth-logout","auth-forgot-password","auth-session-status"],handlers:["initPasswordAuth","sessionCheck (inner function)","auth-login-form submit handler","auth-logout click handler","auth-forgot-password click handler"],service:"Same-origin Local Auth Proxy: GET /api/auth/session, POST /api/auth/login, POST /api/auth/logout; Gateway credentials remain server-side",state:"HttpOnly DCP_LOCAL_SESSION cookie; CSRF token held in initPasswordAuth closure; authenticated user returned by session API",tests:["tests/test_local_auth_proxy.py::test_full_login_gateway_session_logout_flow","tests/test_local_auth_proxy.py::test_origin_and_csrf_protections_fail_closed","tests/test_local_auth_proxy.py::test_dashboard_served_by_same_origin_proxy_without_gateway_secret","tests/test_dashboard_contract.py::test_pwa_shell_and_password_auth_fail_closed"],evidence:"Local proxy contract tests cover backend flow; browser session persistence and live machine state require separate E2E verification."},
 {id:"code-navigator",label:"Code Navigator",path:"developer",target:"code-navigator",file:"dashboard/index.html",elements:["code-navigator","code-nav-search","code-nav-filter","code-nav-route-list","code-nav-mapping","code-nav-confidence","code-nav-inspector-content","code-nav-impact","code-nav-result","code-nav-evidence"],handlers:["initCodeNavigator","codeNavRender","codeNavTraceUI","codeNavTraceCalls","codeNavShowUI","codeNavCompare","codeNavRunChecks","codeNavCheckpoint"],service:"In-page CODE_NAV_MAPPINGS registry and DOM inspection only; no runtime call-graph engine or CI fetch",state:"codeNavSelected in browser memory; explicit mapping registry in dashboard source",tests:["tests/test_dashboard_contract.py::test_code_navigator_mapping_is_explicit_safe_and_route_aware","tests/test_dashboard_contract.py::test_code_navigator_covers_all_dashboard_views"],evidence:"Mapping is source-declared; Trace Calls and Run Checks do not prove backend execution, test results, CI or deployment."},
-{id:"cloud-runners",label:"Cloud Runner Control",path:"security",target:"cloud-runners",file:"dashboard/index.html",elements:["cloud-runners","runner-mode","runner-refresh","runner-gateway","runner-auth","runner-budget","runner-provisioning","runner-create","runner-create-result","runner-list"],handlers:["runnerRefresh","runnerRenderGate","runnerLoadList","runnerCreate","runnerStop","runnerVerifyCommit","buildJobsRefresh","buildJobCreate"],service:"Authenticated same-origin Local Auth Proxy → Gateway APIs: /api/cloud-runners, /api/github/repositories and Build Jobs endpoints; provider adapter is fail-closed",state:"runnerUI session/CSRF/status/verifiedCommit/project in browser memory; backend runner registry and job store",tests:["tests/test_cloud_runner_dashboard_contract.py","tests/test_cloud_runner_e2e_acceptance.py","tests/test_local_runner_workspace.py","tests/test_runner_preflight.py"],evidence:"Local status can report Gateway readiness; production provider remains DisabledProvider and live runner/job/teardown acceptance is not established."},
-{id:"infrastructure",label:"Infrastructure Manager",path:"security",target:"infrastructure",file:"dashboard/index.html",elements:["infrastructure","infra-mode","infra-refresh","infra-status","infra-catalog","infra-os","infra-provider","infra-image","infra-template","infra-create","infra-inventory"],handlers:["infraRefresh","infraSession","infraRenderCatalog","infraRenderInventory","infraAction","infraCreate"],service:"Authenticated same-origin Gateway API: GET /api/infrastructure?view=catalog, GET/POST /api/infrastructure, lifecycle POST/DELETE endpoints; Fake Provider only",state:"infraUI CSRF/role/catalog/resources/ready in browser memory; persistent Gateway infrastructure inventory",tests:["tests/test_cloud_gateway_infrastructure.py","tests/test_cloud_gateway_infrastructure_api.py","tests/test_dashboard_contract.py::test_all_tool_views_exist"],evidence:"Simulation-only inventory and lifecycle; no real VM/cloud resource creation or provider acceptance."},
+{id:"cloud-runners",label:"Cloud Runner Control",path:"security",target:"cloud-runners",file:"dashboard/index.html",elements:["cloud-runners","runner-mode","runner-refresh","runner-gateway","runner-auth","runner-budget","runner-provisioning","runner-create","runner-create-result","runner-gate-cloud-provisioning","runner-list"],handlers:["runnerRefresh","runnerRenderGate","runnerLoadList","runnerCreate","runnerStop","runnerVerifyCommit","buildJobsRefresh","buildJobCreate"],service:"Authenticated same-origin Local Auth Proxy → Gateway APIs: /api/cloud-runners, /api/github/repositories and Build Jobs endpoints; provider adapter is fail-closed",state:"runnerUI session/CSRF/status/verifiedCommit/project in browser memory; backend runner registry and job store",tests:["tests/test_cloud_runner_dashboard_contract.py","tests/test_cloud_runner_e2e_acceptance.py","tests/test_local_runner_workspace.py","tests/test_runner_preflight.py"],evidence:"Local status can report Gateway readiness; production provider remains DisabledProvider and live runner/job/teardown acceptance is not established."},
+{id:"infrastructure",label:"Infrastructure Manager",path:"security",target:"infrastructure",file:"dashboard/index.html",elements:["infrastructure","infra-mode","infra-refresh","infra-status","infra-gates-note","infra-gate-cloud","infra-gate-cloud-state","infra-gate-cloud-detail","infra-gate-cloud-toggle","infra-gate-vm","infra-gate-vm-state","infra-gate-vm-detail","infra-gate-vm-toggle","infra-catalog","infra-os","infra-provider","infra-image","infra-template","infra-create","infra-inventory"],handlers:["infraRefresh","infraSession","infraRenderCatalog","infraRenderGates","infraToggleGate","infraRenderInventory","infraAction","infraCreate"],service:"Authenticated same-origin Gateway API and Local Auth Proxy: GET /api/infrastructure/gates, POST /api/infrastructure/gates/{cloud_provisioning|vm_creation}, plus simulation-only inventory/lifecycle routes",state:"infraUI CSRF/role/gates/catalog/resources/ready in browser memory; persistent SQLite gate and inventory state",tests:["tests/test_cloud_gateway_infrastructure.py","tests/test_cloud_gateway_infrastructure_api.py","tests/test_local_auth_proxy.py","tests/test_dashboard_contract.py"],evidence:"Backend-confirmed independent switches; provider readiness required to enable; current live provisioning remains disabled."},
 {id:"repo-selector",label:"Account & Repo",path:"repository",target:"repo-selector",file:"dashboard/index.html",elements:["repo-selector","shared-owner","shared-owner-custom","shared-repo","shared-load","shared-apply","shared-status"],handlers:["sharedOwner","shared-load click handler","shared-repo change handler","shared-apply click handler","shared-clear click handler"],service:"Unauthenticated public GitHub REST API: GET /users/{owner} and GET /users/{owner}/repos?type=public; no OAuth account switching",state:"sharedSelection owner/repository/repositories in browser memory; selected repository copied into tool inputs",tests:["tests/test_dashboard_contract.py::test_shared_github_account_and_repository_selector_contract","tests/test_dashboard_contract.py::test_github_requests_are_public_read_only","tests/browser_smoke.mjs"],evidence:"Public repository discovery only; private repository access and effective permissions remain UNKNOWN."},
 {id:"user",label:"User Explorer",path:"repository",target:"user",file:"dashboard/index.html",elements:["user","user-name","user-load","user-clear","user-msg","user-data"],handlers:["user-load onclick handler","user-clear onclick handler"],service:"Unauthenticated public GitHub REST API: GET /users/{username}",state:"state.user in browser memory; rendered public profile metadata",tests:["tests/test_dashboard_contract.py::test_github_requests_are_public_read_only","tests/browser_smoke.mjs"],evidence:"Public profile only; does not establish organization membership, roles, private access or repository permissions."}
 
@@ -1043,8 +1063,10 @@ function runnerText(id,value){const el=$(id);if(el)el.textContent=value}
 function runnerCanCreate(){
  const s=runnerUI.status||{},p=s.providers&&s.providers[runnerUI.os];
  const budgetGate=(s.provider_budget_gates||{})[runnerUI.os]||"UNKNOWN";
+ const cloudGate=s.infrastructure_gates&&s.infrastructure_gates.cloud_provisioning;
  return runnerUI.session===true && s.gateway==="READY" &&
  s.owner_approved===true && s.provisioning_enabled===true &&
+ cloudGate&&cloudGate.effective_enabled===true &&
  budgetGate==="PASS" && s.bootstrap_ready===true &&
  p && p.ready===true && s.circuit_breaker_tripped!==true;
 }
@@ -1056,9 +1078,11 @@ function runnerRenderGate(){
  $("runner-create-gate").dataset.state=runnerUI.ready?"pass":"unknown";
  $("runner-create-gate").textContent=runnerUI.ready?
  "All server-side gates report PASS. A final confirmation is still required.":
- "BLOCKED — ต้องมี authenticated session, owner approval, live budget PASS, provisioning enabled และ provider bootstrap READY";
+ "BLOCKED — ต้องมี authenticated session, owner approval, Cloud Provisioning gate ON, live budget PASS, provisioning enabled และ provider bootstrap READY";
  runnerGate("runner-gate-session","User session",runnerUI.session?"pass":"fail",runnerUI.session?"Authenticated":"Sign in required");
  runnerGate("runner-gate-owner","Owner approval",s.owner_approved===true?"pass":"unknown",s.owner_approved===true?"Approved":"Not confirmed");
+ const cloudGate=(s.infrastructure_gates||{}).cloud_provisioning;
+ runnerGate("runner-gate-cloud-provisioning","Cloud Provisioning switch",cloudGate&&cloudGate.effective_enabled===true?"pass":cloudGate&&cloudGate.enabled===true?"fail":"unknown",cloudGate?(cloudGate.enabled?"Stored ON; provider readiness "+(cloudGate.ready?"READY":"NOT READY"):"OFF — owner must enable after provider readiness"):"Backend gate state unavailable");
  const budgetGate=(s.provider_budget_gates||{})[runnerUI.os]||"UNKNOWN";
  const budgetDetail=(s.provider_budget_messages||{})[runnerUI.os]||
   (runnerUI.os==="macos"?"Orka provider-specific budget is not verified":s.budget_message||"No verified provider budget result");
@@ -1447,7 +1471,7 @@ $("runner-create").addEventListener("click",runnerCreate);
 
 
 /* DCP Infrastructure Manager UI — same-origin authenticated API only. */
-const infraUI={csrf:null,role:null,images:[],templates:[],resources:[],ready:false};
+const infraUI={csrf:null,role:null,images:[],templates:[],resources:[],gates:null,ready:false};
 const infra$=id=>document.getElementById(id);
 function infraMsg(message,state){infra$("infra-status").textContent=message;infra$("infra-status").dataset.state=state||"unknown";}
 async function infraRequest(path,options={}){
@@ -1482,6 +1506,53 @@ function infraRenderCatalog(catalog){
  '<p class="small muted">Images: '+infraUI.images.length+' · Templates: '+infraUI.templates.length+' · External provisioning: '+(catalog.provisioning_enabled?"ENABLED":"DISABLED")+'</p>';
  infraSelectCatalog();
 }
+function infraRenderGates(gates){
+ infraUI.gates=gates&&typeof gates==="object"?gates:null;
+ const definitions=[
+  ["cloud_provisioning","cloud","Cloud Provisioning"],
+  ["vm_creation","vm","VM Creation"]
+ ];
+ definitions.forEach(([name,suffix,label])=>{
+  const gate=infraUI.gates&&infraUI.gates[name];
+  const known=gate&&typeof gate.enabled==="boolean"&&typeof gate.ready==="boolean"&&typeof gate.effective_enabled==="boolean";
+  const state=known?(gate.effective_enabled?"ON · EFFECTIVE":gate.enabled?"STORED ON · BLOCKED":"OFF"):"UNKNOWN";
+  const card=infra$("infra-gate-"+suffix);
+  const stateNode=infra$("infra-gate-"+suffix+"-state");
+  const detail=infra$("infra-gate-"+suffix+"-detail");
+  const button=infra$("infra-gate-"+suffix+"-toggle");
+  card.dataset.state=!known?"unknown":gate.effective_enabled?"pass":gate.enabled?"fail":"unknown";
+  stateNode.textContent=state;
+  detail.textContent=known?
+   "Saved switch: "+(gate.enabled?"ON":"OFF")+" · Provider readiness: "+(gate.ready?"READY":"NOT READY")+" · Effective: "+(gate.effective_enabled?"ON":"OFF"):
+   "Backend status unavailable; switch state is not assumed.";
+  button.textContent=known?(gate.enabled?"Turn OFF":gate.ready?"Enable "+label:"Unavailable — provider not ready"):"UNKNOWN";
+  button.disabled=!infraUI.ready||!known||infraUI.role!=="owner"||(!gate.enabled&&!gate.ready);
+  button.title=infraUI.role!=="owner"?"Owner permission required":(!known?"Backend status unavailable":(!gate.enabled&&!gate.ready?"Provider capability is not ready":""));
+ });
+ infra$("infra-gates-note").textContent=infraUI.gates?
+  "Backend-confirmed status. ON is effective only while provider readiness remains PASS. Current deployment remains fail-closed.":
+  "Gate state: UNKNOWN — backend unavailable; controls remain disabled.";
+}
+async function infraToggleGate(name){
+ if(!infraUI.ready||infraUI.role!=="owner"||!infraUI.gates||!infraUI.gates[name])return;
+ const gate=infraUI.gates[name],enable=!gate.enabled;
+ const phrase=name==="cloud_provisioning"?"ENABLE CLOUD PROVISIONING":"ENABLE VM CREATION";
+ const payload={enabled:enable};
+ if(enable){
+  const typed=window.prompt("Type exactly to confirm: "+phrase);
+  if(typed!==phrase){infraMsg("Gate unchanged: confirmation did not match.");return;}
+  payload.confirmation=phrase;
+ }
+ const suffix=name==="cloud_provisioning"?"cloud":"vm";
+ const button=infra$("infra-gate-"+suffix+"-toggle");
+ button.disabled=true;
+ try{
+  await infraRequest("/infrastructure/gates/"+name,{method:"POST",body:JSON.stringify(payload)});
+  infraMsg(labelForGate(name)+(enable?" enabled":" disabled")+" by Owner.","ready");
+ }catch(error){infraMsg("Gate change rejected: "+error.message,"error");}
+ await infraRefresh();
+}
+function labelForGate(name){return name==="cloud_provisioning"?"Cloud Provisioning":"VM Creation";}
 function infraRenderInventory(rows){
  infraUI.resources=rows||[];
  const html=infraUI.resources.map(row=>{
@@ -1493,15 +1564,27 @@ function infraRenderInventory(rows){
  infra$("infra-inventory").querySelectorAll("[data-infra-action]").forEach(button=>button.addEventListener("click",()=>infraAction(button.dataset.id,button.dataset.infraAction)));
 }
 async function infraRefresh(){
- infra$("infra-refresh").disabled=true;infra$("infra-create").disabled=true;infraMsg("Checking authenticated DCP Infrastructure API…");
+ infraUI.ready=false;
+ infra$("infra-refresh").disabled=true;infra$("infra-create").disabled=true;
+ infra$("infra-gate-cloud-toggle").disabled=true;infra$("infra-gate-vm-toggle").disabled=true;
+ infraMsg("Checking authenticated DCP Infrastructure API…");
  try{
   await infraSession();
-  const [catalog,inventory]=await Promise.all([infraRequest("/infrastructure?view=catalog"),infraRequest("/infrastructure")]);
-  infraRenderCatalog(catalog);infraRenderInventory(inventory.resources);
-  infraUI.ready=true;infra$("infra-mode").textContent="SIMULATION · READY";
+  const [catalog,inventory,gateData]=await Promise.all([
+   infraRequest("/infrastructure?view=catalog"),
+   infraRequest("/infrastructure"),
+   infraRequest("/infrastructure/gates")
+  ]);
+  infraUI.ready=true;
+  infraRenderCatalog(catalog);infraRenderInventory(inventory.resources);infraRenderGates(gateData.gates);
+  infra$("infra-mode").textContent="SIMULATION · READY";
   infraMsg("Connected. Fake Provider only; "+infraUI.resources.length+" inventory record(s).","ready");
   infra$("infra-create").disabled=false;
- }catch(error){infraUI.ready=false;infra$("infra-mode").textContent="SIMULATION · BLOCKED";infraMsg(error.message,"error");infra$("infra-catalog").textContent="Catalog unavailable.";infra$("infra-inventory").textContent="Inventory unavailable.";}
+ }catch(error){
+  infraUI.ready=false;infraUI.gates=null;infra$("infra-mode").textContent="SIMULATION · BLOCKED";infraMsg(error.message,"error");
+  infra$("infra-catalog").textContent="Catalog unavailable.";infra$("infra-inventory").textContent="Inventory unavailable.";
+  infraRenderGates(null);infra$("infra-create").disabled=true;
+ }
  finally{infra$("infra-refresh").disabled=false;}
 }
 async function infraAction(id,action){
@@ -1526,6 +1609,8 @@ async function infraCreate(){
 infra$("infra-refresh").addEventListener("click",infraRefresh);
 infra$("infra-create").addEventListener("click",infraCreate);
 infra$("infra-os").addEventListener("change",infraSelectCatalog);
+infra$("infra-gate-cloud-toggle").addEventListener("click",()=>infraToggleGate("cloud_provisioning"));
+infra$("infra-gate-vm-toggle").addEventListener("click",()=>infraToggleGate("vm_creation"));
 document.querySelector('[data-tab="infrastructure"]')?.addEventListener("click",()=>{if(!infraUI.ready)infraRefresh();});
 
 /* DCP Control Center v2: navigation, quick actions and honest UI self-check. */
