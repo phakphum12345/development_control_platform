@@ -14,3 +14,13 @@
 - Redact secrets from logs and artifacts.
 - Audit actor, project, template/version, command hash, approval, policy decision, start/end, exit code and cleanup result.
 - Terminal must not bypass Cloud Provisioning OFF, VM Creation OFF or Cloud Deployment OFF.
+
+
+## Imported command-pack controls
+
+- JSON command packs are treated as untrusted data and never executed during import.
+- The API accepts a strict versioned schema, a bounded request, allowlisted executable identifiers and argv arrays only.
+- Shell metacharacters and common code-evaluation flags are rejected; network policy must be denied.
+- Imported templates are stored disabled and pending review. Import approval is not execution approval.
+- Imported templates cannot be enabled or executed through the current API. No arbitrary script upload or shell endpoint is exposed.
+- The private SQLite import store records actor, template ID, source hash and import timestamp without storing credentials.
