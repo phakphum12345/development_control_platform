@@ -24,6 +24,7 @@ from tools.cloud_gateway.policy import GatewaySettings
 from tools.cloud_gateway.server import make_handler
 from tools.cloud_gateway.service import GatewayService
 from tools.cloud_gateway.store import RunnerStore
+from tools.cloud_gateway.terminal_templates import TerminalTemplateStore
 
 
 class NoopProvider:
@@ -53,6 +54,7 @@ class InfrastructureApiTests(unittest.TestCase):
         )
         self.gates_path = Path(self.temp.name) / "gates.sqlite"
         service.infrastructure_gate_store = InfrastructureGateStore(self.gates_path)
+        service.terminal_template_store = TerminalTemplateStore(Path(self.temp.name) / "terminal.sqlite")
         self.server = ThreadingHTTPServer(
             ("127.0.0.1", 0),
             make_handler(service, "unused-token", self.secret, self.origin),
@@ -275,6 +277,87 @@ class InfrastructureApiTests(unittest.TestCase):
 
     def test_terminal_catalog_denies_unauthenticated_access(self):
         request = Request(self.base + "/api/terminal/templates")
+        with self.assertRaises(HTTPError) as caught:
+            urlopen(request)
+        try:
+            self.assertEqual(caught.exception.code, 401)
+        finally:
+            caught.exception.close()
+
+
+    @staticmethod
+    def terminal_pack():
+        return {
+            "schema_version": 1,
+            "templates": [{
+                "id": "custom-api-git-status",
+                "name": "Imported Git status",
+                "description": "Imported read-only Git status template.",
+                "category": "Git",
+                "executable_id": "git",
+                "argv": ["status", "--short"],
+                "platforms": ["windows", "linux"],
+                "timeout_seconds": 15,
+                "max_output_bytes": 65536,
+                "network": "denied",
+                "mutation_class": "read-only",
+            }],
+        }
+
+    def test_owner_can_import_inert_pack_and_preview_stays_disabled(self):
+        status, result = self.request(
+            "POST", "/api/terminal/templates/import", payload=self.terminal_pack()
+        )
+        self.assertEqual(status, 201)
+        self.assertFalse(result["imported"][0]["enabled"])
+        self.assertFalse(result["imported"][0]["execution_enabled"])
+        self.assertEqual(result["imported"][0]["approval_status"], "pending_review")
+
+        status, catalog = self.request("GET", "/api/terminal/templates")
+        self.assertEqual(status, 200)
+        imported = next(row for row in catalog["templates"] if row["id"] == "custom-api-git-status")
+        self.assertFalse(imported["execution_enabled"])
+
+        status, preview = self.request(
+            "POST", "/api/terminal/commands/preview",
+            payload={"template_id": "custom-api-git-status"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(preview["preview"]["status"], "PENDING_REVIEW")
+        self.assertEqual(
+            preview["preview"]["command_preview"], ["git", "status", "--short"]
+        )
+        self.assertFalse(preview["execution_enabled"])
+
+        status, duplicate = self.request(
+            "POST", "/api/terminal/templates/import", payload=self.terminal_pack()
+        )
+        self.assertEqual(status, 409)
+        self.assertIn("already exists", duplicate["error"])
+
+    def test_command_pack_import_is_owner_only_and_rejects_unsafe_pack(self):
+        status, denied = self.request(
+            "POST", "/api/terminal/templates/import", role="operator",
+            payload=self.terminal_pack(),
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(denied["error"], "owner role required")
+
+        unsafe = self.terminal_pack()
+        unsafe["templates"][0]["argv"] = ["status", "&&", "whoami"]
+        status, rejected = self.request(
+            "POST", "/api/terminal/templates/import", payload=unsafe
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("shell metacharacters", rejected["error"])
+
+    def test_command_pack_import_denies_unauthenticated_access(self):
+        request = Request(
+            self.base + "/api/terminal/templates/import",
+            data=json.dumps(self.terminal_pack()).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
         with self.assertRaises(HTTPError) as caught:
             urlopen(request)
         try:
