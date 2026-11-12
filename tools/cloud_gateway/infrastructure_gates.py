@@ -8,6 +8,8 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime, timezone
 
+from .sqlite_security import prepare_private_sqlite_file
+
 
 GATE_CONFIRMATIONS = {
     "cloud_provisioning": "ENABLE CLOUD PROVISIONING",
@@ -26,6 +28,7 @@ class GateUnavailable(InfrastructureGateError):
 class InfrastructureGateStore:
     def __init__(self, path):
         self.path = str(path)
+        prepare_private_sqlite_file(self.path)
         with self._connect() as db:
             db.execute("""
                 CREATE TABLE IF NOT EXISTS infrastructure_gates (
