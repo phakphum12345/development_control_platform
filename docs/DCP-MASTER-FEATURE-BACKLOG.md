@@ -113,3 +113,12 @@ All above status statements refer to merged code on main and the corresponding C
 - Angular project selection requires one application build target or an explicit valid default project; ambiguous projects fail closed.
 - Job queue validation, runner capability scheduling and Dashboard build-target selection include both frameworks.
 - These targets execute trusted project build/configuration code and remain behind existing Runner execution opt-in and trusted-source allowlists. Next.js SSR runtime/preview is not included.
+
+
+## 2026-11-12 Visual Command Builder checkpoint
+
+- TERM-03 advanced from MISSING to PARTIAL: Dashboard now renders schema-driven typed parameter forms for curated read-only commands and requests server-validated exact argv previews.
+- Supported parameters are deliberately narrow: bounded Git history limit (1–50) and full 40-character commit SHA values for Git show/diff.
+- Gateway rejects arbitrary request fields, unknown parameter names, wrong types, out-of-range values and malformed SHA values. Imported templates cannot use builder parameters.
+- Real-browser smoke coverage verifies the typed form and normalized parameter collection; unit tests verify exact argv and rejection behavior.
+- This is not command execution. TERM-04 remains BLOCKED until a verified OS isolation strategy, per-job approval, time/output limits and process-tree cancellation exist.
