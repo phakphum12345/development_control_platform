@@ -38,6 +38,7 @@ from tools.local_runner_agent.workspace import WorkspaceManager
 from tools.local_runner_agent.runtime import RuntimeManager
 from .preview import AuthenticatedPreviewManager, PreviewError
 from .terminal_catalog import list_templates as list_terminal_templates, preview_template as preview_terminal_template
+from .terminal_templates import TerminalTemplateError, TerminalTemplateStore
 
 
 class DisabledProvider:
@@ -199,6 +200,9 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
         def local_project_registry(self):
             return getattr(service, "local_project_registry", None)
 
+        def terminal_template_store(self):
+            return getattr(service, "terminal_template_store", None)
+
         @staticmethod
         def public_local_project(row):
             public = {key: row.get(key) for key in (
@@ -344,8 +348,11 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                     return self.send_json(401, {"error": "authenticated session required"})
                 if identity.get("role") not in ("owner", "operator"):
                     return self.send_json(403, {"error": "dashboard role required"})
+                template_store = self.terminal_template_store()
+                if template_store is None:
+                    return self.send_json(503, {"error": "Terminal Template Store unavailable"})
                 return self.send_json(200, {
-                    "templates": list_terminal_templates(),
+                    "templates": list_terminal_templates() + template_store.list_imported(),
                     "execution_enabled": False,
                 })
             if path == "/api/jobs" or path.startswith("/api/jobs/"):
@@ -746,6 +753,25 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                     return self.send_json(503, {"error": str(exc)})
                 except InfrastructureGateError as exc:
                     return self.send_json(400, {"error": str(exc)})
+            if path == "/api/terminal/templates/import":
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if identity.get("role") != "owner":
+                    return self.send_json(403, {"error": "owner role required"})
+                if not self.same_origin():
+                    return self.send_json(403, {"error": "same-origin request required"})
+                if not self.csrf_valid(identity):
+                    return self.send_json(403, {"error": "CSRF validation failed"})
+                template_store = self.terminal_template_store()
+                if template_store is None:
+                    return self.send_json(503, {"error": "Terminal Template Store unavailable"})
+                try:
+                    result = template_store.import_pack(self.body(), identity.get("subject", ""))
+                    return self.send_json(201, result)
+                except TerminalTemplateError as exc:
+                    status = 409 if "already exists" in str(exc) else 400
+                    return self.send_json(status, {"error": str(exc)})
             if path == "/api/terminal/commands/preview":
                 identity = self.proxy_identity()
                 if not identity:
@@ -760,8 +786,21 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                     payload = self.body()
                     if set(payload) != {"template_id"}:
                         return self.send_json(400, {"error": "only template_id is accepted"})
+                    template_id = payload["template_id"]
+                    try:
+                        preview = preview_terminal_template(template_id)
+                    except ValueError:
+                        template_store = self.terminal_template_store()
+                        imported = template_store.get_imported(template_id) if template_store else None
+                        if imported is None:
+                            raise
+                        preview = dict(imported)
+                        preview["executable"] = preview.pop("executable_id")
+                        preview["command_preview"] = [preview["executable"], *preview["argv"]]
+                        preview["requires_execution_approval"] = True
+                        preview["status"] = "PENDING_REVIEW"
                     return self.send_json(200, {
-                        "preview": preview_terminal_template(payload["template_id"]),
+                        "preview": preview,
                         "execution_enabled": False,
                     })
                 except ValueError as exc:
@@ -1277,6 +1316,9 @@ def main():
         repository_ref_catalog=github_app.list_repository_refs if github_app else None,
         repository_commit_resolver=github_app.resolve_repository_commit if github_app else None,
         repository_project_inspector=github_app.inspect_repository_project if github_app else None,
+    )
+    service.terminal_template_store = TerminalTemplateStore(
+        os.getenv("DCP_GATEWAY_TERMINAL_DATABASE", database_path + ".terminal")
     )
     registry_path = os.getenv("DCP_LOCAL_PROJECT_REGISTRY", "").strip()
     service.local_project_registry = None
