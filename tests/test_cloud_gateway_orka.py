@@ -17,6 +17,7 @@ class OrkaTests(unittest.TestCase):
    checker or (lambda *args:True),
    bootstrap_factory=bootstrap or (lambda name,os_name,payload:{"script":"#!/bin/bash\\nset +x\\nTOKEN='mock-registration-token'\\n"}),
    userdata_rbac_reviewed=True,
+   userdata_exposure_reviewed=True,
    network_policy_checker=lambda *args:True,
    cluster_readiness_checker=lambda *args:True,
    budget_readiness_checker=lambda *args:True,
@@ -64,8 +65,13 @@ class OrkaTests(unittest.TestCase):
   readiness=p.readiness("macos")
   self.assertFalse(readiness["ready"])
   self.assertIn("User Data bootstrap",readiness["message"])
+ def test_readiness_requires_user_data_exposure_review(self):
+  p=self.make(lambda *args:True,bootstrap_factory=lambda *args:{"script":"#!/bin/bash"},userdata_rbac_reviewed=True)
+  readiness=p.readiness("macos")
+  self.assertFalse(readiness["ready"])
+  self.assertIn("exposure review",readiness["message"])
  def test_readiness_and_provisioning_require_namespace_rbac_network_cluster_and_budget(self):
-  p=self.make(lambda *args:True,bootstrap_factory=lambda *args:{"script":"#!/bin/bash"},userdata_rbac_reviewed=True,network_policy_checker=lambda *args:True,cluster_readiness_checker=lambda *args:True)
+  p=self.make(lambda *args:True,bootstrap_factory=lambda *args:{"script":"#!/bin/bash"},userdata_rbac_reviewed=True,userdata_exposure_reviewed=True,network_policy_checker=lambda *args:True,cluster_readiness_checker=lambda *args:True)
   self.assertFalse(p.readiness("macos")["ready"])
   with self.assertRaises(OrkaError): p.provision(request())
  def test_rejects_user_data_larger_than_encoded_api_limit(self):
