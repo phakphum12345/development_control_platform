@@ -28,7 +28,11 @@ class OrkaRunnerBootstrapFactory:
             raise ValueError("Runner version must be an explicit x.y.z release")
         if not isinstance(runner_sha256, str) or not re.fullmatch(r"[a-fA-F0-9]{64}", runner_sha256):
             raise ValueError("macOS runner archive SHA-256 must be pinned")
-        if not isinstance(runner_user, str) or not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", runner_user):
+        if (
+            not isinstance(runner_user, str)
+            or runner_user == "root"
+            or not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", runner_user)
+        ):
             raise ValueError("Invalid pre-provisioned macOS runner account")
         if not isinstance(runner_home, str) or not re.fullmatch(r"/Users/[A-Za-z0-9._-]{1,64}", runner_home):
             raise ValueError("Invalid macOS runner home directory")
