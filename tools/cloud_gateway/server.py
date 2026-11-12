@@ -27,6 +27,9 @@ from .runner_registry import RunnerRegistry, WorkerNotFound
 from .scheduler import RunnerScheduler, RunnerNotEligible, RunnerNotRegistered
 from .infrastructure import (FakeInfrastructureProvider, InfrastructureManager,
                              InfrastructureStore, ProviderUnavailable, ResourceNotFound)
+from .infrastructure_gates import (
+    GateUnavailable, InfrastructureGateError, InfrastructureGateStore,
+)
 from tools.local_runner_agent.local_project import (
     LocalProjectError, LocalProjectRegistry,
 )
@@ -419,6 +422,16 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                 if registry is None:
                     return self.send_json(503, {"error": "local Runner registry unavailable"})
                 return self.send_json(200, {"runners": registry.list_workers()})
+            if path == "/api/infrastructure/gates":
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated dashboard session required"})
+                if identity.get("role") not in ("owner", "operator"):
+                    return self.send_json(403, {"error": "dashboard role required"})
+                gate_store = getattr(service, "infrastructure_gate_store", None)
+                if gate_store is None:
+                    return self.send_json(503, {"error": "infrastructure gate store unavailable"})
+                return self.send_json(200, {"gates": gate_store.status(self.infrastructure_gate_readiness())})
             if path == "/api/infrastructure" or path.startswith("/api/infrastructure/"):
                 identity = self.proxy_identity()
                 if not identity:
@@ -570,6 +583,26 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                 return self.send_json(503, {"error": "provider status unavailable"})
             return self.send_json(200, result) if result else self.send_json(404, {"error": "not found"})
 
+        def infrastructure_gate_readiness(self):
+            manager = self.infrastructure_manager()
+            try:
+                cloud_status = self.control_status()
+                cloud_ready = bool(
+                    service.settings.provisioning_enabled
+                    and service.settings.owner_approved
+                    and not service.settings.circuit_breaker_tripped
+                    and any(item.get("ready") is True for item in cloud_status.get("providers", {}).values())
+                )
+            except Exception:
+                cloud_ready = False
+            providers = getattr(manager, "providers", {}) if manager else {}
+            vm_ready = bool(
+                manager is not None
+                and getattr(manager, "provisioning_enabled", False)
+                and any(name != "fake" for name in providers)
+            )
+            return {"cloud_provisioning": cloud_ready, "vm_creation": vm_ready}
+
         def control_status(self):
             budget_state = "UNKNOWN"
             budget_message = "Live Azure budget is not configured"
@@ -648,6 +681,10 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                 "gateway": "READY",
                 "owner_approved": service.settings.owner_approved,
                 "provisioning_enabled": service.settings.provisioning_enabled,
+                "infrastructure_gates": (
+                    getattr(service, "infrastructure_gate_store", None).status(self.infrastructure_gate_readiness())
+                    if getattr(service, "infrastructure_gate_store", None) is not None else None
+                ),
                 "budget_gate": budget_state,
                 "budget_message": budget_message,
                 "provider_budget_gates": provider_budget_gates,
@@ -661,6 +698,32 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
 
         def do_POST(self):
             path = urlparse(self.path).path
+            gate_match = re.fullmatch(r"/api/infrastructure/gates/([a-z_]+)", path)
+            if gate_match:
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated dashboard session required"})
+                if identity.get("role") != "owner":
+                    return self.send_json(403, {"error": "owner role required"})
+                if not self.same_origin():
+                    return self.send_json(403, {"error": "same-origin request required"})
+                if not self.csrf_valid(identity):
+                    return self.send_json(403, {"error": "CSRF validation failed"})
+                gate_store = getattr(service, "infrastructure_gate_store", None)
+                if gate_store is None:
+                    return self.send_json(503, {"error": "infrastructure gate store unavailable"})
+                try:
+                    payload = self.body()
+                    row = gate_store.set_enabled(
+                        gate_match.group(1), payload.get("enabled"), identity.get("subject", ""),
+                        payload.get("confirmation", ""),
+                        self.infrastructure_gate_readiness().get(gate_match.group(1), False),
+                    )
+                    return self.send_json(200, {"gate": row})
+                except GateUnavailable as exc:
+                    return self.send_json(503, {"error": str(exc)})
+                except InfrastructureGateError as exc:
+                    return self.send_json(400, {"error": str(exc)})
             if path == "/api/infrastructure" or path.startswith("/api/infrastructure/"):
                 identity = self.proxy_identity()
                 if not identity:
@@ -677,6 +740,12 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                 try:
                     if path == "/api/infrastructure":
                         payload = self.body()
+                        provider_id = payload.get("provider_id", "fake")
+                        if provider_id != "fake":
+                            gate_store = getattr(service, "infrastructure_gate_store", None)
+                            gates = gate_store.status(self.infrastructure_gate_readiness()) if gate_store else {}
+                            if not gates.get("vm_creation", {}).get("effective_enabled", False):
+                                return self.send_json(503, {"error": "VM Creation gate is OFF or provider is not ready"})
                         key = self.headers.get("Idempotency-Key", "")
                         row, created = manager.create(
                             target_os=payload.get("target_os"),
@@ -952,8 +1021,10 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                     status = self.control_status()
                     platform = payload.get("target_os")
                     provider_state = status["providers"].get(platform, {})
-                    if not status["provisioning_enabled"] or not status["owner_approved"]:
-                        return self.send_json(503, {"error": "owner approval or provisioning gate is not ready"})
+                    gate_store = getattr(service, "infrastructure_gate_store", None)
+                    gates = gate_store.status(self.infrastructure_gate_readiness()) if gate_store else {}
+                    if not status["provisioning_enabled"] or not status["owner_approved"] or not gates.get("cloud_provisioning", {}).get("effective_enabled", False):
+                        return self.send_json(503, {"error": "owner approval or Cloud Provisioning gate is not ready"})
                     provider_budget_gate = status["provider_budget_gates"].get(
                         platform, "UNKNOWN"
                     )
@@ -1199,6 +1270,11 @@ def main():
         service.runner_registry = RunnerRegistry(runner_registry_path, runner_stale_seconds)
     except (ValueError, OSError) as exc:
         raise SystemExit("DCP Runner registry configuration is invalid") from exc
+    gates_path = os.getenv("DCP_GATEWAY_GATES_DATABASE", database_path + ".gates")
+    try:
+        service.infrastructure_gate_store = InfrastructureGateStore(gates_path)
+    except (ValueError, OSError) as exc:
+        raise SystemExit("DCP Infrastructure Gate Store configuration is invalid") from exc
     infrastructure_path = os.getenv("DCP_GATEWAY_INFRA_DATABASE", database_path + ".infra")
     try:
         service.infrastructure_manager = InfrastructureManager(
