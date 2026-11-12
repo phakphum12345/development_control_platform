@@ -72,3 +72,13 @@ No phase is accepted until required tests, security checks, documentation, evide
 - JobStore accepts both targets, Runner Registry advertises them only for web-capable runners, Scheduler includes them in its supported target set, and Dashboard exposes them.
 - No dependency installation, package-manager lifecycle scripts, arbitrary command string or shell execution is permitted.
 - Both build adapters remain behind the existing Runner execution opt-in and trusted source allowlists. Next.js SSR runtime/preview is not included.
+
+
+## Next.js and Angular preview acceptance
+
+- Next.js preview is available only for a completed `build_next` job, an authenticated Owner, same-origin CSRF validation and explicit `confirm_code_execution=true`.
+- The Local Runtime Manager verifies a regular bounded package manifest, local Next CLI, React/Next dependencies and a safe `.next/BUILD_ID`.
+- Start uses fixed argv, `shell=False`, a reduced environment and loopback-only bind. Health is checked before the preview session is returned.
+- Session capability remains server-side; status/content/stop continue through the authenticated Preview Proxy. TTL expiry and process-tree stop must terminate the Next server.
+- Angular static output may be served from `source/dist/browser`; symlink and path traversal checks remain enforced.
+- This is trusted-code execution, not a sandbox. Outbound network is not blocked; the Owner must trust the source before confirming.

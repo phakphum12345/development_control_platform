@@ -940,8 +940,30 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                         if not previews or not worker_id:
                             return self.send_json(503, {"error": "local preview runtime is not configured"})
                         payload = self.body()
+                        if not isinstance(payload, dict):
+                            return self.send_json(400, {"error": "preview request must be an object"})
+                        runtime_kind = payload.get("runtime_kind", "static")
                         try:
-                            row = previews.start(job_id, worker_id, payload.get("output_relative", "source/dist"))
+                            if runtime_kind == "next":
+                                if job.get("target") != "build_next":
+                                    return self.send_json(409, {"error": "Next.js runtime requires a completed build_next job"})
+                                if set(payload) != {"runtime_kind", "confirm_code_execution"} or payload.get("confirm_code_execution") is not True:
+                                    return self.send_json(400, {"error": "explicit confirm_code_execution=true is required"})
+                                row = previews.start(
+                                    job_id, worker_id, runtime_kind="next", owner_approved=True
+                                )
+                            elif runtime_kind == "static":
+                                if job.get("target") == "build_next":
+                                    return self.send_json(409, {"error": "Next.js build requires the explicit Next.js runtime path"})
+                                if set(payload) - {"runtime_kind", "output_relative"}:
+                                    return self.send_json(400, {"error": "unsupported static preview request fields"})
+                                default_output = "source/dist/browser" if job.get("target") == "build_angular" else "source/dist"
+                                output_relative = payload.get("output_relative", default_output)
+                                row = previews.start(
+                                    job_id, worker_id, output_relative, runtime_kind="static"
+                                )
+                            else:
+                                return self.send_json(400, {"error": "unsupported preview runtime kind"})
                             return self.send_json(201, row)
                         except PreviewError as exc:
                             return self.send_json(409, {"error": str(exc)})

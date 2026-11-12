@@ -169,17 +169,9 @@ Do not merge PR #71 until the real Chromium sandbox test, Dashboard browser smok
 - Next.js server runtime/SSR preview and broad cross-framework acceptance remain outstanding.
 
 
-## 2026-11-12 Dashboard build-target integration
+## 2026-11-12 implementation checkpoint — Next.js runtime preview
 
-- GitHub App project inspection now drives the Build Jobs selector: Flutter targets require a detected Flutter project; Vite, Next.js and Angular targets require a Node project classification.
-- The Local Runner remains authoritative: it checks the exact package manifest, framework dependencies and preinstalled local CLI before executing fixed argv.
-- The Dashboard does not install dependencies or infer toolchain readiness from a manifest. Truncated/unknown inspections keep build submission disabled.
-- Build target changes immediately recompute the UI gate; API and Runner policy remain authoritative.
-
-
-## 2026-11-12 Terminal Studio Visual Command Builder
-
-- Added schema-driven typed parameters to the curated read-only command catalog: bounded Git history limit and exact full commit SHA for Git show/diff.
-- Gateway validates request shape and each typed parameter; it rejects arbitrary fields, unknown names, malformed values and parameters on imported templates.
-- Dashboard builds form controls from the catalog schema and renders exact argv/normalized values as text.
-- Real-browser smoke and unit tests cover the builder. No command is executed; terminal execution remains blocked pending OS isolation and cancellation guarantees.
+- Added an explicit Owner-approved Next.js production runtime on loopback for completed build_next jobs.
+- The API requires the correct job target and explicit confirmation; all browser access remains behind the authenticated Preview Proxy.
+- Added process supervision, health checks, TTL and process-tree cleanup reuse; Angular browser output can be served from dist/browser.
+- Next.js preview executes trusted application code and does not enforce outbound network isolation. This limitation is documented; do not treat it as an OS sandbox.

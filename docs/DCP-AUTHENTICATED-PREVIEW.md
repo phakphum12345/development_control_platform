@@ -49,3 +49,12 @@ sandbox.
 ## Current limitations
 
 This is a static-output preview, not a general-purpose application server. It does not yet provide WebSocket/HMR, arbitrary framework runtime profiles, range requests, or browser automation. The runtime capability is held in Gateway memory; Gateway restart invalidates preview sessions and leaves runtime cleanup to process lifecycle/TTL handling. Do not expose Runtime Manager or its loopback port directly to a LAN.
+
+
+## Next.js server preview
+
+A completed `build_next` job may be previewed with the Next.js production server. The Owner must submit `runtime_kind=next` and `confirm_code_execution=true`; the Gateway checks Owner role, completed job state and exact build target. The Local Runtime Manager starts the preinstalled local Next CLI with fixed argv, binds only to `127.0.0.1`, keeps the session capability server-side, and applies the existing TTL, bounded log and process-tree cleanup controls. The browser receives only the opaque preview path.
+
+This executes trusted project server code. It is not an OS sandbox and does not block outbound network access. Use only explicitly trusted source and review the project before confirming. No dependency installation or arbitrary browser-supplied command is performed.
+
+Angular static preview can use `source/dist/browser`; the runtime rejects symlinks and requires a regular `index.html`.
