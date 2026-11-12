@@ -739,8 +739,10 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                     _, raw = self.body()
                 except Exception:
                     return self.send_json(400, {"error": "invalid JSON body"})
-                status, data = app.gateway_request("POST", path, session, raw,
-                                                   self.headers.get("X-CSRF-Token", ""))
+                status, data = app.gateway_request(
+                    "POST", path, session, raw, self.headers.get("X-CSRF-Token", ""),
+                    idempotency_key=self.headers.get("Idempotency-Key", ""),
+                )
                 return self.send_bytes(status, data)
             terminal_template_import = path == "/api/terminal/templates/import"
             terminal_command_preview = path == "/api/terminal/commands/preview"
