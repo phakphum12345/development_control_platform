@@ -7,7 +7,7 @@ This adapter can create an ephemeral Linux or Windows VM and a private NIC in an
 - Pre-created subnet, NSG, route table, Azure Firewall and Firewall Policy resource IDs in the same subscription.
 - A dedicated network resource group separate from the ephemeral runner resource group.
 - Reviewed VM sizes and exact Marketplace image references for both OS profiles.
-- A protected bootstrap factory that obtains ephemeral runner registration material server-side and supplies it only through VM extension protectedSettings.
+- A protected bootstrap factory that obtains ephemeral runner registration material server-side and supplies it only through VM extension `protectedSettings`. Azure encrypts protected extension settings for the target VM; never move registration tokens into VM `customData`, public extension `settings`, tags, or metadata. The extension is given a bounded 45-minute provisioning budget and its provisioning state must succeed before the runner can be reported online.
 - A GitHub runner-online checker. VM power state alone never proves runner registration.
 
 Marketplace image versions must be explicitly pinned; the adapter rejects latest. Discover available publisher/offer/SKU/version values in the intended subscription and region before configuration. Canonical's Ubuntu 24.04 documentation lists the AMD64 Gen2 image family as Canonical:ubuntu-24_04-lts:server:latest; use a specific version returned by the subscription image listing rather than latest. Windows Server 2025 publisher/offer/SKU availability must likewise be confirmed for the target region and subscription.
