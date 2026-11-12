@@ -161,7 +161,7 @@ The local Windows stack can provision a dedicated Runner credential without plac
    .\Start-DCP-Gateway-Runner.cmd -WorkerId windows-local-01 -EnableExecution -TrustedRepository "owner/repository" -Once
    ```
 
-   Omit `-Once` to run the worker loop until Ctrl+C. Execution is never enabled by the setup command or offline-enrollment default.
+   Omit `-Once` to run the unified `--serve` supervisor until Ctrl+C. Offline enrollment never enables execution.
 
 The Gateway listens on loopback port 18790; the Dashboard remains on 8789. The Gateway reads the protected token map at startup; Runner tokens are never injected into build subprocesses. Build subprocesses receive only the safe OS/toolchain environment allowlist. Cloud Provisioning remains disabled.
 
@@ -177,7 +177,7 @@ If the credential file is created or changed while the Gateway is running, resta
 - Runner liveness is refreshed during active builds. Workers older than `DCP_GATEWAY_RUNNER_STALE_SECONDS` (default 60 seconds; allowed 15–3600) are reported offline.
 - Dashboard operators can Drain a worker to stop new claims while allowing its active Job to finish, then Enable it again. A stale worker becomes online again only after it checks in.
 - `host_os` is recorded separately from build capabilities. Configure `DCP_RUNNER_CAPABILITIES` as a JSON array containing only targets actually detected by local preflight (for example `flutter`, `android`, `web`, `windows`, `linux`, `macos`, `ios`). A Windows host without Visual Studio may still register for Android/Web work but will not advertise Windows desktop builds. The default uses the full preflight-detected capability set; cross-platform targets are never assumed.
-- The CLI remains one-shot (`--once`); continuous polling/daemon supervision is a separate deployment decision.
+- The unified `tools.local_runner_agent` CLI supports `--enroll-only`, `--once`, and explicit `--serve`. The supported Windows launcher uses `--enroll-only` by default, `--once` only with `-Once`, and `--serve` when execution is enabled without `-Once`. Continuous mode uses bounded polling/backoff and stops on permanent policy errors.
 
 
 ## M7 — Explicit Local Folder project registry
@@ -296,7 +296,7 @@ This validates the complete Gateway HTTP path in addition to the JobStore unit
 tests. It uses temporary SQLite stores and test-only Runner credentials.
 
 
-## M8 — Unified Windows Runner launcher and supervised mode
+## M9 — Unified Windows Runner launcher and supervised mode
 
 The supported Windows launcher is Start-DCP-Gateway-Runner.ps1. It loads the
 worker token from the protected LocalAppData credential file, maps WorkerId to
