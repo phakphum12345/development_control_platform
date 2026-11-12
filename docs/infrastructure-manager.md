@@ -85,3 +85,35 @@ also reopens the SQLite store to verify the terminal state and audit history
 are durable. Repeated delete is verified as idempotent without another
 provider call. These checks use only the in-memory fake provider and temporary
 local databases; they do not establish live cloud or VM readiness.
+
+## Independent Infrastructure Control Gates — Phase 4
+
+The Gateway now stores two independent owner-controlled switches in a dedicated
+SQLite database (DCP_GATEWAY_GATES_DATABASE, defaulting to the Gateway
+database path plus .gates):
+
+- cloud_provisioning: controls the live cloud runner provisioning path.
+- vm_creation: controls non-fake VM/provider creation paths.
+
+Both gates are inserted OFF on first startup and survive Gateway restarts.
+The authenticated API is:
+
+| Method | Route | Permission | Purpose |
+| --- | --- | --- | --- |
+| GET | /api/infrastructure/gates | owner/operator | Read both switch states and provider readiness |
+| POST | /api/infrastructure/gates/{cloud_provisioning or vm_creation} | owner | Change one switch; requires same-origin and CSRF |
+
+Enabling requires an exact, gate-specific confirmation phrase and a ready
+provider capability. The backend rejects enabling while provider readiness or
+static safety configuration is unavailable. The cloud runner create route
+requires the effective Cloud Provisioning gate in addition to the existing
+owner approval, budget, repository, concurrency, and circuit-breaker checks.
+Non-fake Infrastructure Manager create requests require the effective VM
+Creation gate; the current composition still registers only the fake provider
+and sets manager provisioning to OFF.
+
+A stored ON state is not by itself proof of operational readiness:
+effective_enabled is true only while the corresponding provider capability
+is ready. Gate changes are audited with actor and timestamp. These switches
+do not enable any provider in the current deployment and do not authorize
+paid resources. CI uses temporary SQLite databases and fake/no providers only.
