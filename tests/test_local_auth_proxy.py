@@ -488,57 +488,69 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
 
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch(headless=True, chromium_sandbox=True)
-                context = browser.new_context(viewport={"width": 1366, "height": 768})
-                context.add_cookies(cookies)
-                page = context.new_page()
-                console_errors = []
-                page_errors = []
-                failed_requests = []
-                request_urls = []
-                page.on("console", lambda message: console_errors.append(message.text) if message.type == "error" else None)
-                page.on("pageerror", lambda error: page_errors.append(str(error)))
-                page.on("requestfailed", lambda request: failed_requests.append(request.url))
-                page.on("request", lambda request: request_urls.append(request.url))
-
-                response = page.goto(
-                    self.base + preview["preview_path"],
-                    wait_until="networkidle",
-                    timeout=15000,
-                )
-                self.assertIsNotNone(response)
-                self.assertEqual(response.status, 200)
-                self.assertEqual(page.title(), "Preview Proxy Browser E2E")
-                self.assertEqual(
-                    page.locator("#preview-ready").inner_text(),
-                    "Browser reached authenticated preview",
-                )
-                self.assertEqual(
-                    page.locator("body").evaluate("(element) => getComputedStyle(element).color"),
-                    "rgb(1, 2, 3)",
-                )
-                self.assertTrue(any("/content/assets/site.css" in url for url in request_urls))
-                self.assertTrue(all(url.startswith(self.base + "/") for url in request_urls))
-                self.assertEqual(console_errors, [])
-                self.assertEqual(page_errors, [])
-                self.assertEqual(failed_requests, [])
-
-                screenshot = Path(self.temp.name) / "authenticated-preview.png"
-                page.screenshot(path=str(screenshot), full_page=True)
-                self.assertTrue(screenshot.is_file())
-
-                stopped, _, stop_body = self.request(
-                    f"/api/jobs/{job['id']}/previews/{preview['runtime_id']}",
-                    "DELETE", csrf=csrf,
-                )
-                self.assertEqual(stopped, 200, stop_body.decode(errors="replace"))
-                after_stop = page.goto(
-                    self.base + preview["preview_path"],
-                    wait_until="domcontentloaded",
-                    timeout=10000,
-                )
-                self.assertIsNotNone(after_stop)
-                self.assertEqual(after_stop.status, 404)
-                context.close()
+                try:
+                    context = browser.new_context(viewport={"width": 1366, "height": 768})
+                    context.add_cookies(cookies)
+                    page = context.new_page()
+                    console_errors = []
+                    page_errors = []
+                    failed_requests = []
+                    request_urls = []
+                    asset_responses = []
+                    page.on("console", lambda message: console_errors.append(message.text) if message.type == "error" else None)
+                    page.on("pageerror", lambda error: page_errors.append(str(error)))
+                    page.on("requestfailed", lambda request: failed_requests.append(request.url))
+                    page.on("request", lambda request: request_urls.append(request.url))
+    
+                    response = page.goto(
+                        self.base + preview["preview_path"],
+                        wait_until="networkidle",
+                        timeout=15000,
+                    )
+                    self.assertIsNotNone(response)
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(page.title(), "Preview Proxy Browser E2E")
+                    self.assertEqual(
+                        page.locator("#preview-ready").inner_text(),
+                        "Browser reached authenticated preview",
+                    )
+                    css_color = page.locator("body").evaluate(
+                        "(element) => getComputedStyle(element).color"
+                    )
+                    self.assertEqual(
+                        css_color, "rgb(1, 2, 3)",
+                        "CSS diagnostics: responses=%r console=%r requests=%r" % (
+                            asset_responses, console_errors, request_urls
+                        ),
+                    )
+                    self.assertEqual(len(asset_responses), 1)
+                    self.assertEqual(asset_responses[0]["status"], 200)
+                    self.assertTrue(any("/content/assets/site.css" in url for url in request_urls))
+                    self.assertTrue(all(url.startswith(self.base + "/") for url in request_urls))
+                    self.assertEqual(console_errors, [])
+                    self.assertEqual(page_errors, [])
+                    self.assertEqual(failed_requests, [])
+    
+                    screenshot = Path(self.temp.name) / "authenticated-preview.png"
+                    page.screenshot(path=str(screenshot), full_page=True)
+                    self.assertTrue(screenshot.is_file())
+    
+                    stopped, _, stop_body = self.request(
+                        f"/api/jobs/{job['id']}/previews/{preview['runtime_id']}",
+                        "DELETE", csrf=csrf,
+                    )
+                    self.assertEqual(stopped, 200, stop_body.decode(errors="replace"))
+                    after_stop = page.goto(
+                        self.base + preview["preview_path"],
+                        wait_until="domcontentloaded",
+                        timeout=10000,
+                    )
+                    self.assertIsNotNone(after_stop)
+                    self.assertEqual(after_stop.status, 404)
+                    context.close()
+                finally:
+                    browser.close()
+                    browser = None
         finally:
             if browser is not None:
                 browser.close()
