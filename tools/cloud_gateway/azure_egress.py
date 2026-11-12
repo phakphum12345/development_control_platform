@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import os
 import re
 import time
 from urllib.error import HTTPError, URLError
@@ -132,6 +133,22 @@ class AzureEgressPolicyVerifier:
         self._validate_network_resource_id(route_table_id, "routeTables")
         self._validate_network_resource_id(firewall_id, "azureFirewalls")
         self._validate_network_resource_id(firewall_policy_id, "firewallPolicies")
+
+    @classmethod
+    def from_environment(cls, arm, env=None, domain_catalog=None):
+        values = os.environ if env is None else env
+        extras = tuple(
+            item.strip() for item in values.get("DCP_AZURE_EGRESS_EXTRA_FQDNS", "").split(",")
+            if item.strip()
+        )
+        return cls(
+            arm,
+            route_table_id=values.get("DCP_AZURE_ROUTE_TABLE_ID", ""),
+            firewall_id=values.get("DCP_AZURE_FIREWALL_ID", ""),
+            firewall_policy_id=values.get("DCP_AZURE_FIREWALL_POLICY_ID", ""),
+            domain_catalog=domain_catalog,
+            extra_fqdns=extras,
+        )
 
     def _validate_network_resource_id(self, value, resource_type):
         subscription = re.escape(self.arm.subscription_id)
