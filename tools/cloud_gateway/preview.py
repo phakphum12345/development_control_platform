@@ -44,7 +44,7 @@ class AuthenticatedPreviewManager:
                 self._tokens.pop(runtime_id, None)
                 self._jobs.pop(runtime_id, None)
 
-    def start(self, job_id: str, worker_id: str, output_relative: str = "source/dist") -> dict:
+    def start(self, job_id: str, worker_id: str, output_relative: str = "source/dist", *, runtime_kind: str = "static", owner_approved: bool = False) -> dict:
         try:
             parsed_job_id = uuid.UUID(job_id)
         except (ValueError, TypeError, AttributeError):
@@ -53,7 +53,7 @@ class AuthenticatedPreviewManager:
             raise PreviewError("invalid job id")
         if not isinstance(worker_id, str) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", worker_id):
             raise PreviewError("invalid worker id")
-        if output_relative not in ("source/dist", "source/build/web", "dist", "build/web"):
+        if output_relative not in ("source/dist", "source/dist/browser", "source/build/web", "dist", "dist/browser", "build/web"):
             raise PreviewError("unsupported preview output")
         with self._lock:
             self._prune_stale()
@@ -68,9 +68,18 @@ class AuthenticatedPreviewManager:
             if active_for_job:
                 raise PreviewError("a preview is already active for this job")
             try:
-                row = self.runtime_manager.start_static(
-                    job_id, worker_id, output_relative=output_relative
-                )
+                if runtime_kind == "static":
+                    row = self.runtime_manager.start_static(
+                        job_id, worker_id, output_relative=output_relative
+                    )
+                elif runtime_kind == "next":
+                    if owner_approved is not True:
+                        raise PreviewError("explicit Owner approval is required for Next.js runtime")
+                    row = self.runtime_manager.start_next(
+                        job_id, worker_id, owner_approved=True
+                    )
+                else:
+                    raise PreviewError("unsupported preview runtime kind")
             except RuntimeErrorDCP as exc:
                 raise PreviewError(str(exc)) from None
             runtime_id = row["runtime_id"]
@@ -79,6 +88,7 @@ class AuthenticatedPreviewManager:
             return {
                 "runtime_id": runtime_id,
                 "job_id": job_id,
+                "runtime_kind": row.get("runtime_kind", runtime_kind),
                 "state": "running",
                 "preview_path": f"/api/jobs/{job_id}/previews/{runtime_id}/content/",
                 "expires_in_seconds": row["expires_in_seconds"],
@@ -98,6 +108,7 @@ class AuthenticatedPreviewManager:
                 raise PreviewError("preview is no longer available") from None
             return {
                 "runtime_id": runtime_id, "job_id": job_id,
+                "runtime_kind": row.get("runtime_kind", "static"),
                 "state": row["state"],
                 "expires_in_seconds": row["expires_in_seconds"],
             }
@@ -119,6 +130,7 @@ class AuthenticatedPreviewManager:
                 rows.append({
                     "runtime_id": runtime_id,
                     "job_id": job_id,
+                    "runtime_kind": status.get("runtime_kind", "static"),
                     "state": status["state"],
                     "preview_path": f"/api/jobs/{job_id}/previews/{runtime_id}/content/",
                     "expires_in_seconds": status["expires_in_seconds"],
