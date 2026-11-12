@@ -25,7 +25,10 @@ termination. The script retries early-boot network access, never prints the
 registration token, and does not put it in `customMetadata`.
 
 Orka 4.0 requirements are strict: Apple silicon nodes, Orka 4.0 VM Tools in the
-approved image, and a pre-provisioned non-root runner account. The namespace
+approved image, a finite `ORKA_USERDATA_TIMEOUT` baked into that image (for
+example, 1800 seconds), and a pre-provisioned non-root, non-admin runner
+account. The timeout must exceed the bounded download retries, checksum
+verification and runner service setup. The namespace
 must be dedicated to DCP and Kubernetes RBAC must prevent untrusted users and
 service accounts from reading the VM's VirtualMachineInstance resource or pod
 spec. The Orka documentation states that the script is not returned in API
