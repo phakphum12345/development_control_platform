@@ -471,6 +471,12 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
             self.assertTrue(preview["preview_path"].endswith("/content/"))
             self.assertNotIn("port", preview)
             self.assertNotIn("session_token", start_body.decode("utf-8", "ignore"))
+            css_status, css_headers, css_body = self.request(
+                preview["preview_path"] + "assets/site.css"
+            )
+            self.assertEqual(css_status, 200, css_body.decode("utf-8", "replace"))
+            self.assertIn("text/css", css_headers.get("Content-Type", ""))
+            self.assertIn(b"rgb(1, 2, 3)", css_body)
 
             cookies = [
                 {
