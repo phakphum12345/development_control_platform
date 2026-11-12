@@ -1,10 +1,17 @@
 """Read-only deployment preflight tests; no network or secrets are used."""
+import base64
 import unittest
 
 from tools.cloud_gateway.preflight import inspect_environment
 
 
 SUBSCRIPTION = "00000000-0000-0000-0000-000000000000"
+
+
+def ssh_public_key():
+    key_type = b"ssh-ed25519"
+    wire = len(key_type).to_bytes(4, "big") + key_type + (32).to_bytes(4, "big") + b"\\x01" * 32
+    return "ssh-ed25519 " + base64.b64encode(wire).decode("ascii") + " preflight-test"
 
 
 def valid_environment():
@@ -36,6 +43,8 @@ def valid_environment():
         "DCP_RUNNER_VERSION": "2.331.0",
         "DCP_RUNNER_LINUX_SHA256": "a" * 64,
         "DCP_RUNNER_WINDOWS_SHA256": "b" * 64,
+        "DCP_AZURE_GUEST_ADMIN_USERNAME": "dcpadmin",
+        "DCP_AZURE_LINUX_SSH_PUBLIC_KEY": ssh_public_key(),
         "DCP_ORKA_URL": "https://orka.example.test",
         "DCP_ORKA_NAMESPACE": "dcp-runners",
         "DCP_ORKA_VM_CONFIG": "macos-15-arm64",
@@ -64,7 +73,8 @@ class GatewayPreflightTests(unittest.TestCase):
         for name in (
             "gateway_api_token", "trusted_proxy", "owner_approval",
             "repository_allowlist", "github_app_configuration",
-            "azure_configuration_presence", "orka_configuration_presence",
+            "azure_configuration_presence", "azure_guest_profile_configuration",
+            "orka_configuration_presence",
         ):
             self.assertEqual(checks[name]["status"], "PASS", name)
         self.assertEqual(checks["azure_network_policy"]["status"], "UNKNOWN")
@@ -107,6 +117,16 @@ class GatewayPreflightTests(unittest.TestCase):
         checks = {item["check"]: item for item in result["checks"]}
         self.assertEqual(checks["repository_allowlist"]["status"], "FAIL")
         self.assertEqual(checks["trusted_proxy"]["status"], "FAIL")
+        self.assertEqual(result["overall"], "FAIL")
+
+
+    def test_invalid_azure_guest_profile_fails_syntax_preflight(self):
+        env = valid_environment()
+        env["DCP_AZURE_LINUX_SSH_PUBLIC_KEY"] = "ssh-rsa AAAA"
+        result = inspect_environment(env)
+        checks = {item["check"]: item for item in result["checks"]}
+        self.assertEqual(checks["azure_guest_profile_configuration"]["status"], "FAIL")
+        self.assertEqual(checks["azure_configuration_presence"]["status"], "FAIL")
         self.assertEqual(result["overall"], "FAIL")
 
     def test_invalid_azure_ids_checksums_and_github_app_ids_fail(self):
