@@ -24,7 +24,7 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
             def do_GET(self):
                 parent.gateway_requests.append(self.path)
                 if self.path.endswith("/download"):
-                    body = b"proxy-artifact\\x00bytes"
+                    body = b"proxy-artifact\x00bytes"
                     self.send_response(200)
                     self.send_header("Content-Type", "application/octet-stream")
                     self.send_header("Content-Length", str(len(body)))
@@ -127,7 +127,7 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
         artifact_id = "223e4567-e89b-42d3-a456-426614174000"
         path = "/api/artifacts/" + artifact_id + "/download"
         status, headers, body = self.get_raw(path)
-        expected = b"proxy-artifact\\x00bytes"
+        expected = b"proxy-artifact\x00bytes"
         self.assertEqual(status, 200)
         self.assertEqual(body, expected)
         self.assertEqual(headers.get("Content-Type"), "application/octet-stream")
