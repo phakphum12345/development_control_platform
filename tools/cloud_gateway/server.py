@@ -586,12 +586,22 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
         def infrastructure_gate_readiness(self):
             manager = self.infrastructure_manager()
             try:
-                cloud_status = self.control_status()
+                readiness = getattr(service.provider, "readiness", None)
+                provider_ready = False
+                if callable(readiness):
+                    for os_name in ("linux", "windows", "macos"):
+                        try:
+                            result = readiness(os_name)
+                        except Exception:
+                            result = None
+                        if isinstance(result, dict) and result.get("ready") is True:
+                            provider_ready = True
+                            break
                 cloud_ready = bool(
                     service.settings.provisioning_enabled
                     and service.settings.owner_approved
                     and not service.settings.circuit_breaker_tripped
-                    and any(item.get("ready") is True for item in cloud_status.get("providers", {}).values())
+                    and provider_ready
                 )
             except Exception:
                 cloud_ready = False
