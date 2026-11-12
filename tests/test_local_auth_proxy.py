@@ -3,6 +3,7 @@ import http.cookiejar
 import json
 import os
 import socket
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -454,6 +455,8 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
         browser = None
         preview = None
         csrf = None
+        https_httpd = None
+        https_thread = None
         try:
             _, _, preauth_body = self.request("/api/auth/session")
             preauth = json.loads(preauth_body)
@@ -496,9 +499,37 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
             self.assertEqual(preview_cookie["samesite"], "None")
             self.assertEqual(preview_cookie["path"], preview["preview_path"])
             self.assertGreater(int(preview_cookie["max-age"]), 0)
-            # WebKit treats localhost as a secure loopback origin for Secure
-            # cookies; use it for browser traffic while the server stays IPv4-bound.
-            browser_base = self.base.replace("127.0.0.1", "localhost", 1)
+            # Exercise Secure cookies over real HTTPS rather than relying on
+            # browser-specific localhost exceptions for Secure cookies.
+            https_port = free_port()
+            tls_dir = Path(self.temp.name) / f"preview-{browser_name}-tls"
+            tls_dir.mkdir(parents=True, exist_ok=True)
+            cert_path = tls_dir / "localhost-cert.pem"
+            key_path = tls_dir / "localhost-key.pem"
+            subprocess.run(
+                [
+                    "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+                    "-keyout", str(key_path), "-out", str(cert_path), "-days", "1",
+                    "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost",
+                ],
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+            )
+            https_httpd = auth.ThreadingHTTPServer(
+                ("127.0.0.1", https_port),
+                auth.make_handler(
+                    self.app, Path(__file__).resolve().parents[1] / "dashboard"
+                ),
+            )
+            https_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            https_context.load_cert_chain(str(cert_path), str(key_path))
+            https_httpd.socket = https_context.wrap_socket(
+                https_httpd.socket, server_side=True
+            )
+            https_thread = threading.Thread(
+                target=https_httpd.serve_forever, daemon=True
+            )
+            https_thread.start()
+            browser_base = f"https://localhost:{https_port}"
             cookies = [{
                 "name": preview_cookie_name,
                 "value": preview_cookie.value,
@@ -515,7 +546,10 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                     launch_options["chromium_sandbox"] = True
                 browser = browser_type.launch(**launch_options)
                 try:
-                    context = browser.new_context(viewport={"width": 1366, "height": 768})
+                    context = browser.new_context(
+                        viewport={"width": 1366, "height": 768},
+                        ignore_https_errors=True,
+                    )
                     context.add_cookies(cookies)
                     page = context.new_page()
                     console_errors = []
@@ -652,6 +686,11 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
         finally:
             if browser is not None:
                 browser.close()
+            if https_httpd is not None:
+                https_httpd.shutdown()
+                https_httpd.server_close()
+            if https_thread is not None:
+                https_thread.join(timeout=5)
             if preview and csrf:
                 self.request(
                     f"/api/jobs/{job['id']}/previews/{preview['runtime_id']}",
