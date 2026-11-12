@@ -107,7 +107,7 @@ Safety remains unchanged: Cloud Provisioning OFF, VM Creation OFF, external prov
 
 ## Authenticated Preview Proxy — browser acceptance in progress
 
-A new acceptance slice adds real Chromium coverage through the owner-authenticated Preview Proxy, rather than calling RuntimeManager directly. The browser test uses the same-origin session cookie, sandboxed Chromium, HTML/CSS assertions, request/error checks, screenshot evidence and verifies that stopping the preview makes the browser URL unavailable. CI on the exact PR head is required before this checkpoint is considered accepted.
+A new acceptance slice adds real Chromium coverage through the owner-authenticated Preview Proxy, rather than calling RuntimeManager directly. The browser test uses a short-lived, path-scoped HttpOnly/Secure preview cookie, sandboxed Chromium, HTML/CSS assertions, request/error checks, screenshot evidence and verifies that stopping the preview makes the browser URL unavailable. CI on the exact PR head is required before this checkpoint is considered accepted.
 
 ## Remaining major work packages
 
