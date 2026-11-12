@@ -95,3 +95,12 @@ The corrected implementation passed both PR workflows on head `ab8c558ee4d82f940
 - Added concurrent claims across independent JobStore instances to verify only one worker can lease a queued job.
 - Exposed attempt counters through authenticated Dashboard job status responses.
 - No repository code, VM, cloud provider or paid resource is executed/created by these tests.
+
+
+## Phase 2 progress — HTTP lease recovery acceptance (PR in progress)
+
+- Added a two-worker Gateway HTTP test covering registration, first claim, forced lease expiry, automatic recovery and second claim.
+- Verified attempt_count increments, max_attempts is returned, and last_worker provenance survives requeue.
+- Verified the former worker receives HTTP 409 when attempting a stale heartbeat after another worker owns the lease.
+- Verified the current worker can finish and that the lease-recovery audit event records the former worker.
+- Uses temporary SQLite databases and test-only worker tokens; no real Runner host or repository code is used.

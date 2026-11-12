@@ -267,3 +267,14 @@ The Dashboard job API returns attempt_count and max_attempts as operational
 metadata. This is retry accounting, not a guarantee that an interrupted
 workspace was cleaned; workspace reconciliation remains a separate acceptance
 requirement before treating Runner crash recovery as fully production-ready.
+
+
+## HTTP lease-recovery acceptance
+
+The authenticated Runner API acceptance flow registers two independent workers,
+lets the first worker claim a job, expires its lease, and lets the second worker
+claim the recovered job. It verifies attempt counters and last_worker
+provenance in the public claim response, rejects the first worker's stale
+heartbeat with HTTP 409, and allows only the current lease owner to finish.
+This validates the complete Gateway HTTP path in addition to the JobStore unit
+tests. It uses temporary SQLite stores and test-only Runner credentials.
