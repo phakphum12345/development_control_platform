@@ -435,7 +435,7 @@ class DashboardControlCenterV2Tests(unittest.TestCase):
             '["integer","commit_sha"].includes(spec.type)',
             'parameters:terminalStudioCollectParameters()',
             'terminalStudioRenderBuilder();$("terminal-preview").disabled',
-            "No Shell/PTY",
+            "ไม่มี Shell/PTY",
         ):
             with self.subTest(contract=contract):
                 self.assertIn(contract, HTML)
