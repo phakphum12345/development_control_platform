@@ -114,7 +114,11 @@ The repository now includes a concrete reference integration:
   ingress header boundary with mocks/static contract assertions.
 
 Configure oauth2-proxy as an OIDC provider with the exact issuer, client ID,
-audience, callback and cookie secret for the deployment. Required behavior:
+audience, callback and cookie secret for the deployment. Set the exact external
+`--redirect-url=https://<host>/oauth2/callback` and
+`--whitelist-domain=<host>`; replace the Nginx template's catch-all
+`server_name _` with the approved hostname and have the trusted ingress reject
+HTTP and unknown hosts. Required behavior:
 
 - Pin a reviewed stable oauth2-proxy release and enable
   `--provider=oidc`, `--reverse-proxy=true`,
