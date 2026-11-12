@@ -18,6 +18,7 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
         self.gateway_requests = []
         self.gateway_methods = []
         self.gateway_bodies = []
+        self.gateway_idempotency_keys = []
         parent = self
 
         class FakeGateway(BaseHTTPRequestHandler):
@@ -48,12 +49,23 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
                 parent.gateway_methods.append("POST")
                 size = int(self.headers.get("Content-Length", "0"))
                 parent.gateway_bodies.append(self.rfile.read(size))
+                parent.gateway_idempotency_keys.append(self.headers.get("Idempotency-Key"))
                 body = json.dumps({
                     "runner": {
                         "worker_id": self.path.split("/")[-2],
                         "state": self.path.rsplit("/", 1)[-1] + "d",
                     }
                 }).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_DELETE(self):
+                parent.gateway_requests.append(self.path)
+                parent.gateway_methods.append("DELETE")
+                body = json.dumps({"deleted": True}).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
@@ -133,15 +145,34 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
             self.assertEqual(body["error"], "not found")
         self.assertEqual(len(self.gateway_requests), 0)
 
-    def post(self, path, payload=None, authenticated=True, valid_csrf=True):
+    def post(self, path, payload=None, authenticated=True, valid_csrf=True, idempotency_key=None):
         headers = {"Origin": self.origin, "Content-Type": "application/json"}
         if authenticated:
             headers["Cookie"] = "DCP_LOCAL_SESSION=" + self.sid
             headers["X-CSRF-Token"] = (
                 self.app.csrf(self.session) if valid_csrf else "invalid-csrf-token"
             )
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
         body = json.dumps({} if payload is None else payload).encode("utf-8")
         request = Request(self.base + path, data=body, headers=headers, method="POST")
+        try:
+            with urlopen(request, timeout=5) as response:
+                return response.status, json.loads(response.read())
+        except HTTPError as exc:
+            try:
+                return exc.code, json.loads(exc.read())
+            finally:
+                exc.close()
+
+    def delete(self, path, authenticated=True, valid_csrf=True):
+        headers = {"Origin": self.origin}
+        if authenticated:
+            headers["Cookie"] = "DCP_LOCAL_SESSION=" + self.sid
+            headers["X-CSRF-Token"] = (
+                self.app.csrf(self.session) if valid_csrf else "invalid-csrf-token"
+            )
+        request = Request(self.base + path, headers=headers, method="DELETE")
         try:
             with urlopen(request, timeout=5) as response:
                 return response.status, json.loads(response.read())
@@ -205,6 +236,10 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
             "/api/runners",
             "/api/terminal/templates",
             "/api/terminal/templates/custom-example/events",
+            "/api/infrastructure",
+            "/api/infrastructure?view=catalog",
+            "/api/infrastructure/123e4567-e89b-42d3-a456-426614174000",
+            "/api/infrastructure/123e4567-e89b-42d3-a456-426614174000/events",
         ):
             status, _ = self.get(path)
             self.assertEqual(status, 200, path)
@@ -222,6 +257,10 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
             "/api/artifacts/not-a-uuid/download",
             "/api/terminal/templates/not-custom/events",
             "/api/runners?unexpected=1",
+            "/api/infrastructure?view=other",
+            "/api/infrastructure?view=catalog&unexpected=1",
+            "/api/infrastructure/123e4567-e89b-42d3-a456-426614174000/events?unexpected=1",
+            "/api/infrastructure/not-a-uuid",
         ):
             status, body = self.get(path)
             self.assertEqual(status, 404, path)
@@ -248,6 +287,63 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
         self.assertEqual(status, 400)
         status, _ = self.post("/api/runners/../drain", {})
         self.assertEqual(status, 404)
+        self.assertEqual(len(self.gateway_requests), 0)
+
+    def test_forwards_fake_infrastructure_create_lifecycle_and_delete(self):
+        create_path = "/api/infrastructure"
+        payload = {
+            "target_os": "linux",
+            "image_id": "ubuntu-test",
+            "template_id": "small-test",
+            "provider_id": "fake",
+        }
+        status, _ = self.post(
+            create_path, payload, idempotency_key="infra-create-test-0001"
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(self.gateway_requests[-1], create_path)
+        self.assertEqual(self.gateway_methods[-1], "POST")
+        self.assertEqual(json.loads(self.gateway_bodies[-1]), payload)
+        self.assertEqual(
+            self.gateway_idempotency_keys[-1], "infra-create-test-0001"
+        )
+
+        resource_id = "123e4567-e89b-42d3-a456-426614174000"
+        for action in ("start", "stop", "restart"):
+            action_path = "/api/infrastructure/" + resource_id + "/" + action
+            status, _ = self.post(action_path, {})
+            self.assertEqual(status, 200)
+            self.assertEqual(self.gateway_requests[-1], action_path)
+            self.assertEqual(json.loads(self.gateway_bodies[-1]), {})
+
+        delete_path = "/api/infrastructure/" + resource_id
+        status, result = self.delete(delete_path)
+        self.assertEqual(status, 200)
+        self.assertTrue(result["deleted"])
+        self.assertEqual(self.gateway_requests[-1], delete_path)
+        self.assertEqual(self.gateway_methods[-1], "DELETE")
+
+    def test_infrastructure_mutations_require_session_csrf_and_exact_routes(self):
+        create_path = "/api/infrastructure"
+        payload = {"target_os": "linux", "image_id": "i", "template_id": "t", "provider_id": "fake"}
+        status, _ = self.post(create_path, payload, authenticated=False)
+        self.assertEqual(status, 403)
+        status, _ = self.post(create_path, payload, valid_csrf=False)
+        self.assertEqual(status, 403)
+        status, _ = self.post(
+            "/api/infrastructure/123e4567-e89b-42d3-a456-426614174000/unknown", {}
+        )
+        self.assertEqual(status, 404)
+        status, _ = self.post(
+            "/api/infrastructure/123e4567-e89b-42d3-a456-426614174000/start",
+            {"force": True},
+        )
+        self.assertEqual(status, 400)
+        status, _ = self.delete(
+            "/api/infrastructure/123e4567-e89b-42d3-a456-426614174000",
+            valid_csrf=False,
+        )
+        self.assertEqual(status, 403)
         self.assertEqual(len(self.gateway_requests), 0)
 
     def test_dashboard_job_reads_require_authenticated_session(self):
