@@ -76,7 +76,7 @@ class DashboardContractTests(unittest.TestCase):
             'function projectImportVerifyCommit()',
             'function projectImportInspectProject()',
             'Absolute host paths are not returned by the API',
-            'does not yet create an immutable job snapshot',
+            'Snapshot SHA-256',
         ):
             with self.subTest(expected=expected):
                 self.assertIn(expected, HTML)
@@ -406,6 +406,25 @@ class DashboardControlCenterV2Tests(unittest.TestCase):
             with self.subTest(contract=contract):
                 self.assertIn(contract, HTML)
 
+
+
+    def test_dashboard_build_job_gate_supports_verified_node_framework_targets(self):
+        for contract in (
+            "function runnerProjectSupportsTarget(project,target)",
+            '["build_vite","build_next","build_angular"].includes(target)',
+            'types.includes("node")',
+            "runnerUI.project.repository===repository",
+            "runnerUI.project.commit_sha===sha",
+            "runnerProjectSupportsTarget(runnerUI.project,target)",
+            '$("build-job-target").addEventListener("change",buildJobsUpdateGate)',
+            "DCP does not install dependencies.",
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, HTML)
+        self.assertNotIn(
+            'runnerUI.project.flutter.detected!==true){runnerText("build-job-result","BLOCKED: selected commit is not confirmed as a Flutter project.")',
+            HTML,
+        )
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

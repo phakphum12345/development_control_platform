@@ -148,6 +148,29 @@ try {
   assert.equal(await page.evaluate(() => sessionStorage.getItem("auth-token")), null);
   assert.equal(await page.locator("#auth-submit").isDisabled(), true);
 
+  // Build target gating must match the verified project type, not assume every
+  // GitHub App project is Flutter. Runner-side CLI validation remains authoritative.
+  const targetSupport = await page.evaluate(() => {
+    const nodeProject = {status:"detected",truncated:false,project_types:["node"],flutter:{detected:false}};
+    const flutterProject = {status:"detected",truncated:false,project_types:["flutter"],flutter:{detected:true,macos_supported:false}};
+    const unknownProject = {status:"unknown",truncated:true,project_types:["node"],flutter:{detected:false}};
+    return {
+      vite: runnerProjectSupportsTarget(nodeProject,"build_vite"),
+      next: runnerProjectSupportsTarget(nodeProject,"build_next"),
+      angular: runnerProjectSupportsTarget(nodeProject,"build_angular"),
+      flutterBuild: runnerProjectSupportsTarget(flutterProject,"build"),
+      flutterMacosWithoutRunner: runnerProjectSupportsTarget(flutterProject,"build_macos"),
+      nodeCannotFlutter: runnerProjectSupportsTarget(nodeProject,"build"),
+      flutterCannotNext: runnerProjectSupportsTarget(flutterProject,"build_next"),
+      truncatedNode: runnerProjectSupportsTarget(unknownProject,"build_next"),
+    };
+  });
+  assert.deepEqual(targetSupport, {
+    vite:true,next:true,angular:true,flutterBuild:true,
+    flutterMacosWithoutRunner:false,nodeCannotFlutter:false,
+    flutterCannotNext:false,truncatedNode:false,
+  });
+
   assert.deepEqual(pageErrors, [], "dashboard should not raise uncaught browser errors");
   console.log("Browser smoke tests passed: route colors, registry CRUD, connections, sandbox, route preview, Code Navigator, PWA metadata, and fail-closed authentication UI.");
 } finally {
