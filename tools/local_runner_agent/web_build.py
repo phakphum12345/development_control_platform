@@ -8,6 +8,7 @@ repository allowlist.
 from __future__ import annotations
 
 import os
+import re
 import queue
 import shutil
 import signal
@@ -25,7 +26,7 @@ from .workspace import WorkspaceManager
 
 
 class WebBuildExecutor:
-    TARGETS = {"build_static_web", "build_vite"}
+    TARGETS = {"build_static_web", "build_vite", "build_next", "build_angular"}
 
     def __init__(self, workspace_manager: WorkspaceManager, *, enabled: bool = False,
                  timeout_seconds: int = 1800, max_output_bytes: int = 5 * 1024 * 1024,
@@ -52,33 +53,85 @@ class WebBuildExecutor:
             if not (source / "index.html").is_file():
                 raise ExecutionError("static web project requires a root index.html")
             return ("static-copy",)
-        if target == "build_vite":
+        if target in {"build_vite", "build_next", "build_angular"}:
             package = source / "package.json"
-            cli = source / "node_modules" / "vite" / "bin" / "vite.js"
-            if (package.is_symlink() or cli.is_symlink() or not package.is_file() or not cli.is_file()
-                    or any((source / part).is_symlink() for part in ("node_modules", "node_modules/vite", "node_modules/vite/bin"))):
-                raise ExecutionError("Vite project and preinstalled local Vite CLI are required")
+            if package.is_symlink() or not package.is_file():
+                raise ExecutionError("package.json is missing or unsafe")
             try:
-                import json
                 package_info = package.lstat()
                 if not stat.S_ISREG(package_info.st_mode) or package_info.st_size > 1024 * 1024:
                     raise ExecutionError("package.json is not a bounded regular file")
+                import json
                 data = json.loads(package.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 raise ExecutionError("package.json is invalid or unavailable") from None
+            if not isinstance(data, dict):
+                raise ExecutionError("package.json must contain an object")
             deps = {}
-            if isinstance(data, dict):
-                for group in ("dependencies", "devDependencies"):
-                    values = data.get(group, {})
-                    if isinstance(values, dict):
-                        deps.update(values)
+            for group in ("dependencies", "devDependencies", "optionalDependencies"):
+                values = data.get(group, {})
+                if isinstance(values, dict):
+                    deps.update(values)
             names = {str(name).lower() for name in deps}
-            if "vite" not in names or not ({"react", "react-dom", "vue"} & names):
-                raise ExecutionError("only React/Vite or Vue/Vite projects are supported")
             node = shutil.which("node")
             if not node:
                 raise ExecutionError("Node.js executable is unavailable")
-            return (node, str(cli), "build")
+
+            if target == "build_vite":
+                cli = source / "node_modules" / "vite" / "bin" / "vite.js"
+                parents = ("node_modules", "node_modules/vite", "node_modules/vite/bin")
+                if ("vite" not in names or not ({"react", "react-dom", "vue"} & names)
+                        or cli.is_symlink() or not cli.is_file()
+                        or any((source / part).is_symlink() for part in parents)):
+                    raise ExecutionError("preinstalled Vite CLI and React/Vue dependencies are required")
+                return (node, str(cli), "build")
+
+            if target == "build_next":
+                cli = source / "node_modules" / "next" / "dist" / "bin" / "next"
+                parents = ("node_modules", "node_modules/next", "node_modules/next/dist", "node_modules/next/dist/bin")
+                if ("next" not in names or "react" not in names
+                        or cli.is_symlink() or not cli.is_file()
+                        or any((source / part).is_symlink() for part in parents)):
+                    raise ExecutionError("preinstalled Next.js CLI and React dependencies are required")
+                return (node, str(cli), "build")
+
+            cli = source / "node_modules" / "@angular" / "cli" / "bin" / "ng.js"
+            parents = ("node_modules", "node_modules/@angular", "node_modules/@angular/cli",
+                       "node_modules/@angular/cli/bin")
+            if ("@angular/core" not in names or "@angular/cli" not in names
+                    or cli.is_symlink() or not cli.is_file()
+                    or any((source / part).is_symlink() for part in parents)):
+                raise ExecutionError("preinstalled Angular CLI and Angular core dependencies are required")
+            angular_file = source / "angular.json"
+            if angular_file.is_symlink() or not angular_file.is_file():
+                raise ExecutionError("angular.json is missing or unsafe")
+            try:
+                angular_info = angular_file.lstat()
+                if not stat.S_ISREG(angular_info.st_mode) or angular_info.st_size > 1024 * 1024:
+                    raise ExecutionError("angular.json is not a bounded regular file")
+                angular = json.loads(angular_file.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                raise ExecutionError("angular.json is invalid or unavailable") from None
+            projects = angular.get("projects", {}) if isinstance(angular, dict) else {}
+            if not isinstance(projects, dict):
+                raise ExecutionError("angular.json projects must be an object")
+            applications = []
+            for name, project in projects.items():
+                if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", name):
+                    continue
+                if not isinstance(project, dict) or project.get("projectType") != "application":
+                    continue
+                targets = project.get("architect", project.get("targets", {}))
+                if isinstance(targets, dict) and isinstance(targets.get("build"), dict):
+                    applications.append(name)
+            default_project = angular.get("defaultProject") if isinstance(angular, dict) else None
+            if isinstance(default_project, str) and default_project in applications:
+                project_name = default_project
+            elif len(applications) == 1:
+                project_name = applications[0]
+            else:
+                raise ExecutionError("angular.json must identify exactly one application build target")
+            return (node, str(cli), "build", project_name, "--output-path", "dist")
         raise ExecutionError("unsupported web build target")
 
     @staticmethod
@@ -233,11 +286,19 @@ class WebBuildExecutor:
                     self._terminate_tree(process)
             return_code = process.wait(timeout=5)
             reader.join(timeout=2)
+            if process.stdout is not None:
+                process.stdout.close()
             if outcome == "succeeded" and return_code != 0:
                 outcome, error_code = "failed", "BUILD_FAILED"
         finally:
             if process.poll() is None:
                 self._terminate_tree(process)
+        if outcome == "succeeded":
+            output_name = { "build_vite": "dist", "build_angular": "dist", "build_next": ".next" }.get(target)
+            if output_name:
+                output_path = source / output_name
+                if output_path.is_symlink() or not output_path.is_dir():
+                    outcome, error_code = "failed", "BUILD_OUTPUT_MISSING"
         self.workspaces.check_quota(job_id, worker_id)
         return BuildResult(outcome, command, return_code, round(time.monotonic() - started, 3),
                            output_bytes, error_code)
@@ -253,7 +314,8 @@ class WebArtifactPackager:
     def package(self, job_id: str, worker_id: str, target: str):
         workspace = self.workspaces.get(job_id, worker_id)
         source = workspace / "source" if (workspace / "source").is_dir() else workspace
-        output = source / "dist"
+        output_name = {"build_vite": "dist", "build_angular": "dist", "build_next": ".next"}.get(target, "dist")
+        output = source / output_name
         if output.is_symlink() or not output.is_dir():
             raise ExecutionError("web build output is missing or unsafe")
         staging = workspace / ".dcp-artifacts"
