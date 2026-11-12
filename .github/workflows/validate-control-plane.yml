@@ -453,6 +453,14 @@ jobs:
       - name: Checkout repository for workspace test
         uses: actions/checkout@v4
 
+      - name: Set up Python for Local Folder Runner acceptance
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Gateway runtime dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-cloud-gateway.txt
+
       - name: Verify Windows runner identity
         shell: pwsh
         env:
@@ -489,6 +497,12 @@ jobs:
           Write-Host "Path: $testFile"
           Remove-Item -LiteralPath $testFile -Force
           Write-Host "CLEANUP PASS: temporary test file removed."
+
+      - name: Exercise Local Folder snapshot-to-build pipeline on this Windows host
+        run: |
+          python -m unittest \
+            tests.test_local_runner_pipeline_e2e.RunnerPipelineEndToEndTests.test_local_folder_static_build_uses_immutable_snapshot_and_trusted_project_allowlist \
+            tests.test_local_runner_pipeline_e2e.RunnerPipelineEndToEndTests.test_local_folder_job_fails_closed_without_explicit_project_trust -v
 
       - name: Verify repository workspace read and write
         shell: pwsh
