@@ -742,6 +742,23 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                 status, data = app.gateway_request("POST", path, session, raw,
                                                    self.headers.get("X-CSRF-Token", ""))
                 return self.send_bytes(status, data)
+            terminal_template_import = path == "/api/terminal/templates/import"
+            terminal_command_preview = path == "/api/terminal/commands/preview"
+            terminal_template_review = re.fullmatch(
+                r"/api/terminal/templates/custom-[a-z0-9][a-z0-9-]{1,62}/review",
+                path,
+            )
+            if terminal_template_import or terminal_command_preview or terminal_template_review:
+                if not session or not session["authenticated"] or not self.csrf_ok(session):
+                    return self.send_json(403, {"error": "authenticated session and CSRF token required"})
+                try:
+                    _, raw = self.body()
+                except Exception:
+                    return self.send_json(400, {"error": "invalid JSON body"})
+                status, data = app.gateway_request(
+                    "POST", path, session, raw, self.headers.get("X-CSRF-Token", "")
+                )
+                return self.send_bytes(status, data)
             infrastructure_action = re.fullmatch(
                 r"/api/infrastructure/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/(start|stop|restart)",
                 path,
