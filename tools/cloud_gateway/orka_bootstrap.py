@@ -104,6 +104,8 @@ class OrkaRunnerBootstrapFactory:
             f"RUNNER_HOME={shlex.quote(self.runner_home)}",
             f"RUNNER_DIR={shlex.quote(runner_dir)}",
             f"ARCHIVE={shlex.quote(archive)}",
+            f"TOKEN_EXPIRES_AT={token_expiry_epoch}",
+            "if [ \"$(date +%s)\" -ge \"$TOKEN_EXPIRES_AT\" ]; then echo 'DCP runner registration credential expired'; exit 1; fi",
             "if [ \"$(id -u)\" -ne 0 ]; then echo 'DCP bootstrap requires root'; exit 1; fi",
             "id \"$RUNNER_USER\" >/dev/null 2>&1 || { echo 'DCP runner account is missing'; exit 1; }",
             "if id -Gn \"$RUNNER_USER\" | tr ' ' '\\n' | grep -E '^(admin|wheel)$' >/dev/null; then echo 'DCP runner account must not be privileged'; exit 1; fi",
