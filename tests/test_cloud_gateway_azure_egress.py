@@ -236,6 +236,22 @@ class AzureEgressPolicyVerifierTests(unittest.TestCase):
         with self.assertRaises(AzureEgressPolicyError):
             verifier(responses).verify("linux", SUBNET, NSG)
 
+
+    def test_builds_verifier_from_environment_without_echoing_configuration(self):
+        env = {
+            "DCP_AZURE_ROUTE_TABLE_ID": ROUTE_TABLE,
+            "DCP_AZURE_FIREWALL_ID": FIREWALL,
+            "DCP_AZURE_FIREWALL_POLICY_ID": POLICY,
+            "DCP_AZURE_EGRESS_EXTRA_FQDNS": "packages.example.test",
+        }
+        instance = AzureEgressPolicyVerifier.from_environment(
+            FakeArm(base_responses(DOMAINS + ("packages.example.test",))),
+            env,
+            domain_catalog=lambda: DOMAINS,
+        )
+        self.assertEqual(instance.extra_fqdns, ("packages.example.test",))
+        self.assertTrue(instance.verify("linux", SUBNET, NSG))
+
     def test_unknown_os_fails_closed(self):
         with self.assertRaises(AzureEgressPolicyError):
             verifier().verify("macos", SUBNET, NSG)
