@@ -71,6 +71,8 @@ class RunnerRegistryTests(unittest.TestCase):
         targets = self.registry.allowed_targets("node-web-runner")
         self.assertIn("build_static_web", targets)
         self.assertIn("build_vite", targets)
+        self.assertIn("build_next", targets)
+        self.assertIn("build_angular", targets)
         self.assertNotIn("test", targets)
         self.assertNotIn("build_android", targets)
 
