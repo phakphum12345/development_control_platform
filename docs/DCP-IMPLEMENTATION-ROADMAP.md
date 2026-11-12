@@ -68,10 +68,10 @@ Each phase is a separate feature branch and Draft PR, with narrowly scoped chang
 - Starts the Python standard-library HTTP server with an argv array; no shell or project server code is executed.
 - Allocates an ephemeral loopback port, verifies HTTP health, records bounded logs, supervises process-tree shutdown and expires runtime sessions.
 - Runtime session capabilities are random and required for local status/log/stop operations.
-- An authenticated static Preview Proxy service is now present for owner-bound preview sessions. The PR #71 Playwright implementation still starts RuntimeManager directly, so Playwright-through-Preview-Proxy and the complete Dashboard preview workflow remain separate acceptance work.
+- An authenticated static Preview Proxy service is now present for owner-bound preview sessions. The `test_static_web` Playwright pipeline still starts RuntimeManager directly. Separately, PR #96 added fixture-based authenticated browser acceptance through the Preview Proxy across Chromium, Firefox and WebKit. Full imported-project Dashboard preview workflow remains separate acceptance work.
 
 
-## 2026-11-12 implementation checkpoint — PR #71
+## Historical 2026-11-12 implementation checkpoint — PR #71 (superseded by PR #96)
 
 This checkpoint is tied to the DCP repository branch `feature/real-project-playwright-testing`, not to the user's local machine or a deployed service.
 
@@ -87,7 +87,7 @@ This checkpoint is tied to the DCP repository branch `feature/real-project-playw
 
 ### PR #71 release gate
 
-The latest observed CI result on `52a99f2403c7ffc5c8d82fe44cbb477f8189b325` installed Python Playwright and Chromium successfully, but the real Chromium smoke test failed at sandboxed browser launch. Later Dashboard browser smoke and registry validation steps were skipped. Windows dynamic-port and Windows Auth Proxy/Gateway checks passed; self-hosted Windows Runner acceptance was skipped. A subsequent code change adds bounded launch-error diagnostics; its exact-commit CI result is still required.
+The latest observed CI result on `52a99f2403c7ffc5c8d82fe44cbb477f8189b325` installed Python Playwright and Chromium successfully, but the real Chromium smoke test failed at sandboxed browser launch. Later Dashboard browser smoke and registry validation steps were skipped. Windows dynamic-port and Windows Auth Proxy/Gateway checks passed; self-hosted Windows Runner acceptance was skipped. This was the historical PR #71 sandbox-launch failure. PR #96 later passed authenticated Preview Proxy fixture acceptance on Chromium, Firefox and WebKit; the old PR #71 failure is not a current release gate.
 
 Historical gate for PR #71: its Chromium sandbox launch failure applied to that earlier head only. It was superseded by later merged work; do not use that historical run as evidence for current `main`. Never disable Chromium sandboxing as a CI workaround.
 
