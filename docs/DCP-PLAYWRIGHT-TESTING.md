@@ -86,8 +86,10 @@ browser access now has a dedicated real-Chromium acceptance test.
 The authenticated Preview Proxy has a separate browser-facing acceptance path
 in `tests/test_local_auth_proxy.py::LocalAuthProxyEndToEndTests.test_real_chromium_loads_app_through_authenticated_preview_proxy`.
 It creates a completed static job, starts the preview through the owner-authenticated
-Local Auth Proxy API, transfers only the local HttpOnly session cookie into a
-real Chromium context, and navigates to the returned same-origin preview path.
+Local Auth Proxy API, receives a short-lived HttpOnly/Secure preview cookie
+scoped to one job/runtime content path, and navigates to the returned same-origin
+preview path. The cookie is revoked on preview stop, owner logout, or expiry; it
+contains no RuntimeManager bearer token.
 
 The test uses `chromium_sandbox=True` and verifies:
 - the HTML document, title and primary content load through the proxy;
