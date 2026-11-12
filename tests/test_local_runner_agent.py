@@ -43,6 +43,14 @@ class FakeGatewayHandler(BaseHTTPRequestHandler):
         self.server.requests.append((self.command, self.path, self.headers.get("Authorization"), payload))
         if self.headers.get("Authorization") != "Bearer " + TOKEN:
             return self._send(401, {"error": "unauthorized"})
+        if self.path in ("/v1/runner/enroll", "/v1/runner/register"):
+            state = "offline" if self.path.endswith("/enroll") else "online"
+            return self._send(200, {"runner": {
+                "worker_id": "local-worker-01",
+                "host_os": payload.get("host_os", "linux"),
+                "capabilities": payload.get("capabilities", ["flutter", "linux"]),
+                "state": state,
+            }})
         if self.path == "/v1/runner/claim":
             return self._send(200, {"job": {"id": JOB_ID, "state": "running"}})
         if self.path.endswith("/logs"):
@@ -90,6 +98,16 @@ class RunnerAgentTests(unittest.TestCase):
         result = self.client.health()
         self.assertEqual(result["status"], "ok")
         self.assertEqual(self.server.requests[-1], ("GET", "/healthz", None))
+
+    def test_offline_enrollment_uses_dedicated_token_and_never_claims(self):
+        runner = self.client.enroll("windows", ["flutter", "windows"])
+        self.assertEqual(runner["worker_id"], "local-worker-01")
+        self.assertEqual(runner["state"], "offline")
+        request = self.server.requests[-1]
+        self.assertEqual(request[0], "POST")
+        self.assertEqual(request[1], "/v1/runner/enroll")
+        self.assertEqual(request[2], "Bearer " + TOKEN)
+        self.assertEqual(request[3]["host_os"], "windows")
 
     def test_runner_client_calls_claim_heartbeat_logs_and_finish_with_dedicated_token(self):
         job = self.client.claim(lease_seconds=60)
