@@ -22,13 +22,18 @@ from urllib.request import (
 from tools import local_auth_proxy as auth
 
 
-def _chromium_ready():
+def _browser_ready(browser_name):
     try:
         from playwright.sync_api import sync_playwright
         with sync_playwright() as playwright:
-            return Path(playwright.chromium.executable_path).is_file()
+            browser_type = getattr(playwright, browser_name)
+            return Path(browser_type.executable_path).is_file()
     except Exception:
         return False
+
+
+def _chromium_ready():
+    return _browser_ready("chromium")
 
 
 def free_port():
