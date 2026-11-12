@@ -214,6 +214,19 @@ class AzureEgressPolicyVerifierTests(unittest.TestCase):
         with self.assertRaises(AzureEgressPolicyError):
             verifier(responses).verify("linux", SUBNET, NSG)
 
+
+    def test_rejects_explicit_deny_and_nat_collections_in_dedicated_policy(self):
+        responses = base_responses()
+        collection = responses[POLICY + "/ruleCollectionGroups"]["value"][0]["properties"]["ruleCollections"][0]
+        collection["action"] = {"type": "Deny"}
+        with self.assertRaises(AzureEgressPolicyError):
+            verifier(responses).verify("linux", SUBNET, NSG)
+        responses = base_responses()
+        collection = responses[POLICY + "/ruleCollectionGroups"]["value"][0]["properties"]["ruleCollections"][0]
+        collection["ruleCollectionType"] = "FirewallPolicyNatRuleCollection"
+        with self.assertRaises(AzureEgressPolicyError):
+            verifier(responses).verify("linux", SUBNET, NSG)
+
     def test_accepts_only_explicit_operator_extra_fqdns(self):
         extra = "packages.example.test"
         responses = base_responses(DOMAINS + (extra,))
