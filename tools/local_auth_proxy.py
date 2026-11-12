@@ -32,7 +32,7 @@ MAX_BODY = 32_768
 MAX_PREVIEW_RESPONSE_BYTES = 12 * 1024 * 1024
 MAX_ARTIFACT_DOWNLOAD_BYTES = 1024 * 1024 * 1024
 MAX_DASHBOARD_READ_RESPONSE_BYTES = 1024 * 1024
-ALLOWED_GET = ("/api/cloud-runners/status", "/api/cloud-runners", "/api/local-projects", "/api/local-projects/roots", "/api/github/repositories", "/api/infrastructure/gates", "/api/runners", "/api/terminal/templates")
+ALLOWED_GET = ("/api/cloud-runners/status", "/api/cloud-runners", "/api/local-projects", "/api/local-projects/roots", "/api/github/repositories", "/api/infrastructure/gates", "/api/runners", "/api/terminal/templates", "/api/infrastructure")
 CREDENTIALS = Path(os.getenv("DCP_LOCAL_AUTH_CREDENTIAL_FILE", str(Path(os.getenv("LOCALAPPDATA", str(Path.home()))) / "DCP" / "owner-auth.json")))
 
 
@@ -582,9 +582,15 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                     r"/api/terminal/templates/custom-[a-z0-9][a-z0-9-]{1,62}/events",
                     path,
                 )
+                infrastructure_resource_path = re.fullmatch(
+                    r"/api/infrastructure/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:/events)?",
+                    path,
+                )
                 query_allowed = not parsed.query or (
                     bool(github_refs_path) and parsed.query in ("kind=branches", "kind=tags")
                 )
+                if path == "/api/infrastructure" and parsed.query:
+                    query_allowed = parsed.query == "view=catalog"
                 if job_list_path and parsed.query:
                     list_query = re.fullmatch(r"limit=([1-9][0-9]{0,2})", parsed.query)
                     query_allowed = bool(list_query) and int(list_query.group(1)) <= 200
@@ -606,7 +612,7 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                     ) and not re.fullmatch(r"/api/local-projects/[0-9a-f-]{36}", path)
                     and not github_read_path and not job_read_path
                     and not job_logs_path and not artifact_download_path
-                    and not terminal_events_path
+                    and not terminal_events_path and not infrastructure_resource_path
                 )):
                     return self.send_json(404, {"error": "not found"})
                 gateway_path = path + (("?" + parsed.query) if parsed.query else "")
@@ -736,6 +742,24 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                 status, data = app.gateway_request("POST", path, session, raw,
                                                    self.headers.get("X-CSRF-Token", ""))
                 return self.send_bytes(status, data)
+            infrastructure_action = re.fullmatch(
+                r"/api/infrastructure/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/(start|stop|restart)",
+                path,
+            )
+            if path == "/api/infrastructure" or infrastructure_action:
+                if not session or not session["authenticated"] or not self.csrf_ok(session):
+                    return self.send_json(403, {"error": "authenticated session and CSRF token required"})
+                try:
+                    payload, raw = self.body()
+                except Exception:
+                    return self.send_json(400, {"error": "invalid JSON body"})
+                if infrastructure_action and payload:
+                    return self.send_json(400, {"error": "infrastructure lifecycle payload must be an empty object"})
+                status, data = app.gateway_request(
+                    "POST", path, session, raw, self.headers.get("X-CSRF-Token", ""),
+                    idempotency_key=self.headers.get("Idempotency-Key", "") if path == "/api/infrastructure" else "",
+                )
+                return self.send_bytes(status, data)
             runner_control = re.fullmatch(
                 r"/api/runners/([A-Za-z0-9_.:-]{1,100})/(drain|enable)", path
             )
@@ -773,6 +797,16 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                     preview_stop.group(1), preview_stop.group(2)
                 )
                 return self.send_bytes(status, data, cookie=clear_cookie)
+            infrastructure_delete = re.fullmatch(
+                r"/api/infrastructure/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+                path,
+            )
+            if infrastructure_delete:
+                status, data = app.gateway_request(
+                    "DELETE", path, session,
+                    csrf_token=self.headers.get("X-CSRF-Token", ""),
+                )
+                return self.send_bytes(status, data)
             if not (path.startswith("/api/cloud-runners/") and path.count("/") == 3):
                 return self.send_json(404, {"error": "not found"})
             status, data = app.gateway_request("DELETE", path, session, csrf_token=self.headers.get("X-CSRF-Token", ""))
