@@ -50,7 +50,7 @@ class OrkaProvider:
   if not self.userdata_rbac_reviewed: return {"ready":False,"message":"Orka namespace User Data RBAC review is not approved"}
   checks=(
    ("network_policy_checker","Orka runner network egress policy is not verified"),
-   ("cluster_readiness_checker","Orka 4.0 Apple-silicon cluster and VM Tools are not verified"),
+   ("cluster_readiness_checker","Orka 4.0 Apple-silicon cluster, VM Tools and finite User Data timeout are not verified"),
    ("budget_readiness_checker","Authoritative Orka provider-specific budget is not verified"),
   )
   for name,message in checks:
