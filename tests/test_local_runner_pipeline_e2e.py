@@ -93,7 +93,10 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
         self.assertEqual(offline["worker_id"], "runner-e2e")
         self.assertEqual(offline["state"], "offline")
         self.assertEqual(self.registry.allowed_targets("runner-e2e"), [])
-        self.assertIsNone(self.client.claim(30))
+        from tools.local_runner_agent.client import RunnerGatewayError
+        with self.assertRaises(RunnerGatewayError) as error:
+            self.client.claim(30)
+        self.assertEqual(error.exception.status_code, 409)
         self.assertEqual(self.jobs.get(job["id"])["state"], "queued")
 
         live = self.client.register("linux", ["flutter", "linux"])
