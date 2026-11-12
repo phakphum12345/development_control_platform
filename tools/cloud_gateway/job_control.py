@@ -163,7 +163,7 @@ class JobStore:
         with self.lock, self.db() as db:
             db.execute("BEGIN IMMEDIATE")
             rows = db.execute(
-                "SELECT id,state,attempt_count,max_attempts FROM jobs WHERE state IN ('running','cancel_requested') "
+                "SELECT id,state,worker,attempt_count,max_attempts FROM jobs WHERE state IN ('running','cancel_requested') "
                 "AND lease_until IS NOT NULL AND lease_until<=? ORDER BY lease_until,id",
                 (current,),
             ).fetchall()
@@ -175,10 +175,11 @@ class JobStore:
                 else:
                     state, event, error_code = "queued", "lease_expired_requeued", None
                 db.execute(
-                    "UPDATE jobs SET state=?,worker=NULL,lease_until=NULL,updated_at=?,error_code=? WHERE id=?",
+                    "UPDATE jobs SET state=?,last_worker=worker,worker=NULL,lease_until=NULL,updated_at=?,error_code=? WHERE id=?",
                     (state, current, error_code, row["id"]),
                 )
                 self._event(db, row["id"], event, {
+                    "worker": row["worker"],
                     "attempt_count": row["attempt_count"],
                     "max_attempts": row["max_attempts"],
                 })
