@@ -12,6 +12,35 @@ This adapter can create an ephemeral Linux or Windows VM and a private NIC in an
 
 Marketplace image versions must be explicitly pinned; the adapter rejects latest. Discover available publisher/offer/SKU/version values in the intended subscription and region before configuration. Canonical's Ubuntu 24.04 documentation lists the AMD64 Gen2 image family as Canonical:ubuntu-24_04-lts:server:latest; use a specific version returned by the subscription image listing rather than latest. Windows Server 2025 publisher/offer/SKU availability must likewise be confirmed for the target region and subscription.
 
+## Runtime composition and activation
+
+`tools/cloud_gateway/azure_provider_runtime.py` composes the real Azure
+adapter only when `DCP_AZURE_PROVIDER_ENABLED=true`. The default is false.
+The composition requires all of the following to be present:
+
+- Azure subscription, runner resource group, location, subnet, NSG, route
+  table, firewall and firewall policy resource IDs.
+- Linux and Windows VM sizes and four pinned Marketplace image fields per OS:
+  `DCP_AZURE_LINUX_IMAGE_PUBLISHER/OFFER/SKU/VERSION` and
+  `DCP_AZURE_WINDOWS_IMAGE_PUBLISHER/OFFER/SKU/VERSION`.
+- `DCP_RUNNER_VERSION` and both runner archive SHA-256 values.
+- Guest administrator username and Linux Ed25519 public key.
+- GitHub App + Key Vault configuration, a runner-online checker and the live
+  Azure budget guard.
+
+The provider uses the Gateway Managed Identity for ARM and Key Vault access.
+The runtime does not turn on `DCP_GATEWAY_PROVISIONING_ENABLED` or
+`DCP_GATEWAY_OWNER_APPROVED`. Both global gates remain independently
+enforced. Keep them disabled until the deployed OIDC ingress, network policy,
+budget, permissions and live acceptance tests have been verified. The adapter
+rechecks provider readiness immediately before its first ARM write.
+
+The read-only preflight validates the opt-in flag and required configuration
+shape, but it does not authenticate to Azure or prove resource permissions.
+No provider is composed when the explicit opt-in is false. Enabling the
+provider is not permission to create a VM; the Gateway's global policy and
+budget checks still apply.
+
 ## Guest login profile
 
 The production bootstrap factory must use `AzureGuestProfileFactory` from
