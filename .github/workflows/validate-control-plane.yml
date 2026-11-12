@@ -499,10 +499,7 @@ jobs:
           Write-Host "CLEANUP PASS: temporary test file removed."
 
       - name: Exercise Local Folder snapshot-to-build pipeline on this Windows host
-        run: |
-          python -m unittest \
-            tests.test_local_runner_pipeline_e2e.RunnerPipelineEndToEndTests.test_local_folder_static_build_uses_immutable_snapshot_and_trusted_project_allowlist \
-            tests.test_local_runner_pipeline_e2e.RunnerPipelineEndToEndTests.test_local_folder_job_fails_closed_without_explicit_project_trust -v
+        run: python -m unittest tests.test_local_runner_pipeline_e2e.RunnerPipelineEndToEndTests.test_local_folder_static_build_uses_immutable_snapshot_and_trusted_project_allowlist tests.test_local_runner_pipeline_e2e.RunnerPipelineEndToEndTests.test_local_folder_job_fails_closed_without_explicit_project_trust -v
 
       - name: Verify repository workspace read and write
         shell: pwsh
