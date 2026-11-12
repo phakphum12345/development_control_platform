@@ -99,6 +99,8 @@ class DashboardContractTests(unittest.TestCase):
             '"X-CSRF-Token"',
             'execution_enabled:false',
             'No process was started.',
+            'PENDING_REVIEW',
+            'Imported template is pending owner review.',
             'ไม่มี Shell/PTY',
         ):
             with self.subTest(expected=expected):

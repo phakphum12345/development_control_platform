@@ -1106,7 +1106,7 @@ async function terminalStudioPreview(){
  const button=$("terminal-preview");button.disabled=true;
  try{
   const data=await terminalStudioRequest("/api/terminal/commands/preview","POST",{template_id:id});
-  if(data.execution_enabled!==false||!data.preview||data.preview.status!=="PREVIEW_ONLY"||!Array.isArray(data.preview.command_preview))throw new Error("API did not return a safe preview-only result.");
+  if(data.execution_enabled!==false||!data.preview||!["PREVIEW_ONLY","PENDING_REVIEW"].includes(data.preview.status)||!Array.isArray(data.preview.command_preview))throw new Error("API did not return a safe preview-only result.");
   $("terminal-preview-output").textContent=JSON.stringify({
    name:data.preview.name,
    executable:data.preview.executable,
@@ -1121,7 +1121,7 @@ async function terminalStudioPreview(){
    status:data.preview.status,
    execution_enabled:false
   },null,2);
-  terminalStudioStatus("Exact argv preview loaded. No process was started.","ready");
+  terminalStudioStatus(data.preview.status==="PENDING_REVIEW"?"Imported template is pending owner review. No process was started.":"Exact argv preview loaded. No process was started.","ready");
  }catch(error){$("terminal-preview-output").textContent="No verified preview available.";terminalStudioStatus("Preview rejected: "+error.message,"error");}
  finally{button.disabled=!$("terminal-template-select").value;}
 }

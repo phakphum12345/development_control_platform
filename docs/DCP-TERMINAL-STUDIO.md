@@ -49,3 +49,8 @@ Import, project binding, approved execution, cancellation, logs and history rema
 ## Dashboard integration checkpoint
 
 The Dashboard now exposes a Terminal Studio view that loads the authenticated catalog and requests exact argv previews through the same-origin Gateway API. The view uses the existing owner session and server-issued CSRF token. It displays preview metadata as text and explicitly does not start processes. The Dashboard slice does not add command execution, project workspace selection or terminal sessions.
+
+
+## Inert command-pack import checkpoint
+
+Owner-only JSON command-pack import is now implemented. Schema v1 packs are strictly validated, bounded to 32 KiB and 1–50 templates, restricted to known executable identifiers, network denied, and stored atomically in a private SQLite database with audit events. Imported templates are always disabled and pending owner review. Previewing an imported template does not execute it. Script-file parsing, template approval/editing, workspace binding and execution remain unimplemented.
