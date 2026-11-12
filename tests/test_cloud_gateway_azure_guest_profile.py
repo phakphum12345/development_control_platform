@@ -44,7 +44,7 @@ class AzureGuestProfileTests(unittest.TestCase):
         self.assertRegex(password, r"[a-z]")
         self.assertRegex(password, r"[A-Z]")
         self.assertRegex(password, r"[0-9]")
-        self.assertRegex(password, r"[!@#$%\^\-_=+]")
+        self.assertTrue(any(char in "!@#$%^-_=+" for char in password))
         self.assertNotEqual(password, second["adminPassword"])
         self.assertNotIn("linuxConfiguration", first)
         self.assertNotIn("identity", first)
