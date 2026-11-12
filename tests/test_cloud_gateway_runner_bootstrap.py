@@ -55,6 +55,8 @@ class AzureRunnerBootstrapTests(unittest.TestCase):
         self.assertIn("sha256sum --check --status", script)
         self.assertIn("for attempt in 1 2 3 4 5 6", script)
         self.assertIn("Runner registration credential expired", script)
+        self.assertIn("id -nG dcp-runner", script)
+        self.assertIn("sudo -l -U dcp-runner", script)
         self.assertIn(">/dev/null 2>&1", script)
         self.assertIn("--ephemeral --disableupdate", script)
         self.assertNotIn("mock-registration-token", str(props["settings"]))
