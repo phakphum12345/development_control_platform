@@ -126,7 +126,7 @@ class OrkaRunnerBootstrapFactory:
             f"  su - \"$RUNNER_USER\" -c {shlex.quote(config_command)} >/dev/null 2>&1 || {{ echo 'DCP runner configuration failed'; exit 1; }}",
             "fi",
             "if ! ./svc.sh status >/dev/null 2>&1; then",
-            "  ./svc.sh install \"$RUNNER_USER\" >/dev/null 2>&1 || { ./svc.sh status >/dev/null 2>&1 || { echo 'DCP runner service installation failed'; exit 1; }; }",
+            "  ./svc.sh install \"$RUNNER_USER\" >/dev/null 2>&1 || true",
             "fi",
             "./svc.sh start >/dev/null 2>&1 || { ./svc.sh status >/dev/null 2>&1 || { echo 'DCP runner service start failed'; exit 1; }; }",
             "rm -f -- \"$ARCHIVE\"",
