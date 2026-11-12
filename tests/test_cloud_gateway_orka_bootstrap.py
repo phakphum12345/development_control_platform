@@ -54,6 +54,7 @@ class OrkaRunnerBootstrapFactoryTests(unittest.TestCase):
         self.assertIn("set +x", script)
         self.assertIn("umask 077", script)
         self.assertIn("admin|wheel", script)
+        self.assertIn("sudo -l -U", script)
         self.assertIn("xcodebuild -version", script)
         self.assertIn("if [ ! -f .runner ]; then", script)
         self.assertNotIn("echo " + app.token, script)
