@@ -19,6 +19,7 @@ from urllib.request import Request, urlopen
 from tools.cloud_gateway.infrastructure import (
     FakeInfrastructureProvider, InfrastructureManager, InfrastructureStore,
 )
+from tools.cloud_gateway.infrastructure_gates import InfrastructureGateStore
 from tools.cloud_gateway.policy import GatewaySettings
 from tools.cloud_gateway.server import make_handler
 from tools.cloud_gateway.service import GatewayService
@@ -50,6 +51,8 @@ class InfrastructureApiTests(unittest.TestCase):
         service.infrastructure_manager = InfrastructureManager(
             self.infrastructure_store, {"fake": self.infrastructure_provider},
         )
+        self.gates_path = Path(self.temp.name) / "gates.sqlite"
+        service.infrastructure_gate_store = InfrastructureGateStore(self.gates_path)
         self.server = ThreadingHTTPServer(
             ("127.0.0.1", 0),
             make_handler(service, "unused-token", self.secret, self.origin),
@@ -168,6 +171,62 @@ class InfrastructureApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 403)
         self.assertEqual(result["error"], "owner role required")
+
+    def test_independent_gates_default_off_and_persist(self):
+        status, result = self.request("GET", "/api/infrastructure/gates")
+        self.assertEqual(status, 200)
+        gates = result["gates"]
+        self.assertEqual(set(gates), {"cloud_provisioning", "vm_creation"})
+        for gate in gates.values():
+            self.assertFalse(gate["enabled"])
+            self.assertFalse(gate["effective_enabled"])
+            self.assertFalse(gate["ready"])
+
+        reopened = InfrastructureGateStore(self.gates_path)
+        persisted = reopened.status({"cloud_provisioning": False, "vm_creation": False})
+        self.assertFalse(persisted["cloud_provisioning"]["enabled"])
+        self.assertFalse(persisted["vm_creation"]["enabled"])
+
+    def test_gate_enable_requires_owner_confirmation_and_ready_provider(self):
+        status, wrong = self.request(
+            "POST", "/api/infrastructure/gates/cloud_provisioning",
+            payload={"enabled": True, "confirmation": "yes"},
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("confirmation", wrong["error"].lower())
+
+        status, unavailable = self.request(
+            "POST", "/api/infrastructure/gates/cloud_provisioning",
+            payload={"enabled": True, "confirmation": "ENABLE CLOUD PROVISIONING"},
+        )
+        self.assertEqual(status, 503)
+        self.assertIn("not ready", unavailable["error"])
+
+        status, result = self.request(
+            "GET", "/api/infrastructure/gates"
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(result["gates"]["cloud_provisioning"]["enabled"])
+
+    def test_gate_changes_are_owner_only_and_csrf_protected(self):
+        status, denied = self.request(
+            "POST", "/api/infrastructure/gates/vm_creation", role="operator",
+            payload={"enabled": False},
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(denied["error"], "owner role required")
+
+        # A valid owner request can explicitly keep a gate OFF and is audited.
+        status, result = self.request(
+            "POST", "/api/infrastructure/gates/vm_creation",
+            payload={"enabled": False},
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(result["gate"]["enabled"])
+        events = InfrastructureGateStore(self.gates_path).events("vm_creation")
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["actor"], self.subject)
+        self.assertFalse(bool(events[0]["enabled"]))
 
     def test_unauthenticated_inventory_is_rejected(self):
         request = Request(self.base + "/api/infrastructure")
