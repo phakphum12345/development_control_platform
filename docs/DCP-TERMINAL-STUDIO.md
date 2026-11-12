@@ -64,3 +64,8 @@ The Terminal Studio view now includes a JSON command-pack import form. It sends 
 ## Owner review lifecycle checkpoint
 
 Imported templates can now be explicitly approved or rejected by the Owner. Review requests bind to the immutable source SHA-256 and require an exact typed confirmation phrase. The API records the actor and decision in audit history. Approval is only a review decision: templates remain disabled and non-executable until a separate, future execution authorization system exists.
+
+
+## Dashboard Owner review controls
+
+For imported templates, Terminal Studio displays the stored source hash and review history, and exposes Approve/Reject actions while the item is pending review. The action requires an exact typed confirmation phrase. After a successful decision the catalog and preview are refreshed. Approved templates remain disabled and labelled APPROVED_NOT_EXECUTABLE.
