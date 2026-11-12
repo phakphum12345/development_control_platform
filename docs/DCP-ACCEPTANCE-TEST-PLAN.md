@@ -45,11 +45,13 @@ Acceptance evidence must be produced on the exact commit under review. A passing
 - Run Dashboard browser smoke and registry/schema validation after the Chromium test succeeds.
 - Bind all reported results to the exact full commit SHA and inspect every required CI check.
 
-### Deferred authenticated-preview acceptance
-- Start a preview through the owner-authenticated Preview Proxy API and test using that browser-facing URL rather than calling RuntimeManager directly.
-- Verify unauthenticated access, cross-owner/cross-job access, CSRF-protected mutations, expiry, stop/reap, and that runtime bearer/session tokens and upstream ports never reach browser-visible data.
-- Verify the proxy blocks traversal, arbitrary upstream host/port selection, unsupported methods and oversized responses.
-- Add trace/log evidence and provenance only when implemented and covered by tests.
+### Authenticated-preview browser acceptance — implemented
+- `tests/test_local_auth_proxy.py::LocalAuthProxyEndToEndTests.test_real_chromium_loads_app_through_authenticated_preview_proxy` starts a completed static job, creates the preview through the owner-authenticated Local Auth Proxy API, and navigates Chromium to the returned same-origin preview URL.
+- Chromium runs with `chromium_sandbox=True`; the test verifies HTML/title/content, relative CSS loading, computed style, same-origin requests, no console/page/request errors, screenshot capture, and an unavailable response after preview stop.
+- The Local Auth Proxy issues a short-lived HttpOnly/Secure preview cookie scoped to that job/runtime content path; it is revoked on stop/logout/expiry. Runtime capability token and upstream port remain server-side.
+- The API-level acceptance verifies unauthenticated denial, cross-job denial, query rejection, owner CSRF-protected stop, logout denial, and that runtime capability tokens/upstream ports are not exposed.
+- The proxy implementation fixes upstream host/port to loopback, rejects path traversal, limits response size and allowed content types, and does not accept browser-selected upstream addresses.
+- Remaining: cross-owner identity tests beyond the single local owner model, trace/log evidence, visual baselines, full WCAG/axe coverage and cross-browser engines.
 
 ## Infrastructure safety
 - Cloud Provisioning gate starts OFF after fresh install and restart.
