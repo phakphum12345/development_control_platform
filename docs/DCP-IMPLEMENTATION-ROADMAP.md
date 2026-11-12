@@ -183,3 +183,11 @@ Do not merge PR #71 until the real Chromium sandbox test, Dashboard browser smok
 - Gateway validates request shape and each typed parameter; it rejects arbitrary fields, unknown names, malformed values and parameters on imported templates.
 - Dashboard builds form controls from the catalog schema and renders exact argv/normalized values as text.
 - Real-browser smoke and unit tests cover the builder. No command is executed; terminal execution remains blocked pending OS isolation and cancellation guarantees.
+
+
+## 2026-11-12 Artifact provenance manifest
+
+- Artifact uploads now capture a server-generated provenance manifest linked to the immutable source revision (Git commit SHA or Local Folder snapshot SHA-256), job target and runner identity.
+- Manifest and artifact bytes have independent SHA-256 digests. Manifest integrity is verified on list/get/download; download exposes the provenance digest header.
+- SQLite migration is additive and preserves legacy artifacts without inventing provenance.
+- Artifact retention remains manually invoked; no new automatic deletion behavior was introduced.
