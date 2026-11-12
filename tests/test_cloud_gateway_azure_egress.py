@@ -182,6 +182,13 @@ class AzureEgressPolicyVerifierTests(unittest.TestCase):
         with self.assertRaises(AzureEgressPolicyError):
             verifier(responses).verify("linux", SUBNET, NSG)
 
+
+    def test_rejects_unapproved_custom_dns_upstream(self):
+        responses = base_responses()
+        responses[POLICY]["properties"]["dnsSettings"]["servers"] = ["10.0.0.53"]
+        with self.assertRaises(AzureEgressPolicyError):
+            verifier(responses).verify("linux", SUBNET, NSG)
+
     def test_rejects_custom_inbound_allow_rules(self):
         responses = base_responses()
         responses[NSG]["properties"]["securityRules"] = [{
