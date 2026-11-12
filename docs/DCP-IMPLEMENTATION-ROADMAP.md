@@ -41,9 +41,9 @@ Each phase is a separate feature branch and Draft PR, with narrowly scoped chang
 - Implemented the Local Agent registry for explicitly enrolled roots and project snapshot fingerprints.
 - Added local CLI operations to enroll roots, register projects and list the registry.
 - Added owner-only, read-only Gateway endpoints and Local Auth Proxy allowlisting; absolute host paths are not returned.
-- Remaining: Dashboard project catalog/picker, authenticated project selection UX, immutable job snapshot/materialization, and end-to-end import-to-job binding.
-
-- Dashboard Project Import workspace added: authenticated owner-only GitHub App repository/ref/commit inspection and Local Project catalog selection. This is a read-only source-selection UI; immutable snapshot materialization and job binding remain outstanding.
+- Implemented: authenticated Dashboard Project Import catalogs for GitHub App and enrolled Local Folder sources; owner selection; Local Folder `POST /api/jobs` binding to project UUID + snapshot SHA-256; Gateway stale-fingerprint rejection; Runner-side snapshot checkout/materialization; static build/test dispatch and artifact upload.
+- Focused evidence exists in `tests/test_cloud_gateway_local_projects.py`, `tests/test_local_project_snapshot.py`, and `tests/test_local_runner_pipeline_e2e.py`.
+- Remaining acceptance: real Windows-host execution on the supported launcher, live Dashboard-to-Gateway owner workflow, artifact SHA-256 verification through download, broader dependency-managed Local Folder targets, and cleanup/recovery after Runner interruption.
 
 
 ## Phase 2 progress — read-only project intelligence
@@ -77,19 +77,19 @@ This checkpoint is tied to the DCP repository branch `feature/real-project-playw
 
 | Workstream | Current evidence-backed state | Remaining acceptance |
 |---|---|---|
-| Import foundation | Local Folder enrollment, owner-only catalog, verified snapshot materialization and GitHub commit inspection exist in prior slices. | Persisted job binding and end-to-end source-to-runner provenance still require focused acceptance. |
+| Import foundation | Dashboard catalogs, owner-only Local Folder selection, SHA-256-bound job creation, stale-source rejection, Runner snapshot materialization and static pipeline tests are present on `main`. | Real Windows-host acceptance, live authenticated Dashboard workflow and end-to-end artifact/download provenance still require evidence. |
 | Project intelligence | Read-only manifest-backed framework detection exists. | Toolchain readiness and broader adapter coverage remain separate. |
 | Universal Web Build | Static HTML/CSS/JS and React/Vite + Vue/Vite targets exist; dependency install is not automatic. | Broader framework support and host-specific acceptance. |
 | Runtime | Loopback static Runtime Manager exists with bounded health/log/session/process lifecycle. | General application servers and additional runtime adapters. |
-| Preview | Authenticated owner-bound static Preview Proxy primitives exist. | Full Dashboard path and browser automation through the proxy. |
-| Playwright | Opt-in static-project smoke suite, three viewport screenshots, JSON report and bounded ZIP evidence exist. | Current CI sandbox launch blocker, actionable host diagnostics, and Preview Proxy E2E. |
+| Preview | Authenticated owner-bound Preview Proxy is covered by real Chromium, Firefox and WebKit browser acceptance on PR #96, merged to `main`. | Full application-specific Dashboard preview workflow, visual baselines, traces and broader runtime types remain. |
+| Playwright | Opt-in static-project smoke suite and separate authenticated Preview Proxy browser fixture acceptance are implemented; PR #96 CI passed Chromium, Firefox and WebKit. | Real imported-project browser acceptance through the proxy, traces, visual regression and full WCAG/axe remain. |
 | Quality/security | Existing baseline controls remain in place. | Dedicated scanners, full accessibility, visual regression and cross-browser suites. |
 
 ### PR #71 release gate
 
 The latest observed CI result on `52a99f2403c7ffc5c8d82fe44cbb477f8189b325` installed Python Playwright and Chromium successfully, but the real Chromium smoke test failed at sandboxed browser launch. Later Dashboard browser smoke and registry validation steps were skipped. Windows dynamic-port and Windows Auth Proxy/Gateway checks passed; self-hosted Windows Runner acceptance was skipped. A subsequent code change adds bounded launch-error diagnostics; its exact-commit CI result is still required.
 
-Do not merge PR #71 until the real Chromium sandbox test, Dashboard browser smoke, registry validation, and all required checks pass on the same final head SHA. Do not disable Chromium sandboxing as a CI workaround.
+Historical gate for PR #71: its Chromium sandbox launch failure applied to that earlier head only. It was superseded by later merged work; do not use that historical run as evidence for current `main`. Never disable Chromium sandboxing as a CI workaround.
 
 ## 2026-11-12 implementation checkpoint — Terminal Studio read-only slice
 
@@ -175,3 +175,11 @@ Do not merge PR #71 until the real Chromium sandbox test, Dashboard browser smok
 - The API requires the correct job target and explicit confirmation; all browser access remains behind the authenticated Preview Proxy.
 - Added process supervision, health checks, TTL and process-tree cleanup reuse; Angular browser output can be served from dist/browser.
 - Next.js preview executes trusted application code and does not enforce outbound network isolation. This limitation is documented; do not treat it as an OS sandbox.
+
+
+## 2026-11-12 verified `main` checkpoint — PR #96
+
+- PR #96 (`deafee4cf68fdc64c9adba03d8d84cc3ad7b4b8b`) passed the required CI workflows before squash-merge to `main` as `b83cfa8baa4e54baeb069552b5c3bdee3153f67e`.
+- Authenticated Preview Proxy browser acceptance passed on Chromium, Firefox and WebKit, including HTML/CSS loading, scoped secure cookie behavior, screenshot capture and denial after preview stop.
+- This is fixture-based proxy acceptance, not full cross-browser certification of every imported application or Dashboard route.
+- PR #59 was closed as superseded: its head was 49 commits behind and its net diff removed already-integrated Gateway proxy allowlists and newer import/snapshot documentation. No branch was deleted.
