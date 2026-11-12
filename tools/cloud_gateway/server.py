@@ -515,6 +515,8 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                 self.send_header("Content-Length", str(metadata["size"]))
                 self.send_header("Content-Disposition", "attachment; filename=" + metadata["name"])
                 self.send_header("ETag", chr(34) + metadata["sha256"] + chr(34))
+                if metadata.get("provenance_sha256"):
+                    self.send_header("X-DCP-Provenance-SHA256", metadata["provenance_sha256"])
                 self.send_header("Cache-Control", "private, no-store")
                 self.send_header("X-Content-Type-Options", "nosniff")
                 self.end_headers()
