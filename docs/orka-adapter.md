@@ -11,7 +11,46 @@ The Orka adapter uses the documented Orka API Server VM endpoints and BearerToke
 ## Secret handling
 The Orka bearer token is read through an injected Key Vault secret reader at request time. It is never included in VM metadata, request payloads, provider errors, or audit data. Do not put Orka credentials in GitHub Actions secrets or repository files.
 
-## Not enabled by this adapter
-This adapter does not create an Orka namespace, VM config, image, node, or cluster. The approved VM config must already exist and be reviewed to map to macOS 15 ARM64. Runner registration/bootstrap, GitHub App credentials, network egress policy, and live Orka account validation remain separate acceptance gates.
+## Orka 4.0 User Data bootstrap
 
-The Gateway selects budget guards by provider. Orka requests require a separate guard keyed to `orka`; an Azure Consumption budget is never accepted as evidence for Orka spend. A generic provider-budget guard contract is available, but no Orka billing reader or provider budget source is configured or verified. Therefore Orka readiness remains false until an authoritative Orka/MacStadium cost source, forecast semantics, currency, and freshness policy are implemented and tested. The Gateway now reports Orka readiness as false until the target cluster's Orka 4.0 User Data contract is verified and implemented. MacStadium documents first-boot User Data for Orka 4.0, but this adapter currently sends only `vmConfig` and non-secret `customMetadata`. A registration token must never be placed in `customMetadata`. Verify the exact User Data request field and how the target cluster protects the script from API, metadata, and log exposure before enabling it. The adapter also deletes failed VMs and waits for a later 404 before allowing runner deregistration. No Orka capacity was allocated by tests.
+`tools/cloud_gateway/orka_bootstrap.py` builds an idempotent macOS ARM64
+bootstrap script using a pinned runner release/checksum and a short-lived,
+repository-scoped GitHub registration token. `OrkaProvider` sends the
+base64-encoded script in the documented lower-case `userdata` field, enforces
+the 64 KiB encoded limit, and waits for `userdataPhase=success` before it can
+report a runner online. Failed, timed-out or skipped User Data causes VM
+termination. The script never prints the registration token and does not put
+it in `customMetadata`.
+
+Orka 4.0 requirements are strict: Apple silicon nodes, Orka 4.0 VM Tools in the
+approved image, and a pre-provisioned non-root runner account. The namespace
+must be dedicated to DCP and Kubernetes RBAC must prevent untrusted users and
+service accounts from reading the VM's VirtualMachineInstance resource or pod
+spec. The Orka documentation states that the script is not returned in API
+responses, but Kubernetes-level readers can inspect it; therefore the
+short-lived registration token remains visible to anyone with that access.
+The runtime requires an explicit `userdata_rbac_reviewed` attestation and
+independent cluster, network and budget readiness checkers. Do not enable this
+attestation until the actual namespace RBAC has been reviewed.
+
+User Data runs as root in the background and may rerun after an interrupted
+first boot. The factory is idempotent and suppresses bootstrap command output;
+operators must still inspect the User Data phase, not infer readiness from a
+Running VM. See the official [Orka 4.0 User Data documentation](https://docs.macstadium.com/orka/orka-resources/userdata).
+
+## Not enabled by this adapter
+
+This adapter does not create an Orka namespace, VM config, image, node, cluster,
+network policy or budget. The approved VM config must already be reviewed to
+map to macOS 15 ARM64. The User Data request contract and mocked lifecycle
+checks are implemented, but no production Orka runtime composition or
+authoritative Orka/MacStadium billing reader exists.
+
+The Gateway selects budget guards by provider. Orka requests require a
+separate guard keyed to `orka`; an Azure Consumption budget is never accepted
+as evidence for Orka spend. Readiness remains false until an authoritative
+Orka/MacStadium cost source, forecast semantics, currency, freshness policy,
+live cluster/VM Tools check, namespace RBAC review, restricted egress policy,
+and runner-online/job/teardown acceptance are supplied and tested. The
+Gateway's global provisioning and owner-approval gates remain independent.
+No Orka capacity was allocated by tests.
