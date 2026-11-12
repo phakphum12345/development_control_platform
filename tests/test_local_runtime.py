@@ -58,6 +58,19 @@ class RuntimeManagerTests(unittest.TestCase):
         with self.assertRaises(RuntimeErrorDCP):
             self.manager.stop(started["runtime_id"], "wrong-token")
 
+    def test_serves_angular_browser_subdirectory_as_static_output(self):
+        browser = self.workspace / "source" / "dist" / "browser"
+        browser.mkdir(parents=True)
+        (browser / "index.html").write_text("<h1>Angular Browser</h1>", encoding="utf-8")
+        started = self.manager.start_static(
+            self.job, self.worker, output_relative="source/dist/browser"
+        )
+        import urllib.request
+        with urllib.request.urlopen(started["url"], timeout=2) as response:
+            self.assertEqual(response.status, 200)
+            self.assertIn(b"Angular Browser", response.read())
+        self.manager.stop(started["runtime_id"], started["session_token"])
+
     def test_rejects_symlinked_or_missing_build_output(self):
         (self.dist / "index.html").unlink()
         (self.root / "outside.html").write_text("outside", encoding="utf-8")
