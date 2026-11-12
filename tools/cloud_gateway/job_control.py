@@ -33,7 +33,9 @@ class JobStore:
                     repository TEXT NOT NULL, commit_sha TEXT NOT NULL, target TEXT NOT NULL,
                     state TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL, worker TEXT, last_worker TEXT, lease_until TEXT,
-                    cancel_at TEXT, result TEXT, error_code TEXT
+                    cancel_at TEXT, result TEXT, error_code TEXT,
+                    attempt_count INTEGER NOT NULL DEFAULT 0,
+                    max_attempts INTEGER NOT NULL DEFAULT 3
                 );
                 CREATE INDEX IF NOT EXISTS jobs_queue_idx ON jobs(state, created_at);
                 CREATE TABLE IF NOT EXISTS job_events (
@@ -49,6 +51,10 @@ class JobStore:
             columns = {row["name"] for row in db.execute("PRAGMA table_info(jobs)")}
             if "last_worker" not in columns:
                 db.execute("ALTER TABLE jobs ADD COLUMN last_worker TEXT")
+            if "attempt_count" not in columns:
+                db.execute("ALTER TABLE jobs ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0")
+            if "max_attempts" not in columns:
+                db.execute("ALTER TABLE jobs ADD COLUMN max_attempts INTEGER NOT NULL DEFAULT 3")
 
     @contextmanager
     def db(self):
@@ -157,20 +163,25 @@ class JobStore:
         with self.lock, self.db() as db:
             db.execute("BEGIN IMMEDIATE")
             rows = db.execute(
-                "SELECT id,state FROM jobs WHERE state IN ('running','cancel_requested') "
+                "SELECT id,state,attempt_count,max_attempts FROM jobs WHERE state IN ('running','cancel_requested') "
                 "AND lease_until IS NOT NULL AND lease_until<=? ORDER BY lease_until,id",
                 (current,),
             ).fetchall()
             for row in rows:
                 if row["state"] == "cancel_requested":
-                    state, event = "cancelled", "cancelled_after_lease_expiry"
+                    state, event, error_code = "cancelled", "cancelled_after_lease_expiry", None
+                elif row["attempt_count"] >= row["max_attempts"]:
+                    state, event, error_code = "failed", "lease_expired_failed", "LEASE_EXPIRED"
                 else:
-                    state, event = "queued", "lease_expired_requeued"
+                    state, event, error_code = "queued", "lease_expired_requeued", None
                 db.execute(
-                    "UPDATE jobs SET state=?,worker=NULL,lease_until=NULL,updated_at=? WHERE id=?",
-                    (state, current, row["id"]),
+                    "UPDATE jobs SET state=?,worker=NULL,lease_until=NULL,updated_at=?,error_code=? WHERE id=?",
+                    (state, current, error_code, row["id"]),
                 )
-                self._event(db, row["id"], event)
+                self._event(db, row["id"], event, {
+                    "attempt_count": row["attempt_count"],
+                    "max_attempts": row["max_attempts"],
+                })
                 recovered.append({"id": row["id"], "state": state})
             db.execute("COMMIT")
         return recovered
@@ -206,13 +217,17 @@ class JobStore:
                 db.execute("COMMIT")
                 return None
             changed = db.execute(
-                "UPDATE jobs SET state='running',worker=?,lease_until=?,updated_at=? WHERE id=? AND state='queued'",
+                "UPDATE jobs SET state='running',worker=?,lease_until=?,updated_at=?,attempt_count=attempt_count+1 WHERE id=? AND state='queued'",
                 (worker, expiry, current.isoformat(), row["id"]),
             ).rowcount
             if changed != 1:
                 db.execute("ROLLBACK")
                 return None
-            self._event(db, row["id"], "running", {"worker": worker})
+            self._event(db, row["id"], "running", {
+                "worker": worker,
+                "attempt_count": row["attempt_count"] + 1,
+                "max_attempts": row["max_attempts"],
+            })
             db.execute("COMMIT")
         return self.get(row["id"])
 
