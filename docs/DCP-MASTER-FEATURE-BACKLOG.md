@@ -11,7 +11,7 @@ Status labels describe the evidence-backed state recorded in the dated updates b
 | CORE-05 | Backend-enforced Cloud Provisioning OFF | PARTIAL/VERIFY | P0 | Inspect all API/provider paths; reject create requests server-side and persist OFF. |
 | CORE-06 | Backend-enforced VM Creation OFF | PARTIAL/VERIFY | P0 | Separate gate from Cloud Provisioning; tests prove no provider create call. |
 | IMP-01 | GitHub App repository/ref/SHA import | EXISTING/PARTIAL | P0 | Revalidate installation membership and immutable SHA at job acceptance. |
-| IMP-02 | Local Folder import via Local Agent | PARTIAL | P0 | Local registry, explicit CLI enrollment, owner-only read APIs, Dashboard source selection and verified snapshot materialization exist; durable job binding and runner integration remain. |
+| IMP-02 | Local Folder import via Local Agent | PARTIAL (static end-to-end slice) | P0 | Dashboard catalog/selection, owner-only API, UUID + SHA-256-bound job creation, stale-source rejection, Runner snapshot checkout/materialization, static build/test pipeline and focused E2E tests exist. Remaining: real Windows-host acceptance, live Dashboard workflow evidence, artifact/download provenance and dependency-managed Local Folder targets. |
 | IMP-03 | Framework/toolchain detection | PARTIAL | P0 | Existing bounded inventory now reports evidence-based framework, package manager, manifest constraints and scripts; installed toolchain readiness and job integration remain. |
 | BUILD-01 | Flutter fixed-target executor | EXISTING/PARTIAL | P1 | Opt-in, trusted-repository allowlist, disabled by default; verify artifacts and cleanup. |
 | BUILD-02 | Generic web build adapters | PARTIAL | P0 | Static HTML/JS, React/Vite, Vue/Vite, Next.js and Angular build targets implemented using preinstalled local CLIs; dependency installation, SSR runtime/preview and broader framework coverage remain. |
@@ -26,7 +26,7 @@ Status labels describe the evidence-backed state recorded in the dated updates b
 | GIT-01 | Git visual history / diff / conflict tools | PARTIAL/VERIFY | P2 | Read-only first; mutating actions require confirmation. |
 | FLOW-01 | Visual Workflow Builder | MISSING | P2 | Typed nodes, bounded graph, policy gates and resumable jobs. |
 | TEST-01 | Real static-project Playwright testing | IMPLEMENTED (STATIC SLICE) | P0 | Opt-in `test_static_web` builds supported static output, starts loopback runtime, runs real Chromium checks and uploads screenshots/report evidence. CI uses a path-scoped AppArmor user-namespace allowance, not `--no-sandbox`. Authenticated Preview Proxy API E2E is covered separately; full app-framework testing remains out of scope. |
-| TEST-02 | Responsive / cross-browser / visual regression | PARTIAL | P1 | Three viewport checks/screenshots exist; authenticated Preview Proxy fixture coverage is being expanded to Chromium, Firefox and WebKit. Full app compatibility, visual baselines, keyboard interactions and WCAG/axe remain outstanding. |
+| TEST-02 | Responsive / cross-browser / visual regression | PARTIAL | P1 | Authenticated Preview Proxy fixture acceptance passed Chromium, Firefox and WebKit in PR #96 CI. Static-project viewport screenshots exist. Full imported-app compatibility, visual baselines, keyboard interactions and WCAG/axe remain outstanding. |
 | TEST-03 | API / accessibility / performance testing | PARTIAL/MISSING | P1 | Isolated test targets and bounded traffic only. |
 | SEC-01 | Secrets / dependency / license / SBOM scan | PARTIAL/MISSING | P1 | Never expose secret values; attach machine-readable findings. |
 | ART-01 | Job artifacts and SHA-256 | EXISTING/PARTIAL | P1 | Verify upload/download authorization, provenance, retention and integrity. |
@@ -132,3 +132,10 @@ All above status statements refer to merged code on main and the corresponding C
 - Chromium sandboxing remains enabled. Firefox/WebKit are separate browser-engine checks and do not claim OS-level isolation.
 - CI installs Firefox/WebKit explicitly and runs each test separately. Status remains **PENDING CI on the exact PR head** until those checks finish successfully.
 - This is not full cross-browser application certification, visual regression, keyboard accessibility, or WCAG/axe coverage.
+
+
+## 2026-11-12 verified `main` update — import and preview
+
+- IMP-02 is beyond a read-only catalog: the Dashboard can select a registered Local Folder project and submit a job bound to its project UUID and current SHA-256; the Gateway refreshes/rejects stale fingerprints; the Local Runner materializes the approved snapshot before supported static build/test execution. See `docs/DCP-LOCAL-FOLDER-BUILD.md` and focused Gateway/snapshot/pipeline tests.
+- This remains a partial product capability: Local Folder execution is limited to supported static HTML/CSS/JS targets, and a real Windows-host acceptance run plus end-to-end Dashboard artifact/download evidence are still required.
+- TEST-02 authenticated Preview Proxy fixture coverage passed Chromium, Firefox and WebKit on PR #96 before merge. This is not a claim of full application browser certification or visual/WCAG completion.
