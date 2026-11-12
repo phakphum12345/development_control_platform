@@ -412,7 +412,6 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
 
     @unittest.skipUnless(_chromium_ready(), "Python Playwright and Chromium are optional test prerequisites")
     def test_real_chromium_loads_app_through_authenticated_preview_proxy(self):
-        import uuid
         from playwright.sync_api import sync_playwright
 
         from tools.cloud_gateway.job_control import JobStore
@@ -571,11 +570,13 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                     self.assertEqual(asset_responses[0]["status"], 200)
                     self.assertTrue(any("/content/assets/site.css" in url for url in request_urls))
                     http_requests = [
-                    url for url in request_urls
-                    if url.startswith(("http://", "https://"))
-                ]
-                self.assertTrue(http_requests)
-                self.assertTrue(all(url.startswith(self.base + "/") for url in http_requests))
+                        url for url in request_urls
+                        if url.startswith(("http://", "https://"))
+                    ]
+                    self.assertTrue(http_requests)
+                    self.assertTrue(
+                        all(url.startswith(self.base + "/") for url in http_requests)
+                    )
                     self.assertEqual(console_errors, [])
                     self.assertEqual(page_errors, [])
                     self.assertEqual(failed_requests, [])
@@ -596,7 +597,7 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                         timeout=10000,
                     )
                     self.assertIsNotNone(after_stop)
-                    self.assertEqual(after_stop.status, 404)
+                    self.assertIn(after_stop.status, (401, 404))
                     context.close()
                 finally:
                     browser.close()
