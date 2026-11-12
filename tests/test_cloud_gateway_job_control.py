@@ -26,6 +26,8 @@ class JobStoreTests(unittest.TestCase):
         self.assertFalse(created_again)
         self.assertEqual(first["id"], again["id"])
         self.assertEqual(first["state"], "queued")
+        self.assertEqual(first["attempt_count"], 0)
+        self.assertEqual(first["max_attempts"], 3)
         self.assertEqual(self.store.events(first["id"])[0]["event"], "queued")
 
     def test_conflicting_idempotency_and_invalid_payload(self):
@@ -127,6 +129,8 @@ class JobStoreTests(unittest.TestCase):
             with migrated.db() as db:
                 columns = {row["name"] for row in db.execute("PRAGMA table_info(jobs)")}
             self.assertIn("last_worker", columns)
+            self.assertIn("attempt_count", columns)
+            self.assertIn("max_attempts", columns)
 
     def test_cancel_queued_and_running(self):
         queued, _ = self.create()
