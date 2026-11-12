@@ -6,12 +6,12 @@ The canonical architecture, API boundaries, repository trust model, provider con
 
 | Phase | Work package | Exit evidence | Status |
 |---|---|---|---|
-| 0 | Baseline and safety | Work on feature branch; main untouched; Cloud Provisioning disabled; existing workflows and tests inventoried | In progress |
+| 0 | Baseline and safety | Work on feature branch; main untouched; Cloud Provisioning/VM Creation disabled; existing workflows and tests inventoried | Baseline established; continue periodic reconciliation |
 | 1 | Repository Manager hardening | Installation catalog pagination, private/public metadata, authenticated API, server-side membership revalidation, branch/tag/SHA resolution, project detection | Implemented and CI-verified on head `ab8c558`; installation catalog, branch/tag/commit APIs, bounded Flutter/macOS detection, and 273 Python tests pass |
-| 2 | DCP Core and Job Control Plane | Stable Job API, durable state transitions, idempotency, cancellation, lease recovery, bounded retries, audit events and capability-aware scheduling | Core API/SQLite queue/scheduler implemented; bounded retry and concurrent-claim acceptance being added |
-| 3 | DCP Runner Engine | Local runner agent, authenticated claim/heartbeat/report protocol, isolated workspace, logs, cancellation and cleanup reconciliation | Agent, registry, workspace and artifact handoff implemented in slices; crash workspace reconciliation and long-running supervisor acceptance remain |
+| 2 | DCP Core and Job Control Plane | Stable Job API, durable state transitions, idempotency, cancellation, lease recovery, bounded retries, audit events and capability-aware scheduling | Implemented and CI-verified; authenticated two-worker lease-recovery E2E merged |
+| 3 | DCP Runner Engine | Local runner agent, authenticated claim/heartbeat/report protocol, isolated workspace, logs, cancellation and cleanup reconciliation | Unified agent, offline enrollment, supervised Windows launcher and bounded backoff merged; crash workspace reconciliation remains |
 | 4 | DCP Provisioning Engine | Provider-neutral capabilities/readiness/create/inspect/stop/delete; local no-cost simulation; host-specific adapters only after validation | Fake Provider lifecycle and independent Cloud/VM safety gates implemented; live provider remains disabled |
-| 5 | DCP Artifact Center | Upload/list/download, checksum verification, job/commit association, retention and access control | Authenticated upload/download and SHA-256 checks implemented; scheduled retention and broader provenance acceptance remain |
+| 5 | DCP Artifact Center | Upload/list/download, checksum verification, job/commit association, retention and access control | Authenticated artifact transfer and SHA-256 checks implemented; preview browser E2E in progress; retention/provenance remain |
 | 6 | Flutter Dashboard | Flutter screens use stable DCP APIs; existing HTML dashboard retained until parity | Pending |
 | 7 | Optional live provider acceptance | Explicit owner approval, bounded run, cost evidence, runner deregistration and VM teardown proof | Disabled; approval required |
 
@@ -86,7 +86,7 @@ The corrected implementation passed both PR workflows on head `ab8c558ee4d82f940
 - No provider is activated by this UI; current deployment remains fail-closed.
 
 
-## Phase 2 progress — bounded job lease recovery (PR in progress)
+## Phase 2 progress — bounded job lease recovery (merged on main)
 
 - Added durable attempt_count/max_attempts metadata; each job is limited to three claimed attempts by server policy.
 - Expired running jobs are requeued only while attempts remain; the final expired attempt fails with LEASE_EXPIRED.
@@ -97,7 +97,7 @@ The corrected implementation passed both PR workflows on head `ab8c558ee4d82f940
 - No repository code, VM, cloud provider or paid resource is executed/created by these tests.
 
 
-## Phase 2 progress — HTTP lease recovery acceptance (PR in progress)
+## Phase 2 progress — HTTP lease recovery acceptance (merged on main)
 
 - Added a two-worker Gateway HTTP test covering registration, first claim, forced lease expiry, automatic recovery and second claim.
 - Verified attempt_count increments, max_attempts is returned, and last_worker provenance survives requeue.
@@ -106,7 +106,7 @@ The corrected implementation passed both PR workflows on head `ab8c558ee4d82f940
 - Uses temporary SQLite databases and test-only worker tokens; no real Runner host or repository code is used.
 
 
-## Phase 3 progress — unified Local Runner service (PR in progress)
+## Phase 3 progress — unified Local Runner service (merged on main)
 
 - Added offline enrollment to the unified Runner client and CLI.
 - Added an opt-in long-running service mode with 5-second polling, bounded exponential backoff, and stop-on-permanent-policy-error behavior.
@@ -114,3 +114,12 @@ The corrected implementation passed both PR workflows on head `ab8c558ee4d82f940
 - Migrated Start-DCP-Gateway-Runner.ps1 from the legacy agent to tools.local_runner_agent.
 - Added explicit trusted GitHub repository and Local Project ID allowlists; the launcher defaults to offline enrollment and never enables Playwright implicitly.
 - Added CLI, service, client, launcher-contract and Windows PowerShell parser tests.
+
+
+## Phase 5 progress — authenticated Preview Proxy browser E2E (PR in progress)
+
+- Added real Chromium acceptance that starts a completed job preview through the owner-authenticated Local Auth Proxy API.
+- Browser receives only the same-origin HttpOnly owner session cookie and navigates to the opaque preview path; runtime capability token and upstream port remain server-side.
+- Uses chromium_sandbox=True; verifies HTML/title/content, relative CSS, computed style, same-origin requests, browser errors, screenshot capture and HTTP 404 after preview stop.
+- API E2E separately covers unauthenticated denial, cross-job denial, query rejection, CSRF-protected stop and logout denial.
+- Cross-browser engines, trace capture, visual baselines and full WCAG/axe coverage remain future work.
