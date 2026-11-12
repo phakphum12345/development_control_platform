@@ -187,6 +187,18 @@ def _validate_parameters(template: dict, parameters: dict) -> dict:
     return values
 
 
+
+def validate_preview_payload(payload: dict) -> tuple[str, dict]:
+    """Accept only a template ID and a bounded parameter object."""
+    if (not isinstance(payload, dict) or "template_id" not in payload
+            or not set(payload).issubset({"template_id", "parameters"})):
+        raise ValueError("only template_id and optional parameters are accepted")
+    parameters = payload.get("parameters", {})
+    if not isinstance(parameters, dict):
+        raise ValueError("parameters must be an object")
+    return payload["template_id"], parameters
+
+
 def preview_template(template_id: str, parameters: dict | None = None) -> dict:
     """Resolve one exact catalog ID into a safe argv preview; never execute it."""
     if not isinstance(template_id, str) or template_id not in _TEMPLATES:
