@@ -55,6 +55,10 @@ class AuthenticatedPreviewManager:
             raise PreviewError("invalid worker id")
         if output_relative not in ("source/dist", "source/dist/browser", "source/build/web", "dist", "dist/browser", "build/web"):
             raise PreviewError("unsupported preview output")
+        if runtime_kind not in ("static", "next"):
+            raise PreviewError("unsupported preview runtime kind")
+        if runtime_kind == "next" and owner_approved is not True:
+            raise PreviewError("explicit Owner approval is required for Next.js runtime")
         with self._lock:
             self._prune_stale()
             try:
@@ -73,8 +77,6 @@ class AuthenticatedPreviewManager:
                         job_id, worker_id, output_relative=output_relative
                     )
                 elif runtime_kind == "next":
-                    if owner_approved is not True:
-                        raise PreviewError("explicit Owner approval is required for Next.js runtime")
                     row = self.runtime_manager.start_next(
                         job_id, worker_id, owner_approved=True
                     )
