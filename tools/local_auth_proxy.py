@@ -30,6 +30,7 @@ MIN_PASSWORD_LENGTH = 14
 COOKIE = "DCP_LOCAL_SESSION"
 MAX_BODY = 32_768
 MAX_PREVIEW_RESPONSE_BYTES = 12 * 1024 * 1024
+MAX_ARTIFACT_DOWNLOAD_BYTES = 1024 * 1024 * 1024
 ALLOWED_GET = ("/api/cloud-runners/status", "/api/cloud-runners", "/api/local-projects", "/api/local-projects/roots", "/api/github/repositories", "/api/infrastructure/gates", "/api/runners", "/api/terminal/templates")
 CREDENTIALS = Path(os.getenv("DCP_LOCAL_AUTH_CREDENTIAL_FILE", str(Path(os.getenv("LOCALAPPDATA", str(Path.home()))) / "DCP" / "owner-auth.json")))
 
@@ -415,6 +416,64 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
             expected = app.csrf(session)
             return bool(supplied) and hmac.compare_digest(supplied, expected)
 
+        def send_artifact_download(self, path, session):
+            """Stream a bounded artifact while preserving its verified SHA-256 ETag."""
+            gateway_headers = app.sign_gateway("GET", urlparse(path).path, session)
+            request = Request(
+                f"http://{HOST}:{app.gateway_port}{path}",
+                headers=gateway_headers,
+                method="GET",
+            )
+            try:
+                response = urlopen(request, timeout=30)
+            except HTTPError as exc:
+                try:
+                    body = exc.read(MAX_BODY + 1)
+                    if len(body) > MAX_BODY:
+                        return self.send_json(502, {"error": "artifact gateway error response exceeds proxy limit"})
+                    return self.send_bytes(exc.code, body)
+                finally:
+                    exc.close()
+            except (URLError, TimeoutError, OSError):
+                return self.send_json(503, {"error": "Gateway unavailable"})
+
+            try:
+                try:
+                    size = int(response.headers.get("Content-Length", ""))
+                except (TypeError, ValueError):
+                    return self.send_json(502, {"error": "artifact download size is invalid"})
+                etag = response.headers.get("ETag", "")
+                content_type = response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+                if (
+                    response.status != 200
+                    or not 1 <= size <= MAX_ARTIFACT_DOWNLOAD_BYTES
+                    or content_type != "application/octet-stream"
+                    or not re.fullmatch(r'"[0-9a-f]{64}"', etag)
+                ):
+                    return self.send_json(502, {"error": "artifact download response failed proxy validation"})
+                disposition = response.headers.get("Content-Disposition", "")
+                if not re.fullmatch(r"attachment; filename=[A-Za-z0-9._-]{1,120}", disposition):
+                    disposition = "attachment; filename=artifact.bin"
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Length", str(size))
+                self.send_header("Content-Disposition", disposition)
+                self.send_header("ETag", etag)
+                self.send_header("Cache-Control", "private, no-store")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.end_headers()
+                remaining = size
+                while remaining:
+                    chunk = response.read(min(1024 * 1024, remaining))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            finally:
+                response.close()
+
         def do_GET(self):
             parsed = urlparse(self.path)
             path = parsed.path
@@ -482,6 +541,17 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                 gateway_path = f"/api/jobs/{job_id}/previews/{runtime_id}"
                 status, data = app.gateway_request("GET", gateway_path, session)
                 return self.send_bytes(status, data)
+            artifact_download = re.fullmatch(
+                r"/api/artifacts/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/download",
+                path,
+            )
+            if artifact_download:
+                session = self.require_session()
+                if not session:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if parsed.query:
+                    return self.send_json(404, {"error": "not found"})
+                return self.send_artifact_download(path, session)
             if path.startswith("/api/"):
                 session = self.require_session()
                 if not session:
