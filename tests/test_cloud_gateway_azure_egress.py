@@ -31,6 +31,7 @@ VNET = rid("virtualNetworks", "vnet1")
 NSG = rid("networkSecurityGroups", "runner-nsg")
 ROUTE_TABLE = rid("routeTables", "runner-rt")
 FIREWALL = rid("azureFirewalls", "runner-fw")
+FIREWALL_SUBNET = rid("virtualNetworks", "vnet1") + "/subnets/AzureFirewallSubnet"
 POLICY = rid("firewallPolicies", "runner-policy")
 
 
@@ -99,8 +100,17 @@ def base_responses(domains=DOMAINS):
                 "provisioningState": "Succeeded",
                 "firewallPolicy": {"id": POLICY},
                 "ipConfigurations": [
-                    {"properties": {"privateIPAddress": FIREWALL_IP}}
+                    {"properties": {
+                        "privateIPAddress": FIREWALL_IP,
+                        "subnet": {"id": FIREWALL_SUBNET},
+                    }}
                 ],
+            }
+        },
+        FIREWALL_SUBNET: {
+            "properties": {
+                "provisioningState": "Succeeded",
+                "addressPrefix": "10.0.0.0/26",
             }
         },
         VNET: {
@@ -169,6 +179,25 @@ class AzureEgressPolicyVerifierTests(unittest.TestCase):
             verifier(responses).verify("linux", SUBNET, NSG)
         responses = base_responses()
         responses[ROUTE_TABLE]["properties"]["disableBgpRoutePropagation"] = False
+        with self.assertRaises(AzureEgressPolicyError):
+            verifier(responses).verify("linux", SUBNET, NSG)
+
+
+    def test_rejects_firewall_in_unverified_hub_vnet_or_wrong_subnet(self):
+        responses = base_responses()
+        responses[FIREWALL]["properties"]["ipConfigurations"][0]["properties"]["subnet"]["id"] = (
+            rid("virtualNetworks", "hub") + "/subnets/AzureFirewallSubnet"
+        )
+        with self.assertRaises(AzureEgressPolicyError):
+            verifier(responses).verify("linux", SUBNET, NSG)
+        responses = base_responses()
+        responses[FIREWALL]["properties"]["ipConfigurations"][0]["properties"]["subnet"]["id"] = (
+            rid("virtualNetworks", "vnet1") + "/subnets/OtherSubnet"
+        )
+        with self.assertRaises(AzureEgressPolicyError):
+            verifier(responses).verify("linux", SUBNET, NSG)
+        responses = base_responses()
+        responses[FIREWALL_SUBNET]["properties"]["addressPrefix"] = "10.0.0.0/27"
         with self.assertRaises(AzureEgressPolicyError):
             verifier(responses).verify("linux", SUBNET, NSG)
 
