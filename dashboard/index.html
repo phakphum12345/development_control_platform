@@ -367,13 +367,18 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
 <section class="view" id="terminal-studio">
  <div class="panel">
   <div class="row"><div><h2>Terminal Studio</h2><p>Command Library สำหรับตรวจสอบ Git และ Toolchain พร้อมดูคำสั่งแบบ argv ก่อนใช้งาน</p></div><span class="pill" id="terminal-studio-state">PREVIEW ONLY</span></div>
-  <div class="warn"><b>Safety:</b> รุ่นนี้แสดง Catalog และ Preview เท่านั้น ไม่มีการรันคำสั่ง ไม่มี Shell/PTY ไม่มีการติดตั้ง Dependencies และไม่รับคำสั่งอิสระจาก Browser</div>
+  <div class="warn"><b>Safety:</b> รุ่นนี้แสดง Catalog, Visual Builder และ Preview เท่านั้น ไม่มีการรันคำสั่ง ไม่มี Shell/PTY ไม่มีการติดตั้ง Dependencies และไม่รับคำสั่งอิสระจาก Browser. ค่าพารามิเตอร์ต้องผ่าน Schema ที่ Gateway ตรวจซ้ำ</div>
   <div class="actions"><button class="primary" id="terminal-load-templates" type="button">Load Command Library</button><label for="terminal-template-select">Command template</label><select id="terminal-template-select" disabled><option value="">Load templates first</option></select><button id="terminal-preview" type="button" disabled>Preview exact argv</button></div>
   <div id="terminal-status" class="output" role="status" aria-live="polite">Owner session and command catalog have not been checked.</div>
  </div>
+ <div class="panel" id="terminal-builder-panel">
+  <h3>Visual Command Builder</h3>
+  <p class="small muted">กรอกเฉพาะพารามิเตอร์แบบมีชนิดและขอบเขต เช่น จำนวน Commit หรือ Full SHA. ไม่มีช่องให้พิมพ์ Shell Command หรือเพิ่ม argv เอง.</p>
+  <div id="terminal-builder-fields" class="grid"><div class="empty">Load the Command Library and choose a template.</div></div>
+ </div>
  <div class="panel">
   <h3>Exact command preview</h3>
-  <p class="small muted">Preview displays a trusted executable and argument array, not a shell command string. Workspace binding and execution are not implemented in this slice.</p>
+  <p class="small muted">Preview displays the trusted executable, validated parameter values and exact argument array—not a shell command string. This feature never executes the command; workspace binding and execution remain disabled.</p>
   <pre id="terminal-preview-output" class="output" aria-label="Terminal command preview">No command selected.</pre>
  </div>
  <div class="panel" id="terminal-review-panel" hidden>
@@ -1109,6 +1114,7 @@ async function terminalStudioLoad(){
    select.add(new Option(item.name+" · "+item.category,item.id));
   }
   select.disabled=select.options.length<=1;
+  terminalStudioRenderBuilder();
   $("terminal-preview").disabled=true;
   $("terminal-import-pack").disabled=false;
   $("terminal-import-status").textContent="Owner session connected. Imported templates remain disabled pending review.";
@@ -1116,17 +1122,51 @@ async function terminalStudioLoad(){
  }catch(error){terminalStudioStatus("Could not load Command Library: "+error.message,"error");}
  finally{button.disabled=false;}
 }
+function terminalStudioRenderBuilder(){
+ const host=$("terminal-builder-fields");
+ const selected=$("terminal-template-select").value;
+ const item=terminalStudioState.templates.find(row=>row&&row.id===selected);
+ host.replaceChildren();
+ if(!item){host.textContent="Choose a command template to see its typed parameters.";return;}
+ const specs=Array.isArray(item.parameters)?item.parameters:[];
+ if(!specs.length){const note=document.createElement("div");note.className="empty";note.textContent="No parameters. This template uses fixed, curated arguments.";host.append(note);return;}
+ for(const spec of specs){
+  if(!spec||typeof spec.name!=="string"||!["integer","commit_sha"].includes(spec.type))continue;
+  const field=document.createElement("div");field.className="field";
+  const label=document.createElement("label");
+  const input=document.createElement("input");
+  input.id="terminal-param-"+spec.name;
+  input.dataset.terminalParameter=spec.name;
+  input.type=spec.type==="integer"?"number":"text";
+  input.autocomplete="off";input.spellcheck=false;
+  input.required=spec.required===true;
+  if(spec.type==="integer"){input.min=String(spec.minimum);input.max=String(spec.maximum);input.step="1";}
+  if(spec.type==="commit_sha"){input.maxLength=40;input.pattern="[A-Fa-f0-9]{40}";}
+  if(spec.default!==undefined)input.value=String(spec.default);
+  if(typeof spec.placeholder==="string")input.placeholder=spec.placeholder;
+  label.htmlFor=input.id;label.textContent=spec.label||spec.name;
+  field.append(label,input);host.append(field);
+ }
+}
+function terminalStudioCollectParameters(){
+ const values={};
+ $("terminal-builder-fields").querySelectorAll("[data-terminal-parameter]").forEach(input=>{
+  values[input.dataset.terminalParameter]=input.type==="number"&&input.value!==""?Number(input.value):input.value;
+ });
+ return values;
+}
 async function terminalStudioPreview(){
  const id=$("terminal-template-select").value;
  if(!id){terminalStudioStatus("Select a command template first.","unknown");return}
  const button=$("terminal-preview");button.disabled=true;
  try{
-  const data=await terminalStudioRequest("/api/terminal/commands/preview","POST",{template_id:id});
+  const data=await terminalStudioRequest("/api/terminal/commands/preview","POST",{template_id:id,parameters:terminalStudioCollectParameters()});
   if(data.execution_enabled!==false||!data.preview||!["PREVIEW_ONLY","PENDING_REVIEW","APPROVED_NOT_EXECUTABLE","REJECTED"].includes(data.preview.status)||!Array.isArray(data.preview.command_preview))throw new Error("API did not return a safe preview-only result.");
   $("terminal-preview-output").textContent=JSON.stringify({
    name:data.preview.name,
    executable:data.preview.executable,
    argv:data.preview.argv,
+   parameter_values:data.preview.parameter_values||{},
    command_preview:data.preview.command_preview,
    working_directory_policy:data.preview.working_directory_policy,
    environment_allowlist:data.preview.environment_allowlist,
@@ -1185,7 +1225,7 @@ async function terminalStudioImport(){
   if(!Array.isArray(result.imported)||result.imported.length<1||typeof result.source_sha256!=="string")throw new Error("Gateway did not return verified import metadata.");
   await terminalStudioLoad();
   const first=result.imported[0];
-  $("terminal-template-select").value=first.id;
+  $("terminal-template-select").value=first.id;terminalStudioRenderBuilder();
   $("terminal-preview").disabled=false;
   $("terminal-import-status").textContent="Imported "+result.imported.length+" template(s). SHA-256: "+result.source_sha256+"\nAll imported templates are disabled and pending Owner review. No command was executed.";
   terminalStudioStatus("Command pack imported as inert data. Owner review is required before any future execution feature.","ready");
@@ -1196,7 +1236,7 @@ async function terminalStudioImport(){
 }
 function initTerminalStudio(){
  $("terminal-load-templates").addEventListener("click",terminalStudioLoad);
- $("terminal-template-select").addEventListener("change",()=>{terminalStudioState.lastPreview=null;$("terminal-review-panel").hidden=true;$("terminal-preview").disabled=!$("terminal-template-select").value});
+ $("terminal-template-select").addEventListener("change",()=>{terminalStudioState.lastPreview=null;$("terminal-review-panel").hidden=true;terminalStudioRenderBuilder();$("terminal-preview").disabled=!$("terminal-template-select").value});
  $("terminal-preview").addEventListener("click",terminalStudioPreview);
  $("terminal-import-pack").addEventListener("click",terminalStudioImport);
  $("terminal-review-approve").addEventListener("click",()=>terminalStudioReview("approve"));
