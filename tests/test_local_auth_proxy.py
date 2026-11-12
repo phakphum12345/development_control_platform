@@ -574,8 +574,10 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                             failed_requests, context.cookies(self.base)
                         ),
                     )
-                    self.assertEqual(len(asset_responses), 1)
-                    self.assertEqual(asset_responses[0]["status"], 200)
+                    # Browser engines may revalidate or request the same stylesheet more
+                    # than once; every observed response must still be successful.
+                    self.assertTrue(asset_responses)
+                    self.assertTrue(all(item["status"] == 200 for item in asset_responses))
                     self.assertTrue(any("/content/assets/site.css" in url for url in request_urls))
                     http_requests = [
                         url for url in request_urls
