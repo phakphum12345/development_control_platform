@@ -123,7 +123,8 @@ def inspect_environment(env: Mapping[str, str] | None = None) -> dict:
     azure_names = (
         "DCP_AZURE_SUBSCRIPTION_ID", "DCP_AZURE_RESOURCE_GROUP",
         "DCP_AZURE_LOCATION", "DCP_AZURE_SUBNET_ID", "DCP_AZURE_NSG_ID",
-        "DCP_AZURE_BUDGET_NAME", "DCP_AZURE_PROJECTED_RUN_COST_USD",
+        "DCP_AZURE_ROUTE_TABLE_ID", "DCP_AZURE_FIREWALL_ID",
+        "DCP_AZURE_FIREWALL_POLICY_ID", "DCP_AZURE_BUDGET_NAME", "DCP_AZURE_PROJECTED_RUN_COST_USD",
         "DCP_AZURE_LINUX_VM_SIZE", "DCP_AZURE_WINDOWS_VM_SIZE",
         "DCP_RUNNER_VERSION", "DCP_RUNNER_LINUX_SHA256", "DCP_RUNNER_WINDOWS_SHA256",
         "DCP_AZURE_GUEST_ADMIN_USERNAME", "DCP_AZURE_LINUX_SSH_PUBLIC_KEY",
@@ -144,13 +145,39 @@ def inspect_environment(env: Mapping[str, str] | None = None) -> dict:
         if guest_profile_valid else "A valid guest administrator username and SSH Ed25519 public key are required",
     )
     subscription = values.get("DCP_AZURE_SUBSCRIPTION_ID", "")
+    runner_resource_group = values.get("DCP_AZURE_RESOURCE_GROUP", "")
+    network_resource_ids_valid = (
+        bool(re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", subscription))
+        and _resource_id(values.get("DCP_AZURE_SUBNET_ID", ""), subscription, "subnet")
+        and _resource_id(values.get("DCP_AZURE_NSG_ID", ""), subscription, "nsg")
+        and _resource_id(values.get("DCP_AZURE_ROUTE_TABLE_ID", ""), subscription, "route_table")
+        and _resource_id(values.get("DCP_AZURE_FIREWALL_ID", ""), subscription, "firewall")
+        and _resource_id(values.get("DCP_AZURE_FIREWALL_POLICY_ID", ""), subscription, "firewall_policy")
+        and all(
+            re.search(r"/resourceGroups/([^/]+)/", values.get(name, ""), re.I).group(1).lower()
+            != runner_resource_group.lower()
+            for name in (
+                "DCP_AZURE_SUBNET_ID", "DCP_AZURE_NSG_ID", "DCP_AZURE_ROUTE_TABLE_ID",
+                "DCP_AZURE_FIREWALL_ID", "DCP_AZURE_FIREWALL_POLICY_ID",
+            )
+        )
+    )
+    network_ids_present = all(_present(values, name) for name in (
+        "DCP_AZURE_SUBNET_ID", "DCP_AZURE_NSG_ID", "DCP_AZURE_ROUTE_TABLE_ID",
+        "DCP_AZURE_FIREWALL_ID", "DCP_AZURE_FIREWALL_POLICY_ID",
+    ))
+    add(
+        "azure_network_configuration",
+        "PASS" if network_resource_ids_valid else ("UNKNOWN" if not network_ids_present else "FAIL"),
+        "Subnet, NSG, route table, firewall and firewall policy IDs are valid and isolated from the runner resource group"
+        if network_resource_ids_valid else "Separate, valid Azure network resource IDs are required; configured values are not echoed",
+    )
     azure_valid = (
         azure_present
         and bool(re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", subscription))
         and bool(re.fullmatch(r"[A-Za-z0-9_.()-]{1,90}", values.get("DCP_AZURE_RESOURCE_GROUP", "")))
         and bool(re.fullmatch(r"[a-z0-9]+", values.get("DCP_AZURE_LOCATION", "")))
-        and _resource_id(values.get("DCP_AZURE_SUBNET_ID", ""), subscription, "subnet")
-        and _resource_id(values.get("DCP_AZURE_NSG_ID", ""), subscription, "nsg")
+        and network_resource_ids_valid
         and bool(re.fullmatch(r"[A-Za-z0-9_.-]{1,63}", values.get("DCP_AZURE_BUDGET_NAME", "")))
         and _valid_amount(values.get("DCP_AZURE_PROJECTED_RUN_COST_USD", ""))
         and all(re.fullmatch(r"[A-Za-z0-9_]+", values.get(name, "")) for name in
@@ -164,7 +191,7 @@ def inspect_environment(env: Mapping[str, str] | None = None) -> dict:
         "Azure resource IDs, budget projection, VM sizes, and pinned runner artifacts are syntactically valid"
         if azure_valid else "Azure configuration is missing or contains invalid identifiers/values; values are not echoed")
     add("azure_network_policy", "UNKNOWN",
-        "Subnet/NSG and effective egress policy require independent live verification")
+        "Live ARM inspection must verify subnet/NSG/UDR, Azure Firewall policy, DNS proxy and current GitHub Actions FQDN allowlist")
     add("azure_guest_profile", "UNKNOWN",
         "Guest login profile and protected bootstrap require deployment-specific verification")
 
