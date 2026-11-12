@@ -289,6 +289,32 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
         self.assertEqual(status, 404)
         self.assertEqual(len(self.gateway_requests), 0)
 
+    def test_forwards_csrf_protected_terminal_studio_actions(self):
+        requests = (
+            ("/api/terminal/commands/preview", {"template_id": "git.status", "parameters": {}}),
+            ("/api/terminal/templates/import", {"pack_id": "fixture-pack", "templates": []}),
+            (
+                "/api/terminal/templates/custom-example/review",
+                {"decision": "approve", "confirmation": "APPROVE", "source_sha256": "a" * 64},
+            ),
+        )
+        for path, payload in requests:
+            status, _ = self.post(path, payload)
+            self.assertEqual(status, 200)
+            self.assertEqual(self.gateway_requests[-1], path)
+            self.assertEqual(self.gateway_methods[-1], "POST")
+            self.assertEqual(json.loads(self.gateway_bodies[-1]), payload)
+
+    def test_terminal_studio_mutations_require_session_csrf_and_exact_routes(self):
+        path = "/api/terminal/commands/preview"
+        status, _ = self.post(path, {}, authenticated=False)
+        self.assertEqual(status, 403)
+        status, _ = self.post(path, {}, valid_csrf=False)
+        self.assertEqual(status, 403)
+        status, _ = self.post("/api/terminal/templates/not-custom/review", {})
+        self.assertEqual(status, 404)
+        self.assertEqual(len(self.gateway_requests), 0)
+
     def test_forwards_fake_infrastructure_create_lifecycle_and_delete(self):
         create_path = "/api/infrastructure"
         payload = {
