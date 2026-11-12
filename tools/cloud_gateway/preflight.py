@@ -13,6 +13,8 @@ import re
 from collections.abc import Mapping
 from urllib.parse import urlparse
 
+from .azure_guest_profile import AzureGuestProfileError, AzureGuestProfileFactory
+
 
 def _present(env: Mapping[str, str], name: str) -> bool:
     value = env.get(name, "")
@@ -124,8 +126,23 @@ def inspect_environment(env: Mapping[str, str] | None = None) -> dict:
         "DCP_AZURE_BUDGET_NAME", "DCP_AZURE_PROJECTED_RUN_COST_USD",
         "DCP_AZURE_LINUX_VM_SIZE", "DCP_AZURE_WINDOWS_VM_SIZE",
         "DCP_RUNNER_VERSION", "DCP_RUNNER_LINUX_SHA256", "DCP_RUNNER_WINDOWS_SHA256",
+        "DCP_AZURE_GUEST_ADMIN_USERNAME", "DCP_AZURE_LINUX_SSH_PUBLIC_KEY",
     )
     azure_present = all(_present(values, name) for name in azure_names)
+    guest_profile_present = all(_present(values, name) for name in (
+        "DCP_AZURE_GUEST_ADMIN_USERNAME", "DCP_AZURE_LINUX_SSH_PUBLIC_KEY",
+    ))
+    try:
+        AzureGuestProfileFactory.from_environment(values)
+        guest_profile_valid = True
+    except AzureGuestProfileError:
+        guest_profile_valid = False
+    add(
+        "azure_guest_profile_configuration",
+        "PASS" if guest_profile_valid else ("UNKNOWN" if not guest_profile_present else "FAIL"),
+        "Linux Ed25519 key and guest administrator username are syntactically valid"
+        if guest_profile_valid else "A valid guest administrator username and SSH Ed25519 public key are required",
+    )
     subscription = values.get("DCP_AZURE_SUBSCRIPTION_ID", "")
     azure_valid = (
         azure_present
@@ -141,6 +158,7 @@ def inspect_environment(env: Mapping[str, str] | None = None) -> dict:
         and bool(re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", values.get("DCP_RUNNER_VERSION", "")))
         and all(re.fullmatch(r"[a-fA-F0-9]{64}", values.get(name, "")) for name in
                 ("DCP_RUNNER_LINUX_SHA256", "DCP_RUNNER_WINDOWS_SHA256"))
+        and guest_profile_valid
     )
     add("azure_configuration_presence", "PASS" if azure_valid else ("UNKNOWN" if not azure_present else "FAIL"),
         "Azure resource IDs, budget projection, VM sizes, and pinned runner artifacts are syntactically valid"
