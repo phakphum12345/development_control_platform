@@ -92,21 +92,22 @@ class AzureProviderRuntimeTests(unittest.TestCase):
     def test_enabled_provider_requires_complete_config_and_all_independent_guards(self):
         settings = SimpleNamespace(provisioning_enabled=False)
         budget = SimpleNamespace(authorize=lambda active_count: None)
+        app = SimpleNamespace(create_registration_token=lambda repository: None)
         with self.assertRaises(ValueError):
-            build_azure_provider_runtime(settings, object(), lambda: True, object(), env=environment())
+            build_azure_provider_runtime(settings, app, lambda: True, object(), env=environment())
         with self.assertRaises(ValueError):
-            build_azure_provider_runtime(settings, None, None, object(), env=environment())
+            build_azure_provider_runtime(settings, None, None, budget, env=environment())
         with self.assertRaises(ValueError):
-            build_azure_provider_runtime(settings, object(), lambda: True, None, env=environment())
+            build_azure_provider_runtime(settings, app, lambda: True, None, env=environment())
         incomplete = environment()
         incomplete.pop("DCP_AZURE_FIREWALL_POLICY_ID")
         with self.assertRaises(ValueError):
             build_azure_provider_runtime(
-                settings, object(), lambda: True, budget, env=incomplete,
+                settings, app, lambda: True, budget, env=incomplete,
             )
         with self.assertRaises(ValueError):
             build_azure_provider_runtime(
-                settings, object(), lambda: True, budget, env=environment(),
+                settings, app, lambda: True, budget, env=environment(),
                 credential_factory=credential, arm_factory=arm,
                 egress_factory=lambda arm, env: None,
             )
@@ -116,7 +117,7 @@ class AzureProviderRuntimeTests(unittest.TestCase):
         settings = SimpleNamespace(provisioning_enabled=False)
         seen, credential, arm, egress = self.factories()
         budget = SimpleNamespace(authorize=lambda active_count: None)
-        app = object()
+        app = SimpleNamespace(create_registration_token=lambda repository: None)
         online = lambda *args: True
         values = environment()
         provider = build_azure_provider_runtime(
@@ -143,7 +144,7 @@ class AzureProviderRuntimeTests(unittest.TestCase):
         values["DCP_AZURE_PROVIDER_ENABLED"] = "sometimes"
         with self.assertRaises(ValueError):
             build_azure_provider_runtime(
-                settings, object(), lambda: True,
+                settings, SimpleNamespace(create_registration_token=lambda repository: None), lambda: True,
                 SimpleNamespace(authorize=lambda _: None), env=values,
             )
         values = environment()
