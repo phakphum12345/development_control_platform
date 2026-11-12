@@ -78,6 +78,12 @@ class OrkaTests(unittest.TestCase):
    self.assertEqual(p.status(name).state,"provisioning")
   with patch("tools.cloud_gateway.orka.urlopen",side_effect=[response({"status":"Running","userdataPhase":"failed","name":name}),response({"status":"Terminating"})]):
    self.assertEqual(p.status(name).state,"terminating")
+  p=self.make(lambda *args:False)
+  with patch("tools.cloud_gateway.orka.urlopen",side_effect=[response({"status":"Running","userdataPhase":"skipped","name":name}),response({"status":"Terminating"})]):
+   self.assertEqual(p.status(name).state,"terminating")
+  p=self.make(lambda *args:True)
+  with patch("tools.cloud_gateway.orka.urlopen",return_value=response({"status":"Running","userdataPhase":"skipped","name":name,"customMetadata":{"repository":"phakphum12345/generated-A4-pdf"}})):
+   self.assertEqual(p.status(name).state,"online")
  def test_provider_errors_do_not_echo_credentials(self):
   p=self.make_ready()
   with patch("tools.cloud_gateway.orka.urlopen",side_effect=HTTPError("url",401,"denied",{},None)):
