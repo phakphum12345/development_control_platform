@@ -1,5 +1,7 @@
 """Tests for protected Orka 4.0 User Data bootstrap generation."""
-import shutil\nimport subprocess\nimport unittest
+import shutil
+import subprocess
+import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
