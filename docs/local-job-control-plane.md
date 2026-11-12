@@ -261,7 +261,7 @@ The static RuntimeManager binds to `127.0.0.1`, serves only generated output, ch
 
 Playwright uses a fixed DCP-owned test plan, Chromium sandboxing, exact loopback HTTP origin routing, WebSocket blocking, WebRTC API denial and service-worker blocking. These browser controls are defense-in-depth, not OS-level process isolation or a host firewall. Only trusted projects on a suitably isolated Runner may be tested.
 
-The test evidence currently consists of three viewport screenshots, a JSON report and a bounded ZIP artifact. It does not include traces, cross-browser results, visual baselines, full WCAG conformance or authenticated preview-proxy browser coverage. See `docs/DCP-PLAYWRIGHT-TESTING.md` and `docs/DCP-ACCEPTANCE-TEST-PLAN.md`.
+The test evidence includes three viewport screenshots, a JSON report, a bounded ZIP artifact, and separate authenticated Preview Proxy browser fixture acceptance across Chromium, Firefox and WebKit (PR #96, merged to `main`). It still does not include traces, visual baselines, full WCAG conformance, or application-specific cross-browser compatibility. See `docs/DCP-PLAYWRIGHT-TESTING.md` and `docs/DCP-ACCEPTANCE-TEST-PLAN.md`.
 
 ## Lease retry and worker-crash policy
 
