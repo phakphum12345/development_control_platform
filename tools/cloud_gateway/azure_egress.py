@@ -402,7 +402,7 @@ class AzureEgressPolicyVerifier:
             raise AzureEgressPolicyError("Azure Firewall private IP is invalid") from exc
         firewall_subnet_pattern = (
             r"^/subscriptions/" + re.escape(self.arm.subscription_id)
-            + r"/resourceGroups/[A-Za-z0-9_.()-]{1,90}/providers/Microsoft\\.Network/"
+            + r"/resourceGroups/[A-Za-z0-9_.()-]{1,90}/providers/Microsoft\.Network/"
             r"virtualNetworks/[A-Za-z0-9_.()-]{1,90}/subnets/AzureFirewallSubnet$"
         )
         if not re.fullmatch(firewall_subnet_pattern, firewall_subnet_id, re.I):
