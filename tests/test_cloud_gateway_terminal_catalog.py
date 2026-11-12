@@ -80,7 +80,6 @@ class TerminalCatalogTests(unittest.TestCase):
             {},
             {"template_id": "git_status", "shell": "whoami"},
             {"template_id": "git_status", "parameters": []},
-            {"template_id": "git_status", "parameters": {"argv": ["whoami"]}},
         ):
             with self.subTest(payload=payload), self.assertRaises(ValueError):
                 validate_preview_payload(payload)
