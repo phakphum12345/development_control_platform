@@ -1,6 +1,7 @@
 """MacStadium Orka adapter. Runner-online evidence is checked separately from VM state."""
 from __future__ import annotations
 import base64,json,re,uuid
+from datetime import datetime,timedelta,timezone
 from urllib.error import HTTPError,URLError
 from urllib.parse import quote,urlparse
 from urllib.request import Request,urlopen
@@ -70,7 +71,12 @@ class OrkaProvider:
   name="dcp-"+str(payload["workflow_run_id"])+"-"+uuid.uuid4().hex[:8]
   bootstrap=self.bootstrap_factory(name,"macos",payload)
   script=bootstrap.get("script") if isinstance(bootstrap,dict) else None
-  if not isinstance(script,str) or not script or "\\x00" in script: raise OrkaError("Orka User Data bootstrap factory returned an invalid script")
+  expires_at=bootstrap.get("expires_at") if isinstance(bootstrap,dict) else None
+  if (
+   not isinstance(script,str) or not script or "\\x00" in script
+   or not isinstance(expires_at,datetime) or expires_at.tzinfo is None
+   or expires_at<=datetime.now(timezone.utc)+timedelta(minutes=1)
+  ): raise OrkaError("Orka User Data bootstrap script or short-lived credential expiry is invalid")
   userdata=base64.b64encode(script.encode("utf-8")).decode("ascii")
   if len(userdata)>65536: raise OrkaError("Orka User Data script exceeds the 64 KiB encoded limit")
   metadata={"managed-by":"dcp-cloud-runner","repository":payload["repository"],"workflow-run-id":str(payload["workflow_run_id"]),"commit-sha":payload["commit_sha"],"target-os":"macos"}
