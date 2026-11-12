@@ -86,7 +86,9 @@ Required topology and policy:
 - The allowlist must exactly match the current GitHub Actions FQDN catalog from
   `https://api.github.com/meta` (`domains.actions`) plus any explicit
   `DCP_AZURE_EGRESS_EXTRA_FQDNS` values. Broad wildcard rules, web categories,
-  FQDN tags, NAT collections and network allow rules are rejected.
+  FQDN tags, explicit deny collections, NAT collections and network allow
+  rules are rejected; unmatched traffic relies on Azure Firewall's implicit
+  deny behavior.
 - The NSG must not contain custom inbound allow rules. The VM adapter creates
   no public IP.
 
