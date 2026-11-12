@@ -48,6 +48,7 @@ class FakeRuntime:
             raise RuntimeError("bad capability")
         return {"runtime_id": runtime_id, "job_id": row["job_id"],
                 "state": row["state"], "port": row["port"],
+                "runtime_kind": row.get("runtime_kind", "static"),
                 "expires_in_seconds": 100}
     def stop(self, runtime_id, token):
         self.status(runtime_id, token)
