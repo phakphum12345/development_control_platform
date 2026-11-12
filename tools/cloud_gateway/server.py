@@ -444,26 +444,6 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                 if gate_store is None:
                     return self.send_json(503, {"error": "infrastructure gate store unavailable"})
                 return self.send_json(200, {"gates": gate_store.status(self.infrastructure_gate_readiness())})
-            if path == "/api/terminal/commands/preview":
-                identity = self.proxy_identity()
-                if not identity:
-                    return self.send_json(401, {"error": "authenticated session required"})
-                if identity.get("role") not in ("owner", "operator"):
-                    return self.send_json(403, {"error": "dashboard role required"})
-                if not self.same_origin():
-                    return self.send_json(403, {"error": "same-origin request required"})
-                if not self.csrf_valid(identity):
-                    return self.send_json(403, {"error": "CSRF validation failed"})
-                try:
-                    payload = self.body()
-                    if set(payload) != {"template_id"}:
-                        return self.send_json(400, {"error": "only template_id is accepted"})
-                    return self.send_json(200, {
-                        "preview": preview_terminal_template(payload["template_id"]),
-                        "execution_enabled": False,
-                    })
-                except ValueError as exc:
-                    return self.send_json(400, {"error": str(exc)})
             if path == "/api/infrastructure" or path.startswith("/api/infrastructure/"):
                 identity = self.proxy_identity()
                 if not identity:
@@ -765,6 +745,26 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                 except GateUnavailable as exc:
                     return self.send_json(503, {"error": str(exc)})
                 except InfrastructureGateError as exc:
+                    return self.send_json(400, {"error": str(exc)})
+            if path == "/api/terminal/commands/preview":
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if identity.get("role") not in ("owner", "operator"):
+                    return self.send_json(403, {"error": "dashboard role required"})
+                if not self.same_origin():
+                    return self.send_json(403, {"error": "same-origin request required"})
+                if not self.csrf_valid(identity):
+                    return self.send_json(403, {"error": "CSRF validation failed"})
+                try:
+                    payload = self.body()
+                    if set(payload) != {"template_id"}:
+                        return self.send_json(400, {"error": "only template_id is accepted"})
+                    return self.send_json(200, {
+                        "preview": preview_terminal_template(payload["template_id"]),
+                        "execution_enabled": False,
+                    })
+                except ValueError as exc:
                     return self.send_json(400, {"error": str(exc)})
             if path == "/api/infrastructure" or path.startswith("/api/infrastructure/"):
                 identity = self.proxy_identity()
