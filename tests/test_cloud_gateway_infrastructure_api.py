@@ -238,5 +238,50 @@ class InfrastructureApiTests(unittest.TestCase):
             caught.exception.close()
 
 
+    def test_terminal_catalog_and_preview_are_authenticated_and_inert(self):
+        status, catalog = self.request("GET", "/api/terminal/templates")
+        self.assertEqual(status, 200)
+        self.assertFalse(catalog["execution_enabled"])
+        templates = {item["id"]: item for item in catalog["templates"]}
+        self.assertIn("git_status", templates)
+        self.assertIn("python_version", templates)
+        self.assertTrue(all(not item["execution_enabled"] for item in templates.values()))
+
+        status, preview = self.request(
+            "POST", "/api/terminal/commands/preview",
+            payload={"template_id": "git_status"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            preview["preview"]["command_preview"], ["git", "status", "--short"]
+        )
+        self.assertEqual(preview["preview"]["status"], "PREVIEW_ONLY")
+        self.assertFalse(preview["execution_enabled"])
+
+    def test_terminal_preview_rejects_arbitrary_command_fields_and_unknown_templates(self):
+        status, result = self.request(
+            "POST", "/api/terminal/commands/preview",
+            payload={"template_id": "git_status", "command": "whoami"},
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("only template_id", result["error"])
+
+        status, result = self.request(
+            "POST", "/api/terminal/commands/preview",
+            payload={"template_id": "python -c"},
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("unknown terminal template", result["error"])
+
+    def test_terminal_catalog_denies_unauthenticated_access(self):
+        request = Request(self.base + "/api/terminal/templates")
+        with self.assertRaises(HTTPError) as caught:
+            urlopen(request)
+        try:
+            self.assertEqual(caught.exception.code, 401)
+        finally:
+            caught.exception.close()
+
+
 if __name__ == "__main__":
     unittest.main()
