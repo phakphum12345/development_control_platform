@@ -81,10 +81,11 @@ class AzureRunnerBootstrapFactory:
             f"if [ \"$(date +%s)\" -ge {token_expiry_epoch} ]; then echo 'Runner registration credential expired'; exit 1; fi",
             f"tar -xzf {shlex.quote(archive)}",
             "chown -R dcp-runner:dcp-runner /opt/dcp-actions-runner",
-            "runuser -u dcp-runner -- ./config.sh "
+            "if ! runuser -u dcp-runner -- ./config.sh "
             f"--unattended --url {shlex.quote('https://github.com/' + repository)} "
             f"--token {shlex.quote(token)} --name {shlex.quote(vm_name)} "
-            f"--labels {shlex.quote(label_arg)} --ephemeral --disableupdate",
+            f"--labels {shlex.quote(label_arg)} --ephemeral --disableupdate >/dev/null 2>&1; "
+            "then echo 'Runner configuration failed'; exit 1; fi",
             "./svc.sh install dcp-runner",
             "./svc.sh start",
             f"rm -f -- {shlex.quote(archive)}",
@@ -110,9 +111,10 @@ class AzureRunnerBootstrapFactory:
             f"if ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() -ge {token_expiry_epoch}) {{ throw 'Runner registration credential expired' }}",
             "Expand-Archive -LiteralPath $archive -DestinationPath $root -Force",
             "Set-Location $root",
-            f".\\config.cmd --unattended --url {ps('https://github.com/' + repository)} "
+            f"& .\\config.cmd --unattended --url {ps('https://github.com/' + repository)} "
             f"--token {ps(token)} --name {ps(vm_name)} --labels {ps(','.join(labels))} "
-            "--ephemeral --disableupdate",
+            "--ephemeral --disableupdate *> $null",
+            "if ($LASTEXITCODE -ne 0) { throw 'Runner configuration failed' }",
             "$taskScript = Join-Path $root 'start-runner.ps1'",
             "@'\nSet-Location -LiteralPath $PSScriptRoot\n& .\\run.cmd\nexit $LASTEXITCODE\n'@ | Set-Content -LiteralPath $taskScript -Encoding UTF8",
             "& icacls.exe $root /inheritance:r /grant 'SYSTEM:(OI)(CI)F' 'BUILTIN\\Administrators:(OI)(CI)F' 'NT AUTHORITY\\NETWORK SERVICE:(OI)(CI)M' | Out-Null",
