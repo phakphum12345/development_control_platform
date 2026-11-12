@@ -43,9 +43,12 @@ class InfrastructureApiTests(unittest.TestCase):
         self.origin = "https://dcp.example.test"
         store = RunnerStore(str(Path(self.temp.name) / "gateway.sqlite"))
         service = GatewayService(GatewaySettings(), store, NoopProvider())
+        self.infrastructure_store = InfrastructureStore(
+            Path(self.temp.name) / "infra.sqlite"
+        )
+        self.infrastructure_provider = FakeInfrastructureProvider()
         service.infrastructure_manager = InfrastructureManager(
-            InfrastructureStore(Path(self.temp.name) / "infra.sqlite"),
-            {"fake": FakeInfrastructureProvider()},
+            self.infrastructure_store, {"fake": self.infrastructure_provider},
         )
         self.server = ThreadingHTTPServer(
             ("127.0.0.1", 0),
@@ -97,6 +100,13 @@ class InfrastructureApiTests(unittest.TestCase):
             finally:
                 exc.close()
 
+    def assert_provider_and_inventory_state(self, resource_id, provider_resource_id,
+                                             expected_state):
+        inventory = self.infrastructure_store.get(resource_id)
+        provider = self.infrastructure_provider.resources[provider_resource_id]
+        self.assertEqual(inventory["state"], expected_state)
+        self.assertEqual(provider["state"], expected_state)
+
     def test_owner_can_create_list_start_stop_and_delete_fake_resource(self):
         status, created = self.request(
             "POST", "/api/infrastructure",
@@ -106,8 +116,12 @@ class InfrastructureApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 201)
         resource_id = created["id"]
+        provider_resource_id = created["provider_resource_id"]
         self.assertEqual(created["state"], "provisioned")
         self.assertEqual(created["provider_id"], "fake")
+        self.assert_provider_and_inventory_state(
+            resource_id, provider_resource_id, "provisioned"
+        )
 
         status, inventory = self.request("GET", "/api/infrastructure")
         self.assertEqual(status, 200)
@@ -118,16 +132,25 @@ class InfrastructureApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertEqual(running["state"], "running")
+        self.assert_provider_and_inventory_state(
+            resource_id, provider_resource_id, "running"
+        )
 
         status, stopped = self.request(
             "POST", "/api/infrastructure/" + resource_id + "/stop", payload={}
         )
         self.assertEqual(status, 200)
         self.assertEqual(stopped["state"], "stopped")
+        self.assert_provider_and_inventory_state(
+            resource_id, provider_resource_id, "stopped"
+        )
 
         status, deleted = self.request("DELETE", "/api/infrastructure/" + resource_id)
         self.assertEqual(status, 200)
         self.assertEqual(deleted["state"], "deleted")
+        self.assert_provider_and_inventory_state(
+            resource_id, provider_resource_id, "deleted"
+        )
 
     def test_operator_cannot_delete_resource(self):
         status, created = self.request(
