@@ -38,7 +38,7 @@ Acceptance evidence must be produced on the exact commit under review. A passing
 - This path tests the actual generated static runtime, but it starts RuntimeManager directly. It does **not** prove Playwright access through the authenticated Preview Proxy.
 - Trace capture, form/navigation interaction coverage, full WCAG conformance and visual baselines are not part of this implemented slice.
 
-### Required PR #71 acceptance
+### Historical PR #71 acceptance (superseded; not a current release gate)
 - Run the real Chromium smoke test with `chromium_sandbox=True` on the exact PR head commit.
 - Confirm that missing host sandbox support fails closed and produces actionable diagnostics; never use `--no-sandbox` as a workaround.
 - Confirm the JSON report and ZIP evidence are generated and uploaded for normal test completion; failed test or upload must not become PASS.
