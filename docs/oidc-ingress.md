@@ -116,11 +116,17 @@ The repository now includes a concrete reference integration:
 Configure oauth2-proxy as an OIDC provider with the exact issuer, client ID,
 audience, callback and cookie secret for the deployment. Required behavior:
 
-- Enable `--set-xauthrequest=true` and
-  `--oidc-groups-claim=groups`.
-- Ensure `X-Auth-Request-User` is the immutable OIDC `sub`, not an email or
-  mutable display name. Verify this against the selected provider before
-  deployment.
+- Pin a reviewed stable oauth2-proxy release and enable
+  `--provider=oidc`, `--reverse-proxy=true`,
+  `--set-xauthrequest=true`, `--oidc-groups-claim=groups`, and
+  `--upstream=static://202`.
+- Keep `--pass-user-headers=false` and `--pass-basic-auth=false`. The
+  `/oauth2/auth` response headers are consumed only by the signer; they are
+  never forwarded as user headers to the Gateway.
+- In oauth2-proxy's OIDC provider, `X-Auth-Request-User` must resolve to the
+  immutable OIDC `sub` claim (the normal OIDC user-claim default), not an
+  email or mutable display name. Verify the actual header from a test login;
+  do not rely on a configuration label alone.
 - Ensure `X-Auth-Request-Groups` contains the verified, stable group IDs used
   by the owner/operator mapping. Group overage or a missing groups claim must
   deny access rather than falling back to email.
@@ -128,6 +134,10 @@ audience, callback and cookie secret for the deployment. Required behavior:
   `--pass-authorization-header=false`, and
   `--set-authorization-header=false`; browser tokens are not forwarded to
   DCP.
+- Keep the oauth2-proxy cookie Secure and HttpOnly, use SameSite=Lax for the
+  OIDC top-level callback, and bind its HTTP listener to
+  `127.0.0.1:4180`. The separate DCP edge-session cookie is stricter
+  SameSite=Strict.
 - Use a Secure, HttpOnly OIDC cookie named `_oauth2_proxy` (or set
   `DCP_OIDC_PROXY_COOKIE_NAME` to the configured name), and keep oauth2-proxy
   bound to `127.0.0.1:4180`.
