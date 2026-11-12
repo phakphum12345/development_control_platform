@@ -438,7 +438,7 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
         (dist / "index.html").write_text(
             "<!doctype html><html lang='en'><head><meta name='viewport' "
             "content='width=device-width,initial-scale=1'><title>Preview Proxy Browser E2E</title>"
-            "<link rel='stylesheet' href='assets/site.css'></head>"
+            "<link rel='icon' href='data:,'><link rel='stylesheet' href='assets/site.css'></head>"
             "<body><main><h1 id='preview-ready'>Browser reached authenticated preview</h1>"
             "<button type='button'>Continue</button></main></body></html>",
             encoding="utf-8",
@@ -542,6 +542,11 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
         finally:
             if browser is not None:
                 browser.close()
+            if preview and csrf:
+                self.request(
+                    f"/api/jobs/{job['id']}/previews/{preview['runtime_id']}",
+                    "DELETE", csrf=csrf,
+                )
             if csrf:
                 self.request("/api/auth/logout", "POST", csrf=csrf)
 
