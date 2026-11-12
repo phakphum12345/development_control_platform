@@ -78,7 +78,10 @@ Required topology and policy:
   `disableBgpRoutePropagation` must be true, and no Internet or other bypass
   next hop is accepted.
 - The Azure Firewall is attached to the configured Firewall Policy and has one
-  verified private IP.
+  verified private IP in its dedicated `AzureFirewallSubnet` (/26 or larger)
+  within the same VNet as the runner subnet. Hub/spoke peering is not accepted
+  by this verifier until both sides of the peering and forwarded-traffic path
+  can be independently checked.
 - Firewall Policy DNS proxy is enabled with no custom DNS upstream, and the
   runner VNet DNS server list contains only that firewall private IP.
 - Inherited Firewall Policies are rejected. The verifier accepts only explicit
