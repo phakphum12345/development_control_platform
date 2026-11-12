@@ -407,9 +407,6 @@ class DashboardControlCenterV2Tests(unittest.TestCase):
                 self.assertIn(contract, HTML)
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
-
 
     def test_dashboard_build_job_gate_supports_verified_node_framework_targets(self):
         for contract in (
@@ -428,3 +425,6 @@ if __name__ == "__main__":
             'runnerUI.project.flutter.detected!==true){runnerText("build-job-result","BLOCKED: selected commit is not confirmed as a Flutter project.")',
             HTML,
         )
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
