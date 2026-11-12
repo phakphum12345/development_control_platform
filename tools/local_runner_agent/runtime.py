@@ -37,6 +37,7 @@ class _Runtime:
     worker_id: str
     port: int
     root: Path
+    runtime_kind: str
     process: subprocess.Popen
     log_path: Path
     token: str
@@ -67,7 +68,7 @@ class RuntimeManager:
 
     @staticmethod
     def _safe_output(workspace: Path, output_relative: str) -> Path:
-        if output_relative not in ("source/dist", "source/build/web", "dist", "build/web"):
+        if output_relative not in ("source/dist", "source/dist/browser", "source/build/web", "dist", "dist/browser", "build/web"):
             raise RuntimeErrorDCP("unsupported build output directory")
         candidate = workspace / output_relative
         current = workspace
@@ -204,13 +205,155 @@ class RuntimeManager:
 
         expires = time.monotonic() + self.session_ttl_seconds
         row = _Runtime(
-            runtime_id, job_id, worker_id, port, root, process, log_path, token,
+            runtime_id, job_id, worker_id, port, root, "static", process, log_path, token,
             expires, datetime.now(timezone.utc).isoformat(),
         )
         self._runtimes[runtime_id] = row
         return {
-            "runtime_id": runtime_id, "job_id": job_id, "state": "running",
+            "runtime_id": runtime_id, "job_id": job_id, "runtime_kind": "static", "state": "running",
             "url": url, "port": port, "expires_in_seconds": self.session_ttl_seconds,
+            "session_token": token, "started_at": row.started_at,
+            "bind_host": "127.0.0.1",
+        }
+
+
+    @staticmethod
+    def _safe_next_output(workspace: Path) -> Path:
+        source = workspace / "source"
+        output = source / ".next"
+        if source.is_symlink() or output.is_symlink() or not output.is_dir():
+            raise RuntimeErrorDCP("Next.js build output is missing or unsafe")
+        build_id = output / "BUILD_ID"
+        if build_id.is_symlink() or not build_id.is_file():
+            raise RuntimeErrorDCP("Next.js production BUILD_ID is missing or unsafe")
+        resolved = output.resolve(strict=True)
+        if workspace not in resolved.parents:
+            raise RuntimeErrorDCP("Next.js build output escaped its job workspace")
+        for current_dir, dirs, files in os.walk(output, followlinks=False):
+            base = Path(current_dir)
+            if any((base / name).is_symlink() for name in dirs + files):
+                raise RuntimeErrorDCP("Next.js build output contains a symlink")
+        return resolved
+
+    def start_next(self, job_id: str, worker_id: str, *, owner_approved: bool = False) -> dict:
+        """Start a trusted, already-built Next.js server after explicit Owner approval."""
+        if owner_approved is not True:
+            raise RuntimeErrorDCP("explicit Owner approval is required to run the Next.js server")
+        try:
+            workspace = self.workspaces.get(job_id, worker_id)
+            self.workspaces.check_quota(job_id, worker_id)
+        except WorkspaceError:
+            raise RuntimeErrorDCP("job workspace is not safe or available") from None
+        self.reap_expired()
+        if len(self._runtimes) >= self.max_active:
+            raise RuntimeErrorDCP("active runtime limit reached")
+        root = self._safe_next_output(workspace)
+        source = workspace / "source"
+        package = source / "package.json"
+        if package.is_symlink() or not package.is_file():
+            raise RuntimeErrorDCP("Next.js package manifest is missing or unsafe")
+        try:
+            package_info = package.lstat()
+            if not package_info.st_mode or package_info.st_size > 1024 * 1024:
+                raise RuntimeErrorDCP("Next.js package manifest is not a bounded regular file")
+            import json
+            manifest = json.loads(package.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            raise RuntimeErrorDCP("Next.js package manifest is invalid") from None
+        if not isinstance(manifest, dict):
+            raise RuntimeErrorDCP("Next.js package manifest must be an object")
+        dependencies = {}
+        for group in ("dependencies", "devDependencies", "optionalDependencies"):
+            values = manifest.get(group, {})
+            if isinstance(values, dict):
+                dependencies.update(values)
+        if not {"next", "react"}.issubset({str(name).lower() for name in dependencies}):
+            raise RuntimeErrorDCP("preinstalled Next.js and React dependencies are required")
+        cli = source / "node_modules" / "next" / "dist" / "bin" / "next"
+        parents = ("node_modules", "node_modules/next", "node_modules/next/dist", "node_modules/next/dist/bin")
+        if (cli.is_symlink() or not cli.is_file()
+                or any((source / part).is_symlink() for part in parents)):
+            raise RuntimeErrorDCP("preinstalled local Next.js CLI is missing or unsafe")
+        node = shutil.which("node")
+        if not node:
+            raise RuntimeErrorDCP("Node.js executable is unavailable")
+
+        port = self._allocate_port()
+        runtime_id = str(uuid.uuid4())
+        token = secrets.token_urlsafe(32)
+        log_dir = workspace / ".dcp-runtime"
+        if log_dir.is_symlink() or (log_dir.exists() and not log_dir.is_dir()):
+            raise RuntimeErrorDCP("runtime log directory is unsafe")
+        log_dir.mkdir(mode=0o700, exist_ok=True)
+        log_path = log_dir / f"{runtime_id}.log"
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(log_path, flags, 0o600)
+        log_handle = os.fdopen(fd, "wb")
+        env = {
+            "PATH": os.environ.get("PATH", ""),
+            "HOME": str(workspace / ".runner-home"),
+            "USERPROFILE": str(workspace / ".runner-home"),
+            "TMPDIR": str(workspace / ".tmp"),
+            "TEMP": str(workspace / ".tmp"),
+            "TMP": str(workspace / ".tmp"),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "NODE_ENV": "production",
+            "NEXT_TELEMETRY_DISABLED": "1",
+        }
+        for key in ("SystemRoot", "WINDIR", "COMSPEC", "PATHEXT"):
+            if os.name == "nt" and os.environ.get(key):
+                env[key] = os.environ[key]
+        (workspace / ".runner-home").mkdir(mode=0o700, exist_ok=True)
+        (workspace / ".tmp").mkdir(mode=0o700, exist_ok=True)
+        flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
+        try:
+            process = subprocess.Popen(
+                [node, str(cli), "start", "--hostname", "127.0.0.1", "--port", str(port)],
+                cwd=str(source), env=env, stdin=subprocess.DEVNULL,
+                stdout=log_handle, stderr=subprocess.STDOUT, shell=False,
+                close_fds=True, start_new_session=(os.name != "nt"),
+                creationflags=flags,
+            )
+        except OSError:
+            log_handle.close()
+            log_path.unlink(missing_ok=True)
+            raise RuntimeErrorDCP("local Next.js runtime could not be started") from None
+        finally:
+            if not log_handle.closed:
+                log_handle.close()
+
+        deadline = time.monotonic() + self.startup_timeout_seconds
+        healthy = False
+        url = f"http://127.0.0.1:{port}/"
+        while time.monotonic() < deadline and process.poll() is None:
+            try:
+                with urllib.request.urlopen(url, timeout=0.5) as response:
+                    healthy = 200 <= response.status < 500
+                if healthy:
+                    break
+            except urllib.error.HTTPError as exc:
+                healthy = 200 <= exc.code < 500
+                if healthy:
+                    break
+            except (OSError, urllib.error.URLError):
+                time.sleep(0.1)
+        if not healthy:
+            self._terminate(process)
+            log_path.unlink(missing_ok=True)
+            raise RuntimeErrorDCP("Next.js runtime failed its loopback health check")
+
+        expires = time.monotonic() + self.session_ttl_seconds
+        row = _Runtime(
+            runtime_id, job_id, worker_id, port, root, "next", process, log_path, token,
+            expires, datetime.now(timezone.utc).isoformat(),
+        )
+        self._runtimes[runtime_id] = row
+        return {
+            "runtime_id": runtime_id, "job_id": job_id, "runtime_kind": "next",
+            "state": "running", "url": url, "port": port,
+            "expires_in_seconds": self.session_ttl_seconds,
             "session_token": token, "started_at": row.started_at,
             "bind_host": "127.0.0.1",
         }
@@ -231,6 +374,7 @@ class RuntimeManager:
         running = row.process.poll() is None
         return {
             "runtime_id": row.runtime_id, "job_id": row.job_id,
+            "runtime_kind": row.runtime_kind,
             "state": "running" if running else "exited",
             "port": row.port, "bind_host": "127.0.0.1",
             "expires_in_seconds": max(0, int(row.expires_at - time.monotonic())),
@@ -264,6 +408,7 @@ class RuntimeManager:
         self.workspaces.get(job_id, worker_id)
         return [{
             "runtime_id": row.runtime_id, "job_id": row.job_id,
+            "runtime_kind": row.runtime_kind,
             "state": "running" if row.process.poll() is None else "exited",
             "port": row.port, "bind_host": "127.0.0.1",
             "started_at": row.started_at,
