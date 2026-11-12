@@ -97,7 +97,7 @@ The test uses `chromium_sandbox=True` and verifies:
 - computed style is applied and no browser console/page/request errors occur;
 - all browser requests remain on the local Auth Proxy origin;
 - a screenshot is captured;
-- stopping the preview makes the same browser URL return HTTP 404.
+- stopping the preview revokes the scoped cookie and makes the same browser URL unavailable.
 
 The API-level preview E2E separately verifies unauthenticated denial, cross-job
 denial, query rejection, owner CSRF-protected stop, logout denial, and that
