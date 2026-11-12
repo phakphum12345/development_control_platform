@@ -47,6 +47,21 @@ class JobStoreTests(unittest.TestCase):
                 self.assertTrue(created)
                 self.assertEqual(row["target"], target)
 
+    def test_runner_claim_target_filter_accepts_only_scheduled_next_and_angular_targets(self):
+        next_job, _ = self.store.create(
+            {**self.payload, "target": "build_next"}, "next-claim-job-01"
+        )
+        claimed = self.store.claim("web-runner", allowed_targets=["build_next"])
+        self.assertEqual(claimed["id"], next_job["id"])
+        self.assertEqual(claimed["target"], "build_next")
+
+        angular_job, _ = self.store.create(
+            {**self.payload, "target": "build_angular"}, "angular-claim-job-01"
+        )
+        self.assertIsNone(self.store.claim("vite-only-runner", allowed_targets=["build_vite"]))
+        claimed_angular = self.store.claim("angular-runner", allowed_targets=["build_angular"])
+        self.assertEqual(claimed_angular["id"], angular_job["id"])
+
     def test_local_folder_accepts_playwright_target_only_for_static_test_flow(self):
         payload = {
             "source_type": "local_folder",
