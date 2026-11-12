@@ -91,6 +91,7 @@ class AzureProviderRuntimeTests(unittest.TestCase):
 
     def test_enabled_provider_requires_complete_config_and_all_independent_guards(self):
         settings = SimpleNamespace(provisioning_enabled=False)
+        budget = SimpleNamespace(authorize=lambda active_count: None)
         with self.assertRaises(ValueError):
             build_azure_provider_runtime(settings, object(), lambda: True, object(), env=environment())
         with self.assertRaises(ValueError):
