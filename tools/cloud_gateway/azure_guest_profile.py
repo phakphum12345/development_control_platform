@@ -44,10 +44,11 @@ class AzureGuestProfileFactory:
             decoded = base64.b64decode(parts[1], validate=True)
         except (ValueError, base64.binascii.Error) as exc:
             raise AzureGuestProfileError("SSH public key encoding is invalid") from exc
-        if len(decoded) < 32 or len(decoded) > 1024:
-            raise AzureGuestProfileError("SSH public key payload has an invalid length")
-        if decoded[:4] != len(b"ssh-ed25519").to_bytes(4, "big") + b"ssh-ed25519":
-            raise AzureGuestProfileError("SSH key type does not match its OpenSSH prefix")
+        prefix = len(b"ssh-ed25519").to_bytes(4, "big") + b"ssh-ed25519"
+        if not decoded.startswith(prefix) or len(decoded) != len(prefix) + 4 + 32:
+            raise AzureGuestProfileError("SSH key type or Ed25519 key length is invalid")
+        if int.from_bytes(decoded[len(prefix):len(prefix) + 4], "big") != 32:
+            raise AzureGuestProfileError("SSH Ed25519 key payload length is invalid")
         return " ".join(parts[:3])
 
     @staticmethod
