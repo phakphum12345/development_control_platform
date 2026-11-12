@@ -92,6 +92,81 @@ class WebBuildExecutorTests(unittest.TestCase):
         self.assertEqual(packaged[1], "web-build.zip")
         self.assertTrue(packaged[0].is_file())
 
+
+    def test_next_requires_preinstalled_local_cli_and_react(self):
+        (self.source / "package.json").write_text(json.dumps({
+            "dependencies": {"next": "^15", "react": "^19"}
+        }), encoding="utf-8")
+        with self.assertRaises(ExecutionError):
+            WebBuildExecutor.command_for("build_next", self.source)
+        cli = self.source / "node_modules" / "next" / "dist" / "bin"
+        cli.mkdir(parents=True)
+        (cli / "next").write_text("", encoding="utf-8")
+        command = WebBuildExecutor.command_for("build_next", self.source)
+        self.assertEqual(command[1:], (str(cli / "next"), "build"))
+
+    def test_angular_requires_one_application_and_forces_workspace_dist_output(self):
+        (self.source / "package.json").write_text(json.dumps({
+            "dependencies": {"@angular/core": "^20"},
+            "devDependencies": {"@angular/cli": "^20"},
+        }), encoding="utf-8")
+        (self.source / "angular.json").write_text(json.dumps({
+            "projects": {
+                "sample-app": {
+                    "projectType": "application",
+                    "architect": {"build": {"builder": "@angular/build:application"}},
+                }
+            }
+        }), encoding="utf-8")
+        cli = self.source / "node_modules" / "@angular" / "cli" / "bin"
+        cli.mkdir(parents=True)
+        (cli / "ng.js").write_text("", encoding="utf-8")
+        command = WebBuildExecutor.command_for("build_angular", self.source)
+        self.assertEqual(
+            command[1:],
+            (str(cli / "ng.js"), "build", "sample-app", "--output-path", "dist"),
+        )
+
+    def test_angular_rejects_ambiguous_projects_and_symlinked_cli(self):
+        (self.source / "package.json").write_text(json.dumps({
+            "dependencies": {"@angular/core": "^20"},
+            "devDependencies": {"@angular/cli": "^20"},
+        }), encoding="utf-8")
+        (self.source / "angular.json").write_text(json.dumps({
+            "projects": {
+                "app-one": {"projectType": "application", "targets": {"build": {}}},
+                "app-two": {"projectType": "application", "targets": {"build": {}}},
+            }
+        }), encoding="utf-8")
+        cli = self.source / "node_modules" / "@angular" / "cli" / "bin"
+        cli.mkdir(parents=True)
+        (cli / "ng.js").write_text("", encoding="utf-8")
+        with self.assertRaisesRegex(ExecutionError, "exactly one"):
+            WebBuildExecutor.command_for("build_angular", self.source)
+        (self.source / "angular.json").write_text(json.dumps({
+            "defaultProject": "app-one",
+            "projects": {
+                "app-one": {"projectType": "application", "targets": {"build": {}}},
+                "app-two": {"projectType": "application", "targets": {"build": {}}},
+            }
+        }), encoding="utf-8")
+        self.assertEqual(WebBuildExecutor.command_for("build_angular", self.source)[3], "app-one")
+
+    def test_artifact_packager_uses_framework_specific_output_directories(self):
+        for target, output_name in (("build_next", ".next"), ("build_angular", "dist")):
+            with self.subTest(target=target):
+                output = self.source / output_name
+                output.mkdir()
+                (output / "BUILD_ID").write_text(target, encoding="utf-8")
+                artifact, name = WebArtifactPackager(self.manager).package(
+                    self.job, self.worker, target
+                )
+                self.assertEqual(name, "web-build.zip")
+                self.assertTrue(artifact.is_file())
+                artifact.unlink()
+                import shutil
+                shutil.rmtree(output)
+
     def test_vite_requires_node_and_unknown_framework_is_rejected(self):
         (self.source / "package.json").write_text(json.dumps({"dependencies": {"vite": "^7"}}), encoding="utf-8")
         cli = self.source / "node_modules" / "vite" / "bin"
