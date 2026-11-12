@@ -501,7 +501,16 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                     page.on("pageerror", lambda error: page_errors.append(str(error)))
                     page.on("requestfailed", lambda request: failed_requests.append(request.url))
                     page.on("request", lambda request: request_urls.append(request.url))
-    
+
+                    def capture_asset_response(response):
+                        if "site.css" in response.url:
+                            asset_responses.append({
+                                "url": response.url,
+                                "status": response.status,
+                                "content_type": response.headers.get("content-type"),
+                            })
+
+                    page.on("response", capture_asset_response)
                     response = page.goto(
                         self.base + preview["preview_path"],
                         wait_until="networkidle",
