@@ -502,11 +502,28 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                     page_errors = []
                     failed_requests = []
                     request_urls = []
+                    css_requests = []
                     asset_responses = []
                     page.on("console", lambda message: console_errors.append(message.text) if message.type == "error" else None)
                     page.on("pageerror", lambda error: page_errors.append(str(error)))
-                    page.on("requestfailed", lambda request: failed_requests.append(request.url))
-                    page.on("request", lambda request: request_urls.append(request.url))
+
+                    def capture_request(request):
+                        request_urls.append(request.url)
+                        if "site.css" in request.url:
+                            css_requests.append({
+                                "url": request.url,
+                                "headers": request.all_headers(),
+                            })
+
+                    def capture_failed_request(request):
+                        if "site.css" in request.url:
+                            failed_requests.append({
+                                "url": request.url,
+                                "failure": request.failure,
+                            })
+
+                    page.on("requestfailed", capture_failed_request)
+                    page.on("request", capture_request)
 
                     def capture_asset_response(response):
                         if "site.css" in response.url:
@@ -534,8 +551,9 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                     )
                     self.assertEqual(
                         css_color, "rgb(1, 2, 3)",
-                        "CSS diagnostics: responses=%r console=%r requests=%r" % (
-                            asset_responses, console_errors, request_urls
+                        "CSS diagnostics: responses=%r console=%r requests=%r css_requests=%r failed=%r cookies=%r" % (
+                            asset_responses, console_errors, request_urls, css_requests,
+                            failed_requests, context.cookies(self.base)
                         ),
                     )
                     self.assertEqual(len(asset_responses), 1)
