@@ -104,8 +104,6 @@ No status in this table proves that the user's local Windows Runner, local servi
 - PR #88: Dashboard Owner review and audit-history controls.
 
 All above status statements refer to merged code on main and the corresponding CI checks; they do not imply Terminal command execution is available.
-
-
 ## 2026-11-12 implementation checkpoint — Next.js and Angular build targets
 
 - Added Local Runner build targets for Next.js and Angular using preinstalled local CLIs and fixed argv; DCP does not install dependencies or invoke package-manager lifecycle scripts.
