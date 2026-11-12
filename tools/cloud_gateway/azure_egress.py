@@ -119,6 +119,7 @@ class AzureEgressPolicyVerifier:
         extra_fqdns=(),
     ):
         self.arm = arm
+        self.last_error = None
         self.route_table_id = route_table_id
         self.firewall_id = firewall_id
         self.firewall_policy_id = firewall_policy_id
@@ -404,6 +405,12 @@ class AzureEgressPolicyVerifier:
 
     def __call__(self, os_name: str, subnet_id: str, nsg_id: str) -> bool:
         try:
-            return self.verify(os_name, subnet_id, nsg_id) is True
+            result = self.verify(os_name, subnet_id, nsg_id) is True
+            self.last_error = None
+            return result
+        except AzureEgressPolicyError as exc:
+            self.last_error = str(exc)[:240]
+            return False
         except Exception:
+            self.last_error = "Unexpected Azure egress verification failure"
             return False
