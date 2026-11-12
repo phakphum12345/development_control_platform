@@ -14,6 +14,7 @@ from tools.cloud_gateway.server import make_handler
 from tools.local_runner_agent.client import GatewayClient, RunnerAgentConfig
 from tools.local_runner_agent.execution import FlutterBuildExecutor
 from tools.local_runner_agent.pipeline import RunnerPipeline
+from tools.local_runner_agent.service import RunnerAgentService
 from tools.local_runner_agent.workspace import WorkspaceManager
 from tools.local_runner_agent.local_project import LocalProjectRegistry
 from tools.local_runner_agent.checkout import LocalProjectCheckout
@@ -80,6 +81,52 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
         executable.write_text(script)
         executable.chmod(0o700)
         return str(bin_dir) + os.pathsep + os.environ.get("PATH", "")
+
+    def test_unified_client_enrolls_offline_then_registers_for_claims(self):
+        job, _ = self.jobs.create({
+            "repository": "owner/mobile-app",
+            "commit_sha": "d" * 40,
+            "target": "test",
+        }, "runner-unified-enroll-001")
+
+        offline = self.client.enroll("linux", ["flutter", "linux"])
+        self.assertEqual(offline["worker_id"], "runner-e2e")
+        self.assertEqual(offline["state"], "offline")
+        self.assertEqual(self.registry.allowed_targets("runner-e2e"), [])
+        self.assertIsNone(self.client.claim(30))
+        self.assertEqual(self.jobs.get(job["id"])["state"], "queued")
+
+        live = self.client.register("linux", ["flutter", "linux"])
+        self.assertEqual(live["state"], "online")
+        claimed = self.client.claim(30)
+        self.assertEqual(claimed["id"], job["id"])
+        self.assertEqual(claimed["state"], "running")
+
+    def test_supervisor_polls_idle_gateway_until_shutdown_without_claiming_code(self):
+        stop = threading.Event()
+        waits = []
+
+        def wait(seconds):
+            waits.append(seconds)
+            if len(waits) == 2:
+                stop.set()
+
+        pipeline = RunnerPipeline(
+            self.client, self.manager, _FixtureCheckout(self.manager),
+            FlutterBuildExecutor(self.manager, enabled=False),
+            trusted_repositories={"owner/mobile-app"},
+            capabilities={"flutter", "linux", "android"},
+        )
+        result = RunnerAgentService(
+            pipeline, poll_interval_seconds=1, wait=wait
+        ).run(stop)
+
+        self.assertTrue(result["stopped"])
+        self.assertEqual(result["reason"], "stop_requested")
+        self.assertEqual(result["idle_polls"], 2)
+        self.assertEqual(result["jobs_processed"], 0)
+        self.assertEqual(waits, [1, 1])
+        self.assertEqual(self.registry.get("runner-e2e")["state"], "online")
 
     @unittest.skipIf(os.name == "nt", "POSIX fixture executable used for deterministic process tests")
     def test_job_runs_from_claim_through_checkout_flutter_and_terminal_state(self):
