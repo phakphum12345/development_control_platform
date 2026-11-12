@@ -147,6 +147,8 @@ class AzureVMProvider:
    return RunnerInstance(provider_id,"terminating",provider_id,detail="failed VM cleanup requested")
   if state in ("deleting","terminated"):
    return RunnerInstance(provider_id,"terminating",provider_id)
+  if state!="succeeded":
+   return RunnerInstance(provider_id,"provisioning",provider_id,detail="Azure VM provisioning is not complete")
   tags=data.get("tags",{})
   extension_name=tags.get("bootstrap-extension") if isinstance(tags,dict) else None
   resources=data.get("resources",[])
