@@ -173,15 +173,14 @@ class WebBuildExecutorTests(unittest.TestCase):
         bindir = self.root / "bin"
         bindir.mkdir()
         node = bindir / "node"
-        node.write_text(
-            "#!/bin/sh\\n"
-            "case \\"$1\\" in\\n"
-            "  *next) mkdir -p .next; printf next-build > .next/BUILD_ID ;;\\n"
-            "  *ng.js) mkdir -p dist; printf '<h1>angular</h1>' > dist/index.html ;;\\n"
-            "  *) exit 19 ;;\\n"
-            "esac\\n"
-            "printf 'framework-build-ok\\n'\\n"
-        )
+        node.write_text("""#!/bin/sh
+case "$1" in
+  *next) mkdir -p .next; printf next-build > .next/BUILD_ID ;;
+  *ng.js) mkdir -p dist; printf '<h1>angular</h1>' > dist/index.html ;;
+  *) exit 19 ;;
+esac
+printf 'framework-build-ok\\n'
+""", encoding="utf-8")
         node.chmod(0o700)
         old_path = os.environ.get("PATH", "")
         os.environ["PATH"] = str(bindir) + os.pathsep + old_path
