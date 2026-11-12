@@ -40,6 +40,11 @@ def _valid_fqdn_pattern(value: str) -> bool:
     domain = value[2:] if value.startswith("*.") else value
     if "*" in domain or domain.startswith(".") or domain.endswith(".") or ".." in domain:
         return False
+    try:
+        ipaddress.ip_address(domain)
+        return False
+    except ValueError:
+        pass
     labels = domain.split(".")
     if len(labels) < 2:
         return False
