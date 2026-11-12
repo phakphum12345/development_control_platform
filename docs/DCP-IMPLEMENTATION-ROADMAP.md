@@ -167,3 +167,11 @@ Do not merge PR #71 until the real Chromium sandbox test, Dashboard browser smok
 - JobStore validation, Runner Registry capability advertisement, Scheduler target policy, Local Runner pipeline dispatch and Dashboard Build Jobs selector include both targets.
 - No dependency installation or package-manager lifecycle script is introduced.
 - Next.js server runtime/SSR preview and broad cross-framework acceptance remain outstanding.
+
+
+## 2026-11-12 Dashboard build-target integration
+
+- GitHub App project inspection now drives the Build Jobs selector: Flutter targets require a detected Flutter project; Vite, Next.js and Angular targets require a Node project classification.
+- The Local Runner remains authoritative: it checks the exact package manifest, framework dependencies and preinstalled local CLI before executing fixed argv.
+- The Dashboard does not install dependencies or infer toolchain readiness from a manifest. Truncated/unknown inspections keep build submission disabled.
+- Build target changes immediately recompute the UI gate; API and Runner policy remain authoritative.
