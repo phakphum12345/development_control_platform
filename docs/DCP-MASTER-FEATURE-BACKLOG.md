@@ -16,7 +16,7 @@ Status labels describe the evidence-backed state recorded in the dated updates b
 | BUILD-01 | Flutter fixed-target executor | EXISTING/PARTIAL | P1 | Opt-in, trusted-repository allowlist, disabled by default; verify artifacts and cleanup. |
 | BUILD-02 | Generic web build adapters | PARTIAL | P0 | Static HTML/JS, React/Vite, Vue/Vite, Next.js and Angular build targets implemented using preinstalled local CLIs; dependency installation, SSR runtime/preview and broader framework coverage remain. |
 | RUN-01 | Runtime Manager | IMPLEMENTED (STATIC SLICE) | P0 | Loopback-only static runtime supervisor with ephemeral port, health check, bounded logs, expiring session capability and owned-process cleanup. Arbitrary project servers remain unsupported. |
-| RUN-02 | Authenticated static preview proxy | PARTIAL | P0 | Owner-authenticated Auth Proxy → Gateway → Preview Manager → Runtime Manager flow and real API E2E are implemented for completed static jobs. Dashboard workflow coverage and arbitrary server/HMR/WebSocket support remain limited. |
+| RUN-02 | Authenticated preview proxy | PARTIAL | P0 | Owner-authenticated static and Next.js loopback runtime support now exists for completed trusted jobs; explicit Owner approval is required for Next.js code execution. Dashboard workflow coverage, broader server types, HMR/WebSocket and network isolation remain outstanding. |
 | TERM-01 | Terminal Studio UI | PARTIAL | P1 | Dashboard Command Library, exact argv preview, JSON import and Owner review/audit controls exist. Interactive terminal sessions, streamed process output, stop and job history remain missing. |
 | TERM-02 | Import Command / Template Library | PARTIAL | P1 | Strict v1 JSON command packs persist as inert SQLite templates with source SHA-256 and audit; imported items remain disabled pending review. Clipboard/text and script-file import are not implemented. |
 | TERM-03 | Visual Command Builder | MISSING | P1 | A curated catalog and argv preview exist, but a visual typed builder and parameterized task forms are not implemented. |
@@ -113,3 +113,13 @@ All above status statements refer to merged code on main and the corresponding C
 - Angular project selection requires one application build target or an explicit valid default project; ambiguous projects fail closed.
 - Job queue validation, runner capability scheduling and Dashboard build-target selection include both frameworks.
 - These targets execute trusted project build/configuration code and remain behind existing Runner execution opt-in and trusted-source allowlists. Next.js SSR runtime/preview is not included.
+
+
+## 2026-11-12 implementation checkpoint — Next.js loopback preview runtime
+
+- Added a fixed local Next.js production-server launch path for completed build_next jobs.
+- Starting Next.js requires an authenticated Owner request with confirm_code_execution=true; the Gateway rejects other roles, other job targets and missing confirmation.
+- Next.js is bound to 127.0.0.1, uses a fixed local CLI argv with shell=False, receives a reduced environment, has bounded logs/TTL, and is stopped through process-tree supervision.
+- Runtime session capabilities remain server-side behind the authenticated same-origin Preview Proxy.
+- Angular static preview accepts the generated dist/browser output.
+- This is trusted-code execution, not an OS sandbox. Outbound network access by the application is not blocked; only trusted repositories/local projects should be built and previewed. The Owner must explicitly approve starting the Next server.
