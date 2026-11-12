@@ -86,7 +86,8 @@ class GatewayPreflightTests(unittest.TestCase):
             "gateway_api_token", "trusted_proxy", "owner_approval",
             "repository_allowlist", "github_app_configuration",
             "azure_configuration_presence", "azure_guest_profile_configuration",
-            "azure_network_configuration", "orka_configuration_presence",
+            "azure_network_configuration", "azure_extra_egress_domains",
+            "orka_configuration_presence",
         ):
             self.assertEqual(checks[name]["status"], "PASS", name)
         self.assertEqual(checks["azure_network_policy"]["status"], "UNKNOWN")
@@ -132,6 +133,15 @@ class GatewayPreflightTests(unittest.TestCase):
         self.assertEqual(result["overall"], "FAIL")
 
 
+
+
+    def test_invalid_extra_egress_domain_fails_preflight(self):
+        env = valid_environment()
+        env["DCP_AZURE_EGRESS_EXTRA_FQDNS"] = "*.com"
+        result = inspect_environment(env)
+        checks = {item["check"]: item for item in result["checks"]}
+        self.assertEqual(checks["azure_extra_egress_domains"]["status"], "FAIL")
+        self.assertEqual(checks["azure_configuration_presence"]["status"], "FAIL")
 
     def test_invalid_firewall_or_route_table_resource_ids_fail_preflight(self):
         env = valid_environment()
