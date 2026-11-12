@@ -73,6 +73,8 @@ class AzureRunnerBootstrapFactory:
             "umask 077",
             f"if [ \"$(date +%s)\" -ge {token_expiry_epoch} ]; then echo 'Runner registration credential expired'; exit 1; fi",
             "id dcp-runner >/dev/null 2>&1 || useradd --system --create-home --shell /bin/bash dcp-runner",
+            "if id -nG dcp-runner | grep -Eq '(^| )(sudo|wheel|admin)( |$)'; then echo 'Runner account must not be privileged'; exit 1; fi",
+            "if sudo -l -U dcp-runner 2>/dev/null | grep -Eq '^[[:space:]]*\\('; then echo 'Runner account must not have sudo privileges'; exit 1; fi",
             "install -d -o dcp-runner -g dcp-runner -m 0750 /opt/dcp-actions-runner",
             "cd /opt/dcp-actions-runner",
             f"for attempt in 1 2 3 4 5 6; do if curl --fail --location --silent --show-error --connect-timeout 10 --max-time 120 {shlex.quote(url)} --output {shlex.quote(archive)}; then break; fi; rm -f -- {shlex.quote(archive)}; sleep 5; done",
