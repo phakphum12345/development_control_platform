@@ -37,7 +37,7 @@ from tools.project_intelligence import DiscoveryError, discover_project
 from tools.local_runner_agent.workspace import WorkspaceManager
 from tools.local_runner_agent.runtime import RuntimeManager
 from .preview import AuthenticatedPreviewManager, PreviewError
-from .terminal_catalog import list_templates as list_terminal_templates, preview_template as preview_terminal_template
+from .terminal_catalog import (list_templates as list_terminal_templates, preview_template as preview_terminal_template, validate_preview_payload)
 from .terminal_templates import (TerminalTemplateConflict, TerminalTemplateError, TerminalTemplateNotFound, TerminalTemplateStore)
 
 
@@ -837,14 +837,7 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                     return self.send_json(403, {"error": "CSRF validation failed"})
                 try:
                     payload = self.body()
-                    if (not isinstance(payload, dict)
-                            or "template_id" not in payload
-                            or not set(payload).issubset({"template_id", "parameters"})):
-                        return self.send_json(400, {"error": "only template_id and optional parameters are accepted"})
-                    template_id = payload["template_id"]
-                    parameters = payload.get("parameters", {})
-                    if not isinstance(parameters, dict):
-                        return self.send_json(400, {"error": "parameters must be an object"})
+                    template_id, parameters = validate_preview_payload(payload)
                     try:
                         preview = preview_terminal_template(template_id, parameters)
                     except ValueError as exc:
