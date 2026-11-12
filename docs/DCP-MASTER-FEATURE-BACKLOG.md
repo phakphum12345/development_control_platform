@@ -14,7 +14,7 @@ Status labels describe the evidence-backed state recorded in the dated updates b
 | IMP-02 | Local Folder import via Local Agent | PARTIAL | P0 | Local registry, explicit CLI enrollment, owner-only read APIs, Dashboard source selection and verified snapshot materialization exist; durable job binding and runner integration remain. |
 | IMP-03 | Framework/toolchain detection | PARTIAL | P0 | Existing bounded inventory now reports evidence-based framework, package manager, manifest constraints and scripts; installed toolchain readiness and job integration remain. |
 | BUILD-01 | Flutter fixed-target executor | EXISTING/PARTIAL | P1 | Opt-in, trusted-repository allowlist, disabled by default; verify artifacts and cleanup. |
-| BUILD-02 | Generic web build adapters | PARTIAL | P0 | Static HTML/JS and React/Vite + Vue/Vite Local Runner targets implemented; dashboard UX, host acceptance and broader build matrix remain. |
+| BUILD-02 | Generic web build adapters | PARTIAL | P0 | Static HTML/JS, React/Vite, Vue/Vite, Next.js and Angular build targets implemented using preinstalled local CLIs; dependency installation, SSR runtime/preview and broader framework coverage remain. |
 | RUN-01 | Runtime Manager | IMPLEMENTED (STATIC SLICE) | P0 | Loopback-only static runtime supervisor with ephemeral port, health check, bounded logs, expiring session capability and owned-process cleanup. Arbitrary project servers remain unsupported. |
 | RUN-02 | Authenticated static preview proxy | PARTIAL | P0 | Owner-authenticated Auth Proxy → Gateway → Preview Manager → Runtime Manager flow and real API E2E are implemented for completed static jobs. Dashboard workflow coverage and arbitrary server/HMR/WebSocket support remain limited. |
 | TERM-01 | Terminal Studio UI | PARTIAL | P1 | Dashboard Command Library, exact argv preview, JSON import and Owner review/audit controls exist. Interactive terminal sessions, streamed process output, stop and job history remain missing. |
@@ -78,7 +78,7 @@ Review branch: `feature/real-project-playwright-testing`
 Reviewed source baseline before diagnostics update: `52a99f2403c7ffc5c8d82fe44cbb477f8189b325`.  
 A follow-up commit adds bounded Chromium launch diagnostics; its CI result must be checked separately.
 
-- `BUILD-02`: static HTML/CSS/JS and React/Vite + Vue/Vite build adapters are implemented on the merged Universal Web Build Engine slice. Dependency installation remains explicit and is not performed by DCP.
+- `BUILD-02`: static HTML/CSS/JS, React/Vite, Vue/Vite, Next.js and Angular build adapters are implemented as Local Runner targets using preinstalled CLIs. DCP does not install dependencies. Next.js server runtime/preview and broader framework coverage remain outstanding.
 - `RUN-01`: static loopback runtime supervision is implemented. It is not a general project-server runtime.
 - `RUN-02`: authenticated static Preview Proxy primitives exist, but the PR #71 Playwright path starts RuntimeManager directly and does not exercise that proxy.
 - `TEST-01`: DCP-owned `test_static_web` implementation and tests exist. The latest observed CI run `43047243795` passed the Python contract suite (508 tests) and browser installation, then failed when sandboxed Chromium launched. Dashboard browser smoke and registry validation were skipped after that failure. Windows dynamic-port and Windows Auth Proxy/Gateway checks passed; self-hosted Windows Runner acceptance was skipped.
@@ -104,3 +104,13 @@ No status in this table proves that the user's local Windows Runner, local servi
 - PR #88: Dashboard Owner review and audit-history controls.
 
 All above status statements refer to merged code on main and the corresponding CI checks; they do not imply Terminal command execution is available.
+
+
+## 2026-11-12 implementation checkpoint — Next.js and Angular build targets
+
+- Added Local Runner build targets for Next.js and Angular using preinstalled local CLIs and fixed argv; no package-manager scripts or dependency installation are invoked by DCP.
+- Next.js output is packaged from `.next/`; Angular output is forced to `dist/` and packaged.
+- Angular projects must identify one application build target (or an explicit default project); ambiguous projects fail closed.
+- Job queue validation, runner capability scheduling and Dashboard build-target selection now include both frameworks.
+- These targets execute trusted project build/configuration code and therefore remain behind existing Runner execution opt-in and trusted-repository/local-project allowlists. They are not available for untrusted public source.
+- Next.js SSR runtime/preview is not included in this increment.
