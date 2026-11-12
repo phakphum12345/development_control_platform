@@ -12,6 +12,7 @@ import os
 import secrets
 import shutil
 import signal
+import stat
 import socket
 import subprocess
 import sys
@@ -254,7 +255,7 @@ class RuntimeManager:
             raise RuntimeErrorDCP("Next.js package manifest is missing or unsafe")
         try:
             package_info = package.lstat()
-            if not package_info.st_mode or package_info.st_size > 1024 * 1024:
+            if not stat.S_ISREG(package_info.st_mode) or package_info.st_size > 1024 * 1024:
                 raise RuntimeErrorDCP("Next.js package manifest is not a bounded regular file")
             import json
             manifest = json.loads(package.read_text(encoding="utf-8"))
