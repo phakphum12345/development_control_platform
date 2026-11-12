@@ -114,3 +114,11 @@ The corrected implementation passed both PR workflows on head `ab8c558ee4d82f940
 - Migrated Start-DCP-Gateway-Runner.ps1 from the legacy agent to tools.local_runner_agent.
 - Added explicit trusted GitHub repository and Local Project ID allowlists; the launcher defaults to offline enrollment and never enables Playwright implicitly.
 - Added CLI, service, client, launcher-contract and Windows PowerShell parser tests.
+
+
+## Authenticated Preview Proxy browser acceptance — 2026-11-12
+
+- Real Chromium now opens the owner-authenticated, same-origin preview URL created through Local Auth Proxy; the test does not access the RuntimeManager upstream port directly.
+- A short-lived HttpOnly/Secure cookie is scoped to one job/runtime content path and revoked on preview stop, owner logout or expiry.
+- Runtime bearer capability and upstream port remain server-side. Sandboxed Chromium validates content, relative CSS, request behavior, screenshot evidence and denial after stop.
+- Cross-owner identity coverage, visual baselines, trace evidence and cross-browser engines remain outstanding.
