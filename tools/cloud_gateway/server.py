@@ -37,7 +37,7 @@ from tools.project_intelligence import DiscoveryError, discover_project
 from tools.local_runner_agent.workspace import WorkspaceManager
 from tools.local_runner_agent.runtime import RuntimeManager
 from .preview import AuthenticatedPreviewManager, PreviewError
-from .terminal_catalog import list_templates as list_terminal_templates, preview_template as preview_terminal_template
+from .terminal_catalog import (list_templates as list_terminal_templates, preview_template as preview_terminal_template, validate_preview_payload)
 from .terminal_templates import (TerminalTemplateConflict, TerminalTemplateError, TerminalTemplateNotFound, TerminalTemplateStore)
 
 
@@ -837,12 +837,14 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                     return self.send_json(403, {"error": "CSRF validation failed"})
                 try:
                     payload = self.body()
-                    if set(payload) != {"template_id"}:
-                        return self.send_json(400, {"error": "only template_id is accepted"})
-                    template_id = payload["template_id"]
+                    template_id, parameters = validate_preview_payload(payload)
                     try:
-                        preview = preview_terminal_template(template_id)
-                    except ValueError:
+                        preview = preview_terminal_template(template_id, parameters)
+                    except ValueError as exc:
+                        if str(exc) != "unknown terminal template":
+                            raise
+                        if parameters:
+                            raise ValueError("imported templates do not accept parameters")
                         template_store = self.terminal_template_store()
                         imported = template_store.get_imported(template_id) if template_store else None
                         if imported is None:

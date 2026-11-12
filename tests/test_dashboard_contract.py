@@ -4,6 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HTML = (ROOT / "dashboard" / "index.html").read_text(encoding="utf-8")
+SERVER = (ROOT / "tools" / "cloud_gateway" / "server.py").read_text(encoding="utf-8")
 
 
 class DashboardContractTests(unittest.TestCase):
@@ -76,7 +77,7 @@ class DashboardContractTests(unittest.TestCase):
             'function projectImportVerifyCommit()',
             'function projectImportInspectProject()',
             'Absolute host paths are not returned by the API',
-            'does not yet create an immutable job snapshot',
+            'Snapshot SHA-256',
         ):
             with self.subTest(expected=expected):
                 self.assertIn(expected, HTML)
@@ -405,6 +406,42 @@ class DashboardControlCenterV2Tests(unittest.TestCase):
         ):
             with self.subTest(contract=contract):
                 self.assertIn(contract, HTML)
+
+
+
+    def test_dashboard_build_job_gate_supports_verified_node_framework_targets(self):
+        for contract in (
+            "function runnerProjectSupportsTarget(project,target)",
+            '["build_vite","build_next","build_angular"].includes(target)',
+            'types.includes("node")',
+            "runnerUI.project.repository===repository",
+            "runnerUI.project.commit_sha===sha",
+            "runnerProjectSupportsTarget(runnerUI.project,target)",
+            '$("build-job-target").addEventListener("change",buildJobsUpdateGate)',
+            "DCP does not install dependencies.",
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, HTML)
+        self.assertNotIn(
+            'runnerUI.project.flutter.detected!==true){runnerText("build-job-result","BLOCKED: selected commit is not confirmed as a Flutter project.")',
+            HTML,
+        )
+
+    def test_terminal_visual_command_builder_is_typed_and_preview_only(self):
+        for contract in (
+            'id="terminal-builder-fields"',
+            "function terminalStudioRenderBuilder()",
+            "function terminalStudioCollectParameters()",
+            '["integer","commit_sha"].includes(spec.type)',
+            'parameters:terminalStudioCollectParameters()',
+            'terminalStudioRenderBuilder();$("terminal-preview").disabled',
+            "ไม่มี Shell/PTY",
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, HTML)
+        self.assertIn("validate_preview_payload(payload)", SERVER)
+        self.assertIn("preview_terminal_template(template_id, parameters)", SERVER)
+        self.assertIn("imported templates do not accept parameters", SERVER)
 
 
 if __name__ == "__main__":

@@ -353,7 +353,7 @@ class InfrastructureApiTests(unittest.TestCase):
 
         status, result = self.request(
             "POST", "/api/terminal/commands/preview",
-            payload={"template_id": "python -c"},
+            payload={"template_id": "not_a_template"},
         )
         self.assertEqual(status, 400)
         self.assertIn("unknown terminal template", result["error"])
