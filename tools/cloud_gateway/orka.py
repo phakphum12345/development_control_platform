@@ -11,7 +11,7 @@ class OrkaProvider:
  budget_provider="orka"
  requires_runner_cleanup=True
  requires_budget_guard=True
- def __init__(self,base_url,namespace,vm_config,secret_reader,secret_name="orka-api-token",runner_online_checker=None,timeout=20,bootstrap_factory=None,userdata_rbac_reviewed=False,network_policy_checker=None,cluster_readiness_checker=None,budget_readiness_checker=None):
+ def __init__(self,base_url,namespace,vm_config,secret_reader,secret_name="orka-api-token",runner_online_checker=None,timeout=20,bootstrap_factory=None,userdata_rbac_reviewed=False,userdata_exposure_reviewed=False,network_policy_checker=None,cluster_readiness_checker=None,budget_readiness_checker=None):
   parsed=urlparse(base_url)
   if parsed.scheme!="https" or not parsed.hostname or parsed.username is not None or parsed.password is not None or parsed.path not in ("","/") or parsed.query or parsed.fragment: raise ValueError("Orka endpoint must be an HTTPS origin")
   if not re.fullmatch(r"[a-z0-9]([-a-z0-9]*[a-z0-9])?",namespace): raise ValueError("Invalid Orka namespace")
@@ -20,6 +20,7 @@ class OrkaProvider:
   self.base=base_url.rstrip("/"); self.namespace=namespace; self.vm_config=vm_config
   self.secret_reader=secret_reader; self.secret_name=secret_name; self.online=runner_online_checker; self.timeout=timeout
   self.bootstrap_factory=bootstrap_factory; self.userdata_rbac_reviewed=userdata_rbac_reviewed is True
+  self.userdata_exposure_reviewed=userdata_exposure_reviewed is True
   self.network_policy_checker=network_policy_checker
   self.cluster_readiness_checker=cluster_readiness_checker
   self.budget_readiness_checker=budget_readiness_checker
@@ -48,6 +49,7 @@ class OrkaProvider:
   if not callable(self.online): return {"ready":False,"message":"Independent GitHub runner-online verification is not configured"}
   if not callable(self.bootstrap_factory): return {"ready":False,"message":"Protected Orka User Data bootstrap is not configured"}
   if not self.userdata_rbac_reviewed: return {"ready":False,"message":"Orka namespace User Data RBAC review is not approved"}
+  if not self.userdata_exposure_reviewed: return {"ready":False,"message":"Orka User Data request and log exposure review is not approved"}
   checks=(
    ("network_policy_checker","Orka runner network egress policy is not verified"),
    ("cluster_readiness_checker","Orka 4.0 Apple-silicon cluster, VM Tools and finite User Data timeout are not verified"),
