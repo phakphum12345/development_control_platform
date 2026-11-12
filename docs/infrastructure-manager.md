@@ -38,7 +38,6 @@ python -m unittest tests.test_cloud_gateway_infrastructure -v
 
 The tests use temporary SQLite databases and the fake provider only. Live infrastructure acceptance remains a separate, explicitly approved phase.
 
-
 ## Authenticated Gateway API — Phase 2
 
 The Gateway composes a persistent `InfrastructureManager` using
@@ -76,3 +75,13 @@ python -m unittest tests.test_cloud_gateway_infrastructure_api -v
 The API tests sign local proxy assertions and run against an ephemeral loopback
 HTTP server with temporary SQLite files. They exercise owner/operator access
 and the fake provider only.
+
+## Fake lifecycle acceptance — Phase 3
+
+The manager and authenticated API tests verify that the provider's state and
+the SQLite inventory agree after each valid lifecycle action:
+`provisioned -> running -> stopped -> running -> deleted`. The manager test
+also reopens the SQLite store to verify the terminal state and audit history
+are durable. Repeated delete is verified as idempotent without another
+provider call. These checks use only the in-memory fake provider and temporary
+local databases; they do not establish live cloud or VM readiness.
