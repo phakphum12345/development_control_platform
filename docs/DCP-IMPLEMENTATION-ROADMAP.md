@@ -135,3 +135,11 @@ Do not merge PR #71 until the real Chromium sandbox test, Dashboard browser smok
 - Approval leaves enabled=false and execution_enabled=false; the preview state is APPROVED_NOT_EXECUTABLE.
 - Added unit and authenticated API tests for authorization, stale hashes, confirmation, audit and non-executable approval.
 - Remaining: Dashboard review controls, workspace-bound typed jobs, policy-approved Local Agent execution, cancellation, redacted logs and history.
+
+
+## 2026-11-12 implementation checkpoint — Terminal Studio Owner review UI
+
+- Added Dashboard review panel for imported command templates.
+- Displays audit history and source SHA-256; allows explicit Approve/Reject only while pending review.
+- Uses exact typed confirmation and the authenticated CSRF-protected review API.
+- Refreshes the catalog and preview after review; approved items remain APPROVED_NOT_EXECUTABLE.
