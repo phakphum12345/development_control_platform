@@ -112,6 +112,8 @@ class OrkaRunnerBootstrapFactory:
             "if sudo -l -U \"$RUNNER_USER\" 2>/dev/null | grep -E '^[[:space:]]*\\(' >/dev/null; then echo 'DCP runner account must not have sudo privileges'; exit 1; fi",
             "ACTUAL_HOME=\"$(dscl . -read \"/Users/$RUNNER_USER\" NFSHomeDirectory 2>/dev/null | awk '{print $2}')\"",
             "[ \"$ACTUAL_HOME\" = \"$RUNNER_HOME\" ] || { echo 'DCP runner home does not match image profile'; exit 1; }",
+            "RUNNER_SHELL=\"$(dscl . -read \"/Users/$RUNNER_USER\" UserShell 2>/dev/null | awk '{print $2}')\"",
+            "case \"$RUNNER_SHELL\" in /bin/bash|/bin/zsh) ;; *) echo 'DCP runner account must use bash or zsh'; exit 1 ;; esac",
             "xcodebuild -version >/dev/null 2>&1 || { echo 'DCP macOS image does not contain Xcode'; exit 1; }",
             "install -d -m 0750 \"$RUNNER_DIR\"",
             "chown -R \"$RUNNER_USER\":staff \"$RUNNER_DIR\"",
