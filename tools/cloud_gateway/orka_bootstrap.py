@@ -108,6 +108,8 @@ class OrkaRunnerBootstrapFactory:
             "id \"$RUNNER_USER\" >/dev/null 2>&1 || { echo 'DCP runner account is missing'; exit 1; }",
             "if id -Gn \"$RUNNER_USER\" | tr ' ' '\\n' | grep -E '^(admin|wheel)$' >/dev/null; then echo 'DCP runner account must not be privileged'; exit 1; fi",
             "if sudo -l -U \"$RUNNER_USER\" 2>/dev/null | grep -E '^[[:space:]]*\\(' >/dev/null; then echo 'DCP runner account must not have sudo privileges'; exit 1; fi",
+            "ACTUAL_HOME=\"$(dscl . -read \"/Users/$RUNNER_USER\" NFSHomeDirectory 2>/dev/null | awk '{print $2}')\"",
+            "[ \"$ACTUAL_HOME\" = \"$RUNNER_HOME\" ] || { echo 'DCP runner home does not match image profile'; exit 1; }",
             "xcodebuild -version >/dev/null 2>&1 || { echo 'DCP macOS image does not contain Xcode'; exit 1; }",
             "install -d -m 0750 \"$RUNNER_DIR\"",
             "chown -R \"$RUNNER_USER\":staff \"$RUNNER_DIR\"",
