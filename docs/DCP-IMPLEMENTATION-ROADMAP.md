@@ -107,3 +107,13 @@ Do not merge PR #71 until the real Chromium sandbox test, Dashboard browser smok
 - Connected the view to the authenticated read-only catalog and argv preview APIs using same-origin credentials and the existing CSRF token.
 - Added UI contract coverage and Code Navigator mapping.
 - The Dashboard clearly labels this as PREVIEW ONLY; no shell, PTY, command execution, or workspace binding is enabled.
+
+
+## 2026-11-12 implementation checkpoint — inert Terminal command-pack import
+
+- Added strict v1 JSON command-pack validation with request/template/argv/time/output bounds and allowlisted executable identifiers.
+- Added owner-only, same-origin, CSRF-protected import endpoint.
+- Imported templates persist in a private SQLite store, with atomic duplicate rejection and audit records.
+- Imported templates remain disabled and pending review; preview is informational only and never launches a process.
+- Added validator, persistence, rollback, API authorization and unsafe-input tests.
+- Remaining: Dashboard import workflow, template review/edit lifecycle, project/workspace binding, approved Local Agent execution broker, cancellation and redacted logs/history.
