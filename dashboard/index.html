@@ -1210,7 +1210,7 @@ async function terminalStudioReview(decision){
   });
   if(!result.template||result.template.enabled!==false||result.template.execution_enabled!==false)throw new Error("Gateway did not confirm disabled execution state.");
   terminalStudioStatus("Owner review saved: "+result.template.approval_status+". Template remains non-executable.","ready");
-  const select=$("terminal-template-select");select.value=item.id;
+  const select=$("terminal-template-select");select.value=item.id;terminalStudioRenderBuilder();
   await terminalStudioPreview();
  }catch(error){terminalStudioStatus("Owner review rejected: "+error.message,"error");}
  finally{button.disabled=false;}
