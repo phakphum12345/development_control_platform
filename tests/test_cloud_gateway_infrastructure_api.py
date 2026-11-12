@@ -16,6 +16,7 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+from tools.cloud_gateway.preview import AuthenticatedPreviewManager
 from tools.cloud_gateway.infrastructure import (
     FakeInfrastructureProvider, InfrastructureManager, InfrastructureStore,
 )
@@ -38,6 +39,26 @@ class NoopProvider:
         raise AssertionError("unexpected legacy provider termination")
 
 
+class FakeJobStore:
+    def __init__(self):
+        self.rows = {}
+
+    def get(self, job_id):
+        return self.rows.get(job_id)
+
+
+class FakePreviewManager:
+    def __init__(self):
+        self.calls = []
+
+    def start(self, job_id, worker_id, output_relative="source/dist", *, runtime_kind="static", owner_approved=False):
+        self.calls.append({
+            "job_id": job_id, "worker_id": worker_id, "output_relative": output_relative,
+            "runtime_kind": runtime_kind, "owner_approved": owner_approved,
+        })
+        return {"runtime_id": "runtime-1", "runtime_kind": runtime_kind, "state": "running"}
+
+
 class InfrastructureApiTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -45,6 +66,7 @@ class InfrastructureApiTests(unittest.TestCase):
         self.origin = "https://dcp.example.test"
         store = RunnerStore(str(Path(self.temp.name) / "gateway.sqlite"))
         service = GatewayService(GatewaySettings(), store, NoopProvider())
+        self.service = service
         self.infrastructure_store = InfrastructureStore(
             Path(self.temp.name) / "infra.sqlite"
         )
@@ -112,6 +134,67 @@ class InfrastructureApiTests(unittest.TestCase):
         provider = self.infrastructure_provider.resources[provider_resource_id]
         self.assertEqual(inventory["state"], expected_state)
         self.assertEqual(provider["state"], expected_state)
+
+
+    def test_next_preview_requires_completed_build_and_explicit_owner_approval(self):
+        import uuid
+        job_id = str(uuid.uuid4())
+        jobs = FakeJobStore()
+        jobs.rows[job_id] = {
+            "id": job_id, "state": "succeeded", "last_worker": "runner-next",
+            "target": "build_next",
+        }
+        previews = FakePreviewManager()
+        self.service.job_store = jobs
+        self.service.preview_manager = previews
+
+        status, denied = self.request(
+            "POST", f"/api/jobs/{job_id}/previews",
+            payload={"runtime_kind": "next"},
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(previews.calls, [])
+
+        status, started = self.request(
+            "POST", f"/api/jobs/{job_id}/previews", role="operator",
+            payload={"runtime_kind": "next", "confirm_code_execution": True},
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(previews.calls, [])
+
+        status, started = self.request(
+            "POST", f"/api/jobs/{job_id}/previews",
+            payload={"runtime_kind": "next", "confirm_code_execution": True},
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(started["runtime_kind"], "next")
+        self.assertTrue(previews.calls[-1]["owner_approved"])
+
+    def test_next_preview_rejects_non_next_jobs_and_static_angular_uses_browser_output(self):
+        import uuid
+        job_id = str(uuid.uuid4())
+        jobs = FakeJobStore()
+        jobs.rows[job_id] = {
+            "id": job_id, "state": "succeeded", "last_worker": "runner-angular",
+            "target": "build_angular",
+        }
+        previews = FakePreviewManager()
+        self.service.job_store = jobs
+        self.service.preview_manager = previews
+
+        status, denied = self.request(
+            "POST", f"/api/jobs/{job_id}/previews",
+            payload={"runtime_kind": "next", "confirm_code_execution": True},
+        )
+        self.assertEqual(status, 409)
+        self.assertEqual(previews.calls, [])
+
+        status, started = self.request(
+            "POST", f"/api/jobs/{job_id}/previews", payload={"runtime_kind": "static"}
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(previews.calls[-1]["output_relative"], "source/dist/browser")
+        self.assertEqual(started["runtime_kind"], "static")
 
     def test_owner_can_create_list_start_stop_and_delete_fake_resource(self):
         status, created = self.request(
