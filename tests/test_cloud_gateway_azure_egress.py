@@ -183,6 +183,14 @@ class AzureEgressPolicyVerifierTests(unittest.TestCase):
             verifier(responses).verify("linux", SUBNET, NSG)
 
 
+    def test_rejects_nat_gateway_egress_path(self):
+        responses = base_responses()
+        responses[SUBNET]["properties"]["natGateway"] = {
+            "id": rid("natGateways", "runner-nat")
+        }
+        with self.assertRaises(AzureEgressPolicyError):
+            verifier(responses).verify("linux", SUBNET, NSG)
+
     def test_rejects_firewall_in_unverified_hub_vnet_or_wrong_subnet(self):
         responses = base_responses()
         responses[FIREWALL]["properties"]["ipConfigurations"][0]["properties"]["subnet"]["id"] = (
