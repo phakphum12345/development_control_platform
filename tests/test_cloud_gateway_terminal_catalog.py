@@ -1,7 +1,7 @@
 """Tests for Terminal Studio's inert, curated command catalog."""
 import unittest
 
-from tools.cloud_gateway.terminal_catalog import list_templates, preview_template
+from tools.cloud_gateway.terminal_catalog import list_templates, preview_template, validate_preview_payload
 
 
 class TerminalCatalogTests(unittest.TestCase):
@@ -63,6 +63,27 @@ class TerminalCatalogTests(unittest.TestCase):
             preview_template("git_show_commit")
         with self.assertRaisesRegex(ValueError, "parameters must be an object"):
             preview_template("git_show_commit", [])
+
+
+
+    def test_preview_api_payload_accepts_only_template_id_and_parameter_object(self):
+        self.assertEqual(
+            validate_preview_payload({"template_id": "git_status"}),
+            ("git_status", {}),
+        )
+        self.assertEqual(
+            validate_preview_payload({"template_id": "git_log", "parameters": {"limit": 10}}),
+            ("git_log", {"limit": 10}),
+        )
+        for payload in (
+            [],
+            {},
+            {"template_id": "git_status", "shell": "whoami"},
+            {"template_id": "git_status", "parameters": []},
+            {"template_id": "git_status", "parameters": {"argv": ["whoami"]}},
+        ):
+            with self.subTest(payload=payload), self.assertRaises(ValueError):
+                validate_preview_payload(payload)
 
 
     def test_callers_cannot_mutate_shared_catalog(self):
