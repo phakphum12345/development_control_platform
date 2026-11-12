@@ -79,8 +79,8 @@ Required topology and policy:
   next hop is accepted.
 - The Azure Firewall is attached to the configured Firewall Policy and has one
   verified private IP.
-- Firewall Policy DNS proxy is enabled, and the runner VNet DNS server list
-  contains only that firewall private IP.
+- Firewall Policy DNS proxy is enabled with no custom DNS upstream, and the
+  runner VNet DNS server list contains only that firewall private IP.
 - Inherited Firewall Policies are rejected. The verifier accepts only explicit
   HTTPS/443 Application Rules scoped exactly to the runner subnet prefixes.
 - The allowlist must exactly match the current GitHub Actions FQDN catalog from
