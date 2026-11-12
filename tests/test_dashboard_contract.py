@@ -99,7 +99,7 @@ class DashboardContractTests(unittest.TestCase):
             '"X-CSRF-Token"',
             'execution_enabled:false',
             'No process was started.',
-            'No Shell/PTY',
+            'ไม่มี Shell/PTY',
         ):
             with self.subTest(expected=expected):
                 self.assertIn(expected, HTML)
