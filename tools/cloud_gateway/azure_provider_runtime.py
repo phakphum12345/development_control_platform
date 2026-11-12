@@ -68,8 +68,12 @@ def build_azure_provider_runtime(
     missing = [name for name in _REQUIRED if not isinstance(values.get(name), str) or not values.get(name).strip()]
     if missing:
         raise ValueError("Azure provider configuration is incomplete: " + ", ".join(missing))
-    if github_app is None or not callable(runner_online_checker):
-        raise ValueError("A configured GitHub App and independent runner-online checker are required")
+    if (
+        github_app is None
+        or not callable(getattr(github_app, "create_registration_token", None))
+        or not callable(runner_online_checker)
+    ):
+        raise ValueError("A configured GitHub App runner-registration API and independent runner-online checker are required")
     if budget_guard is None or not callable(getattr(budget_guard, "authorize", None)):
         raise ValueError("A live Azure budget guard is required before Azure provider activation")
 
