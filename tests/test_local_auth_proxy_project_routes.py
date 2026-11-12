@@ -289,6 +289,25 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
         self.assertEqual(status, 404)
         self.assertEqual(len(self.gateway_requests), 0)
 
+    def test_forwards_cloud_runner_create_idempotency_key(self):
+        payload = {
+            "repository": "example/project",
+            "commit_sha": "a" * 40,
+            "target_os": "linux",
+            "workflow_run_id": 123,
+            "max_runtime_minutes": 15,
+        }
+        status, _ = self.post(
+            "/api/cloud-runners", payload,
+            idempotency_key="cloud-runner-create-test-001",
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(self.gateway_requests[-1], "/api/cloud-runners")
+        self.assertEqual(self.gateway_methods[-1], "POST")
+        self.assertEqual(
+            self.gateway_idempotency_keys[-1], "cloud-runner-create-test-001"
+        )
+
     def test_forwards_csrf_protected_terminal_studio_actions(self):
         requests = (
             ("/api/terminal/commands/preview", {"template_id": "git.status", "parameters": {}}),
