@@ -18,9 +18,11 @@ bootstrap script using a pinned runner release/checksum and a short-lived,
 repository-scoped GitHub registration token. `OrkaProvider` sends the
 base64-encoded script in the documented lower-case `userdata` field, enforces
 the 64 KiB encoded limit, and waits for `userdataPhase=success` before it can
-report a runner online. Failed, timed-out or skipped User Data causes VM
-termination. The script never prints the registration token and does not put
-it in `customMetadata`.
+report a runner online. A later `skipped` phase is accepted only when the
+independent GitHub runner-online check proves the runner is registered and
+online; otherwise the VM is terminated. Failed or timed-out User Data causes
+termination. The script retries early-boot network access, never prints the
+registration token, and does not put it in `customMetadata`.
 
 Orka 4.0 requirements are strict: Apple silicon nodes, Orka 4.0 VM Tools in the
 approved image, and a pre-provisioned non-root runner account. The namespace
