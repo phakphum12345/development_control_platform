@@ -1,5 +1,7 @@
 """Mock-only protected Azure bootstrap payload tests."""
 import base64
+import shutil
+import subprocess
 import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
