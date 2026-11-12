@@ -171,6 +171,7 @@ class LocalAuthProxy:
         self.proxy_secret = proxy_secret.encode("utf-8")
         self.gateway_port = gateway_port
         self.sessions: dict[str, dict] = {}
+        self.preview_sessions: dict[tuple[str, str], dict] = {}
         self.lock = threading.RLock()
         self.failures: dict[str, list[float]] = {}
 
@@ -201,8 +202,100 @@ class LocalAuthProxy:
                 return None
             if time.time() - session["created"] > SESSION_TTL:
                 self.sessions.pop(token, None)
+                for key, record in list(self.preview_sessions.items()):
+                    if record["session_id"] == token:
+                        self.preview_sessions.pop(key, None)
                 return None
             return session
+
+    @staticmethod
+    def _preview_cookie_name(job_id: str, runtime_id: str) -> str:
+        uuid_pattern = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+        if not re.fullmatch(uuid_pattern, job_id or "") or not re.fullmatch(uuid_pattern, runtime_id or ""):
+            raise ValueError("invalid preview identity")
+        return "DCP_PREVIEW_" + runtime_id.replace("-", "").upper()
+
+    @staticmethod
+    def _preview_cookie_path(job_id: str, runtime_id: str) -> str:
+        return f"/api/jobs/{job_id}/previews/{runtime_id}/content/"
+
+    def create_preview_cookie(
+        self, job_id: str, runtime_id: str, session: dict, expires_in_seconds: int
+    ) -> str:
+        if (
+            isinstance(expires_in_seconds, bool)
+            or not isinstance(expires_in_seconds, int)
+            or not 1 <= expires_in_seconds <= 86400
+            or not session.get("authenticated")
+        ):
+            raise ValueError("invalid preview cookie lifetime or session")
+        name = self._preview_cookie_name(job_id, runtime_id)
+        path = self._preview_cookie_path(job_id, runtime_id)
+        token = secrets.token_urlsafe(32)
+        now = time.time()
+        session_remaining = max(1, int(SESSION_TTL - (now - session["created"])))
+        ttl = min(expires_in_seconds, session_remaining)
+        with self.lock:
+            self.preview_sessions[(job_id, runtime_id)] = {
+                "token": token,
+                "session_id": session["id"],
+                "expires_at": now + ttl,
+            }
+        return f"{name}={token}; HttpOnly; Secure; SameSite=None; Path={path}; Max-Age={ttl}"
+
+    def get_preview_session(self, job_id: str, runtime_id: str, cookie_header: str) -> dict | None:
+        try:
+            name = self._preview_cookie_name(job_id, runtime_id)
+        except ValueError:
+            return None
+        token = ""
+        for part in cookie_header.split(";"):
+            key, sep, value = part.strip().partition("=")
+            if sep and key == name:
+                token = value
+        if not token:
+            return None
+        now = time.time()
+        with self.lock:
+            record = self.preview_sessions.get((job_id, runtime_id))
+            if (
+                not record
+                or record["expires_at"] <= now
+                or not hmac.compare_digest(token, record["token"])
+            ):
+                return None
+            session = self.sessions.get(record["session_id"])
+            if (
+                not session
+                or not session.get("authenticated")
+                or now - session["created"] > SESSION_TTL
+            ):
+                self.preview_sessions.pop((job_id, runtime_id), None)
+                return None
+            return session
+
+    def revoke_preview_session(self, job_id: str, runtime_id: str) -> str:
+        name = self._preview_cookie_name(job_id, runtime_id)
+        path = self._preview_cookie_path(job_id, runtime_id)
+        with self.lock:
+            self.preview_sessions.pop((job_id, runtime_id), None)
+        return f"{name}=; HttpOnly; Secure; SameSite=None; Path={path}; Max-Age=0"
+
+    def revoke_session_previews(self, session_id: str) -> list[str]:
+        cookies = []
+        with self.lock:
+            keys = [
+                key for key, record in self.preview_sessions.items()
+                if record["session_id"] == session_id
+            ]
+            for job_id, runtime_id in keys:
+                self.preview_sessions.pop((job_id, runtime_id), None)
+                name = self._preview_cookie_name(job_id, runtime_id)
+                path = self._preview_cookie_path(job_id, runtime_id)
+                cookies.append(
+                    f"{name}=; HttpOnly; Secure; SameSite=None; Path={path}; Max-Age=0"
+                )
+        return cookies
 
     def sign_gateway(self, method: str, path: str, session: dict) -> dict:
         timestamp = str(int(time.time()))
@@ -259,7 +352,8 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
             return
 
         def send_bytes(self, status: int, data: bytes, content_type: str = "application/json",
-                       cookie: str | None = None, allow_same_origin_frame: bool = False):
+                       cookie: str | None = None, allow_same_origin_frame: bool = False,
+                       cookies: list[str] | None = None):
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(data)))
@@ -277,11 +371,16 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                              else "frame-ancestors 'none'; base-uri 'self'")
             if cookie:
                 self.send_header("Set-Cookie", cookie)
+            for extra_cookie in cookies or []:
+                self.send_header("Set-Cookie", extra_cookie)
             self.end_headers()
             self.wfile.write(data)
 
-        def send_json(self, status, payload, cookie=None):
-            self.send_bytes(status, json.dumps(payload, separators=(",", ":")).encode(), cookie=cookie)
+        def send_json(self, status, payload, cookie=None, cookies=None):
+            self.send_bytes(
+                status, json.dumps(payload, separators=(",", ":")).encode(),
+                cookie=cookie, cookies=cookies,
+            )
 
         def body(self):
             try:
@@ -344,12 +443,18 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                 path,
             )
             if preview_match:
-                session = self.require_session()
-                if not session:
-                    return self.send_json(401, {"error": "authenticated session required"})
                 if parsed.query:
                     return self.send_json(400, {"error": "preview query parameters are not supported"})
                 job_id, runtime_id, relative_path = preview_match.groups()
+                session = app.get_session(self.headers.get("Cookie", ""))
+                if relative_path is not None and (
+                    not session or not session.get("authenticated")
+                ):
+                    session = app.get_preview_session(
+                        job_id, runtime_id, self.headers.get("Cookie", "")
+                    )
+                if not session or not session.get("authenticated"):
+                    return self.send_json(401, {"error": "authenticated preview session required"})
                 if relative_path is not None:
                     gateway_path = f"/api/jobs/{job_id}/previews/{runtime_id}/content/{relative_path}"
                     status, data = app.gateway_request(
@@ -443,10 +548,14 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
             if path == "/api/auth/logout":
                 if not session or not self.csrf_ok(session):
                     return self.send_json(403, {"error": "authenticated session and CSRF token required"})
+                preview_cookies = app.revoke_session_previews(session["id"])
                 with app.lock:
                     app.sessions.pop(session["id"], None)
-                return self.send_json(200, {"authenticated": False},
-                                      f"{COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0")
+                return self.send_json(
+                    200, {"authenticated": False},
+                    f"{COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0",
+                    cookies=preview_cookies,
+                )
             if path == "/api/jobs":
                 if not session or not session["authenticated"] or not self.csrf_ok(session):
                     return self.send_json(403, {"error": "authenticated session and CSRF token required"})
@@ -470,7 +579,23 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                 status, data = app.gateway_request(
                     "POST", path, session, raw, self.headers.get("X-CSRF-Token", "")
                 )
-                return self.send_bytes(status, data)
+                if status not in (200, 201):
+                    return self.send_bytes(status, data)
+                try:
+                    payload = json.loads(data.decode("utf-8"))
+                    job_id = preview_start.group(1)
+                    runtime_id = payload["runtime_id"]
+                    expected_path = (
+                        f"/api/jobs/{job_id}/previews/{runtime_id}/content/"
+                    )
+                    if payload.get("job_id") != job_id or payload.get("preview_path") != expected_path:
+                        raise ValueError("preview response identity mismatch")
+                    cookie = app.create_preview_cookie(
+                        job_id, runtime_id, session, payload["expires_in_seconds"]
+                    )
+                except (ValueError, KeyError, TypeError, UnicodeDecodeError):
+                    return self.send_json(502, {"error": "invalid preview start response"})
+                return self.send_bytes(status, data, cookie=cookie)
             gate_match = re.fullmatch(
                 r"/api/infrastructure/gates/(cloud_provisioning|vm_creation)", path
             )
@@ -506,12 +631,18 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
             session = self.require_session()
             if not session or not self.csrf_ok(session):
                 return self.send_json(403, {"error": "authenticated session and CSRF token required"})
-            if re.fullmatch(r"/api/jobs/[0-9a-f-]{36}/previews/[0-9a-f-]{36}", path):
+            preview_stop = re.fullmatch(
+                r"/api/jobs/([0-9a-f-]{36})/previews/([0-9a-f-]{36})", path
+            )
+            if preview_stop:
                 status, data = app.gateway_request(
                     "DELETE", path, session,
                     csrf_token=self.headers.get("X-CSRF-Token", ""),
                 )
-                return self.send_bytes(status, data)
+                clear_cookie = app.revoke_preview_session(
+                    preview_stop.group(1), preview_stop.group(2)
+                )
+                return self.send_bytes(status, data, cookie=clear_cookie)
             if not (path.startswith("/api/cloud-runners/") and path.count("/") == 3):
                 return self.send_json(404, {"error": "not found"})
             status, data = app.gateway_request("DELETE", path, session, csrf_token=self.headers.get("X-CSRF-Token", ""))
