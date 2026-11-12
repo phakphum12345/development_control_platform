@@ -635,9 +635,12 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
             return self.send_bytes(200, target.read_bytes(), types.get(target.suffix, "application/octet-stream"))
 
         def do_POST(self):
-            path = urlparse(self.path).path
+            parsed = urlparse(self.path)
+            path = parsed.path
             if not self.same_origin():
                 return self.send_json(403, {"error": "same-origin request required"})
+            if parsed.query:
+                return self.send_json(404, {"error": "not found"})
             session = app.get_session(self.headers.get("Cookie", ""))
             if path == "/api/auth/login":
                 if not session or session["authenticated"] or not self.csrf_ok(session):
@@ -798,9 +801,12 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
             return self.send_json(404, {"error": "not found"})
 
         def do_DELETE(self):
-            path = urlparse(self.path).path
+            parsed = urlparse(self.path)
+            path = parsed.path
             if not self.same_origin():
                 return self.send_json(403, {"error": "same-origin request required"})
+            if parsed.query:
+                return self.send_json(404, {"error": "not found"})
             session = self.require_session()
             if not session or not self.csrf_ok(session):
                 return self.send_json(403, {"error": "authenticated session and CSRF token required"})
