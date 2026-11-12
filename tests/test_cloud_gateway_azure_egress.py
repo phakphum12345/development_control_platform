@@ -219,6 +219,16 @@ class AzureEgressPolicyVerifierTests(unittest.TestCase):
         rule["protocols"] = [{"protocolType": "Tcp", "port": 443}]
         with self.assertRaises(AzureEgressPolicyError):
             verifier(responses).verify("linux", SUBNET, NSG)
+        responses = base_responses()
+        rule = responses[POLICY + "/ruleCollectionGroups"]["value"][0]["properties"]["ruleCollections"][0]["rules"][0]
+        rule["destinationAddresses"] = ["1.2.3.4"]
+        with self.assertRaises(AzureEgressPolicyError):
+            verifier(responses).verify("linux", SUBNET, NSG)
+        responses = base_responses()
+        rule = responses[POLICY + "/ruleCollectionGroups"]["value"][0]["properties"]["ruleCollections"][0]["rules"][0]
+        rule["terminateTLS"] = True
+        with self.assertRaises(AzureEgressPolicyError):
+            verifier(responses).verify("linux", SUBNET, NSG)
 
     def test_rejects_network_allow_rules_and_inherited_policy(self):
         responses = base_responses()
