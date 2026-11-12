@@ -68,7 +68,8 @@ class AzureProviderRuntimeTests(unittest.TestCase):
             return object()
         def arm_factory(subscription, resource_group, credential):
             seen["arm_args"] = (subscription, resource_group, credential)
-            return FakeArm()
+            seen["arm"] = FakeArm()
+            return seen["arm"]
         def egress_factory(arm, env):
             seen["egress_args"] = (arm, env)
             return lambda os_name, subnet_id, nsg_id: True
@@ -96,6 +97,12 @@ class AzureProviderRuntimeTests(unittest.TestCase):
             build_azure_provider_runtime(settings, None, None, object(), env=environment())
         with self.assertRaises(ValueError):
             build_azure_provider_runtime(settings, object(), lambda: True, None, env=environment())
+        incomplete = environment()
+        incomplete.pop("DCP_AZURE_FIREWALL_POLICY_ID")
+        with self.assertRaises(ValueError):
+            build_azure_provider_runtime(
+                settings, object(), lambda: True, budget, env=incomplete,
+            )
 
     def test_composes_real_provider_with_pinned_images_and_live_network_checker(self):
         settings = SimpleNamespace(provisioning_enabled=False)
@@ -118,7 +125,7 @@ class AzureProviderRuntimeTests(unittest.TestCase):
         self.assertTrue(provider.readiness("windows")["ready"])
         self.assertIs(seen["credential_env"], values)
         self.assertEqual(seen["arm_args"][:2], (SUBSCRIPTION, "dcp-runners"))
-        self.assertIs(seen["egress_args"][0], seen["arm_args"][2] if False else seen["egress_args"][0])
+        self.assertIs(seen["egress_args"][0], seen["arm"])
         self.assertEqual(provider.bootstrap_factory.runner_version, "2.331.0")
         self.assertEqual(provider.bootstrap_factory.os_profile_factory.admin_username, "dcpadmin")
 
