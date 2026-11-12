@@ -107,16 +107,19 @@ class OrkaProvider:
   if data is None: return RunnerInstance(provider_id,"terminated")
   vm_status=str(data.get("status","")).lower()
   userdata_phase=str(data.get("userdataPhase","")).lower()
-  if vm_status in ("failed","error","crashed") or userdata_phase in ("failed","timeout","skipped"):
+  if vm_status in ("failed","error","crashed") or userdata_phase in ("failed","timeout"):
    self._request("DELETE",path,allow_missing=True)
    state="terminating"
   elif vm_status in ("deleting","terminating"): state="terminating"
-  elif vm_status in ("running","ready") and userdata_phase=="success" and self.online:
+  elif vm_status in ("running","ready") and userdata_phase in ("success","skipped") and self.online:
    metadata=data.get("customMetadata",{})
    repository=metadata.get("repository") if isinstance(metadata,dict) else None
    try: online=self.online(provider_id,repository,"macos") is True
    except Exception: online=False
-   state="online" if online else "provisioning"
+   if userdata_phase=="skipped" and not online:
+    self._request("DELETE",path,allow_missing=True)
+    state="terminating"
+   else: state="online" if online else "provisioning"
   else: state="provisioning"
   return RunnerInstance(provider_id,state,provider_id)
  def terminate(self,provider_id):
