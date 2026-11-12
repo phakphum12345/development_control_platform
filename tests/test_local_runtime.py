@@ -1,4 +1,7 @@
 """Runtime manager tests using real loopback HTTP and process lifecycle."""
+import json
+import os
+import sys
 import tempfile
 import time
 import unittest
@@ -73,6 +76,70 @@ class RuntimeManagerTests(unittest.TestCase):
         manager._runtimes[first["runtime_id"]].expires_at = time.monotonic() - 1
         self.assertEqual(manager.reap_expired(), 1)
         self.assertEqual(manager.list_for_job(self.job, self.worker), [])
+
+
+    def test_next_runtime_requires_owner_approval_and_serves_loopback_server(self):
+        source = self.workspace / "source"
+        (source / "package.json").write_text(json.dumps({
+            "dependencies": {"next": "^15", "react": "^19"},
+        }), encoding="utf-8")
+        cli = source / "node_modules" / "next" / "dist" / "bin"
+        cli.mkdir(parents=True)
+        (cli / "next").write_text("", encoding="utf-8")
+        output = source / ".next"
+        output.mkdir()
+        (output / "BUILD_ID").write_text("build-123", encoding="utf-8")
+        (output / "index.html").write_text("<h1>Next runtime</h1>", encoding="utf-8")
+
+        bindir = self.root / "fake-node"
+        bindir.mkdir()
+        node = bindir / "node"
+        node.write_text(
+            "#!/bin/sh\\n"
+            f'exec "{sys.executable}" -m http.server "$6" --bind 127.0.0.1 --directory .next\\n',
+            encoding="utf-8",
+        )
+        node.chmod(0o700)
+        old_path = os.environ.get("PATH", "")
+        os.environ["PATH"] = str(bindir) + os.pathsep + old_path
+        try:
+            with self.assertRaisesRegex(RuntimeErrorDCP, "explicit Owner approval"):
+                self.manager.start_next(self.job, self.worker)
+            started = self.manager.start_next(
+                self.job, self.worker, owner_approved=True
+            )
+            self.assertEqual(started["runtime_kind"], "next")
+            self.assertEqual(started["bind_host"], "127.0.0.1")
+            import urllib.request
+            with urllib.request.urlopen(started["url"], timeout=3) as response:
+                self.assertEqual(response.status, 200)
+                self.assertIn(b"Next runtime", response.read())
+            status = self.manager.status(started["runtime_id"], started["session_token"])
+            self.assertEqual(status["runtime_kind"], "next")
+            self.manager.stop(started["runtime_id"], started["session_token"])
+        finally:
+            os.environ["PATH"] = old_path
+
+    def test_next_runtime_rejects_missing_build_id_and_symlinked_output(self):
+        source = self.workspace / "source"
+        (source / "package.json").write_text(json.dumps({
+            "dependencies": {"next": "^15", "react": "^19"},
+        }), encoding="utf-8")
+        cli = source / "node_modules" / "next" / "dist" / "bin"
+        cli.mkdir(parents=True)
+        (cli / "next").write_text("", encoding="utf-8")
+        output = source / ".next"
+        output.mkdir()
+        with self.assertRaisesRegex(RuntimeErrorDCP, "BUILD_ID"):
+            self.manager.start_next(self.job, self.worker, owner_approved=True)
+        (output / "BUILD_ID").write_text("build-123", encoding="utf-8")
+        (self.root / "outside").mkdir()
+        try:
+            (output / "escape").symlink_to(self.root / "outside", target_is_directory=True)
+        except OSError:
+            self.skipTest("Symlink creation is unavailable on this host")
+        with self.assertRaisesRegex(RuntimeErrorDCP, "symlink"):
+            self.manager.start_next(self.job, self.worker, owner_approved=True)
 
     def test_runtime_is_bound_to_existing_workspace_and_job(self):
         with self.assertRaises(RuntimeErrorDCP):
