@@ -228,7 +228,12 @@ class AzureEgressPolicyVerifier:
             if not next_link:
                 break
             parsed = urlparse(next_link)
-            if parsed.scheme != "https" or parsed.hostname != "management.azure.com":
+            if (
+                parsed.scheme != "https" or parsed.hostname != "management.azure.com"
+                or parsed.username is not None or parsed.password is not None
+                or parsed.port is not None or parsed.fragment
+                or not parsed.path.lower().startswith((policy_id + "/rulecollectiongroups").lower())
+            ):
                 raise AzureEgressPolicyError("Azure Firewall Policy returned an untrusted pagination URL")
             url = next_link
         else:
@@ -287,8 +292,7 @@ class AzureEgressPolicyVerifier:
     def verify(self, os_name: str, subnet_id: str, nsg_id: str):
         if os_name not in ("linux", "windows"):
             raise AzureEgressPolicyError("Azure restricted egress supports Linux and Windows only")
-        self._validate_network_resource_id(subnet_id, "virtualNetworks")
-        # The subnet ID has a nested /subnets/{name} suffix, so validate its full shape separately.
+        # A subnet ID is nested below a virtual network; validate its full shape.
         subnet_pattern = (
             r"^/subscriptions/" + re.escape(self.arm.subscription_id)
             + r"/resourceGroups/[A-Za-z0-9_.()-]{1,90}/providers/Microsoft\.Network/"
@@ -314,7 +318,10 @@ class AzureEgressPolicyVerifier:
 
         nsg = self._get(nsg_id, API_NETWORK)
         self._state(nsg, "Runner NSG")
-        for rule in nsg.get("properties", {}).get("securityRules", []):
+        nsg_rules = nsg.get("properties", {}).get("securityRules")
+        if not isinstance(nsg_rules, list):
+            raise AzureEgressPolicyError("Runner NSG security rules are invalid")
+        for rule in nsg_rules:
             properties = rule.get("properties", {})
             if (
                 str(properties.get("direction", "")).lower() == "inbound"
