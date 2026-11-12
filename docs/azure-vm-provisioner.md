@@ -4,7 +4,8 @@ This adapter can create an ephemeral Linux or Windows VM and a private NIC in an
 
 ## Mandatory deployment inputs
 - Subscription and resource group.
-- Pre-created subnet and NSG resource IDs in the same subscription.
+- Pre-created subnet, NSG, route table, Azure Firewall and Firewall Policy resource IDs in the same subscription.
+- A dedicated network resource group separate from the ephemeral runner resource group.
 - Reviewed VM sizes and exact Marketplace image references for both OS profiles.
 - A protected bootstrap factory that obtains ephemeral runner registration material server-side and supplies it only through VM extension protectedSettings.
 - A GitHub runner-online checker. VM power state alone never proves runner registration.
@@ -34,6 +35,53 @@ The read-only deployment preflight validates the guest username and public-key
 shape without echoing the configured key. It does not prove that the key is
 usable on the deployed VM.
 
+## Restricted outbound network policy
+
+The runner subnet must use a dedicated, pre-existing Azure Firewall and Firewall
+Policy. The verifier in `tools/cloud_gateway/azure_egress.py` is read-only; it
+does not create a firewall, route table, NSG, subnet, or policy.
+
+Required topology and policy:
+
+- The runner subnet is associated with the configured NSG and route table.
+- The route table has exactly one `0.0.0.0/0` route with
+  `nextHopType=VirtualAppliance` and the Azure Firewall private IP.
+  `disableBgpRoutePropagation` must be true, and no Internet or other bypass
+  next hop is accepted.
+- The Azure Firewall is attached to the configured Firewall Policy and has one
+  verified private IP.
+- Firewall Policy DNS proxy is enabled, and the runner VNet DNS server list
+  contains only that firewall private IP.
+- Inherited Firewall Policies are rejected. The verifier accepts only explicit
+  HTTPS/443 Application Rules scoped exactly to the runner subnet prefixes.
+- The allowlist must exactly match the current GitHub Actions FQDN catalog from
+  `https://api.github.com/meta` (`domains.actions`) plus any explicit
+  `DCP_AZURE_EGRESS_EXTRA_FQDNS` values. Broad wildcard rules, web categories,
+  FQDN tags, NAT collections and network allow rules are rejected.
+- The NSG must not contain custom inbound allow rules. The VM adapter creates
+  no public IP.
+
+Configure these additional resource references:
+- `DCP_AZURE_ROUTE_TABLE_ID`
+- `DCP_AZURE_FIREWALL_ID`
+- `DCP_AZURE_FIREWALL_POLICY_ID`
+- Optional `DCP_AZURE_EGRESS_EXTRA_FQDNS`: comma-separated exact FQDNs or
+  explicit subdomain wildcards needed by approved workflows.
+
+Keep the network resources in a separate resource group from the ephemeral
+runner resource group. The Gateway managed identity must not have write access
+to the VNet, subnet, NSG, route table, firewall or Firewall Policy. Grant only
+the narrowly required read/join permissions for attaching a runner NIC to the
+pre-existing network. A broad subscription- or network-resource-group
+Contributor role defeats this isolation and is not acceptable.
+
+Azure Firewall is a billable service. Reuse an already-approved firewall or
+obtain explicit owner approval for its deployment and ongoing cost; this
+repository does not create one. The read-only preflight checks resource-ID
+syntax only. The verifier performs live ARM and GitHub catalog reads at
+readiness time and fails closed if any source is missing, stale, inherited or
+inconsistent.
+
 ## Security and lifecycle
 - No public IP is created or attached.
 - VM extension public settings must be empty; bootstrap secrets belong only in protectedSettings.
@@ -42,6 +90,6 @@ usable on the deployed VM.
 - DELETE is only terminating. The NIC is removed after a later status read confirms the VM is absent.
 
 ## Prerequisites still requiring live review
-The referenced subnet and NSG must be checked for deny-by-default inbound and restricted outbound rules. Region support for the selected VM sizes, image versions, Trusted Launch, and ephemeral OS disks must be confirmed. The bootstrap factory must be connected to a reviewed GitHub App token service and Key Vault. These checks have not been performed against a live subscription.
+The referenced subnet, NSG, route table and Azure Firewall Policy must pass the restricted-egress verifier. Region support for the selected VM sizes, image versions, Trusted Launch, and ephemeral OS disks must be confirmed. The bootstrap factory must be connected to a reviewed GitHub App token service and Key Vault. These checks have not been performed against a live subscription.
 
 Tests use a fake ARM client only. No ARM request, VM, NIC, disk, or other billable resource was created.
