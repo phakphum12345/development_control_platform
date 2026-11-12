@@ -56,6 +56,10 @@ class AzureVMTests(unittest.TestCase):
   p,_=self.make(); self.assertEqual(p.status("dcp-123-abcdef12").state,"provisioning")
  def test_runner_online_requires_independent_checker(self):
   p,_=self.make(lambda *args:True,lambda *args:True); vm=p.provision(payload("linux")); self.assertEqual(p.status(vm.provider_id).state,"online")
+ def test_runner_waits_for_vm_provisioning_success(self):
+  p,arm=self.make(lambda *args:True,lambda *args:True); vm=p.provision(payload("linux"))
+  arm.get_result["properties"]["provisioningState"]="Creating"
+  self.assertEqual(p.status(vm.provider_id).state,"provisioning")
  def test_runner_waits_for_bootstrap_extension_and_deletes_on_extension_failure(self):
   p,arm=self.make(lambda *args:True,lambda *args:True); vm=p.provision(payload("linux"))
   arm.get_result["resources"][0]["properties"]["provisioningState"]="Creating"
