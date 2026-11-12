@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import sqlite3
@@ -52,9 +53,16 @@ class ArtifactStore:
                     storage_key TEXT NOT NULL UNIQUE,
                     size INTEGER NOT NULL,
                     sha256 TEXT NOT NULL,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    provenance_json TEXT NOT NULL DEFAULT '{}',
+                    provenance_sha256 TEXT NOT NULL DEFAULT ''
                 )
             """)
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(artifacts)")}
+            if "provenance_json" not in columns:
+                db.execute("ALTER TABLE artifacts ADD COLUMN provenance_json TEXT NOT NULL DEFAULT '{}'")
+            if "provenance_sha256" not in columns:
+                db.execute("ALTER TABLE artifacts ADD COLUMN provenance_sha256 TEXT NOT NULL DEFAULT ''")
             db.execute("CREATE INDEX IF NOT EXISTS artifacts_job_idx ON artifacts(job_id, created_at)")
         try:
             os.chmod(self.database, 0o600)
@@ -100,6 +108,62 @@ class ArtifactStore:
         if expiry <= datetime.now(timezone.utc):
             raise ArtifactError("Job lease has expired")
         return row
+
+    @staticmethod
+    def _build_provenance(job: dict, worker_id: str, name: str, size: int,
+                          sha256: str, created_at: str) -> dict:
+        payload = job.get("payload") if isinstance(job, dict) else None
+        payload = payload if isinstance(payload, dict) else {}
+        source_type = payload.get("source_type", "github")
+        source = {"type": source_type}
+        if source_type == "github":
+            source.update({
+                "repository": payload.get("repository"),
+                "commit_sha": payload.get("commit_sha"),
+            })
+        elif source_type == "local_folder":
+            source.update({
+                "project_id": payload.get("source_id"),
+                "snapshot_sha256": payload.get("source_sha256"),
+            })
+        else:
+            source["source_id"] = payload.get("source_id")
+        return {
+            "schema_version": 1,
+            "job": {
+                "id": job.get("id"),
+                "target": job.get("target"),
+                "created_at": job.get("created_at"),
+            },
+            "source": source,
+            "runner": {"worker_id": worker_id},
+            "artifact": {
+                "name": name,
+                "size": size,
+                "sha256": sha256,
+                "created_at": created_at,
+            },
+        }
+
+    @staticmethod
+    def _decode_provenance(row) -> tuple[dict, str]:
+        raw = row["provenance_json"] if "provenance_json" in row.keys() else "{}"
+        digest = row["provenance_sha256"] if "provenance_sha256" in row.keys() else ""
+        try:
+            provenance = json.loads(raw or "{}")
+        except (TypeError, ValueError):
+            raise ArtifactError("artifact provenance metadata is invalid") from None
+        if not isinstance(provenance, dict):
+            raise ArtifactError("artifact provenance metadata is invalid")
+        if digest:
+            expected = hashlib.sha256(
+                json.dumps(provenance, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            ).hexdigest()
+            if expected != digest:
+                raise ArtifactError("artifact provenance integrity check failed")
+        elif provenance != {}:
+            raise ArtifactError("artifact provenance integrity check failed")
+        return provenance, digest
 
     def store(self, job_store, job_id: str, worker_id: str, name: str, source, size: int) -> dict:
         self._validate_identity(job_id, worker_id, name, size)
