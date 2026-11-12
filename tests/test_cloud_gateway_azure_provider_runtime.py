@@ -104,6 +104,13 @@ class AzureProviderRuntimeTests(unittest.TestCase):
             build_azure_provider_runtime(
                 settings, object(), lambda: True, budget, env=incomplete,
             )
+        with self.assertRaises(ValueError):
+            build_azure_provider_runtime(
+                settings, object(), lambda: True, budget, env=environment(),
+                credential_factory=credential, arm_factory=arm,
+                egress_factory=lambda arm, env: None,
+            )
+
 
     def test_composes_real_provider_with_pinned_images_and_live_network_checker(self):
         settings = SimpleNamespace(provisioning_enabled=False)
