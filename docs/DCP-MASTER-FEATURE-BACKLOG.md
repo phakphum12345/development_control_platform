@@ -26,7 +26,7 @@ Status labels describe the evidence-backed state recorded in the dated updates b
 | GIT-01 | Git visual history / diff / conflict tools | PARTIAL/VERIFY | P2 | Read-only first; mutating actions require confirmation. |
 | FLOW-01 | Visual Workflow Builder | MISSING | P2 | Typed nodes, bounded graph, policy gates and resumable jobs. |
 | TEST-01 | Real static-project Playwright testing | IMPLEMENTED (STATIC SLICE) | P0 | Opt-in `test_static_web` builds supported static output, starts loopback runtime, runs real Chromium checks and uploads screenshots/report evidence. CI uses a path-scoped AppArmor user-namespace allowance, not `--no-sandbox`. Authenticated Preview Proxy API E2E is covered separately; full app-framework testing remains out of scope. |
-| TEST-02 | Responsive / cross-browser / visual regression | PARTIAL | P1 | Three viewport checks and screenshots exist in the static Playwright slice; cross-browser engines, visual baselines and interaction coverage remain missing. |
+| TEST-02 | Responsive / cross-browser / visual regression | PARTIAL | P1 | Three viewport checks/screenshots exist; authenticated Preview Proxy fixture coverage is being expanded to Chromium, Firefox and WebKit. Full app compatibility, visual baselines, keyboard interactions and WCAG/axe remain outstanding. |
 | TEST-03 | API / accessibility / performance testing | PARTIAL/MISSING | P1 | Isolated test targets and bounded traffic only. |
 | SEC-01 | Secrets / dependency / license / SBOM scan | PARTIAL/MISSING | P1 | Never expose secret values; attach machine-readable findings. |
 | ART-01 | Job artifacts and SHA-256 | EXISTING/PARTIAL | P1 | Verify upload/download authorization, provenance, retention and integrity. |
@@ -123,3 +123,12 @@ All above status statements refer to merged code on main and the corresponding C
 - Runtime session capabilities remain server-side behind the authenticated same-origin Preview Proxy.
 - Angular static preview accepts the generated dist/browser output.
 - This is trusted-code execution, not an OS sandbox. Outbound network access by the application is not blocked; only trusted repositories/local projects should be built and previewed. The Owner must explicitly approve starting the Next server.
+
+
+## 2026-11-12 cross-browser Preview Proxy acceptance checkpoint
+
+- Added one shared authenticated Preview Proxy browser scenario with Chromium, Firefox and WebKit launch selection.
+- The scenario uses a synthetic static fixture and the real Local Auth Proxy → Gateway → Preview Proxy path; it verifies session cookie scope, HTML/CSS, same-origin resource loading, browser errors, screenshot capture, and access denial after stop.
+- Chromium sandboxing remains enabled. Firefox/WebKit are separate browser-engine checks and do not claim OS-level isolation.
+- CI installs Firefox/WebKit explicitly and runs each test separately. Status remains **PENDING CI on the exact PR head** until those checks finish successfully.
+- This is not full cross-browser application certification, visual regression, keyboard accessibility, or WCAG/axe coverage.

@@ -3,6 +3,7 @@ import http.cookiejar
 import json
 import os
 import socket
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -22,13 +23,18 @@ from urllib.request import (
 from tools import local_auth_proxy as auth
 
 
-def _chromium_ready():
+def _browser_ready(browser_name):
     try:
         from playwright.sync_api import sync_playwright
         with sync_playwright() as playwright:
-            return Path(playwright.chromium.executable_path).is_file()
+            browser_type = getattr(playwright, browser_name)
+            return Path(browser_type.executable_path).is_file()
     except Exception:
         return False
+
+
+def _chromium_ready():
+    return _browser_ready("chromium")
 
 
 def free_port():
@@ -410,22 +416,21 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
         )
         self.assertEqual(logged_out, 200)
 
-    @unittest.skipUnless(_chromium_ready(), "Python Playwright and Chromium are optional test prerequisites")
-    def test_real_chromium_loads_app_through_authenticated_preview_proxy(self):
+    def _run_real_browser_preview_proxy(self, browser_name):
         from playwright.sync_api import sync_playwright
 
         from tools.cloud_gateway.job_control import JobStore
         from tools.local_runner_agent.workspace import WorkspaceManager
 
-        worker_id = "preview-chromium-worker"
+        worker_id = f"preview-{browser_name}-worker"
         jobs = JobStore(self.jobs_db)
         job, created = jobs.create(
             {
-                "repository": "example/preview-chromium-fixture",
+                "repository": f"example/preview-{browser_name}-fixture",
                 "commit_sha": "b" * 40,
                 "target": "build_static_web",
             },
-            "authenticated-preview-chromium-0001",
+            f"authenticated-preview-{browser_name}-0001",
         )
         self.assertTrue(created)
         claimed = jobs.claim(worker_id, allowed_targets=["build_static_web"])
@@ -450,6 +455,8 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
         browser = None
         preview = None
         csrf = None
+        https_httpd = None
+        https_thread = None
         try:
             _, _, preauth_body = self.request("/api/auth/session")
             preauth = json.loads(preauth_body)
@@ -492,20 +499,57 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
             self.assertEqual(preview_cookie["samesite"], "None")
             self.assertEqual(preview_cookie["path"], preview["preview_path"])
             self.assertGreater(int(preview_cookie["max-age"]), 0)
+            # Exercise Secure cookies over real HTTPS rather than relying on
+            # browser-specific localhost exceptions for Secure cookies.
+            https_port = free_port()
+            tls_dir = Path(self.temp.name) / f"preview-{browser_name}-tls"
+            tls_dir.mkdir(parents=True, exist_ok=True)
+            cert_path = tls_dir / "localhost-cert.pem"
+            key_path = tls_dir / "localhost-key.pem"
+            subprocess.run(
+                [
+                    "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+                    "-keyout", str(key_path), "-out", str(cert_path), "-days", "1",
+                    "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost",
+                ],
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+            )
+            https_httpd = auth.ThreadingHTTPServer(
+                ("127.0.0.1", https_port),
+                auth.make_handler(
+                    self.app, Path(__file__).resolve().parents[1] / "dashboard"
+                ),
+            )
+            https_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            https_context.load_cert_chain(str(cert_path), str(key_path))
+            https_httpd.socket = https_context.wrap_socket(
+                https_httpd.socket, server_side=True
+            )
+            https_thread = threading.Thread(
+                target=https_httpd.serve_forever, daemon=True
+            )
+            https_thread.start()
+            browser_base = f"https://localhost:{https_port}"
             cookies = [{
                 "name": preview_cookie_name,
                 "value": preview_cookie.value,
-                "domain": "127.0.0.1",
-                "path": preview_cookie["path"],
+                "url": browser_base + preview["preview_path"],
                 "httpOnly": True,
                 "secure": True,
                 "sameSite": "None",
             }]
 
             with sync_playwright() as playwright:
-                browser = playwright.chromium.launch(headless=True, chromium_sandbox=True)
+                browser_type = getattr(playwright, browser_name)
+                launch_options = {"headless": True}
+                if browser_name == "chromium":
+                    launch_options["chromium_sandbox"] = True
+                browser = browser_type.launch(**launch_options)
                 try:
-                    context = browser.new_context(viewport={"width": 1366, "height": 768})
+                    context = browser.new_context(
+                        viewport={"width": 1366, "height": 768},
+                        ignore_https_errors=True,
+                    )
                     context.add_cookies(cookies)
                     page = context.new_page()
                     console_errors = []
@@ -514,15 +558,28 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                     request_urls = []
                     css_requests = []
                     asset_responses = []
+                    document_requests = []
                     page.on("console", lambda message: console_errors.append(message.text) if message.type == "error" else None)
                     page.on("pageerror", lambda error: page_errors.append(str(error)))
 
                     def capture_request(request):
                         request_urls.append(request.url)
+                        headers = request.all_headers()
+                        cookie_header = headers.get("cookie", "")
+                        cookie_names = sorted(
+                            part.strip().partition("=")[0]
+                            for part in cookie_header.split(";")
+                            if "=" in part
+                        )
+                        if request.url == browser_base + preview["preview_path"]:
+                            document_requests.append({
+                                "url": request.url,
+                                "cookie_names": cookie_names,
+                            })
                         if "site.css" in request.url:
                             css_requests.append({
                                 "url": request.url,
-                                "headers": request.all_headers(),
+                                "cookie_names": cookie_names,
                             })
 
                     def capture_failed_request(request):
@@ -545,12 +602,34 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
 
                     page.on("response", capture_asset_response)
                     response = page.goto(
-                        self.base + preview["preview_path"],
+                        browser_base + preview["preview_path"],
                         wait_until="networkidle",
                         timeout=15000,
                     )
                     self.assertIsNotNone(response)
-                    self.assertEqual(response.status, 200)
+                    response_body = response.text()
+                    preview_url = browser_base + preview["preview_path"]
+                    cookie_metadata = [
+                        {
+                            "name": item.get("name"),
+                            "domain": item.get("domain"),
+                            "path": item.get("path"),
+                            "secure": item.get("secure"),
+                            "httpOnly": item.get("httpOnly"),
+                        }
+                        for item in context.cookies(preview_url)
+                    ]
+                    self.assertEqual(
+                        response.status, 200,
+                        "authenticated preview document failed: status=%s body=%r "
+                        "document_requests=%r cookie_metadata=%r preview_cookie_name=%r "
+                        "preview_path=%r browser_base=%r"
+                        % (
+                            response.status, response_body[:500],
+                            document_requests, cookie_metadata,
+                            preview_cookie_name, preview["preview_path"], browser_base,
+                        ),
+                    )
                     self.assertEqual(page.title(), "Preview Proxy Browser E2E")
                     self.assertEqual(
                         page.locator("#preview-ready").inner_text(),
@@ -563,11 +642,13 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                         css_color, "rgb(1, 2, 3)",
                         "CSS diagnostics: responses=%r console=%r requests=%r css_requests=%r failed=%r cookies=%r" % (
                             asset_responses, console_errors, request_urls, css_requests,
-                            failed_requests, context.cookies(self.base)
+                            failed_requests, context.cookies(preview_url)
                         ),
                     )
-                    self.assertEqual(len(asset_responses), 1)
-                    self.assertEqual(asset_responses[0]["status"], 200)
+                    # Browser engines may revalidate or request the same stylesheet more
+                    # than once; every observed response must still be successful.
+                    self.assertTrue(asset_responses)
+                    self.assertTrue(all(item["status"] == 200 for item in asset_responses))
                     self.assertTrue(any("/content/assets/site.css" in url for url in request_urls))
                     http_requests = [
                         url for url in request_urls
@@ -575,7 +656,7 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                     ]
                     self.assertTrue(http_requests)
                     self.assertTrue(
-                        all(url.startswith(self.base + "/") for url in http_requests)
+                        all(url.startswith(browser_base + "/") for url in http_requests)
                     )
                     self.assertEqual(console_errors, [])
                     self.assertEqual(page_errors, [])
@@ -592,7 +673,7 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                     self.assertEqual(stopped, 200, stop_body.decode(errors="replace"))
                     self.assertIn("Max-Age=0", stop_headers.get("Set-Cookie", ""))
                     after_stop = page.goto(
-                        self.base + preview["preview_path"],
+                        browser_base + preview["preview_path"],
                         wait_until="domcontentloaded",
                         timeout=10000,
                     )
@@ -605,6 +686,11 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
         finally:
             if browser is not None:
                 browser.close()
+            if https_httpd is not None:
+                https_httpd.shutdown()
+                https_httpd.server_close()
+            if https_thread is not None:
+                https_thread.join(timeout=5)
             if preview and csrf:
                 self.request(
                     f"/api/jobs/{job['id']}/previews/{preview['runtime_id']}",
@@ -612,6 +698,18 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                 )
             if csrf:
                 self.request("/api/auth/logout", "POST", csrf=csrf)
+
+    @unittest.skipUnless(_chromium_ready(), "Python Playwright Chromium is an optional test prerequisite")
+    def test_real_chromium_loads_app_through_authenticated_preview_proxy(self):
+        self._run_real_browser_preview_proxy("chromium")
+
+    @unittest.skipUnless(_browser_ready("firefox"), "Python Playwright Firefox is an optional test prerequisite")
+    def test_real_firefox_loads_app_through_authenticated_preview_proxy(self):
+        self._run_real_browser_preview_proxy("firefox")
+
+    @unittest.skipUnless(_browser_ready("webkit"), "Python Playwright WebKit is an optional test prerequisite")
+    def test_real_webkit_loads_app_through_authenticated_preview_proxy(self):
+        self._run_real_browser_preview_proxy("webkit")
 
     def test_real_authenticated_preview_proxy_serves_and_stops_completed_job(self):
         import uuid
