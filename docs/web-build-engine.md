@@ -31,3 +31,12 @@ The Local Runner must already have the project's dependencies available. DCP doe
 ## Verification
 
 Unit tests cover CLI discovery, required manifests, Angular project selection, fixed argv, artifact output directories and failure behavior. Gateway tests cover accepted job targets; Runner Registry tests cover advertised capabilities; Dashboard exposes the new targets in its Build Jobs selector.
+
+
+## Dashboard target gating
+
+- GitHub App inspection supplies immutable commit identity and bounded project-type evidence.
+- The Dashboard enables Flutter targets only for a detected Flutter project, and Vite/Next.js/Angular candidates only for a detected Node project.
+- This is an eligibility hint, not toolchain readiness. The Runner rechecks the exact manifest and local CLI and fails closed if dependencies are absent.
+- A truncated or UNKNOWN inspection never enables a build action.
+- No dependencies are installed automatically.
