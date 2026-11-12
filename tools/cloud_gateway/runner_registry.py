@@ -157,7 +157,7 @@ class RunnerRegistry:
         if "android" in caps:
             targets.extend(("build", "build_android", "package"))
         if "web" in caps:
-            targets.extend(("build_web", "build_static_web", "build_vite"))
+            targets.extend(("build_web", "build_static_web", "build_vite", "build_next", "build_angular"))
         if "web" in caps and "playwright" in caps:
             targets.append("test_static_web")
         if "windows" in caps:
