@@ -73,7 +73,7 @@ class ArtifactDownloadGatewayAPITests(unittest.TestCase):
             session = "artifact_download_session_123"
             timestamp = str(int(time.time()))
             nonce = secrets.token_urlsafe(24)
-            canonical = "\\n".join(
+            canonical = "\n".join(
                 ("GET", urlparse(path).path, subject, role, session, timestamp, nonce)
             ).encode("utf-8")
             signature = hmac.new(
@@ -98,7 +98,7 @@ class ArtifactDownloadGatewayAPITests(unittest.TestCase):
                 exc.close()
 
     def test_owner_download_returns_exact_bytes_and_sha256_etag(self):
-        payload = b"real-build-artifact\\x00with-binary-content"
+        payload = b"real-build-artifact\x00with-binary-content"
         metadata = self.upload_artifact(payload)
         status, headers, body = self.request_download(
             "/api/artifacts/" + metadata["id"] + "/download"
