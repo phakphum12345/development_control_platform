@@ -117,3 +117,11 @@ Do not merge PR #71 until the real Chromium sandbox test, Dashboard browser smok
 - Imported templates remain disabled and pending review; preview is informational only and never launches a process.
 - Added validator, persistence, rollback, API authorization and unsafe-input tests.
 - Remaining: Dashboard import workflow, template review/edit lifecycle, project/workspace binding, approved Local Agent execution broker, cancellation and redacted logs/history.
+
+
+## 2026-11-12 implementation checkpoint — Terminal Studio import UI
+
+- Added a Dashboard JSON command-pack import form using the existing authenticated owner session and CSRF token.
+- The UI submits parsed JSON only, displays the import SHA-256, refreshes the catalog and selects an imported template for pending-review preview.
+- Script-file upload and command execution remain out of scope for this increment.
+- Added Dashboard contract assertions for the import controls and endpoint.
