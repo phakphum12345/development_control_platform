@@ -60,9 +60,14 @@ class OIDCProxyIdentitySigner:
             or parsed.fragment
         ):
             raise ValueError("OIDC auth endpoint must be the loopback /oauth2/auth endpoint")
-        if not isinstance(issuer, str) or not issuer.startswith("https://"):
+        issuer_parts = urlparse(issuer) if isinstance(issuer, str) else None
+        if (
+            issuer_parts is None or issuer_parts.scheme != "https" or not issuer_parts.hostname
+            or issuer_parts.username is not None or issuer_parts.password is not None
+            or issuer_parts.query or issuer_parts.fragment
+        ):
             raise ValueError("A verified HTTPS OIDC issuer is required")
-        if not isinstance(audience, str) or not audience:
+        if not isinstance(audience, str) or not audience or any(char.isspace() for char in audience):
             raise ValueError("OIDC audience is required")
         key = secret.encode("utf-8") if isinstance(secret, str) else secret
         if not isinstance(key, bytes) or len(key) < 32:
