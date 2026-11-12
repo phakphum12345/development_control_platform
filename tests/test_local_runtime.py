@@ -78,6 +78,7 @@ class RuntimeManagerTests(unittest.TestCase):
         self.assertEqual(manager.list_for_job(self.job, self.worker), [])
 
 
+    @unittest.skipIf(os.name == "nt", "POSIX fake Node launcher used for loopback process test")
     def test_next_runtime_requires_owner_approval_and_serves_loopback_server(self):
         source = self.workspace / "source"
         (source / "package.json").write_text(json.dumps({
