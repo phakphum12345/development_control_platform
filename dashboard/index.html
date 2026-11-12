@@ -376,6 +376,14 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
   <p class="small muted">Preview displays a trusted executable and argument array, not a shell command string. Workspace binding and execution are not implemented in this slice.</p>
   <pre id="terminal-preview-output" class="output" aria-label="Terminal command preview">No command selected.</pre>
  </div>
+ <div class="panel">
+  <h3>Import JSON command pack</h3>
+  <p class="small muted">Import stores command metadata only. Imported templates are disabled and pending Owner review. This form does not upload or execute .ps1, .bat, .cmd, or .sh files.</p>
+  <label for="terminal-pack-json">Version 1 command pack JSON</label>
+  <textarea id="terminal-pack-json" rows="10" spellcheck="false" placeholder='{"schema_version":1,"templates":[{"id":"custom-git-status","name":"Git status","description":"Inspect working tree changes","category":"Git","executable_id":"git","argv":["status","--short"],"platforms":["windows","linux"],"timeout_seconds":15,"max_output_bytes":65536,"network":"denied","mutation_class":"read-only"}]}'></textarea>
+  <div class="actions"><button class="primary" id="terminal-import-pack" type="button" disabled>Validate & Import (inert)</button></div>
+  <div id="terminal-import-status" class="output" role="status" aria-live="polite">Import is unavailable until the owner session is checked.</div>
+ </div>
 </section>
 <section class="view" id="code-navigator">
 <div class="panel"><div class="row"><div><h2>Code Navigator</h2><p>ไล่จาก UI route → DOM element → handler ที่ระบุไว้ → service/API → state → tests/evidence โดยใช้ mapping ที่มีหลักฐานเท่านั้น จุดที่ยังไม่ระบุจะแสดง UNKNOWN</p></div><span class="pill">MAPPING · READ-ONLY</span></div>
@@ -760,7 +768,7 @@ const CODE_NAV_MAPPINGS=[
 {id:"infrastructure",label:"Infrastructure Manager",path:"security",target:"infrastructure",file:"dashboard/index.html",elements:["infrastructure","infra-mode","infra-refresh","infra-status","infra-gates-note","infra-gate-cloud","infra-gate-cloud-state","infra-gate-cloud-detail","infra-gate-cloud-toggle","infra-gate-vm","infra-gate-vm-state","infra-gate-vm-detail","infra-gate-vm-toggle","infra-catalog","infra-os","infra-provider","infra-image","infra-template","infra-create","infra-inventory"],handlers:["infraRefresh","infraSession","infraRenderCatalog","infraRenderGates","infraToggleGate","infraRenderInventory","infraAction","infraCreate"],service:"Authenticated same-origin Gateway API and Local Auth Proxy: GET /api/infrastructure/gates, POST /api/infrastructure/gates/{cloud_provisioning|vm_creation}, plus simulation-only inventory/lifecycle routes",state:"infraUI CSRF/role/gates/catalog/resources/ready in browser memory; persistent SQLite gate and inventory state",tests:["tests/test_cloud_gateway_infrastructure.py","tests/test_cloud_gateway_infrastructure_api.py","tests/test_local_auth_proxy.py","tests/test_dashboard_contract.py"],evidence:"Backend-confirmed independent switches; provider readiness required to enable; current live provisioning remains disabled."},
 {id:"repo-selector",label:"Account & Repo",path:"repository",target:"repo-selector",file:"dashboard/index.html",elements:["repo-selector","shared-owner","shared-owner-custom","shared-repo","shared-load","shared-apply","shared-status"],handlers:["sharedOwner","shared-load click handler","shared-repo change handler","shared-apply click handler","shared-clear click handler"],service:"Unauthenticated public GitHub REST API: GET /users/{owner} and GET /users/{owner}/repos?type=public; no OAuth account switching",state:"sharedSelection owner/repository/repositories in browser memory; selected repository copied into tool inputs",tests:["tests/test_dashboard_contract.py::test_shared_github_account_and_repository_selector_contract","tests/test_dashboard_contract.py::test_github_requests_are_public_read_only","tests/browser_smoke.mjs"],evidence:"Public repository discovery only; private repository access and effective permissions remain UNKNOWN."},
 {id:"user",label:"User Explorer",path:"repository",target:"user",file:"dashboard/index.html",elements:["user","user-name","user-load","user-clear","user-msg","user-data"],handlers:["user-load onclick handler","user-clear onclick handler"],service:"Unauthenticated public GitHub REST API: GET /users/{username}",state:"state.user in browser memory; rendered public profile metadata",tests:["tests/test_dashboard_contract.py::test_github_requests_are_public_read_only","tests/browser_smoke.mjs"],evidence:"Public profile only; does not establish organization membership, roles, private access or repository permissions."},
-{id:"terminal-studio",label:"Terminal Studio",path:"developer",target:"terminal-studio",file:"dashboard/index.html",elements:["terminal-studio","terminal-load-templates","terminal-template-select","terminal-preview","terminal-preview-output"],handlers:["initTerminalStudio","terminalStudioLoad","terminalStudioPreview"],service:"Authenticated Gateway Terminal Catalog and preview endpoints; no command execution",state:"terminalStudioState in browser memory; owner CSRF token held in projectImportState",tests:["tests/test_dashboard_contract.py::test_terminal_studio_dashboard_is_preview_only","tests/test_cloud_gateway_terminal_catalog.py"],evidence:"API and argv preview only; no execution, workspace binding or runtime evidence."},
+{id:"terminal-studio",label:"Terminal Studio",path:"developer",target:"terminal-studio",file:"dashboard/index.html",elements:["terminal-studio","terminal-load-templates","terminal-template-select","terminal-preview","terminal-preview-output","terminal-pack-json","terminal-import-pack","terminal-import-status"],handlers:["initTerminalStudio","terminalStudioLoad","terminalStudioPreview","terminalStudioImport"],service:"Authenticated Gateway Terminal Catalog and preview endpoints; no command execution",state:"terminalStudioState in browser memory; owner CSRF token held in projectImportState",tests:["tests/test_dashboard_contract.py::test_terminal_studio_dashboard_is_preview_only","tests/test_cloud_gateway_terminal_catalog.py"],evidence:"API and argv preview only; no execution, workspace binding or runtime evidence."},
 
 
 ];
@@ -1096,6 +1104,8 @@ async function terminalStudioLoad(){
   }
   select.disabled=select.options.length<=1;
   $("terminal-preview").disabled=true;
+  $("terminal-import-pack").disabled=false;
+  $("terminal-import-status").textContent="Owner session connected. Imported templates remain disabled pending review.";
   terminalStudioStatus("Loaded "+(select.options.length-1)+" curated templates. Execution remains disabled.","ready");
  }catch(error){terminalStudioStatus("Could not load Command Library: "+error.message,"error");}
  finally{button.disabled=false;}
@@ -1125,10 +1135,30 @@ async function terminalStudioPreview(){
  }catch(error){$("terminal-preview-output").textContent="No verified preview available.";terminalStudioStatus("Preview rejected: "+error.message,"error");}
  finally{button.disabled=!$("terminal-template-select").value;}
 }
+async function terminalStudioImport(){
+ const button=$("terminal-import-pack");button.disabled=true;
+ try{
+  if(!projectImportState.authenticated&&!await projectImportCheckSession())throw new Error("Sign in before importing a command pack.");
+  let pack;
+  try{pack=JSON.parse($("terminal-pack-json").value)}catch(_){throw new Error("Command pack must be valid JSON.");}
+  const result=await terminalStudioRequest("/api/terminal/templates/import","POST",pack);
+  if(!Array.isArray(result.imported)||result.imported.length<1||typeof result.source_sha256!=="string")throw new Error("Gateway did not return verified import metadata.");
+  await terminalStudioLoad();
+  const first=result.imported[0];
+  $("terminal-template-select").value=first.id;
+  $("terminal-preview").disabled=false;
+  $("terminal-import-status").textContent="Imported "+result.imported.length+" template(s). SHA-256: "+result.source_sha256+"\nAll imported templates are disabled and pending Owner review. No command was executed.";
+  terminalStudioStatus("Command pack imported as inert data. Owner review is required before any future execution feature.","ready");
+ }catch(error){
+  $("terminal-import-status").textContent="Import rejected: "+error.message;
+  terminalStudioStatus("Command pack was not imported: "+error.message,"error");
+ }finally{button.disabled=false;}
+}
 function initTerminalStudio(){
  $("terminal-load-templates").addEventListener("click",terminalStudioLoad);
  $("terminal-template-select").addEventListener("change",()=>{$("terminal-preview").disabled=!$("terminal-template-select").value});
  $("terminal-preview").addEventListener("click",terminalStudioPreview);
+ $("terminal-import-pack").addEventListener("click",terminalStudioImport);
 }
 initTerminalStudio();
 
@@ -1708,7 +1738,7 @@ document.querySelector('[data-tab="infrastructure"]')?.addEventListener("click",
  const tabs=[...nav.querySelectorAll('button[data-tab]')];
  const groups={
   home:'START',account:'IDENTITY','project-import':'PROJECTS', 'code-navigator':'DEVELOPMENT','cloud-runners':'DEVELOPMENT',infrastructure:'INFRASTRUCTURE',
-  'dev-tools':'DEVELOPMENT','ui-routes':'DESIGN & SIMULATION','ui-simulator':'DESIGN & SIMULATION',
+  'dev-tools':'DEVELOPMENT','terminal-studio':'DEVELOPMENT','ui-routes':'DESIGN & SIMULATION','ui-simulator':'DESIGN & SIMULATION',
   'route-colors':'DESIGN & SIMULATION','github-api':'INTEGRATIONS','repo-selector':'GITHUB',
   repo:'GITHUB',pr:'GITHUB',user:'GITHUB',workspace:'GITHUB',
   evidence:'ASSURANCE','gates':'ASSURANCE','checkpoint':'ASSURANCE',audit:'ASSURANCE'
