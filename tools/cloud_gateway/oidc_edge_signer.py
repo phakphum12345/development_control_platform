@@ -148,6 +148,16 @@ class OIDCProxyIdentitySigner:
         )
         return session_id, cookie
 
+    @staticmethod
+    def _header_values(headers, name):
+        get_all = getattr(headers, "get_all", None)
+        if callable(get_all):
+            values = get_all(name, [])
+            if values:
+                return [value for value in values if isinstance(value, str)]
+        value = headers.get(name)
+        return [value] if isinstance(value, str) else []
+
     def _verified_proxy_identity(self, cookie_header: str):
         cookies = self._cookie_values(cookie_header)
         if self.proxy_cookie_name not in cookies and not any(
@@ -170,8 +180,12 @@ class OIDCProxyIdentitySigner:
                 if status != 202:
                     return None
                 headers = response.headers
-                subject = headers.get("X-Auth-Request-User", "")
-                raw_groups = headers.get("X-Auth-Request-Groups", "")
+                subjects = self._header_values(headers, "X-Auth-Request-User")
+                group_headers = self._header_values(headers, "X-Auth-Request-Groups")
+                if len(subjects) != 1:
+                    return None
+                subject = subjects[0]
+                raw_groups = ",".join(group_headers)
         except HTTPError as exc:
             try:
                 if exc.code in (401, 403):
