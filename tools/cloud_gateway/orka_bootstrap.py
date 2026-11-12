@@ -74,7 +74,7 @@ class OrkaRunnerBootstrapFactory:
             raise OrkaBootstrapError("GitHub runner registration credential is invalid")
         if (
             not isinstance(expires_at, datetime) or expires_at.tzinfo is None
-            or expires_at <= now + timedelta(minutes=5)
+            or expires_at <= now + timedelta(minutes=15)
         ):
             raise OrkaBootstrapError("GitHub runner registration credential expires too soon")
 
