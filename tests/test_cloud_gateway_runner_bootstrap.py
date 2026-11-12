@@ -54,7 +54,7 @@ class AzureRunnerBootstrapTests(unittest.TestCase):
         self.assertIn("mock-registration-token", script)
         self.assertIn("sha256sum --check --status", script)
         self.assertIn("for attempt in 1 2 3 4 5 6", script)
-        self.assertIn("token_expiry", script) if False else None
+        self.assertIn("Runner registration credential expired", script)
         self.assertIn("--ephemeral --disableupdate", script)
         self.assertNotIn("mock-registration-token", str(props["settings"]))
         self.assertEqual(app.repositories, ["phakphum12345/generated-A4-pdf"])
