@@ -16,7 +16,7 @@ class OrkaTests(unittest.TestCase):
  def make_ready(self,checker=None,bootstrap=None,**kwargs):
   return self.make(
    checker or (lambda *args:True),
-   bootstrap_factory=bootstrap or (lambda name,os_name,payload:{"script":"#!/bin/bash\\nset +x\\nTOKEN='mock-registration-token'\\n","expires_at":datetime.now(timezone.utc)+timedelta(minutes=30)}),
+   bootstrap_factory=bootstrap or (lambda name,os_name,payload:{"script":"#!/bin/bash\\nset +x\\nTOKEN='mock-registration-token'\\n","expires_at":datetime.now(timezone.utc)+timedelta(minutes=60)}),
    userdata_rbac_reviewed=True,
    userdata_exposure_reviewed=True,
    network_policy_checker=lambda *args:True,
@@ -76,7 +76,7 @@ class OrkaTests(unittest.TestCase):
   self.assertFalse(p.readiness("macos")["ready"])
   with self.assertRaises(OrkaError): p.provision(request())
  def test_rejects_user_data_larger_than_encoded_api_limit(self):
-  p=self.make_ready(bootstrap=lambda *args:{"script":"x"*50000,"expires_at":datetime.now(timezone.utc)+timedelta(minutes=30)})
+  p=self.make_ready(bootstrap=lambda *args:{"script":"x"*50000,"expires_at":datetime.now(timezone.utc)+timedelta(minutes=60)})
   with self.assertRaises(OrkaError):
    p.provision(request())
  def test_userdata_phase_must_succeed_before_runner_online(self):
