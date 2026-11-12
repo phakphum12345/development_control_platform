@@ -8,7 +8,7 @@ class FakeArm:
  subscription_id=SUB; resource_group="dcp"
  def __init__(self):
   self.calls=[]; self.nic_exists=True; self.fail_vm_put=False
-  self.get_result={"properties":{"provisioningState":"Succeeded"},"tags":{"repository":"phakphum12345/generated-A4-pdf","target-os":"linux"}}
+  self.get_result={"properties":{"provisioningState":"Succeeded"},"tags":{"repository":"phakphum12345/generated-A4-pdf","target-os":"linux","bootstrap-extension":"dcp-bootstrap"},"resources":[{"name":"dcp-bootstrap","properties":{"provisioningState":"Succeeded"}}]}
  def resource_url(self,provider,kind,name,version): return f"https://management.azure.com/subscriptions/{SUB}/resourceGroups/dcp/providers/{provider}/{kind}/{name}?api-version={version}"
  def resource_id(self,provider,kind,name): return f"/subscriptions/{SUB}/resourceGroups/dcp/providers/{provider}/{kind}/{name}"
  def request(self,method,url,payload=None,allow_missing=False):
@@ -36,10 +36,13 @@ class AzureVMTests(unittest.TestCase):
   for os_name in ("linux","windows"):
    p,arm=self.make(lambda *args:True,lambda *args:True); result=p.provision(payload(os_name)); self.assertEqual(result.state,"provisioning")
    nic=arm.calls[0][2]; vm=arm.calls[1][2]; self.assertNotIn("publicIPAddress",str(nic))
-   self.assertEqual(vm["storageProfile"]["osDisk"]["diffDiskSettings"]["option"],"Local")
-   self.assertEqual(vm["networkProfile"]["networkInterfaces"][0]["id"],f"/subscriptions/{SUB}/resourceGroups/dcp/providers/Microsoft.Network/networkInterfaces/{arm.calls[0][1].split('/')[-1].split('?')[0]}")
+   self.assertEqual(vm["properties"]["storageProfile"]["osDisk"]["diffDiskSettings"]["option"],"Local")
+   self.assertEqual(vm["properties"]["extensionsTimeBudget"],"PT45M")
+   self.assertEqual(vm["properties"]["networkProfile"]["networkInterfaces"][0]["id"],f"/subscriptions/{SUB}/resourceGroups/dcp/providers/Microsoft.Network/networkInterfaces/{arm.calls[0][1].split('/')[-1].split('?')[0]}")
    self.assertNotIn("identity",vm); self.assertEqual(vm["tags"]["managed-by"],"dcp-cloud-runner")
    self.assertIn("protectedSettings",vm["resources"][0]["properties"])
+   self.assertEqual(vm["resources"][0]["location"],"eastus")
+   self.assertEqual(vm["resources"][0]["type"],"Microsoft.Compute/virtualMachines/extensions")
  def test_partial_vm_create_failure_retains_provider_id_for_reconciliation(self):
   p,arm=self.make(lambda *args:True,lambda *args:True); arm.fail_vm_put=True
   with self.assertRaises(AzureProvisionError) as caught: p.provision(payload("linux"))
@@ -53,6 +56,13 @@ class AzureVMTests(unittest.TestCase):
   p,_=self.make(); self.assertEqual(p.status("dcp-123-abcdef12").state,"provisioning")
  def test_runner_online_requires_independent_checker(self):
   p,_=self.make(lambda *args:True,lambda *args:True); vm=p.provision(payload("linux")); self.assertEqual(p.status(vm.provider_id).state,"online")
+ def test_runner_waits_for_bootstrap_extension_and_deletes_on_extension_failure(self):
+  p,arm=self.make(lambda *args:True,lambda *args:True); vm=p.provision(payload("linux"))
+  arm.get_result["resources"][0]["properties"]["provisioningState"]="Creating"
+  self.assertEqual(p.status(vm.provider_id).state,"provisioning")
+  arm.get_result["resources"][0]["properties"]["provisioningState"]="Failed"
+  self.assertEqual(p.status(vm.provider_id).state,"terminating")
+  self.assertTrue(any(call[0]=="DELETE" and "Microsoft.Compute/virtualMachines/" in call[1] for call in arm.calls))
  def test_termination_waits_for_missing_vm_and_nic_before_terminal_state(self):
   p,arm=self.make(lambda *args:True,lambda *args:True); vm=p.provision(payload("linux")); p.terminate(vm.provider_id)
   arm.get_result=None
