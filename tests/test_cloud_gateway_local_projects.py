@@ -11,8 +11,10 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+from urllib.parse import urlparse
 
 from tools.cloud_gateway.policy import GatewaySettings
+from tools.cloud_gateway.job_control import JobStore
 from tools.cloud_gateway.server import make_handler
 from tools.cloud_gateway.service import GatewayService
 from tools.cloud_gateway.store import RunnerStore
@@ -34,7 +36,14 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
         self.origin = "https://dcp.example.test"
         store = RunnerStore(str(base / "gateway.sqlite"))
         service = GatewayService(GatewaySettings(), store, object())
+        self.service = service
         service.local_project_registry = registry
+        service.job_store = JobStore(base / "jobs.sqlite3")
+        service.repository_catalog = lambda: []
+        service.repository_authorizer = lambda repository: repository == "example/demo"
+        service.repository_ref_catalog = lambda repository, kind: [
+            {"name": kind + "-selected", "commit_sha": "a" * 40}
+        ]
         self.server = ThreadingHTTPServer(
             ("127.0.0.1", 0),
             make_handler(
@@ -54,12 +63,12 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
         self.thread.join(timeout=2)
         self.temp.cleanup()
 
-    def request(self, path, role="owner", method="GET"):
+    def request(self, path, role="owner", method="GET", payload=None, idempotency_key=None):
         subject = "dcp-owner@example.test"
         session = "local_project_session_123"
         timestamp = str(int(time.time()))
         nonce = secrets.token_urlsafe(24)
-        canonical = "\n".join((method, path, subject, role, session, timestamp, nonce)).encode()
+        canonical = "\n".join((method, urlparse(path).path, subject, role, session, timestamp, nonce)).encode()
         signature = hmac.new(self.secret.encode(), canonical, hashlib.sha256).hexdigest()
         headers = {
             "X-DCP-User": subject,
@@ -76,7 +85,12 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
                 ("csrf\n" + subject + "\n" + session).encode(),
                 hashlib.sha256,
             ).hexdigest()
-        request = Request(self.base + path, method=method, headers=headers)
+        body = json.dumps(payload).encode("utf-8") if payload is not None else None
+        if body is not None:
+            headers["Content-Type"] = "application/json"
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
+        request = Request(self.base + path, data=body, method=method, headers=headers)
         try:
             with urlopen(request, timeout=5) as response:
                 return response.status, json.loads(response.read())
@@ -101,10 +115,88 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
         self.assertNotIn("path", row)
         self.assertNotIn(str(Path(self.temp.name)), json.dumps(projects))
 
+    def test_local_project_list_includes_bounded_framework_detection_without_host_path(self):
+        status, projects = self.request("/api/local-projects")
+        self.assertEqual(status, 200)
+        row = projects["projects"][0]
+        self.assertEqual(row["framework_detection"]["framework"], "Static HTML/CSS/JS")
+        self.assertEqual(row["framework_detection"]["project_type"], "web")
+        self.assertNotIn("workspace", row)
+        self.assertNotIn("path", row)
+
+    def test_owner_can_queue_job_bound_to_current_local_snapshot(self):
+        payload = {
+            "source_type": "local_folder",
+            "project_id": self.project["project_id"],
+            "snapshot_sha256": self.project["snapshot_sha256"],
+            "target": "build_static_web",
+        }
+        status, job = self.request(
+            "/api/jobs", method="POST", payload=payload,
+            idempotency_key="local-project-job-0001",
+        )
+        self.assertEqual(status, 202)
+        self.assertEqual(job["source_type"], "local_folder")
+        self.assertEqual(job["source_id"], self.project["project_id"])
+        self.assertEqual(job["source_sha256"], self.project["snapshot_sha256"])
+        self.assertIsNone(job["repository"])
+        self.assertIsNone(job["commit_sha"])
+        self.assertEqual(job["state"], "queued")
+        self.assertNotIn(str(Path(self.temp.name)), json.dumps(job))
+
+    def test_local_job_requires_owner_and_detected_matching_target(self):
+        payload = {
+            "source_type": "local_folder",
+            "project_id": self.project["project_id"],
+            "snapshot_sha256": self.project["snapshot_sha256"],
+            "target": "build_static_web",
+        }
+        status, _ = self.request(
+            "/api/jobs", role="operator", method="POST", payload=payload,
+            idempotency_key="local-project-job-0002",
+        )
+        self.assertEqual(status, 403)
+        invalid_target = {**payload, "target": "build_vite"}
+        status, _ = self.request(
+            "/api/jobs", method="POST", payload=invalid_target,
+            idempotency_key="local-project-job-0003",
+        )
+        self.assertEqual(status, 400)
+
+    def test_changed_local_project_requires_refresh_before_queue(self):
+        payload = {
+            "source_type": "local_folder",
+            "project_id": self.project["project_id"],
+            "snapshot_sha256": self.project["snapshot_sha256"],
+            "target": "build_static_web",
+        }
+        (Path(self.temp.name) / "approved" / "demo" / "index.html").write_text(
+            "<h1>changed</h1>", encoding="utf-8"
+        )
+        status, response = self.request(
+            "/api/jobs", method="POST", payload=payload,
+            idempotency_key="local-project-job-0004",
+        )
+        self.assertEqual(status, 409)
+        self.assertEqual(len(response["current_snapshot_sha256"]), 64)
+        self.assertEqual(self.service.job_store.list_recent(), [])
+
     def test_owner_can_read_one_project_by_id(self):
         status, result = self.request("/api/local-projects/" + self.project["project_id"])
         self.assertEqual(status, 200)
         self.assertEqual(result["project_id"], self.project["project_id"])
+
+    def test_github_ref_kind_query_is_honored(self):
+        status, result = self.request(
+            "/api/github/repositories/example/demo/refs?kind=tags"
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(result["refs"][0]["name"], "tags-selected")
+
+    def test_operator_can_read_github_app_project_catalog(self):
+        status, result = self.request("/api/github/repositories", role="operator")
+        self.assertEqual(status, 200)
+        self.assertEqual(result["repositories"], [])
 
     def test_operator_cannot_read_local_filesystem_metadata(self):
         status, result = self.request("/api/local-projects", role="operator")

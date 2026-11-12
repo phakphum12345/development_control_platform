@@ -50,10 +50,12 @@ class AuthenticatedControlAPITests(unittest.TestCase):
         self.registry = RunnerRegistry(Path(self.temp.name) / "runners.sqlite3")
         self.service.runner_registry = self.registry
         self.runner_token = "runner-token-for-test-that-is-at-least-32-bytes"
+        self.runner_token_2 = "second-runner-token-for-test-at-least-32-bytes"
         self.server = ThreadingHTTPServer(
             ("127.0.0.1", 0),
             make_handler(self.service, "internal-gateway-token", SECRET, ORIGIN,
-                         {"worker-test-01": self.runner_token}),
+                         {"worker-test-01": self.runner_token,
+                          "worker-test-02": self.runner_token_2}),
         )
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -365,11 +367,19 @@ class AuthenticatedControlAPITests(unittest.TestCase):
             created = json.loads(response.read())
             self.assertEqual(response.status, 202)
             self.assertEqual(created["state"], "queued")
+            self.assertEqual(created["attempt_count"], 0)
+            self.assertEqual(created["max_attempts"], 3)
         job_id = created["id"]
         with urlopen(self.request("GET", "/api/jobs", "nonce_job_list_00001")) as response:
-            self.assertEqual(json.loads(response.read())["jobs"][0]["id"], job_id)
+            listed = json.loads(response.read())["jobs"][0]
+            self.assertEqual(listed["id"], job_id)
+            self.assertEqual(listed["attempt_count"], 0)
+            self.assertEqual(listed["max_attempts"], 3)
         with urlopen(self.request("GET", "/api/jobs/" + job_id, "nonce_job_get_000001")) as response:
-            self.assertEqual(json.loads(response.read())["id"], job_id)
+            fetched = json.loads(response.read())
+            self.assertEqual(fetched["id"], job_id)
+            self.assertEqual(fetched["attempt_count"], 0)
+            self.assertEqual(fetched["max_attempts"], 3)
         csrf = self._csrf("nonce_job_session_owner")
         with self.assertRaises(HTTPError) as error:
             urlopen(self._dashboard_post("/api/jobs/" + job_id + "/cancel",
@@ -418,6 +428,75 @@ class AuthenticatedControlAPITests(unittest.TestCase):
                                     {"outcome": "succeeded", "result": {"exit_code": 0}})) as response:
             self.assertEqual(json.loads(response.read())["state"], "succeeded")
         self.assertEqual(self.job_store.logs(job["id"])[0]["message"], "runner connected")
+
+    def test_runner_lease_expiry_recovery_reclaims_job_and_fences_old_worker(self):
+        job, _ = self.job_store.create(
+            {"repository": "example/private-app", "commit_sha": "f" * 40, "target": "test"},
+            "runner-lease-recovery-01",
+        )
+
+        def runner_request(token, path, body):
+            data = json.dumps(body).encode()
+            return Request(self.base + path, data=data, method="POST", headers={
+                "Authorization": "Bearer " + token,
+                "Content-Type": "application/json",
+            })
+
+        for token in (self.runner_token, self.runner_token_2):
+            with urlopen(runner_request(token, "/v1/runner/register", {
+                "host_os": "linux", "capabilities": ["flutter", "linux"],
+            })) as response:
+                self.assertEqual(response.status, 200)
+
+        with urlopen(runner_request(
+            self.runner_token, "/v1/runner/claim", {"lease_seconds": 60}
+        )) as response:
+            first = json.loads(response.read())["job"]
+        self.assertEqual(first["id"], job["id"])
+        self.assertEqual(first["worker"], "worker-test-01")
+        self.assertEqual(first["attempt_count"], 1)
+        self.assertEqual(first["max_attempts"], 3)
+
+        with self.job_store.db() as db:
+            db.execute(
+                "UPDATE jobs SET lease_until=? WHERE id=?",
+                ("2000-01-01T00:00:00+00:00", job["id"]),
+            )
+
+        with urlopen(runner_request(
+            self.runner_token_2, "/v1/runner/claim", {"lease_seconds": 60}
+        )) as response:
+            second = json.loads(response.read())["job"]
+        self.assertEqual(second["id"], job["id"])
+        self.assertEqual(second["worker"], "worker-test-02")
+        self.assertEqual(second["last_worker"], "worker-test-01")
+        self.assertEqual(second["attempt_count"], 2)
+
+        stale_heartbeat = runner_request(
+            self.runner_token, "/v1/runner/" + job["id"] + "/heartbeat", {}
+        )
+        with self.assertRaises(HTTPError) as error:
+            urlopen(stale_heartbeat)
+        try:
+            self.assertEqual(error.exception.code, 409)
+        finally:
+            error.exception.close()
+
+        with urlopen(runner_request(
+            self.runner_token_2, "/v1/runner/" + job["id"] + "/finish",
+            {"outcome": "succeeded", "result": {"exit_code": 0}},
+        )) as response:
+            final = json.loads(response.read())
+        self.assertEqual(final["state"], "succeeded")
+        self.assertEqual(final["last_worker"], "worker-test-02")
+        self.assertEqual(final["attempt_count"], 2)
+
+        recovery_event = next(
+            event for event in self.job_store.events(job["id"])
+            if event["event"] == "lease_expired_requeued"
+        )
+        self.assertEqual(recovery_event["detail"]["worker"], "worker-test-01")
+        self.assertEqual(recovery_event["detail"]["attempt_count"], 1)
 
     def test_runner_api_rejects_dashboard_token(self):
         request = Request(self.base + "/v1/runner/claim", data=b"{}",

@@ -10,6 +10,8 @@ from .artifacts import ArtifactPackageError, FlutterArtifactPackager
 from .checkout import CheckoutError
 from .execution import ExecutionError, FlutterBuildExecutor
 from .workspace import WorkspaceError, WorkspaceManager
+from .web_build import WebBuildExecutor, WebArtifactPackager
+from .browser_test import BrowserTestError, StaticWebPlaywrightTester
 
 
 class CheckoutProvider(Protocol):
@@ -32,6 +34,11 @@ class RunnerPipeline:
         artifact_packager: FlutterArtifactPackager | None = None,
         worker_os: str | None = None,
         capabilities: set[str] | frozenset[str] | None = None,
+        web_executor: WebBuildExecutor | None = None,
+        web_artifact_packager: WebArtifactPackager | None = None,
+        local_project_checkout=None,
+        trusted_local_projects: set[str] | frozenset[str] = frozenset(),
+        browser_test_executor: StaticWebPlaywrightTester | None = None,
     ):
         if isinstance(heartbeat_interval_seconds, bool) or not isinstance(heartbeat_interval_seconds, int) or not 5 <= heartbeat_interval_seconds <= 60:
             raise ValueError("heartbeat interval must be between 5 and 60 seconds")
@@ -39,8 +46,13 @@ class RunnerPipeline:
         self.workspaces = workspaces
         self.checkout_provider = checkout
         self.executor = executor
+        self.web_executor = web_executor or WebBuildExecutor(workspaces, enabled=False)
+        self.web_artifact_packager = web_artifact_packager or WebArtifactPackager(workspaces)
         self.heartbeat_interval_seconds = heartbeat_interval_seconds
         self.trusted_repositories = frozenset(trusted_repositories)
+        self.local_project_checkout = local_project_checkout
+        self.trusted_local_projects = frozenset(trusted_local_projects)
+        self.browser_test_executor = browser_test_executor
         self.artifact_packager = artifact_packager or FlutterArtifactPackager(workspaces)
         detected_os = "windows" if sys.platform == "win32" else "macos" if sys.platform == "darwin" else "linux"
         self.worker_os = worker_os or detected_os
@@ -59,22 +71,53 @@ class RunnerPipeline:
         job_id = job["id"]
         worker_id = job["worker"]
         allocated = False
+        retained_for_preview = False
         outcome = "failed"
         error_code = "RUNNER_EXECUTION_FAILED"
         result = {}
         last_heartbeat = 0.0
+        browser_test_artifact_path = None
         try:
-            if job["repository"] not in self.trusted_repositories:
-                raise ExecutionError("repository is not in the Runner trusted-repository allowlist")
+            job_payload = job.get("payload") if isinstance(job.get("payload"), dict) else {}
+            # The Gateway's public claim response deliberately omits the private payload.
+            # Source identity and immutable revision are exposed as sanitized top-level fields.
+            source_type = job.get("source_type") or job_payload.get("source_type", "github")
+            if source_type == "github":
+                if job["repository"] not in self.trusted_repositories:
+                    raise ExecutionError("repository is not in the Runner trusted-repository allowlist")
+            elif source_type == "local_folder":
+                project_id = job.get("source_id") or job_payload.get("source_id")
+                snapshot_sha256 = job.get("source_sha256") or job_payload.get("source_sha256")
+                if project_id not in self.trusted_local_projects:
+                    raise ExecutionError("local project is not in the Runner trusted-project allowlist")
+                if self.local_project_checkout is None:
+                    raise CheckoutError("Local Project snapshot checkout is not configured")
+                if not isinstance(snapshot_sha256, str):
+                    raise CheckoutError("Local Project snapshot revision is unavailable")
+            else:
+                raise ExecutionError("job source type is not supported by this Runner")
+            self.workspaces.cleanup_expired_preview_workspaces()
             self.workspaces.create(job_id, worker_id)
             allocated = True
             self.client.append_log(job_id, "Runner claimed job; workspace allocated", "system")
-            source = self.checkout_provider.checkout(
-                job_id, worker_id, job["repository"], job["commit_sha"]
-            )
-            self.client.append_log(
-                job_id, f"Checked out immutable commit {job['commit_sha']}", "system"
-            )
+            if source_type == "local_folder":
+                source, snapshot = self.local_project_checkout.checkout(
+                    job_id, worker_id, project_id, snapshot_sha256
+                )
+                result["source_type"] = "local_folder"
+                result["source_sha256"] = snapshot["snapshot_sha256"]
+                self.client.append_log(
+                    job_id, "Materialized owner-approved Local Folder snapshot SHA-256 "
+                    + snapshot["snapshot_sha256"], "system"
+                )
+            else:
+                source = self.checkout_provider.checkout(
+                    job_id, worker_id, job["repository"], job["commit_sha"]
+                )
+                result["source_type"] = "github"
+                self.client.append_log(
+                    job_id, f"Checked out immutable commit {job['commit_sha']}", "system"
+                )
 
             def cancellation_requested():
                 nonlocal last_heartbeat
@@ -86,28 +129,49 @@ class RunnerPipeline:
                 last_heartbeat = now
                 return current.get("state") == "cancel_requested"
 
-            self.executor.log = lambda stream, message: self.client.append_log(job_id, message, stream)
-            build = self.executor.run(
-                job_id, worker_id, job["target"],
+            build_target = "build_static_web" if job["target"] == "test_static_web" else job["target"]
+            selected_executor = self.web_executor if build_target in WebBuildExecutor.TARGETS else self.executor
+            selected_executor.log = lambda stream, message: self.client.append_log(job_id, message, stream)
+            build = selected_executor.run(
+                job_id, worker_id, build_target,
                 cancel_requested=cancellation_requested,
             )
             outcome = build.outcome
             error_code = build.error_code
-            result = {
+            build_succeeded = outcome == "succeeded"
+            result.update({
                 "command": list(build.command),
                 "return_code": build.return_code,
                 "duration_seconds": build.duration_seconds,
                 "output_bytes": build.output_bytes,
                 "source_directory": str(source.relative_to(self.workspaces.get(job_id, worker_id))),
-            }
+            })
+            if build_succeeded and job["target"] == "test_static_web":
+                if self.browser_test_executor is None:
+                    raise BrowserTestError("Playwright test capability is not configured on this Runner")
+                browser_result = self.browser_test_executor.run(job_id, worker_id)
+                browser_test_artifact_path = browser_result.get("artifact_path")
+                result["browser_test"] = {
+                    key: value for key, value in browser_result.items()
+                    if key not in ("artifact_path",)
+                }
+                self.client.append_log(
+                    job_id,
+                    "Playwright static preview tests " + browser_result["status"],
+                    "system",
+                )
+                if browser_result["status"] != "PASS":
+                    outcome = "failed"
+                    error_code = "WEB_BROWSER_TESTS_FAILED"
             self.client.append_log(
                 job_id,
-                f"Flutter execution {outcome}; exit={build.return_code}; "
+                f"Build execution {outcome}; exit={build.return_code}; "
                 f"duration={build.duration_seconds}s; output={build.output_bytes} bytes",
                 "system",
             )
-            if outcome == "succeeded":
-                artifact = self.artifact_packager.package(job_id, worker_id, job["target"])
+            if build_succeeded:
+                packager = self.web_artifact_packager if build_target in ("build_static_web", "build_vite") else self.artifact_packager
+                artifact = packager.package(job_id, worker_id, build_target)
                 if artifact is not None:
                     artifact_path, artifact_name = artifact
                     metadata = self.client.upload_artifact(job_id, str(artifact_path), artifact_name)
@@ -115,12 +179,30 @@ class RunnerPipeline:
                     self.client.append_log(
                         job_id, f"Artifact stored: {artifact_name} ({metadata['size']} bytes)", "system"
                     )
-                error_code = None
-        except (ArtifactPackageError, CheckoutError, ExecutionError, WorkspaceError) as exc:
+                if job["target"] == "test_static_web" and self.browser_test_executor is not None:
+                    if browser_test_artifact_path is not None:
+                        metadata = self.client.upload_artifact(job_id, str(browser_test_artifact_path), "web-test-results.zip")
+                        result["test_artifact"] = metadata
+                        self.client.append_log(
+                            job_id, f"Test evidence stored: web-test-results.zip ({metadata['size']} bytes)", "system"
+                        )
+                if job["target"] in ("build_static_web", "build_vite", "test_static_web"):
+                    self.workspaces.retain_for_preview(job_id, worker_id, ttl_seconds=3600)
+                    self.client.append_log(
+                        job_id, "Successful web build workspace retained for a bounded local preview window", "system"
+                    )
+                    retained_for_preview = True
+                    result["workspace_retained_for_preview"] = True
+                if outcome == "succeeded":
+                    error_code = None
+        except (ArtifactPackageError, BrowserTestError, CheckoutError, ExecutionError, WorkspaceError) as exc:
             self.client.append_log(
                 job_id, f"Runner rejected job safely: {type(exc).__name__}", "stderr"
             )
             result = {"error": type(exc).__name__}
+            if isinstance(exc, ExecutionError):
+                # ExecutionError messages are fixed policy diagnostics, not subprocess output.
+                result["reason"] = str(exc)
             error_code = "RUNNER_POLICY_OR_BUILD_ERROR"
         except Exception as exc:
             # Do not echo exception text: transport and provider errors can contain secrets.
@@ -133,7 +215,7 @@ class RunnerPipeline:
             result = {"error": type(exc).__name__}
             error_code = "RUNNER_INTERNAL_ERROR"
         finally:
-            if allocated:
+            if allocated and not retained_for_preview:
                 try:
                     self.workspaces.cleanup(job_id, worker_id)
                     self.client.append_log(job_id, "Workspace cleaned", "system")

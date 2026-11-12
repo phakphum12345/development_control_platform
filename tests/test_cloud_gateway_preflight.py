@@ -1,10 +1,17 @@
 """Read-only deployment preflight tests; no network or secrets are used."""
+import base64
 import unittest
 
 from tools.cloud_gateway.preflight import inspect_environment
 
 
 SUBSCRIPTION = "00000000-0000-0000-0000-000000000000"
+
+
+def ssh_public_key():
+    key_type = b"ssh-ed25519"
+    wire = len(key_type).to_bytes(4, "big") + key_type + (32).to_bytes(4, "big") + b"\x01" * 32
+    return "ssh-ed25519 " + base64.b64encode(wire).decode("ascii") + " preflight-test"
 
 
 def valid_environment():
@@ -29,13 +36,35 @@ def valid_environment():
             f"/subscriptions/{SUBSCRIPTION}/resourceGroups/network/providers/"
             "Microsoft.Network/networkSecurityGroups/dcp-runners"
         ),
+        "DCP_AZURE_ROUTE_TABLE_ID": (
+            f"/subscriptions/{SUBSCRIPTION}/resourceGroups/network/providers/"
+            "Microsoft.Network/routeTables/dcp-runners"
+        ),
+        "DCP_AZURE_FIREWALL_ID": (
+            f"/subscriptions/{SUBSCRIPTION}/resourceGroups/network/providers/"
+            "Microsoft.Network/azureFirewalls/dcp-egress"
+        ),
+        "DCP_AZURE_FIREWALL_POLICY_ID": (
+            f"/subscriptions/{SUBSCRIPTION}/resourceGroups/network/providers/"
+            "Microsoft.Network/firewallPolicies/dcp-egress"
+        ),
         "DCP_AZURE_BUDGET_NAME": "dcp-monthly",
         "DCP_AZURE_PROJECTED_RUN_COST_USD": "1.25",
         "DCP_AZURE_LINUX_VM_SIZE": "Standard_D2s_v5",
         "DCP_AZURE_WINDOWS_VM_SIZE": "Standard_D4s_v5",
+        "DCP_AZURE_LINUX_IMAGE_PUBLISHER": "Canonical",
+        "DCP_AZURE_LINUX_IMAGE_OFFER": "ubuntu-24_04-lts",
+        "DCP_AZURE_LINUX_IMAGE_SKU": "server",
+        "DCP_AZURE_LINUX_IMAGE_VERSION": "24.04.202501010",
+        "DCP_AZURE_WINDOWS_IMAGE_PUBLISHER": "MicrosoftWindowsServer",
+        "DCP_AZURE_WINDOWS_IMAGE_OFFER": "WindowsServer",
+        "DCP_AZURE_WINDOWS_IMAGE_SKU": "2025-datacenter-g2",
+        "DCP_AZURE_WINDOWS_IMAGE_VERSION": "2025.01.15",
         "DCP_RUNNER_VERSION": "2.331.0",
         "DCP_RUNNER_LINUX_SHA256": "a" * 64,
         "DCP_RUNNER_WINDOWS_SHA256": "b" * 64,
+        "DCP_AZURE_GUEST_ADMIN_USERNAME": "dcpadmin",
+        "DCP_AZURE_LINUX_SSH_PUBLIC_KEY": ssh_public_key(),
         "DCP_ORKA_URL": "https://orka.example.test",
         "DCP_ORKA_NAMESPACE": "dcp-runners",
         "DCP_ORKA_VM_CONFIG": "macos-15-arm64",
@@ -64,7 +93,9 @@ class GatewayPreflightTests(unittest.TestCase):
         for name in (
             "gateway_api_token", "trusted_proxy", "owner_approval",
             "repository_allowlist", "github_app_configuration",
-            "azure_configuration_presence", "orka_configuration_presence",
+            "azure_configuration_presence", "azure_guest_profile_configuration",
+            "azure_network_configuration", "azure_extra_egress_domains",
+            "azure_provider_opt_in", "orka_configuration_presence",
         ):
             self.assertEqual(checks[name]["status"], "PASS", name)
         self.assertEqual(checks["azure_network_policy"]["status"], "UNKNOWN")
@@ -90,6 +121,60 @@ class GatewayPreflightTests(unittest.TestCase):
         checks = {item["check"]: item for item in result["checks"]}
         self.assertEqual(checks["repository_allowlist"]["status"], "FAIL")
         self.assertEqual(checks["trusted_proxy"]["status"], "FAIL")
+        self.assertEqual(result["overall"], "FAIL")
+
+
+
+
+
+    def test_latest_vm_image_version_is_rejected(self):
+        env = valid_environment()
+        env["DCP_AZURE_LINUX_IMAGE_VERSION"] = "latest"
+        result = inspect_environment(env)
+        checks = {item["check"]: item for item in result["checks"]}
+        self.assertEqual(checks["azure_configuration_presence"]["status"], "FAIL")
+
+    def test_global_provisioning_cannot_be_enabled_without_provider_opt_in(self):
+        env = valid_environment()
+        env["DCP_GATEWAY_PROVISIONING_ENABLED"] = "true"
+        result = inspect_environment(env)
+        checks = {item["check"]: item for item in result["checks"]}
+        self.assertEqual(checks["azure_provider_opt_in"]["status"], "FAIL")
+        self.assertEqual(checks["provisioning_disabled_by_default"]["status"], "FAIL")
+
+    def test_invalid_extra_egress_domain_fails_preflight(self):
+        env = valid_environment()
+        env["DCP_AZURE_EGRESS_EXTRA_FQDNS"] = "*.com"
+        result = inspect_environment(env)
+        checks = {item["check"]: item for item in result["checks"]}
+        self.assertEqual(checks["azure_extra_egress_domains"]["status"], "FAIL")
+        self.assertEqual(checks["azure_configuration_presence"]["status"], "FAIL")
+
+    def test_invalid_firewall_or_route_table_resource_ids_fail_preflight(self):
+        env = valid_environment()
+        env["DCP_AZURE_FIREWALL_POLICY_ID"] = "/subscriptions/other/resourceGroups/network/providers/Microsoft.Network/firewallPolicies/p"
+        result = inspect_environment(env)
+        checks = {item["check"]: item for item in result["checks"]}
+        self.assertEqual(checks["azure_network_configuration"]["status"], "FAIL")
+        self.assertEqual(checks["azure_configuration_presence"]["status"], "FAIL")
+
+    def test_network_controls_must_be_outside_runner_resource_group(self):
+        env = valid_environment()
+        env["DCP_AZURE_ROUTE_TABLE_ID"] = (
+            f"/subscriptions/{SUBSCRIPTION}/resourceGroups/dcp-runners/providers/"
+            "Microsoft.Network/routeTables/runner-rt"
+        )
+        result = inspect_environment(env)
+        checks = {item["check"]: item for item in result["checks"]}
+        self.assertEqual(checks["azure_network_configuration"]["status"], "FAIL")
+
+    def test_invalid_azure_guest_profile_fails_syntax_preflight(self):
+        env = valid_environment()
+        env["DCP_AZURE_LINUX_SSH_PUBLIC_KEY"] = "ssh-rsa AAAA"
+        result = inspect_environment(env)
+        checks = {item["check"]: item for item in result["checks"]}
+        self.assertEqual(checks["azure_guest_profile_configuration"]["status"], "FAIL")
+        self.assertEqual(checks["azure_configuration_presence"]["status"], "FAIL")
         self.assertEqual(result["overall"], "FAIL")
 
     def test_invalid_azure_ids_checksums_and_github_app_ids_fail(self):

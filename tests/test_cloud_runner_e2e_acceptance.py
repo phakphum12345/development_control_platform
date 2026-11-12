@@ -13,6 +13,7 @@ from tools.cloud_gateway.budget_guard import AzureBudgetGuard
 from tools.cloud_gateway.runner_cleanup import GitHubRunnerCleanup
 from tools.cloud_gateway.policy import GatewaySettings
 from tools.cloud_gateway.server import make_handler
+from tools.cloud_gateway.infrastructure_gates import InfrastructureGateStore
 from tools.cloud_gateway.service import GatewayService
 from tools.cloud_gateway.store import RunnerStore
 from tools.cloud_gateway.oidc_assertion import sign_verified_oidc_assertion
@@ -131,6 +132,16 @@ class CloudRunnerEndToEndAcceptanceTests(unittest.TestCase):
         self.service = GatewayService(
             settings, self.store, self.provider,
             budget_guard=budget, runner_cleanup=cleanup,
+        )
+        # This mock-only acceptance explicitly enables the cloud gate in its
+        # temporary database after the fake provider reports readiness.
+        self.gate_store = InfrastructureGateStore(
+            Path(self.temp.name) / "gates.sqlite"
+        )
+        self.service.infrastructure_gate_store = self.gate_store
+        self.gate_store.set_enabled(
+            "cloud_provisioning", True, "test-owner",
+            "ENABLE CLOUD PROVISIONING", True,
         )
         handler = make_handler(
             self.service,

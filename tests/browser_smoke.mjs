@@ -126,6 +126,14 @@ try {
   assert.doesNotMatch(await page.locator("#ros-api-status").textContent(), /API URL must use HTTPS/);
   assert.equal(await page.locator("#ros-api-load").isDisabled(), true, "a non-API local server must not enable authenticated data loading");
 
+  // Project Import remains disabled on a static shell without the local owner session.
+  await page.locator('[data-tab="project-import"]').click();
+  assert.equal(await page.locator("#project-import").evaluate((el) => el.classList.contains("active")), true);
+  await page.waitForFunction(() => document.querySelector("#project-import-status")?.textContent.includes("Owner sign-in required"));
+  assert.equal(await page.locator("#project-import-github-refresh").isDisabled(), true);
+  assert.equal(await page.locator("#project-import-local-refresh").isDisabled(), true);
+  assert.equal(await page.locator("#project-import-inspect").isDisabled(), true);
+
   // PWA assets and password-login client must be present; static hosting must
   // fail closed rather than invent a client-side authenticated session.
   assert.equal(await page.locator('link[rel="manifest"]').getAttribute("href"), "./manifest.webmanifest");
@@ -139,6 +147,58 @@ try {
   assert.equal(await page.evaluate(() => localStorage.getItem("auth-token")), null);
   assert.equal(await page.evaluate(() => sessionStorage.getItem("auth-token")), null);
   assert.equal(await page.locator("#auth-submit").isDisabled(), true);
+
+  // Build target gating must match the verified project type, not assume every
+  // GitHub App project is Flutter. Runner-side CLI validation remains authoritative.
+  const targetSupport = await page.evaluate(() => {
+    const nodeProject = {status:"detected",truncated:false,project_types:["node"],flutter:{detected:false}};
+    const flutterProject = {status:"detected",truncated:false,project_types:["flutter"],flutter:{detected:true,macos_supported:false}};
+    const unknownProject = {status:"unknown",truncated:true,project_types:["node"],flutter:{detected:false}};
+    return {
+      vite: runnerProjectSupportsTarget(nodeProject,"build_vite"),
+      next: runnerProjectSupportsTarget(nodeProject,"build_next"),
+      angular: runnerProjectSupportsTarget(nodeProject,"build_angular"),
+      flutterBuild: runnerProjectSupportsTarget(flutterProject,"build"),
+      flutterMacosWithoutRunner: runnerProjectSupportsTarget(flutterProject,"build_macos"),
+      nodeCannotFlutter: runnerProjectSupportsTarget(nodeProject,"build"),
+      flutterCannotNext: runnerProjectSupportsTarget(flutterProject,"build_next"),
+      truncatedNode: runnerProjectSupportsTarget(unknownProject,"build_next"),
+    };
+  });
+  assert.deepEqual(targetSupport, {
+    vite:true,next:true,angular:true,flutterBuild:true,
+    flutterMacosWithoutRunner:false,nodeCannotFlutter:false,
+    flutterCannotNext:false,truncatedNode:false,
+  });
+
+  const builderSmoke = await page.evaluate(() => {
+    const previousTemplates = terminalStudioState.templates;
+    const select = document.getElementById("terminal-template-select");
+    const previousOptions = select.innerHTML;
+    const previousValue = select.value;
+    const previousDisabled = select.disabled;
+    terminalStudioState.templates = [{
+      id:"git_log",
+      parameters:[{name:"limit",label:"Maximum commits",type:"integer",required:false,default:5,minimum:1,maximum:50}],
+    }];
+    select.innerHTML = '<option value="git_log">Recent Git history</option>';
+    select.value = "git_log";
+    terminalStudioRenderBuilder();
+    const input = document.querySelector('[data-terminal-parameter="limit"]');
+    const initial = {type:input.type,value:input.value,min:input.min,max:input.max};
+    input.value = "17";
+    const parameters = terminalStudioCollectParameters();
+    terminalStudioState.templates = previousTemplates;
+    select.innerHTML = previousOptions;
+    select.value = previousValue;
+    select.disabled = previousDisabled;
+    terminalStudioRenderBuilder();
+    return {initial,parameters};
+  });
+  assert.deepEqual(builderSmoke, {
+    initial:{type:"number",value:"5",min:"1",max:"50"},
+    parameters:{limit:17},
+  });
 
   assert.deepEqual(pageErrors, [], "dashboard should not raise uncaught browser errors");
   console.log("Browser smoke tests passed: route colors, registry CRUD, connections, sandbox, route preview, Code Navigator, PWA metadata, and fail-closed authentication UI.");

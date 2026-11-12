@@ -4,22 +4,45 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HTML = (ROOT / "dashboard" / "index.html").read_text(encoding="utf-8")
+SERVER = (ROOT / "tools" / "cloud_gateway" / "server.py").read_text(encoding="utf-8")
 
 
 class DashboardContractTests(unittest.TestCase):
     def test_all_tool_views_exist(self):
-        for view in ("home", "repo", "pr", "user", "workspace", "evidence", "gates", "checkpoint", "audit", "route-colors", "ui-routes", "ui-simulator", "dev-tools", "code-navigator"):
+        for view in ("home", "account", "project-import", "terminal-studio", "repo", "pr", "user", "workspace", "evidence", "gates", "checkpoint", "audit", "route-colors", "ui-routes", "ui-simulator", "dev-tools", "code-navigator"):
             with self.subTest(view=view):
                 self.assertIn('id="' + view + '"', HTML)
-        for control in ("repo-load", "pr-load", "user-load", "ws-load", "ws-repo", "ws-branch", "ws-permission", "ws-branches", "ev-check", "gate-eval", "cp-build", "audit-eval", "route-color-save", "route-color-reset", "route-color-export", "route-add", "route-reset", "route-export", "edge-add", "edge-clear", "sim-run", "sim-reset", "sim-download", "dev-tools-copy-status", "code-nav-search", "code-nav-filter", "code-nav-trace-ui", "code-nav-trace-calls", "code-nav-show-ui", "code-nav-compare", "code-nav-run-checks", "code-nav-checkpoint", "code-nav-route-list", "code-nav-mapping", "code-nav-evidence"):
+        for control in ("repo-load", "pr-load", "user-load", "ws-load", "ws-repo", "ws-branch", "ws-permission", "ws-branches", "ev-check", "gate-eval", "cp-build", "audit-eval", "route-color-save", "route-color-reset", "route-color-export", "route-add", "route-reset", "route-export", "edge-add", "edge-clear", "sim-run", "sim-reset", "sim-download", "dev-tools-copy-status", "code-nav-search", "code-nav-filter", "code-nav-trace-ui", "code-nav-trace-calls", "code-nav-show-ui", "code-nav-compare", "code-nav-run-checks", "code-nav-checkpoint", "code-nav-route-list", "code-nav-mapping", "code-nav-evidence", "terminal-load-templates", "terminal-template-select", "terminal-preview", "terminal-preview-output"):
             with self.subTest(control=control):
                 self.assertIn('id="' + control + '"', HTML)
 
-    def test_github_requests_are_public_read_only(self):
+    def test_independent_infrastructure_gate_controls_are_backend_driven(self):
+        for control in (
+            "infra-gate-cloud", "infra-gate-cloud-state", "infra-gate-cloud-detail",
+            "infra-gate-cloud-toggle", "infra-gate-vm", "infra-gate-vm-state",
+            "infra-gate-vm-detail", "infra-gate-vm-toggle", "infra-gates-note",
+            "runner-gate-cloud-provisioning",
+        ):
+            with self.subTest(control=control):
+                self.assertIn('id="' + control + '"', HTML)
+        for contract in (
+            'infraRequest("/infrastructure/gates")',
+            'infraRequest("/infrastructure/gates/"+name',
+            'window.prompt("Type exactly to confirm: "+phrase)',
+            'infraUI.role!=="owner"',
+            'cloudGate&&cloudGate.effective_enabled===true',
+            'GET /api/infrastructure/gates',
+            'POST /api/infrastructure/gates/{cloud_provisioning|vm_creation}',
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, HTML)
+
+    def test_public_research_and_private_github_app_import_are_separate(self):
         self.assertIn("https://api.github.com", HTML)
         self.assertIn("PUBLIC API", HTML)
-        self.assertIn("No token", HTML)
-        self.assertIn("private repository access", HTML.lower())
+        self.assertIn("Public GitHub research:", HTML)
+        self.assertIn("No token, private repository access", HTML)
+        self.assertIn("Private repository reads are separately available only through the authenticated", HTML)
         self.assertIn("does not prove", HTML)
 
     def test_evidence_requires_full_sha_and_url_for_pass(self):
@@ -37,11 +60,72 @@ class DashboardContractTests(unittest.TestCase):
             with self.subTest(feature=feature):
                 self.assertIn(feature, HTML)
 
-    def test_registry_remains_empty_and_write_actions_disabled(self):
-        self.assertIn("Registered projects", HTML)
-        self.assertIn("Registry remains opt-in and empty", HTML)
+    def test_project_import_is_authenticated_read_only_and_local_path_free(self):
+        for expected in (
+            'id="project-import"',
+            'id="project-import-github-refresh"',
+            'id="project-import-local-refresh"',
+            'id="project-import-verify"',
+            'id="project-import-inspect"',
+            'id="project-import-local-select"',
+            'id="registered-projects-count"',
+            '"/api/local-projects"',
+            '"/api/local-projects/roots"',
+            '"/api/github/repositories"',
+            'function initProjectImport()',
+            'function projectImportCheckSession()',
+            'function projectImportVerifyCommit()',
+            'function projectImportInspectProject()',
+            'Absolute host paths are not returned by the API',
+            'Snapshot SHA-256',
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, HTML)
+        self.assertIn("Registered local projects", HTML)
+        self.assertIn("Local registry is opt-in", HTML)
         self.assertIn("Write actions", HTML)
         self.assertIn("Disabled", HTML)
+
+
+    def test_dashboard_exposes_supported_next_and_angular_build_targets(self):
+        self.assertIn('<option value="build_next">Next.js (preinstalled dependencies)</option>', HTML)
+        self.assertIn('<option value="build_angular">Angular (preinstalled dependencies)</option>', HTML)
+
+    def test_terminal_studio_dashboard_is_preview_only(self):
+        for expected in (
+            'id="terminal-studio"',
+            'data-tab="terminal-studio"',
+            'function initTerminalStudio()',
+            'function terminalStudioLoad()',
+            'function terminalStudioPreview()',
+            'function terminalStudioImport()',
+            'function terminalStudioReview(decision)',
+            'function terminalStudioLoadEvents(id)',
+            'id="terminal-pack-json"',
+            'id="terminal-import-pack"',
+            'id="terminal-review-panel"',
+            'id="terminal-review-approve"',
+            'id="terminal-review-reject"',
+            'APPROVE TEMPLATE ',
+            'REJECT TEMPLATE ',
+            'APPROVED_NOT_EXECUTABLE',
+            '"/api/terminal/templates/"+encodeURIComponent(item.id)+"/review"',
+            '"/api/terminal/templates/"+encodeURIComponent(id)+"/events"',
+            '"/api/terminal/templates"',
+            '"/api/terminal/templates/import"',
+            '"/api/terminal/commands/preview"',
+            'Imported templates are disabled and pending Owner review.',
+            'credentials:"same-origin"',
+            '"X-CSRF-Token"',
+            'execution_enabled:false',
+            'No process was started.',
+            'PENDING_REVIEW',
+            'Imported template is pending owner review.',
+            'ไม่มี Shell/PTY',
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, HTML)
+
 
     def test_unknown_is_default_for_gate_results(self):
         self.assertIn("<option>unknown</option>", HTML)
@@ -299,7 +383,7 @@ class DashboardControlCenterV2Tests(unittest.TestCase):
 
     def test_code_navigator_covers_all_dashboard_views(self):
         expected = {
-            "home", "account", "code-navigator", "cloud-runners", "infrastructure",
+            "home", "account", "code-navigator", "cloud-runners", "infrastructure", "terminal-studio",
             "dev-tools", "ui-routes", "ui-simulator", "route-colors", "github-api",
             "repo-selector", "repo", "pr", "user", "workspace", "evidence",
             "gates", "checkpoint", "audit",
@@ -322,6 +406,42 @@ class DashboardControlCenterV2Tests(unittest.TestCase):
         ):
             with self.subTest(contract=contract):
                 self.assertIn(contract, HTML)
+
+
+
+    def test_dashboard_build_job_gate_supports_verified_node_framework_targets(self):
+        for contract in (
+            "function runnerProjectSupportsTarget(project,target)",
+            '["build_vite","build_next","build_angular"].includes(target)',
+            'types.includes("node")',
+            "runnerUI.project.repository===repository",
+            "runnerUI.project.commit_sha===sha",
+            "runnerProjectSupportsTarget(runnerUI.project,target)",
+            '$("build-job-target").addEventListener("change",buildJobsUpdateGate)',
+            "DCP does not install dependencies.",
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, HTML)
+        self.assertNotIn(
+            'runnerUI.project.flutter.detected!==true){runnerText("build-job-result","BLOCKED: selected commit is not confirmed as a Flutter project.")',
+            HTML,
+        )
+
+    def test_terminal_visual_command_builder_is_typed_and_preview_only(self):
+        for contract in (
+            'id="terminal-builder-fields"',
+            "function terminalStudioRenderBuilder()",
+            "function terminalStudioCollectParameters()",
+            '["integer","commit_sha"].includes(spec.type)',
+            'parameters:terminalStudioCollectParameters()',
+            'terminalStudioRenderBuilder();$("terminal-preview").disabled',
+            "ไม่มี Shell/PTY",
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, HTML)
+        self.assertIn("validate_preview_payload(payload)", SERVER)
+        self.assertIn("preview_terminal_template(template_id, parameters)", SERVER)
+        self.assertIn("imported templates do not accept parameters", SERVER)
 
 
 if __name__ == "__main__":

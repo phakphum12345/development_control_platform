@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 import re
 import shlex
+from datetime import datetime, timedelta, timezone
 from typing import Callable
 
 
@@ -61,7 +62,7 @@ class AzureRunnerBootstrapFactory:
             raise RunnerBootstrapError("Invalid runner labels")
         return repository, labels
 
-    def _linux_script(self, vm_name: str, repository: str, labels: list[str], token: str) -> str:
+    def _linux_script(self, vm_name: str, repository: str, labels: list[str], token: str, token_expiry_epoch: int) -> str:
         version = self.runner_version
         archive = f"actions-runner-linux-x64-{version}.tar.gz"
         url = f"https://github.com/actions/runner/releases/download/v{version}/{archive}"
@@ -70,24 +71,31 @@ class AzureRunnerBootstrapFactory:
             "#!/usr/bin/env bash",
             "set -euo pipefail",
             "umask 077",
+            f"if [ \"$(date +%s)\" -ge {token_expiry_epoch} ]; then echo 'Runner registration credential expired'; exit 1; fi",
             "id dcp-runner >/dev/null 2>&1 || useradd --system --create-home --shell /bin/bash dcp-runner",
+            "test \"$(getent passwd dcp-runner | cut -d: -f7)\" = /bin/bash || { echo 'Runner account must use bash'; exit 1; }",
+            "if id -nG dcp-runner | grep -Eq '(^| )(sudo|wheel|admin)( |$)'; then echo 'Runner account must not be privileged'; exit 1; fi",
+            "if sudo -l -U dcp-runner 2>/dev/null | grep -Eq '^[[:space:]]*\\('; then echo 'Runner account must not have sudo privileges'; exit 1; fi",
             "install -d -o dcp-runner -g dcp-runner -m 0750 /opt/dcp-actions-runner",
             "cd /opt/dcp-actions-runner",
-            f"curl --fail --location --silent --show-error {shlex.quote(url)} --output {shlex.quote(archive)}",
+            f"for attempt in 1 2 3 4 5 6; do if curl --fail --location --silent --show-error --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time 120 {shlex.quote(url)} --output {shlex.quote(archive)}; then break; fi; rm -f -- {shlex.quote(archive)}; sleep 5; done",
+            f"test -s {shlex.quote(archive)} || {{ echo 'Runner archive download failed'; exit 1; }}",
             f"echo {shlex.quote(self.checksums['linux'] + '  ' + archive)} | sha256sum --check --status",
+            f"if [ \"$(date +%s)\" -ge {token_expiry_epoch} ]; then echo 'Runner registration credential expired'; exit 1; fi",
             f"tar -xzf {shlex.quote(archive)}",
             "chown -R dcp-runner:dcp-runner /opt/dcp-actions-runner",
-            "runuser -u dcp-runner -- ./config.sh "
+            "if ! runuser -u dcp-runner -- ./config.sh "
             f"--unattended --url {shlex.quote('https://github.com/' + repository)} "
             f"--token {shlex.quote(token)} --name {shlex.quote(vm_name)} "
-            f"--labels {shlex.quote(label_arg)} --ephemeral --disableupdate",
+            f"--labels {shlex.quote(label_arg)} --ephemeral --disableupdate >/dev/null 2>&1; "
+            "then echo 'Runner configuration failed'; exit 1; fi",
             "./svc.sh install dcp-runner",
             "./svc.sh start",
             f"rm -f -- {shlex.quote(archive)}",
             "",
         ])
 
-    def _windows_script(self, vm_name: str, repository: str, labels: list[str], token: str) -> str:
+    def _windows_script(self, vm_name: str, repository: str, labels: list[str], token: str, token_expiry_epoch: int) -> str:
         version = self.runner_version
         archive = f"actions-runner-win-x64-{version}.zip"
         url = f"https://github.com/actions/runner/releases/download/v{version}/{archive}"
@@ -96,16 +104,20 @@ class AzureRunnerBootstrapFactory:
         return "\r\n".join([
             "$ErrorActionPreference = 'Stop'",
             "$ProgressPreference = 'SilentlyContinue'",
+            f"if ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() -ge {token_expiry_epoch}) {{ throw 'Runner registration credential expired' }}",
             "$root = 'C:\\actions-runner'",
             "New-Item -ItemType Directory -Force -Path $root | Out-Null",
             f"$archive = Join-Path $root {ps(archive)}",
-            f"Invoke-WebRequest -Uri {ps(url)} -OutFile $archive",
+            f"for ($attempt = 1; $attempt -le 6; $attempt++) {{ & curl.exe --fail --location --silent --show-error --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time 120 {ps(url)} --output $archive; if ($LASTEXITCODE -eq 0) {{ break }}; Remove-Item -LiteralPath $archive -Force -ErrorAction SilentlyContinue; if ($attempt -eq 6) {{ throw 'Runner archive download failed' }}; Start-Sleep -Seconds 5 }}",
+            "if (-not (Test-Path -LiteralPath $archive)) { throw 'Runner archive download failed' }",
             f"if ((Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant() -ne {ps(self.checksums['windows'])}) {{ throw 'Runner archive checksum mismatch' }}",
+            f"if ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() -ge {token_expiry_epoch}) {{ throw 'Runner registration credential expired' }}",
             "Expand-Archive -LiteralPath $archive -DestinationPath $root -Force",
             "Set-Location $root",
-            f".\\config.cmd --unattended --url {ps('https://github.com/' + repository)} "
+            f"& .\\config.cmd --unattended --url {ps('https://github.com/' + repository)} "
             f"--token {ps(token)} --name {ps(vm_name)} --labels {ps(','.join(labels))} "
-            "--ephemeral --disableupdate",
+            "--ephemeral --disableupdate *> $null",
+            "if ($LASTEXITCODE -ne 0) { throw 'Runner configuration failed' }",
             "$taskScript = Join-Path $root 'start-runner.ps1'",
             "@'\nSet-Location -LiteralPath $PSScriptRoot\n& .\\run.cmd\nexit $LASTEXITCODE\n'@ | Set-Content -LiteralPath $taskScript -Encoding UTF8",
             "& icacls.exe $root /inheritance:r /grant 'SYSTEM:(OI)(CI)F' 'BUILTIN\\Administrators:(OI)(CI)F' 'NT AUTHORITY\\NETWORK SERVICE:(OI)(CI)M' | Out-Null",
@@ -123,13 +135,20 @@ class AzureRunnerBootstrapFactory:
         repository, labels = self._validate_payload(vm_name, os_name, payload)
         credential = self.github_app.create_registration_token(repository)
         token = getattr(credential, "token", None)
-        if not isinstance(token, str) or not token or any(ch.isspace() for ch in token):
-            raise RunnerBootstrapError("GitHub runner registration credential is invalid")
+        expires_at = getattr(credential, "expires_at", None)
+        if (
+            not isinstance(token, str) or not token or len(token) > 512
+            or any(ord(ch) < 33 or ord(ch) > 126 for ch in token)
+            or not isinstance(expires_at, datetime) or expires_at.tzinfo is None
+            or expires_at <= datetime.now(timezone.utc) + timedelta(minutes=50)
+        ):
+            raise RunnerBootstrapError("GitHub runner registration credential is invalid or expires before the VM extension budget")
+        token_expiry_epoch = int(expires_at.timestamp())
         os_profile = self.os_profile_factory(vm_name, os_name, payload)
         if not isinstance(os_profile, dict) or not os_profile:
             raise RunnerBootstrapError("OS profile factory returned an invalid profile")
         if os_name == "linux":
-            script = self._linux_script(vm_name, repository, labels, token)
+            script = self._linux_script(vm_name, repository, labels, token, token_expiry_epoch)
             extension = {
                 "name": "dcp-runner-bootstrap",
                 "properties": {
@@ -143,7 +162,7 @@ class AzureRunnerBootstrapFactory:
                 },
             }
         else:
-            script = self._windows_script(vm_name, repository, labels, token)
+            script = self._windows_script(vm_name, repository, labels, token, token_expiry_epoch)
             encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
             extension = {
                 "name": "dcp-runner-bootstrap",

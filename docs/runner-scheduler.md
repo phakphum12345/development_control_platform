@@ -13,6 +13,9 @@ runner whose advertised capabilities and host OS match the requested target.
 | `test` | Linux, Windows, or macOS | `flutter` |
 | `build`, `package`, `build_android` | Linux, Windows, or macOS | `android` |
 | `build_web` | Linux, Windows, or macOS | `web` |
+| `build_static_web` | Linux, Windows, or macOS | `web` |
+| `build_vite` | Linux, Windows, or macOS | `web` |
+| `test_static_web` | Linux, Windows, or macOS | `web` and `playwright` |
 | `build_linux` | Linux | `linux` |
 | `build_windows` | Windows | `windows` |
 | `build_macos` | macOS | `macos` |
@@ -51,3 +54,12 @@ python -m unittest discover -s tests -v
 
 Tests use temporary SQLite stores and fake infrastructure metadata only. They
 do not create VMs, execute repository code, or contact external providers.
+
+
+The `playwright` capability is advertised only after local preflight confirms
+the Python Playwright package, matching Chromium executable and WebSocket routing
+support, and the operator sets `DCP_RUNNER_PLAYWRIGHT_ENABLED=1`. The scheduler
+does not install either Python packages or browser binaries. The static test
+target is limited to the supported static HTML/CSS/JS build flow; a Runner
+without both `web` and `playwright` cannot claim it. Chromium must launch with
+its sandbox enabled; there is no unsandboxed fallback.

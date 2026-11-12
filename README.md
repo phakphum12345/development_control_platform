@@ -12,7 +12,7 @@ Azure deployment preparation is documented in [docs/azure-production-deployment.
 
 ## Cloud Runner user control
 
-The dashboard includes a mobile-friendly Cloud Runner Control view for Azure Linux/Windows and Orka macOS. Browser requests use the authenticated same-origin API contract documented in [docs/cloud-runner-user-api.md](docs/cloud-runner-user-api.md). The browser never receives Gateway or provider credentials. Deploy the dashboard and API behind one HTTPS origin and a trusted OIDC reverse proxy; GitHub Pages alone cannot host the API. The repository now contains GitHub App runner registration, protected Azure bootstrap payloads, Azure VM/Orka provider adapters, budget guards, and lifecycle cleanup modules with mock-backed tests. The Gateway runtime still deliberately uses `DisabledProvider`: provider composition is blocked until Azure guest login and effective egress policy are verified, Orka has a provider-specific budget and protected macOS bootstrap, and live runner/job/teardown acceptance passes. No cloud resources are created by CI.
+The dashboard includes a mobile-friendly Cloud Runner Control view for Azure Linux/Windows and Orka macOS. Browser requests use the authenticated same-origin API contract documented in [docs/cloud-runner-user-api.md](docs/cloud-runner-user-api.md). The browser never receives Gateway or provider credentials. Deploy the dashboard and API behind one HTTPS origin and a trusted OIDC reverse proxy; GitHub Pages alone cannot host the API. The repository contains GitHub App runner registration, protected Azure Linux/Windows bootstrap, an explicit Azure provider runtime (opt-in only), Azure Firewall egress verification, Orka 4.0 macOS User Data bootstrap, budget gates, and lifecycle cleanup with mock-backed tests. The default runtime remains fail-closed: Azure is composed only with `DCP_AZURE_PROVIDER_ENABLED=true` and complete deployment inputs; Orka remains disabled until an authoritative provider-specific budget, live cluster/network checks and RBAC review are supplied. Global provisioning and owner approval remain separate OFF gates. No cloud resources are created by CI.
 
 ## Local-first development (zero-cost by default)
 
@@ -111,10 +111,35 @@ the pinned optional dependency before test discovery:
 Run the real-browser smoke tests with Node.js and Playwright Chromium:
 
     npm install --no-save --no-package-lock playwright
-    npx playwright install --with-deps chromium
+    npx playwright install chromium
     node tests/browser_smoke.mjs
 
+On Linux hosts missing browser libraries, an administrator may explicitly run
+`npx playwright install-deps chromium` when package repositories are available.
+The CI workflow installs browser binaries separately and does not run an
+automatic APT dependency installation.
+
 The CI workflow runs static contract tests and browser smoke tests. Browser coverage exercises route-color persistence, route registry add/edit/delete, connection editing, the sandboxed simulator, and registry-route preview. These checks do not replace authenticated integration tests or a production security review.
+
+The optional DCP application-level static web test is a separate Python Playwright
+capability. It is limited to detected dependency-free Static HTML/CSS/JS projects,
+uses the DCP loopback static RuntimeManager, and does not execute imported test
+scripts or install project dependencies. Prepare the Runner explicitly:
+
+```powershell
+python -m pip install "playwright>=1.48"
+python -m playwright install chromium
+$env:DCP_RUNNER_PLAYWRIGHT_ENABLED = "1"
+python -m unittest tests.test_browser_test -v
+```
+
+DCP does not install Python packages or browser binaries automatically. The
+Runner advertises the `playwright` capability only when prerequisites are present
+and the explicit opt-in is enabled. Chromium sandbox support is mandatory for
+this test path; do not disable the sandbox to make CI pass. The current
+`test_static_web` path tests generated output through RuntimeManager directly;
+Playwright-through-authenticated-Preview-Proxy E2E remains deferred. See
+[docs/DCP-PLAYWRIGHT-TESTING.md](docs/DCP-PLAYWRIGHT-TESTING.md).
 
 ## Run the dashboard locally
 

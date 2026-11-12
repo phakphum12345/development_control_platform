@@ -1,0 +1,60 @@
+# DCP Authenticated Local Preview
+
+## Scope
+
+The first authenticated preview release serves an already-built static output directory from an existing local Runner workspace. It does not start a project development server, run package scripts, install dependencies, or execute imported source. Cloud Provisioning, VM Creation, and Cloud Deployment are not involved.
+
+## Trust boundary
+
+- The Gateway and Local Auth Proxy are the only browser-facing route.
+- The browser receives an opaque runtime ID and a same-origin preview path. It never receives the Runtime Manager session capability, upstream port, or upstream URL.
+- Every start, status, content, and stop request requires the authenticated owner session. Mutations additionally require same-origin and CSRF validation.
+- Gateway verifies that the requested job exists, belongs to a local worker, and completed successfully before starting a preview.
+- The Job Control Plane separates the active lease owner (`worker`, cleared at completion) from terminal execution provenance (`last_worker`). Preview lookup uses the recorded terminal worker to reopen only the matching job/worker workspace; legacy rows without that provenance fail closed.
+- The Runtime Manager binds only to 127.0.0.1. The Gateway proxy uses a fixed loopback host and a port read from the server-side runtime record; clients cannot choose either.
+- Content paths reject absolute paths, dot segments, backslashes, control characters, and oversized values. Responses are bounded to 8 MiB.
+- Preview content is restricted to static web MIME types; cookies and arbitrary upstream request headers are not forwarded.
+
+## Configuration
+
+The supported Local Auth Proxy launcher defaults DCP_RUNNER_WORKSPACE_ROOT to CREDENTIALS.parent/workspaces (normally %LOCALAPPDATA%/DCP/workspaces) when the variable is not already set. Run-DCP-Gateway.ps1 uses the same default. Configure the Local Runner Agent with the exact same absolute path. The Gateway creates no project workspaces; it only opens a workspace whose job/worker marker already exists. If the variable is not configured when launching the Gateway outside the supported local startup script, preview endpoints fail closed as unavailable.
+
+The Gateway also reads DCP_RUNNER_MAX_ACTIVE_WORKSPACES and DCP_RUNNER_MAX_WORKSPACE_BYTES to validate the shared workspace root using the same bounds as the agent.
+
+Successful Static Web and Vite jobs retain their workspace for up to one hour so the built output remains available after the Runner pipeline finishes. Starting a preview renews the retention marker to the runtime session TTL plus a short cleanup margin. The Gateway's periodic reaper stops expired preview processes and removes only workspaces with a valid, expired DCP retention marker. The Runner also prunes expired retained workspaces before allocating a new job workspace. Non-web jobs continue to clean their workspaces immediately.
+
+## API
+
+All routes are exposed through the Local Auth Proxy:
+
+- POST /api/jobs/{job_id}/previews with JSON {} or {"output_relative":"source/dist"} starts a preview.
+- GET /api/jobs/{job_id}/previews lists sanitized active preview sessions for that job.
+- GET /api/jobs/{job_id}/previews/{runtime_id} returns sanitized runtime status.
+- GET /api/jobs/{job_id}/previews/{runtime_id}/content/{path} serves a bounded static asset through the authenticated proxy.
+- DELETE /api/jobs/{job_id}/previews/{runtime_id} stops the runtime.
+
+Supported output roots are source/dist, source/build/web, dist, and build/web. A job must be in succeeded state. Only one active preview per job is allowed.
+
+## End-to-end verification
+
+The Local Auth Proxy integration test starts a real Gateway and Local Auth Proxy,
+creates a completed static-web job and its owner-marked workspace, and starts
+the actual loopback Runtime Manager. It then exercises owner login, preview
+start/list/status, HTML and CSS retrieval through the same-origin proxy,
+cross-job runtime rejection, query-string rejection, CSRF-protected stop,
+post-stop denial, and logout denial. This verifies the full local request path;
+it does not certify untrusted-project OS isolation or a general-purpose browser
+sandbox.
+
+## Current limitations
+
+This is a static-output preview, not a general-purpose application server. It does not yet provide WebSocket/HMR, arbitrary framework runtime profiles, range requests, or browser automation. The runtime capability is held in Gateway memory; Gateway restart invalidates preview sessions and leaves runtime cleanup to process lifecycle/TTL handling. Do not expose Runtime Manager or its loopback port directly to a LAN.
+
+
+## Next.js server preview
+
+A completed `build_next` job may be previewed with the Next.js production server. The Owner must submit `runtime_kind=next` and `confirm_code_execution=true`; the Gateway checks Owner role, completed job state and exact build target. The Local Runtime Manager starts the preinstalled local Next CLI with fixed argv, binds only to `127.0.0.1`, keeps the session capability server-side, and applies the existing TTL, bounded log and process-tree cleanup controls. The browser receives only the opaque preview path.
+
+This executes trusted project server code. It is not an OS sandbox and does not block outbound network access. Use only explicitly trusted source and review the project before confirming. No dependency installation or arbitrary browser-supplied command is performed.
+
+Angular static preview can use `source/dist/browser`; the runtime rejects symlinks and requires a regular `index.html`.
