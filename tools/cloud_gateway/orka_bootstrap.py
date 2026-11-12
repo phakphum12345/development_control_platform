@@ -2,7 +2,7 @@
 
 The User Data script contains a short-lived repository-scoped GitHub runner
 registration token. Orka stores the script in Kubernetes VM resources; callers
-must explicitly attest that namespace RBAC prevents untrusted readers.
+must explicitly attest that namespace RBAC and request/log exposure are safe.
 """
 from __future__ import annotations
 
@@ -74,14 +74,12 @@ class OrkaRunnerBootstrapFactory:
         if (
             not isinstance(token, str) or not token or len(token) > 512
             or any(ord(char) < 33 or ord(char) > 126 for char in token)
-        ):
-            raise OrkaBootstrapError("GitHub runner registration credential is invalid")
-        if (
-            not isinstance(expires_at, datetime) or expires_at.tzinfo is None
+            or not isinstance(expires_at, datetime) or expires_at.tzinfo is None
             or expires_at <= now + timedelta(minutes=15)
         ):
-            raise OrkaBootstrapError("GitHub runner registration credential expires too soon")
+            raise OrkaBootstrapError("GitHub runner registration credential is invalid or expires too soon")
 
+        token_expiry_epoch = int(expires_at.timestamp())
         version = self.runner_version
         archive = f"actions-runner-osx-arm64-{version}.tar.gz"
         url = f"https://github.com/actions/runner/releases/download/v{version}/{archive}"
@@ -122,163 +120,7 @@ class OrkaRunnerBootstrapFactory:
             f"  for attempt in 1 2 3 4 5 6; do if curl --fail --location --silent --show-error --connect-timeout 10 --max-time 120 {shlex.quote(url)} --output \"$ARCHIVE\"; then break; fi; rm -f -- \"$ARCHIVE\"; sleep 5; done",
             "  [ -s \"$ARCHIVE\" ] || { echo 'DCP runner archive download failed'; exit 1; }",
             f"  echo {shlex.quote(self.runner_sha256 + '  ' + archive)} | shasum -a 256 -c - >/dev/null 2>&1 || {{ echo 'DCP runner archive checksum mismatch'; exit 1; }}",
-            "  tar -xzf \"$ARCHIVE\"",
-            "  chown -R \"$RUNNER_USER\":staff \"$RUNNER_DIR\"",
-            f"  su - \"$RUNNER_USER\" -c {shlex.quote(config_command)} >/dev/null 2>&1 || {{ echo 'DCP runner configuration failed'; exit 1; }}",
-            "fi",
-            "if ! ./svc.sh status >/dev/null 2>&1; then",
-            "  ./svc.sh install \"$RUNNER_USER\" >/dev/null 2>&1 || { ./svc.sh status >/dev/null 2>&1 || { echo 'DCP runner service installation failed'; exit 1; }; }",
-            "fi",
-            "./svc.sh start >/dev/null 2>&1 || { ./svc.sh status >/dev/null 2>&1 || { echo 'DCP runner service start failed'; exit 1; }; }",
-            "rm -f -- \"$ARCHIVE\"",
-            "echo 'DCP macOS runner bootstrap completed'",
-            "",
-        ])
-        return {"script": script, "expires_at": expires_at}
- >/dev/null; then echo 'DCP runner account must not be privileged'; exit 1; fi",
-            "ACTUAL_HOME=\"$(dscl . -read \"/Users/$RUNNER_USER\" NFSHomeDirectory 2>/dev/null | awk '{print $2}')\"",
-            "[ \"$ACTUAL_HOME\" = \"$RUNNER_HOME\" ] || { echo 'DCP runner home does not match image profile'; exit 1; }",
-            "install -d -m 0750 \"$RUNNER_DIR\"",
-            "chown -R \"$RUNNER_USER\":staff \"$RUNNER_DIR\"",
-            "cd \"$RUNNER_DIR\"",
-            "if [ ! -f .runner ]; then",
-            f"  curl --fail --location --silent --show-error {shlex.quote(url)} --output \"$ARCHIVE\"",
-            f"  echo {shlex.quote(self.runner_sha256 + '  ' + archive)} | shasum -a 256 --check --status",
-            "  tar -xzf \"$ARCHIVE\"",
-            "  chown -R \"$RUNNER_USER\":staff \"$RUNNER_DIR\"",
-            f"  su - \"$RUNNER_USER\" -c {shlex.quote(config_command)} >/dev/null 2>&1 || {{ echo 'DCP runner configuration failed'; exit 1; }}",
-            "fi",
-            "if ! ./svc.sh status >/dev/null 2>&1; then",
-            "  ./svc.sh install \"$RUNNER_USER\" >/dev/null 2>&1 || { ./svc.sh status >/dev/null 2>&1 || { echo 'DCP runner service installation failed'; exit 1; }; }",
-            "fi",
-            "./svc.sh start >/dev/null 2>&1 || { ./svc.sh status >/dev/null 2>&1 || { echo 'DCP runner service start failed'; exit 1; }; }",
-            "rm -f -- \"$ARCHIVE\"",
-            "echo 'DCP macOS runner bootstrap completed'",
-            "",
-        ])
-        return {"script": script, "expires_at": expires_at}
- >/dev/null; then echo 'DCP runner account must not be privileged'; exit 1; fi",
-            "ACTUAL_HOME=\"$(dscl . -read \"/Users/$RUNNER_USER\" NFSHomeDirectory 2>/dev/null | awk '{print $2}')\"",
-            "[ \"$ACTUAL_HOME\" = \"$RUNNER_HOME\" ] || { echo 'DCP runner home does not match image profile'; exit 1; }",
-            "install -d -m 0750 \"$RUNNER_DIR\"",
-            "chown -R \"$RUNNER_USER\":staff \"$RUNNER_DIR\"",
-            "cd \"$RUNNER_DIR\"",
-            "if [ ! -f .runner ]; then",
-            f"  curl --fail --location --silent --show-error {shlex.quote(url)} --output \"$ARCHIVE\"",
-            f"  echo {shlex.quote(self.runner_sha256 + '  ' + archive)} | shasum -a 256 --check --status",
-            "  tar -xzf \"$ARCHIVE\"",
-            "  chown -R \"$RUNNER_USER\":staff \"$RUNNER_DIR\"",
-            f"  su - \"$RUNNER_USER\" -c {shlex.quote(config_command)} >/dev/null 2>&1 || {{ echo 'DCP runner configuration failed'; exit 1; }}",
-            "fi",
-            "if ! ./svc.sh status >/dev/null 2>&1; then",
-            "  ./svc.sh install \"$RUNNER_USER\" >/dev/null 2>&1 || { ./svc.sh status >/dev/null 2>&1 || { echo 'DCP runner service installation failed'; exit 1; }; }",
-            "fi",
-            "./svc.sh start >/dev/null 2>&1 || { ./svc.sh status >/dev/null 2>&1 || { echo 'DCP runner service start failed'; exit 1; }; }",
-            "rm -f -- \"$ARCHIVE\"",
-            "echo 'DCP macOS runner bootstrap completed'",
-            "",
-        ])
-        return {"script": script, "expires_at": expires_at}
- >/dev/null; then echo 'DCP runner account must not be privileged'; exit 1; fi",
-            "ACTUAL_HOME=\"$(dscl . -read \"/Users/$RUNNER_USER\" NFSHomeDirectory 2>/dev/null | awk '{print $2}')\"",
-            "[ \"$ACTUAL_HOME\" = \"$RUNNER_HOME\" ] || { echo 'DCP runner home does not match image profile'; exit 1; }",
-            "install -d -m 0750 \"$RUNNER_DIR\"",
-            "chown -R \"$RUNNER_USER\":staff \"$RUNNER_DIR\"",
-            "cd \"$RUNNER_DIR\"",
-            "if [ ! -f .runner ]; then",
-            f"  curl --fail --location --silent --show-error {shlex.quote(url)} --output \"$ARCHIVE\"",
-            f"  echo {shlex.quote(self.runner_sha256 + '  ' + archive)} | shasum -a 256 --check --status",
-            "  tar -xzf \"$ARCHIVE\"",
-            "  chown -R \"$RUNNER_USER\":staff \"$RUNNER_DIR\"",
-            f"  su - \"$RUNNER_USER\" -c {shlex.quote(config_command)} >/dev/null 2>&1 || {{ echo 'DCP runner configuration failed'; exit 1; }}",
-            "fi",
-            "if ! ./svc.sh status >/dev/null 2>&1; then",
-            "  ./svc.sh install \"$RUNNER_USER\" >/dev/null 2>&1 || { ./svc.sh status >/dev/null 2>&1 || { echo 'DCP runner service installation failed'; exit 1; }; }",
-            "fi",
-            "./svc.sh start >/dev/null 2>&1 || { ./svc.sh status >/dev/null 2>&1 || { echo 'DCP runner service start failed'; exit 1; }; }",
-            "rm -f -- \"$ARCHIVE\"",
-            "echo 'DCP macOS runner bootstrap completed'",
-            "",
-        ])
-        return {"script": script, "expires_at": expires_at}
- >/dev/null; then echo 'DCP runner account must not be privileged'; exit 1; fi",
-            "if sudo -l -U \"$RUNNER_USER\" 2>/dev/null | grep -E '^[[:space:]]*\\(' >/dev/null; then echo 'DCP runner account must not have sudo privileges'; exit 1; fi",
-            "ACTUAL_HOME=\"$(dscl . -read \"/Users/$RUNNER_USER\" NFSHomeDirectory 2>/dev/null | awk '{print $2}')\"",
-            "[ \"$ACTUAL_HOME\" = \"$RUNNER_HOME\" ] || { echo 'DCP runner home does not match image profile'; exit 1; }",
-            "xcodebuild -version >/dev/null 2>&1 || { echo 'DCP macOS image does not contain Xcode'; exit 1; }",
-            "install -d -m 0750 \"$RUNNER_DIR\"",
-            "chown -R \"$RUNNER_USER\":staff \"$RUNNER_DIR\"",
-            "cd \"$RUNNER_DIR\"",
-            "if [ ! -f .runner ]; then",
-            f"  for attempt in 1 2 3 4 5 6; do if curl --fail --location --silent --show-error --connect-timeout 10 --max-time 120 {shlex.quote(url)} --output \"$ARCHIVE\"; then break; fi; rm -f -- \"$ARCHIVE\"; sleep 5; done",
-            "  [ -s \"$ARCHIVE\" ] || { echo 'DCP runner archive download failed'; exit 1; }",
-            f"  echo {shlex.quote(self.runner_sha256 + '  ' + archive)} | shasum -a 256 -c - >/dev/null 2>&1 || {{ echo 'DCP runner archive checksum mismatch'; exit 1; }}",
-            "  tar -xzf \"$ARCHIVE\"",
-            "  chown -R \"$RUNNER_USER\":staff \"$RUNNER_DIR\"",
-            f"  su - \"$RUNNER_USER\" -c {shlex.quote(config_command)} >/dev/null 2>&1 || {{ echo 'DCP runner configuration failed'; exit 1; }}",
-            "fi",
-            "if ! ./svc.sh status >/dev/null 2>&1; then",
-            "  ./svc.sh install \"$RUNNER_USER\" >/dev/null 2>&1 || { ./svc.sh status >/dev/null 2>&1 || { echo 'DCP runner service installation failed'; exit 1; }; }",
-            "fi",
-            "./svc.sh start >/dev/null 2>&1 || { ./svc.sh status >/dev/null 2>&1 || { echo 'DCP runner service start failed'; exit 1; }; }",
-            "rm -f -- \"$ARCHIVE\"",
-            "echo 'DCP macOS runner bootstrap completed'",
-            "",
-        ])
-        return {"script": script, "expires_at": expires_at}
- >/dev/null; then echo 'DCP runner account must not be privileged'; exit 1; fi",
-            "ACTUAL_HOME=\"$(dscl . -read \"/Users/$RUNNER_USER\" NFSHomeDirectory 2>/dev/null | awk '{print $2}')\"",
-            "[ \"$ACTUAL_HOME\" = \"$RUNNER_HOME\" ] || { echo 'DCP runner home does not match image profile'; exit 1; }",
-            "install -d -m 0750 \"$RUNNER_DIR\"",
-            "chown -R \"$RUNNER_USER\":staff \"$RUNNER_DIR\"",
-            "cd \"$RUNNER_DIR\"",
-            "if [ ! -f .runner ]; then",
-            f"  curl --fail --location --silent --show-error {shlex.quote(url)} --output \"$ARCHIVE\"",
-            f"  echo {shlex.quote(self.runner_sha256 + '  ' + archive)} | shasum -a 256 --check --status",
-            "  tar -xzf \"$ARCHIVE\"",
-            "  chown -R \"$RUNNER_USER\":staff \"$RUNNER_DIR\"",
-            f"  su - \"$RUNNER_USER\" -c {shlex.quote(config_command)} >/dev/null 2>&1 || {{ echo 'DCP runner configuration failed'; exit 1; }}",
-            "fi",
-            "if ! ./svc.sh status >/dev/null 2>&1; then",
-            "  ./svc.sh install \"$RUNNER_USER\" >/dev/null 2>&1 || { ./svc.sh status >/dev/null 2>&1 || { echo 'DCP runner service installation failed'; exit 1; }; }",
-            "fi",
-            "./svc.sh start >/dev/null 2>&1 || { ./svc.sh status >/dev/null 2>&1 || { echo 'DCP runner service start failed'; exit 1; }; }",
-            "rm -f -- \"$ARCHIVE\"",
-            "echo 'DCP macOS runner bootstrap completed'",
-            "",
-        ])
-        return {"script": script, "expires_at": expires_at}
- >/dev/null; then echo 'DCP runner account must not be privileged'; exit 1; fi",
-            "ACTUAL_HOME=\"$(dscl . -read \"/Users/$RUNNER_USER\" NFSHomeDirectory 2>/dev/null | awk '{print $2}')\"",
-            "[ \"$ACTUAL_HOME\" = \"$RUNNER_HOME\" ] || { echo 'DCP runner home does not match image profile'; exit 1; }",
-            "install -d -m 0750 \"$RUNNER_DIR\"",
-            "chown -R \"$RUNNER_USER\":staff \"$RUNNER_DIR\"",
-            "cd \"$RUNNER_DIR\"",
-            "if [ ! -f .runner ]; then",
-            f"  curl --fail --location --silent --show-error {shlex.quote(url)} --output \"$ARCHIVE\"",
-            f"  echo {shlex.quote(self.runner_sha256 + '  ' + archive)} | shasum -a 256 --check --status",
-            "  tar -xzf \"$ARCHIVE\"",
-            "  chown -R \"$RUNNER_USER\":staff \"$RUNNER_DIR\"",
-            f"  su - \"$RUNNER_USER\" -c {shlex.quote(config_command)} >/dev/null 2>&1 || {{ echo 'DCP runner configuration failed'; exit 1; }}",
-            "fi",
-            "if ! ./svc.sh status >/dev/null 2>&1; then",
-            "  ./svc.sh install \"$RUNNER_USER\" >/dev/null 2>&1 || { ./svc.sh status >/dev/null 2>&1 || { echo 'DCP runner service installation failed'; exit 1; }; }",
-            "fi",
-            "./svc.sh start >/dev/null 2>&1 || { ./svc.sh status >/dev/null 2>&1 || { echo 'DCP runner service start failed'; exit 1; }; }",
-            "rm -f -- \"$ARCHIVE\"",
-            "echo 'DCP macOS runner bootstrap completed'",
-            "",
-        ])
-        return {"script": script, "expires_at": expires_at}
- >/dev/null; then echo 'DCP runner account must not be privileged'; exit 1; fi",
-            "ACTUAL_HOME=\"$(dscl . -read \"/Users/$RUNNER_USER\" NFSHomeDirectory 2>/dev/null | awk '{print $2}')\"",
-            "[ \"$ACTUAL_HOME\" = \"$RUNNER_HOME\" ] || { echo 'DCP runner home does not match image profile'; exit 1; }",
-            "install -d -m 0750 \"$RUNNER_DIR\"",
-            "chown -R \"$RUNNER_USER\":staff \"$RUNNER_DIR\"",
-            "cd \"$RUNNER_DIR\"",
-            "if [ ! -f .runner ]; then",
-            f"  curl --fail --location --silent --show-error {shlex.quote(url)} --output \"$ARCHIVE\"",
-            f"  echo {shlex.quote(self.runner_sha256 + '  ' + archive)} | shasum -a 256 --check --status",
+            "  if [ \"$(date +%s)\" -ge \"$TOKEN_EXPIRES_AT\" ]; then echo 'DCP runner registration credential expired'; exit 1; fi",
             "  tar -xzf \"$ARCHIVE\"",
             "  chown -R \"$RUNNER_USER\":staff \"$RUNNER_DIR\"",
             f"  su - \"$RUNNER_USER\" -c {shlex.quote(config_command)} >/dev/null 2>&1 || {{ echo 'DCP runner configuration failed'; exit 1; }}",
