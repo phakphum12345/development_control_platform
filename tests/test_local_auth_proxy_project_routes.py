@@ -278,6 +278,10 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
             self.assertEqual(self.gateway_requests[-1], path)
             self.assertEqual(self.gateway_methods[-1], "POST")
             self.assertEqual(json.loads(self.gateway_bodies[-1]), {})
+        encoded_colon_path = "/api/runners/local%3Aworker/drain"
+        status, _ = self.post(encoded_colon_path, {})
+        self.assertEqual(status, 200)
+        self.assertEqual(self.gateway_requests[-1], encoded_colon_path)
 
     def test_local_runner_controls_require_session_csrf_and_empty_payload(self):
         path = "/api/runners/local-worker-1/drain"
@@ -290,6 +294,8 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
         status, _ = self.post("/api/runners/../drain", {})
         self.assertEqual(status, 404)
         status, _ = self.post(path + "?unexpected=1", {})
+        self.assertEqual(status, 404)
+        status, _ = self.post("/api/runners/local%2Fworker/drain", {})
         self.assertEqual(status, 404)
         self.assertEqual(len(self.gateway_requests), 0)
 
