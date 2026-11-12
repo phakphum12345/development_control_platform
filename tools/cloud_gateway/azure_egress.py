@@ -271,7 +271,7 @@ class AzureEgressPolicyVerifier:
                     raise AzureEgressPolicyError("Dedicated runner firewall policy must not contain NAT rules")
                 action = collection.get("action", {}).get("type")
                 if action == "Deny":
-                    continue
+                    raise AzureEgressPolicyError("Dedicated runner policy must use implicit deny without explicit deny collections")
                 if action != "Allow" or collection_type != "FirewallPolicyFilterRuleCollection":
                     raise AzureEgressPolicyError("Unsupported Azure Firewall allow rule collection")
                 rules = collection.get("rules")
