@@ -263,6 +263,8 @@ class AzureEgressPolicyVerifierTests(unittest.TestCase):
         self.assertTrue(instance.verify("linux", SUBNET, NSG))
         with self.assertRaises(ValueError):
             verifier(extra_fqdns=("*.com",))
+        with self.assertRaises(ValueError):
+            verifier(extra_fqdns=("1.2.3.4",))
 
     def test_rejects_network_controls_in_runner_resource_group_and_nonprivate_subnet(self):
         with self.assertRaises(ValueError):
