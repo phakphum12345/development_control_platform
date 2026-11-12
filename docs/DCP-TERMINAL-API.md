@@ -35,3 +35,6 @@ Before any execution feature is enabled, enforce owner authorization, project/wo
 ## Dashboard integration
 
 The Dashboard Terminal Studio view calls the implemented catalog and preview endpoints through same-origin requests with the authenticated session cookie and server-issued CSRF token. It renders returned preview metadata as text. It does not execute commands or expose a shell.
+
+
+The Dashboard integration also includes an owner-session JSON import form for `POST /api/terminal/templates/import`. It sends the parsed JSON object through a same-origin request with the server-issued CSRF token, displays the returned source SHA-256, reloads the catalog and selects the first imported template. Imported templates remain pending review and cannot be executed.

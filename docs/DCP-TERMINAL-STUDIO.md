@@ -54,3 +54,8 @@ The Dashboard now exposes a Terminal Studio view that loads the authenticated ca
 ## Inert command-pack import checkpoint
 
 Owner-only JSON command-pack import is now implemented. Schema v1 packs are strictly validated, bounded to 32 KiB and 1–50 templates, restricted to known executable identifiers, network denied, and stored atomically in a private SQLite database with audit events. Imported templates are always disabled and pending owner review. Previewing an imported template does not execute it. Script-file parsing, template approval/editing, workspace binding and execution remain unimplemented.
+
+
+## Dashboard command-pack import
+
+The Terminal Studio view now includes a JSON command-pack import form. It sends the pack through the authenticated same-origin API with the server-issued CSRF token, then refreshes the catalog and selects an imported template for metadata preview. The UI labels imported templates as pending Owner review. Script-file uploads and command execution remain unavailable.
