@@ -135,6 +135,10 @@ def inspect_environment(env: Mapping[str, str] | None = None) -> dict:
         "DCP_AZURE_ROUTE_TABLE_ID", "DCP_AZURE_FIREWALL_ID",
         "DCP_AZURE_FIREWALL_POLICY_ID", "DCP_AZURE_BUDGET_NAME", "DCP_AZURE_PROJECTED_RUN_COST_USD",
         "DCP_AZURE_LINUX_VM_SIZE", "DCP_AZURE_WINDOWS_VM_SIZE",
+        "DCP_AZURE_LINUX_IMAGE_PUBLISHER", "DCP_AZURE_LINUX_IMAGE_OFFER",
+        "DCP_AZURE_LINUX_IMAGE_SKU", "DCP_AZURE_LINUX_IMAGE_VERSION",
+        "DCP_AZURE_WINDOWS_IMAGE_PUBLISHER", "DCP_AZURE_WINDOWS_IMAGE_OFFER",
+        "DCP_AZURE_WINDOWS_IMAGE_SKU", "DCP_AZURE_WINDOWS_IMAGE_VERSION",
         "DCP_RUNNER_VERSION", "DCP_RUNNER_LINUX_SHA256", "DCP_RUNNER_WINDOWS_SHA256",
         "DCP_AZURE_GUEST_ADMIN_USERNAME", "DCP_AZURE_LINUX_SSH_PUBLIC_KEY",
     )
@@ -216,6 +220,20 @@ def inspect_environment(env: Mapping[str, str] | None = None) -> dict:
         if azure_valid else "Azure configuration is missing or contains invalid identifiers/values; values are not echoed")
     add("azure_network_policy", "UNKNOWN",
         "Live ARM inspection must verify subnet/NSG/UDR, Azure Firewall policy, DNS proxy and current GitHub Actions FQDN allowlist")
+    provider_enabled_raw = values.get("DCP_AZURE_PROVIDER_ENABLED", "false").strip().lower()
+    provider_enabled_valid = provider_enabled_raw in ("true", "false")
+    provider_enabled = provider_enabled_raw == "true"
+    provider_opt_in_ok = (
+        provider_enabled_valid
+        and (not provider_enabled or (azure_valid and github_valid))
+        and not (enabled and not provider_enabled)
+    )
+    add(
+        "azure_provider_opt_in",
+        "PASS" if provider_opt_in_ok else "FAIL",
+        "Azure provider remains explicitly disabled or has complete configuration and GitHub App identity"
+        if provider_opt_in_ok else "Azure provider opt-in is invalid, incomplete, or inconsistent with the global provisioning gate",
+    )
     add("azure_guest_profile", "UNKNOWN",
         "Guest login profile and protected bootstrap require deployment-specific verification")
 
