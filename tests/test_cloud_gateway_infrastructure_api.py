@@ -116,7 +116,10 @@ class InfrastructureApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 201)
         resource_id = created["id"]
-        provider_resource_id = created["provider_resource_id"]
+        # Provider identifiers are intentionally private in the public API response.
+        provider_resource_id = self.infrastructure_store.get(resource_id)[
+            "provider_resource_id"
+        ]
         self.assertEqual(created["state"], "provisioned")
         self.assertEqual(created["provider_id"], "fake")
         self.assert_provider_and_inventory_state(
