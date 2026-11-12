@@ -90,3 +90,12 @@ This checkpoint is tied to the DCP repository branch `feature/real-project-playw
 The latest observed CI result on `52a99f2403c7ffc5c8d82fe44cbb477f8189b325` installed Python Playwright and Chromium successfully, but the real Chromium smoke test failed at sandboxed browser launch. Later Dashboard browser smoke and registry validation steps were skipped. Windows dynamic-port and Windows Auth Proxy/Gateway checks passed; self-hosted Windows Runner acceptance was skipped. A subsequent code change adds bounded launch-error diagnostics; its exact-commit CI result is still required.
 
 Do not merge PR #71 until the real Chromium sandbox test, Dashboard browser smoke, registry validation, and all required checks pass on the same final head SHA. Do not disable Chromium sandboxing as a CI workaround.
+
+## 2026-11-12 implementation checkpoint — Terminal Studio read-only slice
+
+- Added a curated command catalog for Git status/diff/log and Python/Node version diagnostics.
+- Added authenticated owner/operator API endpoints for catalog retrieval and exact argv preview.
+- Preview accepts only a known template identifier, rejects arbitrary command fields, and enforces same-origin plus CSRF checks.
+- Catalog entries deny network access, declare bounded time/output, and remain `PREVIEW_ONLY` with execution disabled.
+- Added unit and authenticated HTTP tests for template safety, defensive copies, authorization, exact argv and rejection paths.
+- Remaining Terminal Studio work: inert command-pack import/export, project/workspace binding, typed task submission, Local Agent execution broker, explicit approval, cancellation, bounded/redacted logs and history. No arbitrary shell/PTY is exposed.
