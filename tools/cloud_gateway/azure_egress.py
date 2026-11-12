@@ -286,8 +286,12 @@ class AzureEgressPolicyVerifier:
                 for rule in rules:
                     if rule.get("ruleType") != "ApplicationRule":
                         raise AzureEgressPolicyError("Runner egress may use only HTTPS FQDN application rules")
-                    if rule.get("targetUrls") or rule.get("fqdnTags") or rule.get("webCategories"):
-                        raise AzureEgressPolicyError("Runner egress application rules must use explicit FQDNs only")
+                    if (
+                        rule.get("targetUrls") or rule.get("fqdnTags") or rule.get("webCategories")
+                        or rule.get("destinationAddresses") or rule.get("httpHeadersToInsert")
+                        or rule.get("terminateTLS") is True
+                    ):
+                        raise AzureEgressPolicyError("Runner egress application rules must use explicit FQDNs without TLS inspection or broad match fields")
                     sources = rule.get("sourceAddresses")
                     if not isinstance(sources, list) or set(sources) != set(subnet_prefixes):
                         raise AzureEgressPolicyError("Runner egress rules must be scoped exactly to the runner subnet")
