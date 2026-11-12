@@ -31,6 +31,7 @@ COOKIE = "DCP_LOCAL_SESSION"
 MAX_BODY = 32_768
 MAX_PREVIEW_RESPONSE_BYTES = 12 * 1024 * 1024
 MAX_ARTIFACT_DOWNLOAD_BYTES = 1024 * 1024 * 1024
+MAX_DASHBOARD_READ_RESPONSE_BYTES = 1024 * 1024
 ALLOWED_GET = ("/api/cloud-runners/status", "/api/cloud-runners", "/api/local-projects", "/api/local-projects/roots", "/api/github/repositories", "/api/infrastructure/gates", "/api/runners", "/api/terminal/templates")
 CREDENTIALS = Path(os.getenv("DCP_LOCAL_AUTH_CREDENTIAL_FILE", str(Path(os.getenv("LOCALAPPDATA", str(Path.home()))) / "DCP" / "owner-auth.json")))
 
@@ -609,7 +610,16 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                 )):
                     return self.send_json(404, {"error": "not found"})
                 gateway_path = path + (("?" + parsed.query) if parsed.query else "")
-                status, data = app.gateway_request("GET", gateway_path, session)
+                response_limit = MAX_DASHBOARD_READ_RESPONSE_BYTES if (
+                    job_list_path or job_read_path or job_logs_path
+                    or path in ("/api/runners", "/api/terminal/templates")
+                    or terminal_events_path
+                ) else MAX_BODY
+                status, data = app.gateway_request(
+                    "GET", gateway_path, session, max_response_bytes=response_limit
+                )
+                if len(data) > response_limit:
+                    return self.send_json(502, {"error": "Dashboard read response exceeds proxy limit"})
                 return self.send_bytes(status, data)
             relative = "index.html" if path == "/" else unquote(path.lstrip("/"))
             target = (root / relative).resolve()
