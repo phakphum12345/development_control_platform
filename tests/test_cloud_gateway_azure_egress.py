@@ -272,7 +272,9 @@ class AzureEgressPolicyVerifierTests(unittest.TestCase):
     def test_callable_returns_false_on_any_unknown_or_unavailable_condition(self):
         responses = base_responses()
         responses[POLICY]["properties"]["dnsSettings"]["enableProxy"] = False
-        self.assertFalse(verifier(responses)("linux", SUBNET, NSG))
+        instance = verifier(responses)
+        self.assertFalse(instance("linux", SUBNET, NSG))
+        self.assertIn("DNS proxy", instance.last_error)
 
 
 class FakeCatalogResponse:
