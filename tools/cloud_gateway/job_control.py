@@ -89,7 +89,7 @@ class JobStore:
         source_type = payload.get("source_type", "github")
         target = payload.get("target", "test")
         if target not in ("test", "build", "package", "build_android", "build_web", "build_windows",
-                          "build_linux", "build_macos", "build_ios", "build_static_web", "build_vite", "test_static_web"):
+                          "build_linux", "build_macos", "build_ios", "build_static_web", "build_vite", "build_next", "build_angular", "test_static_web"):
             raise ValueError("Unsupported target")
         if source_type == "github":
             if not set(payload).issubset({"source_type", "repository", "commit_sha", "target"}):
