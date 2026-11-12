@@ -289,6 +289,8 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
         self.assertEqual(status, 400)
         status, _ = self.post("/api/runners/../drain", {})
         self.assertEqual(status, 404)
+        status, _ = self.post(path + "?unexpected=1", {})
+        self.assertEqual(status, 404)
         self.assertEqual(len(self.gateway_requests), 0)
 
     def test_forwards_cloud_runner_create_idempotency_key(self):
@@ -391,6 +393,10 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
             valid_csrf=False,
         )
         self.assertEqual(status, 403)
+        status, _ = self.delete(
+            "/api/infrastructure/123e4567-e89b-42d3-a456-426614174000?unexpected=1"
+        )
+        self.assertEqual(status, 404)
         self.assertEqual(len(self.gateway_requests), 0)
 
     def test_dashboard_job_reads_require_authenticated_session(self):
