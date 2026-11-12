@@ -181,6 +181,20 @@ def inspect_environment(env: Mapping[str, str] | None = None) -> dict:
         "Subnet, NSG, route table, firewall and firewall policy IDs are valid and isolated from the runner resource group"
         if network_resource_ids_valid else "Separate, valid Azure network resource IDs are required; configured values are not echoed",
     )
+    extra_fqdns = tuple(
+        item.strip() for item in values.get("DCP_AZURE_EGRESS_EXTRA_FQDNS", "").split(",")
+        if item.strip()
+    )
+    extra_fqdns_valid = len(set(extra_fqdns)) == len(extra_fqdns) and all(
+        _valid_fqdn_pattern(item) for item in extra_fqdns
+    )
+    add(
+        "azure_extra_egress_domains",
+        "PASS" if extra_fqdns_valid else "FAIL",
+        "Optional extra workflow egress domains are syntactically valid"
+        if extra_fqdns_valid else "Additional workflow egress domains must be unique exact FQDNs or explicit subdomain wildcards",
+    )
+
     azure_valid = (
         azure_present
         and bool(re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", subscription))
@@ -200,19 +214,6 @@ def inspect_environment(env: Mapping[str, str] | None = None) -> dict:
     add("azure_configuration_presence", "PASS" if azure_valid else ("UNKNOWN" if not azure_present else "FAIL"),
         "Azure resource IDs, budget projection, VM sizes, and pinned runner artifacts are syntactically valid"
         if azure_valid else "Azure configuration is missing or contains invalid identifiers/values; values are not echoed")
-    extra_fqdns = tuple(
-        item.strip() for item in values.get("DCP_AZURE_EGRESS_EXTRA_FQDNS", "").split(",")
-        if item.strip()
-    )
-    extra_fqdns_valid = len(set(extra_fqdns)) == len(extra_fqdns) and all(
-        _valid_fqdn_pattern(item) for item in extra_fqdns
-    )
-    add(
-        "azure_extra_egress_domains",
-        "PASS" if extra_fqdns_valid else "FAIL",
-        "Optional extra workflow egress domains are syntactically valid"
-        if extra_fqdns_valid else "Additional workflow egress domains must be unique exact FQDNs or explicit subdomain wildcards",
-    )
     add("azure_network_policy", "UNKNOWN",
         "Live ARM inspection must verify subnet/NSG/UDR, Azure Firewall policy, DNS proxy and current GitHub Actions FQDN allowlist")
     add("azure_guest_profile", "UNKNOWN",
