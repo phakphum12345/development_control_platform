@@ -1,6 +1,6 @@
 # DCP Implementation Roadmap
 
-## Phase 0 — Baseline & Safety (current)
+## Phase 0 — Baseline & Safety (baseline established)
 Inventory actual source, tests, workflows, existing APIs and current cloud/VM gate behavior. Reconcile older roadmap statements with code. Establish feature branch, acceptance matrix and non-destructive workflow.
 
 ## Phase 1 — Import foundation
@@ -41,9 +41,10 @@ Each phase is a separate feature branch and Draft PR, with narrowly scoped chang
 - Implemented the Local Agent registry for explicitly enrolled roots and project snapshot fingerprints.
 - Added local CLI operations to enroll roots, register projects and list the registry.
 - Added owner-only, read-only Gateway endpoints and Local Auth Proxy allowlisting; absolute host paths are not returned.
-- Remaining: Dashboard project catalog/picker, authenticated project selection UX, immutable job snapshot/materialization, and end-to-end import-to-job binding.
-
-- Dashboard Project Import workspace added: authenticated owner-only GitHub App repository/ref/commit inspection and Local Project catalog selection. This is a read-only source-selection UI; immutable snapshot materialization and job binding remain outstanding.
+- Dashboard Project Import workspace provides authenticated owner-only GitHub App repository/ref/commit inspection and Local Project catalog selection.
+- Local Folder jobs are accepted only for registered project IDs and current snapshot SHA-256; the Gateway revalidates the fingerprint, safe inventory, framework and supported target before queueing.
+- Runner pipeline materializes the registered Local Project snapshot and verifies the selected SHA before building; end-to-end Local Folder build tests are present.
+- Remaining: broader project-source provenance and GitHub App import-to-build acceptance for more than the existing Flutter/static-web targets.
 
 
 ## Phase 2 progress — read-only project intelligence
@@ -68,7 +69,8 @@ Each phase is a separate feature branch and Draft PR, with narrowly scoped chang
 - Starts the Python standard-library HTTP server with an argv array; no shell or project server code is executed.
 - Allocates an ephemeral loopback port, verifies HTTP health, records bounded logs, supervises process-tree shutdown and expires runtime sessions.
 - Runtime session capabilities are random and required for local status/log/stop operations.
-- An authenticated static Preview Proxy service is now present for owner-bound preview sessions. The PR #71 Playwright implementation still starts RuntimeManager directly, so Playwright-through-Preview-Proxy and the complete Dashboard preview workflow remain separate acceptance work.
+- An authenticated static Preview Proxy service is present for owner-bound preview sessions.
+- A dedicated real-Chromium test now starts the preview through the owner-authenticated Local Auth Proxy API and exercises the browser-facing preview URL with sandboxing enabled.
 
 
 ## 2026-11-12 implementation checkpoint — PR #71
@@ -81,12 +83,39 @@ This checkpoint is tied to the DCP repository branch `feature/real-project-playw
 | Project intelligence | Read-only manifest-backed framework detection exists. | Toolchain readiness and broader adapter coverage remain separate. |
 | Universal Web Build | Static HTML/CSS/JS and React/Vite + Vue/Vite targets exist; dependency install is not automatic. | Broader framework support and host-specific acceptance. |
 | Runtime | Loopback static Runtime Manager exists with bounded health/log/session/process lifecycle. | General application servers and additional runtime adapters. |
-| Preview | Authenticated owner-bound static Preview Proxy primitives exist. | Full Dashboard path and browser automation through the proxy. |
-| Playwright | Opt-in static-project smoke suite, three viewport screenshots, JSON report and bounded ZIP evidence exist. | Current CI sandbox launch blocker, actionable host diagnostics, and Preview Proxy E2E. |
+| Preview | Authenticated owner-bound static Preview Proxy and owner-only Dashboard lifecycle are implemented. | Broader cross-owner model and full runtime/framework coverage. |
+| Playwright | Opt-in static-project smoke suite, three viewport screenshots, JSON report, bounded ZIP evidence, and sandboxed Chromium through authenticated Preview Proxy are tested. | Cross-browser engines, trace capture, visual baselines and full WCAG/axe coverage. |
 | Quality/security | Existing baseline controls remain in place. | Dedicated scanners, full accessibility, visual regression and cross-browser suites. |
 
-### PR #71 release gate
+### PR #71 release gate — resolved
 
-The latest observed CI result on `52a99f2403c7ffc5c8d82fe44cbb477f8189b325` installed Python Playwright and Chromium successfully, but the real Chromium smoke test failed at sandboxed browser launch. Later Dashboard browser smoke and registry validation steps were skipped. Windows dynamic-port and Windows Auth Proxy/Gateway checks passed; self-hosted Windows Runner acceptance was skipped. A subsequent code change adds bounded launch-error diagnostics; its exact-commit CI result is still required.
+PR #71 was subsequently corrected with a path-scoped AppArmor user-namespace profile for the exact Playwright Chromium headless-shell executable. The real browser test passed with `chromium_sandbox=True`; no `--no-sandbox` workaround or global AppArmor disable was used. Dashboard browser smoke and registry validation passed on the final PR head. PR #71 was merged to main; its earlier failed runs are historical and are not current acceptance evidence.
 
-Do not merge PR #71 until the real Chromium sandbox test, Dashboard browser smoke, registry validation, and all required checks pass on the same final head SHA. Do not disable Chromium sandboxing as a CI workaround.
+
+
+
+## 2026-11-12 current checkpoint — infrastructure gates, job recovery and unified Runner
+
+Merged feature slices on main:
+- PR #75: persistent independent Cloud Provisioning and VM Creation gates; owner-only confirmation, provider-readiness checks, audit, Local Auth Proxy routes and fail-closed backend enforcement.
+- PR #76: Dashboard controls for both independent gates; UNKNOWN on backend failure; Cloud Runner create UI requires effective Cloud Provisioning.
+- PR #77: durable job attempt_count/max_attempts, three-attempt lease recovery, terminal LEASE_EXPIRED, last_worker provenance, and concurrent-claim tests.
+- PR #78: two-worker authenticated Gateway HTTP acceptance for lease recovery, stale-worker fencing and current-worker completion.
+- PR #79: unified Windows launcher through tools.local_runner_agent, offline enrollment, opt-in --once/--serve, bounded polling/backoff and graceful stop after the current job returns.
+
+Safety remains unchanged: Cloud Provisioning OFF, VM Creation OFF, external providers disabled, no paid cloud/VM resource created by these slices.
+
+## Authenticated Preview Proxy — browser acceptance in progress
+
+A new acceptance slice adds real Chromium coverage through the owner-authenticated Preview Proxy, rather than calling RuntimeManager directly. The browser test uses the same-origin session cookie, sandboxed Chromium, HTML/CSS assertions, request/error checks, screenshot evidence and verifies that stopping the preview makes the browser URL unavailable. CI on the exact PR head is required before this checkpoint is considered accepted.
+
+## Remaining major work packages
+
+1. Runner crash/workspace reconciliation and process-supervisor hardening; lease retries are bounded, but orphaned workspace cleanup must remain fail-closed.
+2. Artifact retention policies, provenance manifests and release/report workflows.
+3. Flutter Dashboard parity for the existing authenticated DCP APIs; HTML Dashboard remains the supported UI until Flutter parity is tested.
+4. Terminal Studio safe command library and typed command builder with inert script import.
+5. Broader framework build/runtime adapters and Playwright tests for supported projects through the authenticated preview path.
+6. Quality/security scanners, SBOM/license/secret checks, full accessibility and visual regression.
+7. Backup/restore, recovery drills, upgrade/rollback and complete local acceptance.
+8. Optional live provider acceptance remains disabled and requires separate explicit owner authorization, budget and cleanup evidence.
