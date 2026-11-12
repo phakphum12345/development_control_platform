@@ -167,3 +167,11 @@ Do not merge PR #71 until the real Chromium sandbox test, Dashboard browser smok
 - JobStore validation, Runner Registry capability advertisement, Scheduler target policy, Local Runner pipeline dispatch and Dashboard Build Jobs selector include both targets.
 - No dependency installation or package-manager lifecycle script is introduced.
 - Next.js server runtime/SSR preview and broad cross-framework acceptance remain outstanding.
+
+
+## 2026-11-12 implementation checkpoint — Next.js runtime preview
+
+- Added an explicit Owner-approved Next.js production runtime on loopback for completed build_next jobs.
+- The API requires the correct job target and explicit confirmation; all browser access remains behind the authenticated Preview Proxy.
+- Added process supervision, health checks, TTL and process-tree cleanup reuse; Angular browser output can be served from dist/browser.
+- Next.js preview executes trusted application code and does not enforce outbound network isolation. This limitation is documented; do not treat it as an OS sandbox.
