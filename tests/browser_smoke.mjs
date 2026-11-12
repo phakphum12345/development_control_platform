@@ -171,6 +171,35 @@ try {
     flutterCannotNext:false,truncatedNode:false,
   });
 
+  const builderSmoke = await page.evaluate(() => {
+    const previousTemplates = terminalStudioState.templates;
+    const select = document.getElementById("terminal-template-select");
+    const previousOptions = select.innerHTML;
+    const previousValue = select.value;
+    const previousDisabled = select.disabled;
+    terminalStudioState.templates = [{
+      id:"git_log",
+      parameters:[{name:"limit",label:"Maximum commits",type:"integer",required:false,default:5,minimum:1,maximum:50}],
+    }];
+    select.innerHTML = '<option value="git_log">Recent Git history</option>';
+    select.value = "git_log";
+    terminalStudioRenderBuilder();
+    const input = document.querySelector('[data-terminal-parameter="limit"]');
+    const initial = {type:input.type,value:input.value,min:input.min,max:input.max};
+    input.value = "17";
+    const parameters = terminalStudioCollectParameters();
+    terminalStudioState.templates = previousTemplates;
+    select.innerHTML = previousOptions;
+    select.value = previousValue;
+    select.disabled = previousDisabled;
+    terminalStudioRenderBuilder();
+    return {initial,parameters};
+  });
+  assert.deepEqual(builderSmoke, {
+    initial:{type:"number",value:"5",min:"1",max:"50"},
+    parameters:{limit:17},
+  });
+
   assert.deepEqual(pageErrors, [], "dashboard should not raise uncaught browser errors");
   console.log("Browser smoke tests passed: route colors, registry CRUD, connections, sandbox, route preview, Code Navigator, PWA metadata, and fail-closed authentication UI.");
 } finally {
