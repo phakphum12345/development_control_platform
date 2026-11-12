@@ -54,7 +54,8 @@ class InfrastructureApiTests(unittest.TestCase):
         )
         self.gates_path = Path(self.temp.name) / "gates.sqlite"
         service.infrastructure_gate_store = InfrastructureGateStore(self.gates_path)
-        service.terminal_template_store = TerminalTemplateStore(Path(self.temp.name) / "terminal.sqlite")
+        self.terminal_template_store = TerminalTemplateStore(Path(self.temp.name) / "terminal.sqlite")
+        service.terminal_template_store = self.terminal_template_store
         self.server = ThreadingHTTPServer(
             ("127.0.0.1", 0),
             make_handler(service, "unused-token", self.secret, self.origin),
