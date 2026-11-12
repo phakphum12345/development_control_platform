@@ -42,7 +42,9 @@ class OIDCIngressContractTests(unittest.TestCase):
         self.assertIn("proxy_set_header Idempotency-Key $http_idempotency_key;", config)
         self.assertIn("proxy_set_header X-Forwarded-Proto https;", config)
         self.assertIn("error_page 401 = @api_unauthorized;", config)
-        self.assertIn("error_page 401 = /oauth2/start?rd=https://$http_host$request_uri;", config)
+        self.assertIn("error_page 401 = /oauth2/start;", config)
+        self.assertIn("proxy_set_header X-Auth-Request-Redirect https://$host$request_uri;", config)
+        self.assertIn('add_header Cache-Control "no-store" always;', config)
 
 
 if __name__ == "__main__":
