@@ -41,3 +41,6 @@ The Dashboard Terminal Studio view calls the implemented catalog and preview end
 
 
 The Dashboard integration also includes an owner-session JSON import form for `POST /api/terminal/templates/import`. It sends the parsed JSON object through a same-origin request with the server-issued CSRF token, displays the returned source SHA-256, reloads the catalog and selects the first imported template. Imported templates remain pending review and cannot be executed.
+
+
+The Dashboard also reads the template audit endpoint and provides Owner review actions for imported templates. Review controls are shown only while the preview is pending review. The browser sends the stored source hash and exact typed confirmation; the Gateway revalidates the Owner role and review state.
