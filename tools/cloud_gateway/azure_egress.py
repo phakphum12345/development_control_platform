@@ -412,11 +412,13 @@ class AzureEgressPolicyVerifier:
             raise AzureEgressPolicyError("Runner subnet and Azure Firewall must share one VNet; hub peering is not verified")
         firewall_subnet = self._get(firewall_subnet_id, API_NETWORK)
         self._state(firewall_subnet, "Azure Firewall subnet")
-        firewall_prefixes = self._subnet_prefixes(firewall_subnet.get("properties", {}))
+        firewall_prefixes = [
+            ipaddress.ip_network(prefix, strict=True)
+            for prefix in self._subnet_prefixes(firewall_subnet.get("properties", {}))
+        ]
         if not any(
-            firewall_address in ipaddress.ip_network(prefix, strict=True)
-            and ipaddress.ip_network(prefix, strict=True).prefixlen <= 26
-            for prefix in firewall_prefixes
+            network.version == 4 and firewall_address in network and network.prefixlen <= 26
+            for network in firewall_prefixes
         ):
             raise AzureEgressPolicyError("Azure Firewall private IP is outside its dedicated subnet or the subnet is too small")
         self._check_route_table(route_table, firewall_ip)
