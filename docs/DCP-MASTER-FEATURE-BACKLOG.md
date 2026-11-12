@@ -130,7 +130,7 @@ All above status statements refer to merged code on main and the corresponding C
 - Added one shared authenticated Preview Proxy browser scenario with Chromium, Firefox and WebKit launch selection.
 - The scenario uses a synthetic static fixture and the real Local Auth Proxy → Gateway → Preview Proxy path; it verifies session cookie scope, HTML/CSS, same-origin resource loading, browser errors, screenshot capture, and access denial after stop.
 - Chromium sandboxing remains enabled. Firefox/WebKit are separate browser-engine checks and do not claim OS-level isolation.
-- CI installs Firefox/WebKit explicitly and runs each test separately. Status remains **PENDING CI on the exact PR head** until those checks finish successfully.
+- CI installs Firefox/WebKit explicitly and runs each test separately. This was the pre-PR #96 status; PR #96 subsequently passed the exact-head Chromium, Firefox and WebKit checks before merge to `main`.
 - This is not full cross-browser application certification, visual regression, keyboard accessibility, or WCAG/axe coverage.
 
 
