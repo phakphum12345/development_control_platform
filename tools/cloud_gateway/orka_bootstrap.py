@@ -117,7 +117,7 @@ class OrkaRunnerBootstrapFactory:
             "chown -R \"$RUNNER_USER\":staff \"$RUNNER_DIR\"",
             "cd \"$RUNNER_DIR\"",
             "if [ ! -f .runner ]; then",
-            f"  for attempt in 1 2 3 4 5 6; do if curl --fail --location --silent --show-error --connect-timeout 10 --max-time 120 {shlex.quote(url)} --output \"$ARCHIVE\"; then break; fi; rm -f -- \"$ARCHIVE\"; sleep 5; done",
+            f"  for attempt in 1 2 3 4 5 6; do if curl --fail --location --silent --show-error --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time 120 {shlex.quote(url)} --output \"$ARCHIVE\"; then break; fi; rm -f -- \"$ARCHIVE\"; sleep 5; done",
             "  [ -s \"$ARCHIVE\" ] || { echo 'DCP runner archive download failed'; exit 1; }",
             f"  echo {shlex.quote(self.runner_sha256 + '  ' + archive)} | shasum -a 256 -c - >/dev/null 2>&1 || {{ echo 'DCP runner archive checksum mismatch'; exit 1; }}",
             "  if [ \"$(date +%s)\" -ge \"$TOKEN_EXPIRES_AT\" ]; then echo 'DCP runner registration credential expired'; exit 1; fi",
