@@ -15,6 +15,27 @@ class DashboardContractTests(unittest.TestCase):
             with self.subTest(control=control):
                 self.assertIn('id="' + control + '"', HTML)
 
+    def test_independent_infrastructure_gate_controls_are_backend_driven(self):
+        for control in (
+            "infra-gate-cloud", "infra-gate-cloud-state", "infra-gate-cloud-detail",
+            "infra-gate-cloud-toggle", "infra-gate-vm", "infra-gate-vm-state",
+            "infra-gate-vm-detail", "infra-gate-vm-toggle", "infra-gates-note",
+            "runner-gate-cloud-provisioning",
+        ):
+            with self.subTest(control=control):
+                self.assertIn('id="' + control + '"', HTML)
+        for contract in (
+            'infraRequest("/infrastructure/gates")',
+            'infraRequest("/infrastructure/gates/"+name',
+            'window.prompt("Type exactly to confirm: "+phrase)',
+            'infraUI.role!=="owner"',
+            'cloudGate&&cloudGate.effective_enabled===true',
+            'GET /api/infrastructure/gates',
+            'POST /api/infrastructure/gates/{cloud_provisioning|vm_creation}',
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, HTML)
+
     def test_public_research_and_private_github_app_import_are_separate(self):
         self.assertIn("https://api.github.com", HTML)
         self.assertIn("PUBLIC API", HTML)
