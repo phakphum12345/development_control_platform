@@ -415,22 +415,21 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
         )
         self.assertEqual(logged_out, 200)
 
-    @unittest.skipUnless(_chromium_ready(), "Python Playwright and Chromium are optional test prerequisites")
-    def test_real_chromium_loads_app_through_authenticated_preview_proxy(self):
+    def _run_real_browser_preview_proxy(self, browser_name):
         from playwright.sync_api import sync_playwright
 
         from tools.cloud_gateway.job_control import JobStore
         from tools.local_runner_agent.workspace import WorkspaceManager
 
-        worker_id = "preview-chromium-worker"
+        worker_id = f"preview-{browser_name}-worker"
         jobs = JobStore(self.jobs_db)
         job, created = jobs.create(
             {
-                "repository": "example/preview-chromium-fixture",
+                "repository": f"example/preview-{browser_name}-fixture",
                 "commit_sha": "b" * 40,
                 "target": "build_static_web",
             },
-            "authenticated-preview-chromium-0001",
+            f"authenticated-preview-{browser_name}-0001",
         )
         self.assertTrue(created)
         claimed = jobs.claim(worker_id, allowed_targets=["build_static_web"])
@@ -508,7 +507,11 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
             }]
 
             with sync_playwright() as playwright:
-                browser = playwright.chromium.launch(headless=True, chromium_sandbox=True)
+                browser_type = getattr(playwright, browser_name)
+                launch_options = {"headless": True}
+                if browser_name == "chromium":
+                    launch_options["chromium_sandbox"] = True
+                browser = browser_type.launch(**launch_options)
                 try:
                     context = browser.new_context(viewport={"width": 1366, "height": 768})
                     context.add_cookies(cookies)
@@ -617,6 +620,18 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                 )
             if csrf:
                 self.request("/api/auth/logout", "POST", csrf=csrf)
+
+    @unittest.skipUnless(_chromium_ready(), "Python Playwright Chromium is an optional test prerequisite")
+    def test_real_chromium_loads_app_through_authenticated_preview_proxy(self):
+        self._run_real_browser_preview_proxy("chromium")
+
+    @unittest.skipUnless(_browser_ready("firefox"), "Python Playwright Firefox is an optional test prerequisite")
+    def test_real_firefox_loads_app_through_authenticated_preview_proxy(self):
+        self._run_real_browser_preview_proxy("firefox")
+
+    @unittest.skipUnless(_browser_ready("webkit"), "Python Playwright WebKit is an optional test prerequisite")
+    def test_real_webkit_loads_app_through_authenticated_preview_proxy(self):
+        self._run_real_browser_preview_proxy("webkit")
 
     def test_real_authenticated_preview_proxy_serves_and_stops_completed_job(self):
         import uuid
