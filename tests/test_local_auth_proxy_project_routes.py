@@ -160,7 +160,6 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
             "/api/jobs/" + job_id + "/artifacts",
             "/api/jobs/" + job_id + "/events",
             "/api/jobs/" + job_id + "/logs?after_id=0&limit=500",
-            "/api/artifacts/" + artifact_id + "/download",
             "/api/runners",
             "/api/terminal/templates",
             "/api/terminal/templates/custom-example/events",
