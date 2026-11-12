@@ -261,6 +261,16 @@ The static RuntimeManager binds to `127.0.0.1`, serves only generated output, ch
 
 Playwright uses a fixed DCP-owned test plan, Chromium sandboxing, exact loopback HTTP origin routing, WebSocket blocking, WebRTC API denial and service-worker blocking. These browser controls are defense-in-depth, not OS-level process isolation or a host firewall. Only trusted projects on a suitably isolated Runner may be tested.
 
+## Local Auth Proxy Dashboard read allowlist
+
+The Local Auth Proxy forwards only the Dashboard read routes required by the current UI: bounded job list/detail/events/logs, job artifact metadata, authenticated artifact downloads, Runner Fleet, Terminal Template catalog/audit, and the existing Project/GitHub/Infrastructure/Preview reads. Job and artifact IDs must be canonical UUIDs; terminal audit IDs must match the imported-template ID format. Job list/log pagination accepts only the documented bounded query fields; unknown, duplicate, or out-of-range query parameters are rejected before Gateway forwarding.
+
+Artifact downloads use a dedicated streaming path rather than the JSON response buffer. The proxy requires an authenticated local Owner session, enforces a 1 GiB maximum response, validates the Gateway's `application/octet-stream` content type and quoted SHA-256 ETag, forwards only a safe attachment filename, and streams bounded chunks without exposing Gateway credentials or accepting a browser-selected upstream URL.
+Local Runner Fleet controls are forwarded only for exact `/api/runners/{worker_id}/drain` and `/enable` routes with a canonical worker ID, an authenticated local session, same-origin request, CSRF token, and an empty JSON object. Gateway independently repeats Owner/CSRF authorization before changing the Runner registry.
+Infrastructure Manager reads are limited to inventory, `view=catalog`, canonical resource detail/events and the existing gate status. Create/start/stop/restart/delete operations are forwarded only through exact routes with same-origin, authenticated-session and CSRF checks; the Gateway still enforces Owner authorization, provider readiness, and the independent VM Creation gate before any non-fake provider action. The Dashboard's current create action explicitly selects the Fake provider.
+Terminal Studio writes are restricted to the fixed command-preview route, template-import route and canonical imported-template review route. All require an authenticated session, same-origin request and CSRF token; template schemas, approval confirmation and execution-disabled policy remain enforced by Gateway.
+
+
 The test evidence currently consists of three viewport screenshots, a JSON report and a bounded ZIP artifact. It does not include traces, cross-browser results, visual baselines, full WCAG conformance or authenticated preview-proxy browser coverage. See `docs/DCP-PLAYWRIGHT-TESTING.md` and `docs/DCP-ACCEPTANCE-TEST-PLAN.md`.
 
 ## Lease retry and worker-crash policy
@@ -315,13 +325,3 @@ restores the caller's process environment after exit.
   backoff; permanent authorization/policy errors stop the service.
 - The legacy tools.runner_agent.agent implementation remains for compatibility
   tests but is no longer invoked by the supported Windows launcher.
-
-
-## Local Auth Proxy Dashboard read allowlist
-
-The Local Auth Proxy forwards only the Dashboard read routes required by the current UI: bounded job list/detail/events/logs, job artifact metadata, authenticated artifact downloads, Runner Fleet, Terminal Template catalog/audit, and the existing Project/GitHub/Infrastructure/Preview reads. Job and artifact IDs must be canonical UUIDs; terminal audit IDs must match the imported-template ID format. Job list/log pagination accepts only the documented bounded query fields; unknown, duplicate, or out-of-range query parameters are rejected before Gateway forwarding.
-
-Artifact downloads use a dedicated streaming path rather than the JSON response buffer. The proxy requires an authenticated local Owner session, enforces a 1 GiB maximum response, validates the Gateway's `application/octet-stream` content type and quoted SHA-256 ETag, forwards only a safe attachment filename, and streams bounded chunks without exposing Gateway credentials or accepting a browser-selected upstream URL.
-Local Runner Fleet controls are forwarded only for exact `/api/runners/{worker_id}/drain` and `/enable` routes with a canonical worker ID, an authenticated local session, same-origin request, CSRF token, and an empty JSON object. Gateway independently repeats Owner/CSRF authorization before changing the Runner registry.
-Infrastructure Manager reads are limited to inventory, `view=catalog`, canonical resource detail/events and the existing gate status. Create/start/stop/restart/delete operations are forwarded only through exact routes with same-origin, authenticated-session and CSRF checks; the Gateway still enforces Owner authorization, provider readiness, and the independent VM Creation gate before any non-fake provider action. The Dashboard's current create action explicitly selects the Fake provider.
-Terminal Studio writes are restricted to the fixed command-preview route, template-import route and canonical imported-template review route. All require an authenticated session, same-origin request and CSRF token; template schemas, approval confirmation and execution-disabled policy remain enforced by Gateway.
