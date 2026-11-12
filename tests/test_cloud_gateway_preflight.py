@@ -36,6 +36,18 @@ def valid_environment():
             f"/subscriptions/{SUBSCRIPTION}/resourceGroups/network/providers/"
             "Microsoft.Network/networkSecurityGroups/dcp-runners"
         ),
+        "DCP_AZURE_ROUTE_TABLE_ID": (
+            f"/subscriptions/{SUBSCRIPTION}/resourceGroups/network/providers/"
+            "Microsoft.Network/routeTables/dcp-runners"
+        ),
+        "DCP_AZURE_FIREWALL_ID": (
+            f"/subscriptions/{SUBSCRIPTION}/resourceGroups/network/providers/"
+            "Microsoft.Network/azureFirewalls/dcp-egress"
+        ),
+        "DCP_AZURE_FIREWALL_POLICY_ID": (
+            f"/subscriptions/{SUBSCRIPTION}/resourceGroups/network/providers/"
+            "Microsoft.Network/firewallPolicies/dcp-egress"
+        ),
         "DCP_AZURE_BUDGET_NAME": "dcp-monthly",
         "DCP_AZURE_PROJECTED_RUN_COST_USD": "1.25",
         "DCP_AZURE_LINUX_VM_SIZE": "Standard_D2s_v5",
@@ -74,7 +86,7 @@ class GatewayPreflightTests(unittest.TestCase):
             "gateway_api_token", "trusted_proxy", "owner_approval",
             "repository_allowlist", "github_app_configuration",
             "azure_configuration_presence", "azure_guest_profile_configuration",
-            "orka_configuration_presence",
+            "azure_network_configuration", "orka_configuration_presence",
         ):
             self.assertEqual(checks[name]["status"], "PASS", name)
         self.assertEqual(checks["azure_network_policy"]["status"], "UNKNOWN")
@@ -119,6 +131,25 @@ class GatewayPreflightTests(unittest.TestCase):
         self.assertEqual(checks["trusted_proxy"]["status"], "FAIL")
         self.assertEqual(result["overall"], "FAIL")
 
+
+
+    def test_invalid_firewall_or_route_table_resource_ids_fail_preflight(self):
+        env = valid_environment()
+        env["DCP_AZURE_FIREWALL_POLICY_ID"] = "/subscriptions/other/resourceGroups/network/providers/Microsoft.Network/firewallPolicies/p"
+        result = inspect_environment(env)
+        checks = {item["check"]: item for item in result["checks"]}
+        self.assertEqual(checks["azure_network_configuration"]["status"], "FAIL")
+        self.assertEqual(checks["azure_configuration_presence"]["status"], "FAIL")
+
+    def test_network_controls_must_be_outside_runner_resource_group(self):
+        env = valid_environment()
+        env["DCP_AZURE_ROUTE_TABLE_ID"] = (
+            f"/subscriptions/{SUBSCRIPTION}/resourceGroups/dcp-runners/providers/"
+            "Microsoft.Network/routeTables/runner-rt"
+        )
+        result = inspect_environment(env)
+        checks = {item["check"]: item for item in result["checks"]}
+        self.assertEqual(checks["azure_network_configuration"]["status"], "FAIL")
 
     def test_invalid_azure_guest_profile_fails_syntax_preflight(self):
         env = valid_environment()
