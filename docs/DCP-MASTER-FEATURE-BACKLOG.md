@@ -122,3 +122,12 @@ All above status statements refer to merged code on main and the corresponding C
 - Gateway rejects arbitrary request fields, unknown parameter names, wrong types, out-of-range values and malformed SHA values. Imported templates cannot use builder parameters.
 - Real-browser smoke coverage verifies the typed form and normalized parameter collection; unit tests verify exact argv and rejection behavior.
 - This is not command execution. TERM-04 remains BLOCKED until a verified OS isolation strategy, per-job approval, time/output limits and process-tree cancellation exist.
+
+
+## 2026-11-12 artifact provenance checkpoint
+
+- ART-01 advanced: each new artifact now receives a server-authored provenance manifest binding artifact name/size/SHA-256 to Job ID, target, source type, immutable Git commit SHA or Local Folder snapshot SHA-256, runner identity and upload timestamp.
+- Provenance JSON is stored in the private SQLite artifact index with a separate canonical SHA-256 digest; list/get/download paths verify the manifest digest and expose the provenance and digest.
+- Existing artifact databases receive additive columns; legacy artifacts remain readable with empty provenance rather than fabricated source claims.
+- Artifact bytes continue to be independently SHA-256 verified on download.
+- Retention remains explicit/manual; no automatic artifact deletion was added.
