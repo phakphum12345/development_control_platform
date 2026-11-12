@@ -769,6 +769,8 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                 try:
                     result = template_store.import_pack(self.body(), identity.get("subject", ""))
                     return self.send_json(201, result)
+                except PolicyDenied as exc:
+                    return self.send_json(exc.status_code, {"error": str(exc)})
                 except TerminalTemplateError as exc:
                     status = 409 if "already exists" in str(exc) else 400
                     return self.send_json(status, {"error": str(exc)})
