@@ -151,3 +151,11 @@ Do not merge PR #71 until the real Chromium sandbox test, Dashboard browser smok
 - Terminal execution remains BLOCKED by design until a verified OS isolation approach is available. Per-job workspace separation is not equivalent to an OS sandbox.
 - Phase 4 — Runtime/Preview: static runtime and authenticated preview lifecycle are implemented for supported static output; arbitrary app servers and HMR/WebSocket remain unsupported.
 - Phase 5 — Testing: real Chromium static-project acceptance is implemented in CI. Broader framework coverage, cross-browser and visual regression remain outstanding.
+
+
+## 2026-11-12 implementation checkpoint — web framework build expansion
+
+- Added preinstalled-CLI build adapters for Next.js and Angular, with framework-specific output packaging.
+- JobStore validation, runner capability advertisement, scheduler target policy, Local Runner pipeline dispatch and Dashboard Build Jobs selector include both targets.
+- No dependency installation or package-manager lifecycle script is introduced.
+- Next.js server runtime/SSR preview and broad cross-framework acceptance remain outstanding.
