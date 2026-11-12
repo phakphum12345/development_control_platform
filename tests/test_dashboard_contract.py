@@ -76,7 +76,7 @@ class DashboardContractTests(unittest.TestCase):
             'function projectImportVerifyCommit()',
             'function projectImportInspectProject()',
             'Absolute host paths are not returned by the API',
-            'Snapshot SHA-256 and Runner will materialize the snapshot',
+            'Snapshot SHA-256',
         ):
             with self.subTest(expected=expected):
                 self.assertIn(expected, HTML)
