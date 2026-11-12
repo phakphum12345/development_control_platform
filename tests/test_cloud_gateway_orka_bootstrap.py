@@ -52,6 +52,7 @@ class OrkaRunnerBootstrapFactoryTests(unittest.TestCase):
         self.assertIn("svc.sh start", script)
         self.assertIn("set +x", script)
         self.assertIn("umask 077", script)
+        self.assertIn("admin|wheel", script)
         self.assertIn("if [ ! -f .runner ]; then", script)
         self.assertNotIn("echo " + app.token, script)
         self.assertIn(app.token, script)
