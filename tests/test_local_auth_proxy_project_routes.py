@@ -9,12 +9,15 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
+import tools.local_auth_proxy as auth
 from tools.local_auth_proxy import LocalAuthProxy, make_handler
 
 
 class LocalProjectProxyRouteTests(unittest.TestCase):
     def setUp(self):
         self.gateway_requests = []
+        self.gateway_methods = []
+        self.gateway_bodies = []
         parent = self
 
         class FakeGateway(BaseHTTPRequestHandler):
@@ -40,6 +43,23 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
                 self.end_headers()
                 self.wfile.write(body)
 
+            def do_POST(self):
+                parent.gateway_requests.append(self.path)
+                parent.gateway_methods.append("POST")
+                size = int(self.headers.get("Content-Length", "0"))
+                parent.gateway_bodies.append(self.rfile.read(size))
+                body = json.dumps({
+                    "runner": {
+                        "worker_id": self.path.split("/")[-2],
+                        "state": self.path.rsplit("/", 1)[-1] + "d",
+                    }
+                }).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
         self.gateway = ThreadingHTTPServer(("127.0.0.1", 0), FakeGateway)
         self.gateway_thread = threading.Thread(target=self.gateway.serve_forever, daemon=True)
         self.gateway_thread.start()
@@ -57,7 +77,10 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
         )
         self.proxy_thread = threading.Thread(target=self.proxy.serve_forever, daemon=True)
         self.proxy_thread.start()
-        self.base = "http://127.0.0.1:" + str(self.proxy.server_port)
+        self.old_local_port = auth.PORT
+        auth.PORT = self.proxy.server_port
+        self.origin = "http://127.0.0.1:" + str(self.proxy.server_port)
+        self.base = self.origin
 
     def tearDown(self):
         self.proxy.shutdown()
@@ -67,6 +90,7 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
         self.gateway.server_close()
         self.gateway_thread.join(timeout=2)
         self.temp.cleanup()
+        auth.PORT = self.old_local_port
 
     def get(self, path, authenticated=True):
         headers = {}
@@ -108,6 +132,24 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
             self.assertEqual(status, 404)
             self.assertEqual(body["error"], "not found")
         self.assertEqual(len(self.gateway_requests), 0)
+
+    def post(self, path, payload=None, authenticated=True, valid_csrf=True):
+        headers = {"Origin": self.origin, "Content-Type": "application/json"}
+        if authenticated:
+            headers["Cookie"] = "DCP_LOCAL_SESSION=" + self.sid
+            headers["X-CSRF-Token"] = (
+                self.app.csrf(self.session) if valid_csrf else "invalid-csrf-token"
+            )
+        body = json.dumps({} if payload is None else payload).encode("utf-8")
+        request = Request(self.base + path, data=body, headers=headers, method="POST")
+        try:
+            with urlopen(request, timeout=5) as response:
+                return response.status, json.loads(response.read())
+        except HTTPError as exc:
+            try:
+                return exc.code, json.loads(exc.read())
+            finally:
+                exc.close()
 
     def get_raw(self, path, authenticated=True):
         headers = {}
@@ -184,6 +226,28 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
             status, body = self.get(path)
             self.assertEqual(status, 404, path)
             self.assertEqual(body["error"], "not found")
+        self.assertEqual(len(self.gateway_requests), 0)
+
+    def test_forwards_only_csrf_protected_local_runner_drain_and_enable(self):
+        for action in ("drain", "enable"):
+            path = "/api/runners/local-worker-1/" + action
+            status, body = self.post(path, {})
+            self.assertEqual(status, 200)
+            self.assertEqual(body["runner"]["worker_id"], "local-worker-1")
+            self.assertEqual(self.gateway_requests[-1], path)
+            self.assertEqual(self.gateway_methods[-1], "POST")
+            self.assertEqual(json.loads(self.gateway_bodies[-1]), {})
+
+    def test_local_runner_controls_require_session_csrf_and_empty_payload(self):
+        path = "/api/runners/local-worker-1/drain"
+        status, _ = self.post(path, {}, authenticated=False)
+        self.assertEqual(status, 403)
+        status, _ = self.post(path, {}, valid_csrf=False)
+        self.assertEqual(status, 403)
+        status, _ = self.post(path, {"force": True})
+        self.assertEqual(status, 400)
+        status, _ = self.post("/api/runners/../drain", {})
+        self.assertEqual(status, 404)
         self.assertEqual(len(self.gateway_requests), 0)
 
     def test_dashboard_job_reads_require_authenticated_session(self):
