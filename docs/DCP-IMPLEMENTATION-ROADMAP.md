@@ -99,3 +99,11 @@ Do not merge PR #71 until the real Chromium sandbox test, Dashboard browser smok
 - Catalog entries deny network access, declare bounded time/output, and remain `PREVIEW_ONLY` with execution disabled.
 - Added unit and authenticated HTTP tests for template safety, defensive copies, authorization, exact argv and rejection paths.
 - Remaining Terminal Studio work: inert command-pack import/export, project/workspace binding, typed task submission, Local Agent execution broker, explicit approval, cancellation, bounded/redacted logs and history. No arbitrary shell/PTY is exposed.
+
+
+## 2026-11-12 implementation checkpoint — Terminal Studio Dashboard
+
+- Added a Dashboard Terminal Studio navigation view.
+- Connected the view to the authenticated read-only catalog and argv preview APIs using same-origin credentials and the existing CSRF token.
+- Added UI contract coverage and Code Navigator mapping.
+- The Dashboard clearly labels this as PREVIEW ONLY; no shell, PTY, command execution, or workspace binding is enabled.
