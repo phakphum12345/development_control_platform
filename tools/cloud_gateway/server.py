@@ -951,6 +951,8 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                                     job_id, worker_id, runtime_kind="next", owner_approved=True
                                 )
                             elif runtime_kind == "static":
+                                if job.get("target") == "build_next":
+                                    return self.send_json(409, {"error": "Next.js build requires the explicit Next.js runtime path"})
                                 if set(payload) - {"runtime_kind", "output_relative"}:
                                     return self.send_json(400, {"error": "unsupported static preview request fields"})
                                 default_output = "source/dist/browser" if job.get("target") == "build_angular" else "source/dist"
