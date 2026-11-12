@@ -62,6 +62,9 @@ class AzureRunnerBootstrapTests(unittest.TestCase):
         self.assertIn("--ephemeral --disableupdate", script)
         self.assertNotIn("mock-registration-token", str(props["settings"]))
         self.assertEqual(app.repositories, ["phakphum12345/generated-A4-pdf"])
+        if shutil.which("bash"):
+            parsed = subprocess.run(["bash", "-n"], input=script, text=True, capture_output=True)
+            self.assertEqual(parsed.returncode, 0, parsed.stderr)
 
     def test_windows_token_is_only_in_encoded_protected_command(self):
         app = FakeGitHubApp()
