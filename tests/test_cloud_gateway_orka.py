@@ -1,5 +1,6 @@
 """Mocked Orka API tests; never contact an Orka cluster."""
 import base64,json,unittest
+from datetime import datetime,timedelta,timezone
 from unittest.mock import MagicMock,patch
 from urllib.error import HTTPError
 from tools.cloud_gateway.orka import OrkaProvider,OrkaError
@@ -15,7 +16,7 @@ class OrkaTests(unittest.TestCase):
  def make_ready(self,checker=None,bootstrap=None,**kwargs):
   return self.make(
    checker or (lambda *args:True),
-   bootstrap_factory=bootstrap or (lambda name,os_name,payload:{"script":"#!/bin/bash\\nset +x\\nTOKEN='mock-registration-token'\\n"}),
+   bootstrap_factory=bootstrap or (lambda name,os_name,payload:{"script":"#!/bin/bash\\nset +x\\nTOKEN='mock-registration-token'\\n","expires_at":datetime.now(timezone.utc)+timedelta(minutes=30)}),
    userdata_rbac_reviewed=True,
    userdata_exposure_reviewed=True,
    network_policy_checker=lambda *args:True,
@@ -75,7 +76,7 @@ class OrkaTests(unittest.TestCase):
   self.assertFalse(p.readiness("macos")["ready"])
   with self.assertRaises(OrkaError): p.provision(request())
  def test_rejects_user_data_larger_than_encoded_api_limit(self):
-  p=self.make_ready(bootstrap=lambda *args:{"script":"x"*50000})
+  p=self.make_ready(bootstrap=lambda *args:{"script":"x"*50000,"expires_at":datetime.now(timezone.utc)+timedelta(minutes=30)})
   with self.assertRaises(OrkaError):
    p.provision(request())
  def test_userdata_phase_must_succeed_before_runner_online(self):
