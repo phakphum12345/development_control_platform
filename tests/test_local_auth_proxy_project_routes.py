@@ -1,4 +1,5 @@
 """Local Auth Proxy allowlist tests for owner-authenticated Local Folder reads."""
+import hashlib
 import json
 import tempfile
 import threading
@@ -22,6 +23,16 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
 
             def do_GET(self):
                 parent.gateway_requests.append(self.path)
+                if self.path.endswith("/download"):
+                    body = b"proxy-artifact\\x00bytes"
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/octet-stream")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.send_header("Content-Disposition", "attachment; filename=web-build.zip")
+                    self.send_header("ETag", '"' + hashlib.sha256(body).hexdigest() + '"')
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
                 body = json.dumps({"projects": []}).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
@@ -96,6 +107,47 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
             status, body = self.get(path)
             self.assertEqual(status, 404)
             self.assertEqual(body["error"], "not found")
+        self.assertEqual(len(self.gateway_requests), 0)
+
+    def get_raw(self, path, authenticated=True):
+        headers = {}
+        if authenticated:
+            headers["Cookie"] = "DCP_LOCAL_SESSION=" + self.sid
+        request = Request(self.base + path, headers=headers)
+        try:
+            with urlopen(request, timeout=5) as response:
+                return response.status, response.headers, response.read()
+        except HTTPError as exc:
+            try:
+                return exc.code, exc.headers, exc.read()
+            finally:
+                exc.close()
+
+    def test_artifact_download_streams_binary_bytes_and_sha256_headers(self):
+        artifact_id = "223e4567-e89b-42d3-a456-426614174000"
+        path = "/api/artifacts/" + artifact_id + "/download"
+        status, headers, body = self.get_raw(path)
+        expected = b"proxy-artifact\\x00bytes"
+        self.assertEqual(status, 200)
+        self.assertEqual(body, expected)
+        self.assertEqual(headers.get("Content-Type"), "application/octet-stream")
+        self.assertEqual(headers.get("Content-Length"), str(len(expected)))
+        self.assertEqual(
+            headers.get("ETag"), '"' + hashlib.sha256(expected).hexdigest() + '"'
+        )
+        self.assertEqual(
+            headers.get("Content-Disposition"),
+            "attachment; filename=web-build.zip",
+        )
+        self.assertEqual(self.gateway_requests[-1], path)
+
+    def test_artifact_download_requires_authenticated_session(self):
+        artifact_id = "223e4567-e89b-42d3-a456-426614174000"
+        status, _, body = self.get_raw(
+            "/api/artifacts/" + artifact_id + "/download", authenticated=False
+        )
+        self.assertEqual(status, 401)
+        self.assertIn(b"authenticated session required", body)
         self.assertEqual(len(self.gateway_requests), 0)
 
     def test_allows_bounded_dashboard_job_artifact_runner_and_terminal_reads(self):
