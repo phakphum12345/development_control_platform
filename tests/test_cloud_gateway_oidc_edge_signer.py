@@ -173,6 +173,10 @@ class OIDCProxyIdentitySignerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             signer(auth_url="http://example.test/oauth2/auth")
         with self.assertRaises(ValueError):
+            signer(issuer="http://identity.example.test/")
+        with self.assertRaises(ValueError):
+            signer(audience="bad audience")
+        with self.assertRaises(ValueError):
             signer(owner_groups=(OWNER,), operator_groups=(OWNER,))
 
     def test_rejects_query_string_and_unsupported_method(self):
