@@ -15,7 +15,7 @@ class FakeGitHubApp:
     def create_registration_token(self, repository):
         return SimpleNamespace(
             token="mock-only-registration-token",
-            expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=60),
         )
 
 

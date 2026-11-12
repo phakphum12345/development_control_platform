@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from urllib.parse import urlparse
 
 from .azure_guest_profile import AzureGuestProfileError, AzureGuestProfileFactory
+from .azure_egress import _valid_fqdn_pattern
 
 
 def _present(env: Mapping[str, str], name: str) -> bool:
@@ -50,8 +51,16 @@ def _valid_amount(value: str) -> bool:
 def _resource_id(value: str, subscription: str, kind: str) -> bool:
     if kind == "subnet":
         suffix = r"/providers/Microsoft\.Network/virtualNetworks/[^/]+/subnets/[^/]+"
-    else:
+    elif kind == "nsg":
         suffix = r"/providers/Microsoft\.Network/networkSecurityGroups/[^/]+"
+    elif kind == "route_table":
+        suffix = r"/providers/Microsoft\.Network/routeTables/[^/]+"
+    elif kind == "firewall":
+        suffix = r"/providers/Microsoft\.Network/azureFirewalls/[^/]+"
+    elif kind == "firewall_policy":
+        suffix = r"/providers/Microsoft\.Network/firewallPolicies/[^/]+"
+    else:
+        return False
     pattern = (
         r"^/subscriptions/" + re.escape(subscription)
         + r"/resourceGroups/[A-Za-z0-9_.()-]{1,90}" + suffix + r"$"
@@ -123,8 +132,13 @@ def inspect_environment(env: Mapping[str, str] | None = None) -> dict:
     azure_names = (
         "DCP_AZURE_SUBSCRIPTION_ID", "DCP_AZURE_RESOURCE_GROUP",
         "DCP_AZURE_LOCATION", "DCP_AZURE_SUBNET_ID", "DCP_AZURE_NSG_ID",
-        "DCP_AZURE_BUDGET_NAME", "DCP_AZURE_PROJECTED_RUN_COST_USD",
+        "DCP_AZURE_ROUTE_TABLE_ID", "DCP_AZURE_FIREWALL_ID",
+        "DCP_AZURE_FIREWALL_POLICY_ID", "DCP_AZURE_BUDGET_NAME", "DCP_AZURE_PROJECTED_RUN_COST_USD",
         "DCP_AZURE_LINUX_VM_SIZE", "DCP_AZURE_WINDOWS_VM_SIZE",
+        "DCP_AZURE_LINUX_IMAGE_PUBLISHER", "DCP_AZURE_LINUX_IMAGE_OFFER",
+        "DCP_AZURE_LINUX_IMAGE_SKU", "DCP_AZURE_LINUX_IMAGE_VERSION",
+        "DCP_AZURE_WINDOWS_IMAGE_PUBLISHER", "DCP_AZURE_WINDOWS_IMAGE_OFFER",
+        "DCP_AZURE_WINDOWS_IMAGE_SKU", "DCP_AZURE_WINDOWS_IMAGE_VERSION",
         "DCP_RUNNER_VERSION", "DCP_RUNNER_LINUX_SHA256", "DCP_RUNNER_WINDOWS_SHA256",
         "DCP_AZURE_GUEST_ADMIN_USERNAME", "DCP_AZURE_LINUX_SSH_PUBLIC_KEY",
     )
@@ -144,27 +158,92 @@ def inspect_environment(env: Mapping[str, str] | None = None) -> dict:
         if guest_profile_valid else "A valid guest administrator username and SSH Ed25519 public key are required",
     )
     subscription = values.get("DCP_AZURE_SUBSCRIPTION_ID", "")
+    runner_resource_group = values.get("DCP_AZURE_RESOURCE_GROUP", "")
+    network_resource_ids_valid = (
+        bool(re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", subscription))
+        and _resource_id(values.get("DCP_AZURE_SUBNET_ID", ""), subscription, "subnet")
+        and _resource_id(values.get("DCP_AZURE_NSG_ID", ""), subscription, "nsg")
+        and _resource_id(values.get("DCP_AZURE_ROUTE_TABLE_ID", ""), subscription, "route_table")
+        and _resource_id(values.get("DCP_AZURE_FIREWALL_ID", ""), subscription, "firewall")
+        and _resource_id(values.get("DCP_AZURE_FIREWALL_POLICY_ID", ""), subscription, "firewall_policy")
+        and all(
+            re.search(r"/resourceGroups/([^/]+)/", values.get(name, ""), re.I).group(1).lower()
+            != runner_resource_group.lower()
+            for name in (
+                "DCP_AZURE_SUBNET_ID", "DCP_AZURE_NSG_ID", "DCP_AZURE_ROUTE_TABLE_ID",
+                "DCP_AZURE_FIREWALL_ID", "DCP_AZURE_FIREWALL_POLICY_ID",
+            )
+        )
+    )
+    network_ids_present = all(_present(values, name) for name in (
+        "DCP_AZURE_SUBNET_ID", "DCP_AZURE_NSG_ID", "DCP_AZURE_ROUTE_TABLE_ID",
+        "DCP_AZURE_FIREWALL_ID", "DCP_AZURE_FIREWALL_POLICY_ID",
+    ))
+    add(
+        "azure_network_configuration",
+        "PASS" if network_resource_ids_valid else ("UNKNOWN" if not network_ids_present else "FAIL"),
+        "Subnet, NSG, route table, firewall and firewall policy IDs are valid and isolated from the runner resource group"
+        if network_resource_ids_valid else "Separate, valid Azure network resource IDs are required; configured values are not echoed",
+    )
+    extra_fqdns = tuple(
+        item.strip() for item in values.get("DCP_AZURE_EGRESS_EXTRA_FQDNS", "").split(",")
+        if item.strip()
+    )
+    extra_fqdns_valid = len(set(extra_fqdns)) == len(extra_fqdns) and all(
+        _valid_fqdn_pattern(item) for item in extra_fqdns
+    )
+    add(
+        "azure_extra_egress_domains",
+        "PASS" if extra_fqdns_valid else "FAIL",
+        "Optional extra workflow egress domains are syntactically valid"
+        if extra_fqdns_valid else "Additional workflow egress domains must be unique exact FQDNs or explicit subdomain wildcards",
+    )
+
     azure_valid = (
         azure_present
         and bool(re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", subscription))
         and bool(re.fullmatch(r"[A-Za-z0-9_.()-]{1,90}", values.get("DCP_AZURE_RESOURCE_GROUP", "")))
         and bool(re.fullmatch(r"[a-z0-9]+", values.get("DCP_AZURE_LOCATION", "")))
-        and _resource_id(values.get("DCP_AZURE_SUBNET_ID", ""), subscription, "subnet")
-        and _resource_id(values.get("DCP_AZURE_NSG_ID", ""), subscription, "nsg")
+        and network_resource_ids_valid
         and bool(re.fullmatch(r"[A-Za-z0-9_.-]{1,63}", values.get("DCP_AZURE_BUDGET_NAME", "")))
         and _valid_amount(values.get("DCP_AZURE_PROJECTED_RUN_COST_USD", ""))
         and all(re.fullmatch(r"[A-Za-z0-9_]+", values.get(name, "")) for name in
                 ("DCP_AZURE_LINUX_VM_SIZE", "DCP_AZURE_WINDOWS_VM_SIZE"))
+        and all(
+            re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", values.get(name, ""))
+            and values.get(name, "").lower() != "latest"
+            for name in (
+                "DCP_AZURE_LINUX_IMAGE_PUBLISHER", "DCP_AZURE_LINUX_IMAGE_OFFER",
+                "DCP_AZURE_LINUX_IMAGE_SKU", "DCP_AZURE_LINUX_IMAGE_VERSION",
+                "DCP_AZURE_WINDOWS_IMAGE_PUBLISHER", "DCP_AZURE_WINDOWS_IMAGE_OFFER",
+                "DCP_AZURE_WINDOWS_IMAGE_SKU", "DCP_AZURE_WINDOWS_IMAGE_VERSION",
+            )
+        )
         and bool(re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", values.get("DCP_RUNNER_VERSION", "")))
         and all(re.fullmatch(r"[a-fA-F0-9]{64}", values.get(name, "")) for name in
                 ("DCP_RUNNER_LINUX_SHA256", "DCP_RUNNER_WINDOWS_SHA256"))
         and guest_profile_valid
+        and extra_fqdns_valid
     )
     add("azure_configuration_presence", "PASS" if azure_valid else ("UNKNOWN" if not azure_present else "FAIL"),
         "Azure resource IDs, budget projection, VM sizes, and pinned runner artifacts are syntactically valid"
         if azure_valid else "Azure configuration is missing or contains invalid identifiers/values; values are not echoed")
     add("azure_network_policy", "UNKNOWN",
-        "Subnet/NSG and effective egress policy require independent live verification")
+        "Live ARM inspection must verify subnet/NSG/UDR, Azure Firewall policy, DNS proxy and current GitHub Actions FQDN allowlist")
+    provider_enabled_raw = values.get("DCP_AZURE_PROVIDER_ENABLED", "false").strip().lower()
+    provider_enabled_valid = provider_enabled_raw in ("true", "false")
+    provider_enabled = provider_enabled_raw == "true"
+    provider_opt_in_ok = (
+        provider_enabled_valid
+        and (not provider_enabled or (azure_valid and github_valid))
+        and not (enabled and not provider_enabled)
+    )
+    add(
+        "azure_provider_opt_in",
+        "PASS" if provider_opt_in_ok else "FAIL",
+        "Azure provider remains explicitly disabled or has complete configuration and GitHub App identity"
+        if provider_opt_in_ok else "Azure provider opt-in is invalid, incomplete, or inconsistent with the global provisioning gate",
+    )
     add("azure_guest_profile", "UNKNOWN",
         "Guest login profile and protected bootstrap require deployment-specific verification")
 
