@@ -231,7 +231,7 @@ The Dashboard now has a Project Import view with separate authenticated read-onl
 - Public GitHub research remains a separate tokenless public API feature; private repository reads use the Local Auth Proxy and GitHub App server-side credentials.
 - GitHub App import catalog and ref/commit/project inspection routes are owner-only at the Gateway.
 
-The selected source evidence is currently a Dashboard view state only. It is not yet a persisted unified project record or an immutable job snapshot. That requires the next Project Snapshot/Import-to-Job workstream.
+The selected source remains a Dashboard view-state selection rather than a separately persisted unified project record. The Local Folder build path is nevertheless connected to job creation: `POST /api/jobs` accepts only the exact source type, project UUID, current snapshot SHA-256 and an allowlisted static target; the Gateway refreshes the registry fingerprint and rejects stale selections. GitHub App jobs continue to require server-side immutable full-commit verification.
 
 
 ## M10 — Verified Local Project Snapshot Materialization
@@ -247,7 +247,7 @@ The selected source evidence is currently a Dashboard view state only. It is not
 - Applies read-only file/directory permissions as a best-effort integrity guard. This is not an OS sandbox and does not make the snapshot tamper-proof against the same local user.
 - Does not execute source, install dependencies, contact the network or create a job.
 
-The next integration step is to bind the project ID and expected fingerprint into the durable job payload, then have the Local Runner materialize the verified snapshot before executing only an explicitly approved, supported build adapter.
+The durable job binding and Local Runner materialization are now implemented for the supported Local Folder static build/test path. The Gateway stores sanitized source identity and SHA-256 metadata; the Runner requires the project ID in its trusted-local-project allowlist and materializes the exact queued snapshot before dispatch. Real Windows-host acceptance, artifact/download provenance and broader framework support remain.
 
 
 ## M11 — Local Web Build, Runtime and Static Playwright
@@ -257,7 +257,7 @@ The Local Runner pipeline now supports:
 - `build_vite` for supported React/Vite and Vue/Vite projects when the Vite CLI and dependencies are already present locally. DCP does not run package installation or npm lifecycle scripts.
 - `test_static_web` for detected dependency-free static projects only, requiring both `web` and `playwright` Runner capabilities and the explicit `DCP_RUNNER_PLAYWRIGHT_ENABLED=1` opt-in.
 
-The static RuntimeManager binds to `127.0.0.1`, serves only generated output, checks health, records bounded logs, and stops its owned process. The authenticated Preview Proxy provides owner/job-bound static preview sessions, but the current `test_static_web` implementation starts RuntimeManager directly; Playwright-through-Preview-Proxy E2E is not yet established.
+The static RuntimeManager binds to `127.0.0.1`, serves only generated output, checks health, records bounded logs, and stops its owned process. The `test_static_web` build/test pipeline still runs its DCP-owned Playwright checks directly against RuntimeManager. Separately, PR #96 added authenticated Preview Proxy browser fixture E2E through Local Auth Proxy → Gateway → Preview Proxy; CI passed Chromium, Firefox and WebKit. That fixture does not yet prove browser automation against every imported project's preview.
 
 Playwright uses a fixed DCP-owned test plan, Chromium sandboxing, exact loopback HTTP origin routing, WebSocket blocking, WebRTC API denial and service-worker blocking. These browser controls are defense-in-depth, not OS-level process isolation or a host firewall. Only trusted projects on a suitably isolated Runner may be tested.
 
@@ -315,3 +315,13 @@ restores the caller's process environment after exit.
   backoff; permanent authorization/policy errors stop the service.
 - The legacy tools.runner_agent.agent implementation remains for compatibility
   tests but is no longer invoked by the supported Windows launcher.
+
+
+## M13 — Verified Local Folder job binding and Runner checkout
+
+- Dashboard Project Import can list enrolled roots/projects without exposing absolute host paths and select a registered project by opaque UUID.
+- Local Folder job creation accepts only `{source_type, project_id, snapshot_sha256, target}`; Owner authorization, UUID/SHA-256 validation, registry refresh, supported-framework checks and stale-snapshot HTTP 409 rejection are enforced by Gateway.
+- Job public metadata exposes `source_type`, `source_id` and `source_sha256`; it does not mislabel Local Folder identity as a Git commit.
+- Local Runner requires the selected project ID in `DCP_RUNNER_TRUSTED_LOCAL_PROJECTS`, verifies the queued SHA-256, materializes the snapshot and dispatches only supported fixed build/test targets.
+- Focused coverage: `tests/test_cloud_gateway_local_projects.py`, `tests/test_local_project_snapshot.py`, `tests/test_local_runner_pipeline_e2e.py`, and `tests/test_dashboard_contract.py`.
+- Acceptance still required: live authenticated Dashboard-to-Gateway workflow on Windows, real Windows Runner build/artifact/download verification, and workspace cleanup/reconciliation after forced Runner interruption.
