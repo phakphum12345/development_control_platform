@@ -86,6 +86,10 @@ class DashboardContractTests(unittest.TestCase):
         self.assertIn("Disabled", HTML)
 
 
+    def test_dashboard_exposes_supported_next_and_angular_build_targets(self):
+        self.assertIn('<option value="build_next">Next.js (preinstalled dependencies)</option>', HTML)
+        self.assertIn('<option value="build_angular">Angular (preinstalled dependencies)</option>', HTML)
+
     def test_terminal_studio_dashboard_is_preview_only(self):
         for expected in (
             'id="terminal-studio"',

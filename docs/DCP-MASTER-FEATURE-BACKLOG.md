@@ -14,7 +14,7 @@ Status labels describe the evidence-backed state recorded in the dated updates b
 | IMP-02 | Local Folder import via Local Agent | PARTIAL | P0 | Local registry, explicit CLI enrollment, owner-only read APIs, Dashboard source selection and verified snapshot materialization exist; durable job binding and runner integration remain. |
 | IMP-03 | Framework/toolchain detection | PARTIAL | P0 | Existing bounded inventory now reports evidence-based framework, package manager, manifest constraints and scripts; installed toolchain readiness and job integration remain. |
 | BUILD-01 | Flutter fixed-target executor | EXISTING/PARTIAL | P1 | Opt-in, trusted-repository allowlist, disabled by default; verify artifacts and cleanup. |
-| BUILD-02 | Generic web build adapters | PARTIAL | P0 | Static HTML/JS and React/Vite + Vue/Vite Local Runner targets implemented; dashboard UX, host acceptance and broader build matrix remain. |
+| BUILD-02 | Generic web build adapters | PARTIAL | P0 | Static HTML/JS, React/Vite, Vue/Vite, Next.js and Angular build targets implemented using preinstalled local CLIs; dependency installation, SSR runtime/preview and broader framework coverage remain. |
 | RUN-01 | Runtime Manager | IMPLEMENTED (STATIC SLICE) | P0 | Loopback-only static runtime supervisor with ephemeral port, health check, bounded logs, expiring session capability and owned-process cleanup. Arbitrary project servers remain unsupported. |
 | RUN-02 | Authenticated static preview proxy | PARTIAL | P0 | Owner-authenticated Auth Proxy → Gateway → Preview Manager → Runtime Manager flow and real API E2E are implemented for completed static jobs. Dashboard workflow coverage and arbitrary server/HMR/WebSocket support remain limited. |
 | TERM-01 | Terminal Studio UI | PARTIAL | P1 | Dashboard Command Library, exact argv preview, JSON import and Owner review/audit controls exist. Interactive terminal sessions, streamed process output, stop and job history remain missing. |
@@ -104,3 +104,12 @@ No status in this table proves that the user's local Windows Runner, local servi
 - PR #88: Dashboard Owner review and audit-history controls.
 
 All above status statements refer to merged code on main and the corresponding CI checks; they do not imply Terminal command execution is available.
+
+
+## 2026-11-12 implementation checkpoint — Next.js and Angular build targets
+
+- Added Local Runner build targets for Next.js and Angular using preinstalled local CLIs and fixed argv; DCP does not install dependencies or invoke package-manager lifecycle scripts.
+- Next.js output is packaged from `.next/`; Angular output is forced to `dist/` and packaged.
+- Angular project selection requires one application build target or an explicit valid default project; ambiguous projects fail closed.
+- Job queue validation, runner capability scheduling and Dashboard build-target selection include both frameworks.
+- These targets execute trusted project build/configuration code and remain behind existing Runner execution opt-in and trusted-source allowlists. Next.js SSR runtime/preview is not included.

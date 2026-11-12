@@ -159,3 +159,11 @@ Do not merge PR #71 until the real Chromium sandbox test, Dashboard browser smok
 - Sandboxed Chromium verifies HTML and relative CSS, computed style, same-origin requests, absence of browser/request errors, screenshot capture, and denial after stop.
 - Short-lived HttpOnly/Secure, path-scoped preview cookie is revoked on stop, logout or expiry; runtime capability and upstream port remain server-side.
 - CI runs this test alongside the static browser smoke. Cross-owner identity, cross-browser, visual baselines, trace evidence and full WCAG/axe remain follow-up scope.
+
+
+## 2026-11-12 implementation checkpoint — web framework build expansion
+
+- Added preinstalled-CLI build adapters for Next.js and Angular, with framework-specific output packaging.
+- JobStore validation, Runner Registry capability advertisement, Scheduler target policy, Local Runner pipeline dispatch and Dashboard Build Jobs selector include both targets.
+- No dependency installation or package-manager lifecycle script is introduced.
+- Next.js server runtime/SSR preview and broad cross-framework acceptance remain outstanding.
