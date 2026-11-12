@@ -151,7 +151,7 @@ class AzureProviderRuntimeTests(unittest.TestCase):
         values["DCP_AZURE_LINUX_SSH_PUBLIC_KEY"] = "ssh-rsa invalid"
         with self.assertRaises(ValueError):
             build_azure_provider_runtime(
-                settings, object(), lambda: True,
+                settings, SimpleNamespace(create_registration_token=lambda repository: None), lambda: True,
                 SimpleNamespace(authorize=lambda _: None), env=values,
             )
 
