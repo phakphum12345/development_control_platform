@@ -114,11 +114,13 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
             if len(waits) == 2:
                 stop.set()
 
+        host_os = "windows" if os.name == "nt" else "linux"
         pipeline = RunnerPipeline(
             self.client, self.manager, _FixtureCheckout(self.manager),
             FlutterBuildExecutor(self.manager, enabled=False),
             trusted_repositories={"owner/mobile-app"},
-            capabilities={"flutter", "linux", "android"},
+            worker_os=host_os,
+            capabilities={"flutter", host_os, "android"},
         )
         result = RunnerAgentService(
             pipeline, poll_interval_seconds=1, wait=wait
