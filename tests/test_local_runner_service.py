@@ -73,6 +73,23 @@ class RunnerAgentServiceTests(unittest.TestCase):
         self.assertEqual(result["gateway_errors"], 2)
         self.assertEqual(waits, [1, 2, 5])
 
+    def test_permanent_gateway_authorization_error_stops_without_backoff(self):
+        stop = threading.Event()
+
+        class Pipeline:
+            def run_once(self):
+                raise RunnerGatewayError("sanitized", status_code=403)
+
+        waits = []
+        result = RunnerAgentService(
+            Pipeline(), wait=lambda seconds: waits.append(seconds)
+        ).run(stop)
+
+        self.assertFalse(result["stopped"])
+        self.assertEqual(result["reason"], "runner_not_eligible")
+        self.assertEqual(result["gateway_errors"], 1)
+        self.assertEqual(waits, [])
+
     def test_draining_or_offline_runner_stops_service_without_retry(self):
         stop = threading.Event()
 
