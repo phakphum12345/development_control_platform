@@ -16,16 +16,16 @@ Status labels describe the evidence-backed state recorded in the dated updates b
 | BUILD-01 | Flutter fixed-target executor | EXISTING/PARTIAL | P1 | Opt-in, trusted-repository allowlist, disabled by default; verify artifacts and cleanup. |
 | BUILD-02 | Generic web build adapters | PARTIAL | P0 | Static HTML/JS and React/Vite + Vue/Vite Local Runner targets implemented; dashboard UX, host acceptance and broader build matrix remain. |
 | RUN-01 | Runtime Manager | IMPLEMENTED (STATIC SLICE) | P0 | Loopback-only static runtime supervisor with ephemeral port, health check, bounded logs, expiring session capability and owned-process cleanup. Arbitrary project servers remain unsupported. |
-| RUN-02 | Authenticated static preview proxy | PARTIAL | P0 | Authenticated owner-bound proxy/session management exists for supported static runtime output; full Dashboard workflow and Playwright-through-proxy E2E remain to be verified. No arbitrary server/HMR/WebSocket support. |
-| TERM-01 | Terminal Studio UI | MISSING | P1 | Tabs, shell selection, working directory, output, exit code, stop and history. |
-| TERM-02 | Import Command / Template Library | MISSING | P1 | Import text/JSON/script as inert data; never auto-execute; validate schema and provenance. |
-| TERM-03 | Visual Command Builder | MISSING | P1 | Build typed command requests from approved task templates; show exact argv. |
-| TERM-04 | Terminal execution broker | MISSING | P1 | Local Agent only; policy allowlist, approval, timeout, output limits, process-tree cancellation. |
-| TERM-05 | Terminal API / audit | MISSING | P1 | Auth, CSRF, project scope, owner, command hash, outcome and redacted logs. |
+| RUN-02 | Authenticated static preview proxy | PARTIAL | P0 | Owner-authenticated Auth Proxy → Gateway → Preview Manager → Runtime Manager flow and real API E2E are implemented for completed static jobs. Dashboard workflow coverage and arbitrary server/HMR/WebSocket support remain limited. |
+| TERM-01 | Terminal Studio UI | PARTIAL | P1 | Dashboard Command Library, exact argv preview, JSON import and Owner review/audit controls exist. Interactive terminal sessions, streamed process output, stop and job history remain missing. |
+| TERM-02 | Import Command / Template Library | PARTIAL | P1 | Strict v1 JSON command packs persist as inert SQLite templates with source SHA-256 and audit; imported items remain disabled pending review. Clipboard/text and script-file import are not implemented. |
+| TERM-03 | Visual Command Builder | MISSING | P1 | A curated catalog and argv preview exist, but a visual typed builder and parameterized task forms are not implemented. |
+| TERM-04 | Terminal execution broker | BLOCKED | P1 | No Terminal command execution API or Local Agent broker is enabled. Imported templates remain disabled even after Owner review. Execution requires a verified OS isolation strategy, per-job approval, time/output limits and verified process-tree cancellation. WorkspaceManager alone is not an OS sandbox. |
+| TERM-05 | Terminal API / audit | PARTIAL | P1 | Authenticated catalog/preview, Owner-only import/review, source-hash binding and template audit history exist. Project-scoped execution jobs, outcome logs, secret redaction and cancellation evidence remain missing. |
 | EDIT-01 | File Explorer / Code Editor | PARTIAL/VERIFY | P2 | Inspect existing Code Navigator; editor writes require diff and approval. |
 | GIT-01 | Git visual history / diff / conflict tools | PARTIAL/VERIFY | P2 | Read-only first; mutating actions require confirmation. |
 | FLOW-01 | Visual Workflow Builder | MISSING | P2 | Typed nodes, bounded graph, policy gates and resumable jobs. |
-| TEST-01 | Real static-project Playwright testing | PARTIAL/BLOCKED | P0 | Opt-in `test_static_web` runs DCP-owned checks against generated static output through direct loopback RuntimeManager. Current CI sandbox launch fails; authenticated Preview Proxy E2E is not implemented in this slice. |
+| TEST-01 | Real static-project Playwright testing | IMPLEMENTED (STATIC SLICE) | P0 | Opt-in `test_static_web` builds supported static output, starts loopback runtime, runs real Chromium checks and uploads screenshots/report evidence. CI uses a path-scoped AppArmor user-namespace allowance, not `--no-sandbox`. Authenticated Preview Proxy API E2E is covered separately; full app-framework testing remains out of scope. |
 | TEST-02 | Responsive / cross-browser / visual regression | PARTIAL | P1 | Three viewport checks and screenshots exist in the static Playwright slice; cross-browser engines, visual baselines and interaction coverage remain missing. |
 | TEST-03 | API / accessibility / performance testing | PARTIAL/MISSING | P1 | Isolated test targets and bounded traffic only. |
 | SEC-01 | Secrets / dependency / license / SBOM scan | PARTIAL/MISSING | P1 | Never expose secret values; attach machine-readable findings. |
@@ -86,3 +86,21 @@ A follow-up commit adds bounded Chromium launch diagnostics; its CI result must 
 - `TEST-02` remains partial: viewport screenshots are not visual regression, cross-browser, keyboard, or full WCAG evidence.
 
 No status in this table proves that the user's local Windows Runner, local services, or deployed environment are currently online.
+
+## 2026-11-12 verified implementation status — PRs #81–#88
+
+- TERM-01: PARTIAL — Dashboard Terminal Studio now has catalog, argv preview, JSON import and Owner review/audit UI. It is not an interactive shell or terminal session.
+- TERM-02: PARTIAL — strict v1 JSON command packs are persisted as inert data. Imported templates are disabled and pending Owner review; script/clipboard import is not implemented.
+- TERM-03: MISSING — no visual command builder yet.
+- TERM-04: BLOCKED — no Terminal execution endpoint or Local Agent execution broker is enabled. WorkspaceManager is not an OS sandbox; do not execute untrusted project code until isolation, explicit job approval and cleanup are verified.
+- TERM-05: PARTIAL — authenticated catalog/preview/import/review and audit APIs exist; project-scoped execution jobs, redacted output and cancellation are missing.
+- TEST-01: IMPLEMENTED (STATIC SLICE) — the supported static project test path passes real Chromium CI with the scoped AppArmor allowance. This does not imply arbitrary framework or browser-test coverage.
+- RUN-02: PARTIAL — authenticated Preview Proxy lifecycle is covered by real API E2E for completed static jobs. General server/HMR/WebSocket preview remains unsupported.
+- PR #81: read-only Terminal catalog and exact argv preview API.
+- PR #82: Dashboard Terminal Studio catalog/preview integration.
+- PR #83: strict inert JSON command-pack import, private SQLite persistence and audit.
+- PR #84: Dashboard JSON command-pack import.
+- PR #86: source-hash-bound Owner approve/reject review lifecycle.
+- PR #88: Dashboard Owner review and audit-history controls.
+
+All above status statements refer to merged code on main and the corresponding CI checks; they do not imply Terminal command execution is available.

@@ -143,3 +143,11 @@ Do not merge PR #71 until the real Chromium sandbox test, Dashboard browser smok
 - Displays audit history and source SHA-256; allows explicit Approve/Reject only while pending review.
 - Uses exact typed confirmation and the authenticated CSRF-protected review API.
 - Refreshes the catalog and preview after review; approved items remain APPROVED_NOT_EXECUTABLE.
+
+
+## 2026-11-12 verified phase status after PR #88
+
+- Phase 3 — Terminal Studio foundations: PARTIAL. Dashboard catalog, exact argv preview, inert JSON import, private SQLite persistence, source-hash-bound Owner review and audit history are merged. Visual Command Builder, project/workspace binding, Terminal job API, Local Agent execution broker, cancellation and redacted process logs remain outstanding.
+- Terminal execution remains BLOCKED by design until a verified OS isolation approach is available. Per-job workspace separation is not equivalent to an OS sandbox.
+- Phase 4 — Runtime/Preview: static runtime and authenticated preview lifecycle are implemented for supported static output; arbitrary app servers and HMR/WebSocket remain unsupported.
+- Phase 5 — Testing: real Chromium static-project acceptance is implemented in CI. Broader framework coverage, cross-browser and visual regression remain outstanding.
