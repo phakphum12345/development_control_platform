@@ -1,6 +1,6 @@
 # Azure Linux and Windows ephemeral VM provisioner
 
-This adapter can create an ephemeral Linux or Windows VM and a private NIC in an already-provisioned resource group. It requires a pre-existing subnet and Network Security Group (NSG), attaches the NSG to the NIC, assigns no public IP, enables a system-assigned managed identity, uses Trusted Launch, and requests a Local ephemeral OS disk.
+This adapter can create an ephemeral Linux or Windows VM and a private NIC in an already-provisioned resource group. It requires a pre-existing subnet and Network Security Group (NSG), attaches the NSG to the NIC, assigns no public IP, does **not** attach a VM Managed Identity, uses Trusted Launch, and requests a Local ephemeral OS disk. The Gateway's own Managed Identity must remain on the Gateway host only.
 
 ## Mandatory deployment inputs
 - Subscription and resource group.
