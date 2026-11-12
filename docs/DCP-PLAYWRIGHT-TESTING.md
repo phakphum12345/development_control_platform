@@ -140,4 +140,6 @@ Official references:
 
 ## Authenticated Preview Proxy browser E2E — 2026-11-12
 
-A real Chromium test now exercises the owner-authenticated browser-facing preview URL, not the RuntimeManager upstream port. It requires Chromium sandboxing, checks HTML/CSS and browser request/error behavior, captures a screenshot, and verifies access is unavailable after preview stop. A short-lived HttpOnly/Secure cookie is scoped to the job runtime content path and revoked on stop, logout or expiry. Runtime capability tokens and upstream ports stay server-side. CI runs the test in the control-plane validation workflow. This does not claim cross-browser, visual-regression or WCAG conformance.
+A real-browser test exercises the owner-authenticated browser-facing preview URL, not the RuntimeManager upstream port. The same acceptance flow runs in Chromium (with sandboxing enabled), Firefox and WebKit when those engines are installed. It checks HTML/CSS, browser request/error behavior, screenshot capture, and denial after preview stop. A short-lived HttpOnly/Secure cookie is scoped to the job runtime content path and revoked on stop, logout or expiry. Runtime capability tokens and upstream ports stay server-side.
+
+The Firefox/WebKit checks are limited to this controlled preview fixture and the tested browser-facing session contract. They do not establish full application compatibility across browsers, visual regression, keyboard accessibility, or WCAG/axe conformance. CI installs these browser engines explicitly; DCP Runner jobs do not download browsers automatically.
