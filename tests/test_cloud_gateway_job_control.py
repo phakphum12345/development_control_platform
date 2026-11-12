@@ -39,7 +39,7 @@ class JobStoreTests(unittest.TestCase):
 
 
     def test_accepts_static_and_vite_web_targets(self):
-        for target in ("build_static_web", "build_vite"):
+        for target in ("build_static_web", "build_vite", "build_next", "build_angular"):
             with self.subTest(target=target):
                 row, created = self.store.create(
                     {**self.payload, "target": target}, f"job-key-{target}"
