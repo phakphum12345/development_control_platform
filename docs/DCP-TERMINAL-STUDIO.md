@@ -59,3 +59,8 @@ Owner-only JSON command-pack import is now implemented. Schema v1 packs are stri
 ## Dashboard command-pack import
 
 The Terminal Studio view now includes a JSON command-pack import form. It sends the pack through the authenticated same-origin API with the server-issued CSRF token, then refreshes the catalog and selects an imported template for metadata preview. The UI labels imported templates as pending Owner review. Script-file uploads and command execution remain unavailable.
+
+
+## Owner review lifecycle checkpoint
+
+Imported templates can now be explicitly approved or rejected by the Owner. Review requests bind to the immutable source SHA-256 and require an exact typed confirmation phrase. The API records the actor and decision in audit history. Approval is only a review decision: templates remain disabled and non-executable until a separate, future execution authorization system exists.

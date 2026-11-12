@@ -125,3 +125,13 @@ Do not merge PR #71 until the real Chromium sandbox test, Dashboard browser smok
 - The UI submits parsed JSON only, displays the import SHA-256, refreshes the catalog and selects an imported template for pending-review preview.
 - Script-file upload and command execution remain out of scope for this increment.
 - Added Dashboard contract assertions for the import controls and endpoint.
+
+
+## 2026-11-12 implementation checkpoint — Terminal template Owner review
+
+- Added explicit approve/reject review states for imported command templates.
+- Owner review is bound to the stored source SHA-256 and an exact typed confirmation phrase.
+- Added Owner-only review API and Owner/Operator audit-history read API.
+- Approval leaves enabled=false and execution_enabled=false; the preview state is APPROVED_NOT_EXECUTABLE.
+- Added unit and authenticated API tests for authorization, stale hashes, confirmation, audit and non-executable approval.
+- Remaining: Dashboard review controls, workspace-bound typed jobs, policy-approved Local Agent execution, cancellation, redacted logs and history.

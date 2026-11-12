@@ -38,7 +38,7 @@ from tools.local_runner_agent.workspace import WorkspaceManager
 from tools.local_runner_agent.runtime import RuntimeManager
 from .preview import AuthenticatedPreviewManager, PreviewError
 from .terminal_catalog import list_templates as list_terminal_templates, preview_template as preview_terminal_template
-from .terminal_templates import TerminalTemplateError, TerminalTemplateStore
+from .terminal_templates import (TerminalTemplateConflict, TerminalTemplateError, TerminalTemplateNotFound, TerminalTemplateStore)
 
 
 class DisabledProvider:
@@ -342,6 +342,21 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                     return self.send_json(404, {"error": "local project not found or invalid"})
                 except Exception:
                     return self.send_json(503, {"error": "Local Project Registry read failed"})
+            terminal_events_match = re.fullmatch(
+                r"/api/terminal/templates/(custom-[a-z0-9][a-z0-9-]{1,62})/events", path
+            )
+            if terminal_events_match:
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if identity.get("role") not in ("owner", "operator"):
+                    return self.send_json(403, {"error": "dashboard role required"})
+                template_store = self.terminal_template_store()
+                if template_store is None:
+                    return self.send_json(503, {"error": "Terminal Template Store unavailable"})
+                return self.send_json(200, {
+                    "events": template_store.events(terminal_events_match.group(1))
+                })
             if path == "/api/terminal/templates":
                 identity = self.proxy_identity()
                 if not identity:
@@ -753,6 +768,42 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                     return self.send_json(503, {"error": str(exc)})
                 except InfrastructureGateError as exc:
                     return self.send_json(400, {"error": str(exc)})
+            terminal_review_match = re.fullmatch(
+                r"/api/terminal/templates/(custom-[a-z0-9][a-z0-9-]{1,62})/review", path
+            )
+            if terminal_review_match:
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if identity.get("role") != "owner":
+                    return self.send_json(403, {"error": "owner role required"})
+                if not self.same_origin():
+                    return self.send_json(403, {"error": "same-origin request required"})
+                if not self.csrf_valid(identity):
+                    return self.send_json(403, {"error": "CSRF validation failed"})
+                template_store = self.terminal_template_store()
+                if template_store is None:
+                    return self.send_json(503, {"error": "Terminal Template Store unavailable"})
+                try:
+                    payload = self.body()
+                    if set(payload) != {"decision", "confirmation", "source_sha256"}:
+                        return self.send_json(400, {"error": "review request fields are invalid"})
+                    result = template_store.review(
+                        terminal_review_match.group(1),
+                        payload["decision"],
+                        identity.get("subject", ""),
+                        payload["confirmation"],
+                        payload["source_sha256"],
+                    )
+                    return self.send_json(200, {"template": result})
+                except PolicyDenied as exc:
+                    return self.send_json(exc.status_code, {"error": str(exc)})
+                except TerminalTemplateNotFound as exc:
+                    return self.send_json(404, {"error": str(exc)})
+                except TerminalTemplateConflict as exc:
+                    return self.send_json(409, {"error": str(exc)})
+                except TerminalTemplateError as exc:
+                    return self.send_json(400, {"error": str(exc)})
             if path == "/api/terminal/templates/import":
                 identity = self.proxy_identity()
                 if not identity:
@@ -799,8 +850,13 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                         preview = dict(imported)
                         preview["executable"] = preview.pop("executable_id")
                         preview["command_preview"] = [preview["executable"], *preview["argv"]]
-                        preview["requires_execution_approval"] = True
-                        preview["status"] = "PENDING_REVIEW"
+                        approval_status = preview.get("approval_status")
+                        preview["requires_execution_approval"] = approval_status == "pending_review"
+                        preview["status"] = {
+                            "pending_review": "PENDING_REVIEW",
+                            "approved": "APPROVED_NOT_EXECUTABLE",
+                            "rejected": "REJECTED",
+                        }.get(approval_status, "UNKNOWN")
                     return self.send_json(200, {
                         "preview": preview,
                         "execution_enabled": False,

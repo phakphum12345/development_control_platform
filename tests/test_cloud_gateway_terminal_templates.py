@@ -4,7 +4,8 @@ import unittest
 from pathlib import Path
 
 from tools.cloud_gateway.terminal_templates import (
-    TerminalTemplateError, TerminalTemplateStore, validate_command_pack,
+    TerminalTemplateConflict, TerminalTemplateError, TerminalTemplateStore,
+    validate_command_pack,
 )
 
 
@@ -120,6 +121,47 @@ class TerminalTemplateStoreTests(unittest.TestCase):
             validate_command_pack(candidate)
         with self.assertRaises(TerminalTemplateError):
             validate_command_pack({"schema_version": 1, "templates": []})
+
+
+    def test_owner_review_approval_keeps_template_non_executable_and_audited(self):
+        imported = self.store.import_pack(pack(), "owner@example.test")
+        digest = imported["source_sha256"]
+        approved = self.store.review(
+            "custom-inspect-git", "approve", "owner@example.test",
+            "APPROVE TEMPLATE custom-inspect-git", digest,
+        )
+        self.assertEqual(approved["approval_status"], "approved")
+        self.assertFalse(approved["enabled"])
+        self.assertFalse(approved["execution_enabled"])
+        events = self.store.events("custom-inspect-git")
+        self.assertEqual([event["event"] for event in events], [
+            "imported_pending_review", "approved_not_executable"
+        ])
+
+    def test_owner_review_rejects_bad_confirmation_stale_hash_and_repeat(self):
+        imported = self.store.import_pack(pack(), "owner@example.test")
+        digest = imported["source_sha256"]
+        with self.assertRaisesRegex(TerminalTemplateError, "confirmation"):
+            self.store.review(
+                "custom-inspect-git", "approve", "owner@example.test",
+                "yes", digest,
+            )
+        with self.assertRaisesRegex(TerminalTemplateConflict, "SHA-256 changed"):
+            self.store.review(
+                "custom-inspect-git", "approve", "owner@example.test",
+                "APPROVE TEMPLATE custom-inspect-git", "0" * 64,
+            )
+        rejected = self.store.review(
+            "custom-inspect-git", "reject", "owner@example.test",
+            "REJECT TEMPLATE custom-inspect-git", digest,
+        )
+        self.assertEqual(rejected["approval_status"], "rejected")
+        self.assertFalse(rejected["execution_enabled"])
+        with self.assertRaisesRegex(TerminalTemplateConflict, "no longer pending"):
+            self.store.review(
+                "custom-inspect-git", "approve", "owner@example.test",
+                "APPROVE TEMPLATE custom-inspect-git", digest,
+            )
 
 
 if __name__ == "__main__":

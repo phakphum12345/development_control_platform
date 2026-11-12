@@ -18,7 +18,10 @@ The initial catalog contains read-only Git status/diff/log and Python/Node versi
 - Unknown fields, shell metacharacters, code-evaluation flags, unsupported executables/platforms and duplicate IDs are rejected.
 - Imported templates are stored in a separate private SQLite database (default Gateway database path plus `.terminal`; override with `DCP_GATEWAY_TERMINAL_DATABASE`). Import is atomic and audited.
 - Imported templates are always `enabled=false`, `execution_enabled=false`, and `approval_status=pending_review`. They can be listed and previewed, but cannot be executed or enabled by this API.
-- Imported template previews are labelled `PENDING_REVIEW`; built-in templates remain `PREVIEW_ONLY`.
+- Imported template previews are labelled `PENDING_REVIEW`; after review they are `APPROVED_NOT_EXECUTABLE` or `REJECTED`. Built-in templates remain `PREVIEW_ONLY`.
+- `POST /api/terminal/templates/{custom-id}/review` — owner-only approve/reject decision, same-origin and CSRF protected. Requires exact typed confirmation and the source SHA-256 displayed for the reviewed version.
+- `GET /api/terminal/templates/{custom-id}/events` — owner/operator audit history.
+- Approval changes only the review status. The template remains disabled and non-executable; this API does not grant execution permission.
 
 ## Proposed, not implemented
 

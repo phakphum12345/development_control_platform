@@ -6,6 +6,7 @@ this module never launches a process or interprets a script.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import re
 import sqlite3
@@ -34,6 +35,14 @@ _SHELL_META = re.compile(r"[;&|<>$\x60\r\n\x00]")
 
 class TerminalTemplateError(ValueError):
     """A command pack is invalid or conflicts with an existing template."""
+
+
+class TerminalTemplateNotFound(TerminalTemplateError):
+    """An imported template does not exist."""
+
+
+class TerminalTemplateConflict(TerminalTemplateError):
+    """A template changed or is not in a reviewable state."""
 
 
 def _text(value, label, maximum, *, minimum=1):
@@ -226,6 +235,54 @@ class TerminalTemplateStore:
             return None
         item = json.loads(row["template_json"])
         item["source_sha256"] = row["source_sha256"]
+        return item
+
+    def review(self, template_id, decision, actor, confirmation, expected_source_sha256):
+        if not isinstance(template_id, str) or not _TEMPLATE_ID.fullmatch(template_id):
+            raise TerminalTemplateError("invalid imported template ID")
+        if decision not in ("approve", "reject"):
+            raise TerminalTemplateError("decision must be approve or reject")
+        if not isinstance(actor, str) or not actor.strip() or len(actor) > 200:
+            raise TerminalTemplateError("authenticated owner identity required")
+        phrase = ("APPROVE TEMPLATE " if decision == "approve" else "REJECT TEMPLATE ") + template_id
+        if confirmation != phrase:
+            raise TerminalTemplateError("explicit template review confirmation does not match")
+        if (not isinstance(expected_source_sha256, str)
+                or not re.fullmatch(r"[0-9a-f]{64}", expected_source_sha256)):
+            raise TerminalTemplateError("expected source SHA-256 is required")
+
+        now = self._now()
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute(
+                "SELECT template_json,source_sha256 FROM terminal_templates WHERE id=?",
+                (template_id,),
+            ).fetchone()
+            if row is None:
+                db.execute("ROLLBACK")
+                raise TerminalTemplateNotFound("imported template not found")
+            if not hmac.compare_digest(row["source_sha256"], expected_source_sha256):
+                db.execute("ROLLBACK")
+                raise TerminalTemplateConflict("template source SHA-256 changed; reload before review")
+            item = json.loads(row["template_json"])
+            if item.get("approval_status") != "pending_review":
+                db.execute("ROLLBACK")
+                raise TerminalTemplateConflict("template is no longer pending review")
+            item["approval_status"] = "approved" if decision == "approve" else "rejected"
+            item["enabled"] = False
+            item["execution_enabled"] = False
+            db.execute(
+                "UPDATE terminal_templates SET template_json=? WHERE id=?",
+                (json.dumps(item, sort_keys=True, separators=(",", ":")), template_id),
+            )
+            event = "approved_not_executable" if decision == "approve" else "rejected"
+            db.execute(
+                "INSERT INTO terminal_template_audit(template_id,event,actor,source_sha256,created_at) "
+                "VALUES(?,?,?,?,?)",
+                (template_id, event, actor, row["source_sha256"], now),
+            )
+            db.execute("COMMIT")
+        item["source_sha256"] = expected_source_sha256
         return item
 
     def events(self, template_id=None):
