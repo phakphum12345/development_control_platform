@@ -488,6 +488,11 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
             )
             self.assertIsNotNone(preview_cookie_name, preview_set_cookie)
             preview_cookie = parsed_preview_cookie[preview_cookie_name]
+            self.assertTrue(preview_cookie["httponly"])
+            self.assertTrue(preview_cookie["secure"])
+            self.assertEqual(preview_cookie["samesite"], "None")
+            self.assertEqual(preview_cookie["path"], preview["preview_path"])
+            self.assertGreater(int(preview_cookie["max-age"]), 0)
             cookies = [{
                 "name": preview_cookie_name,
                 "value": preview_cookie.value,
@@ -579,11 +584,12 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                     page.screenshot(path=str(screenshot), full_page=True)
                     self.assertTrue(screenshot.is_file())
     
-                    stopped, _, stop_body = self.request(
+                    stopped, stop_headers, stop_body = self.request(
                         f"/api/jobs/{job['id']}/previews/{preview['runtime_id']}",
                         "DELETE", csrf=csrf,
                     )
                     self.assertEqual(stopped, 200, stop_body.decode(errors="replace"))
+                    self.assertIn("Max-Age=0", stop_headers.get("Set-Cookie", ""))
                     after_stop = page.goto(
                         self.base + preview["preview_path"],
                         wait_until="domcontentloaded",
