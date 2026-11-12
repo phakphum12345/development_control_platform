@@ -64,7 +64,11 @@ class AzureVMProvider:
   except Exception:
    verified=False
   if verified is not True:
-   return {"ready":False,"message":"Runner network egress policy has not been verified"}
+   detail=getattr(self.network_policy,"last_error",None)
+   message="Runner network egress policy has not been verified"
+   if isinstance(detail,str) and detail:
+    message += ": "+detail[:240]
+   return {"ready":False,"message":message}
   return {"ready":True,"message":"Protected bootstrap, runner-online check, and network policy are configured"}
  def _url(self,provider,kind,name,version=API_COMPUTE): return self.arm.resource_url(provider,kind,name,version)
  def _names(self,run_id):
