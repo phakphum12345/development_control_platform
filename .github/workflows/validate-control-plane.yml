@@ -144,6 +144,19 @@ jobs:
           DEBUG: pw:browser
         run: python -m unittest tests.test_local_auth_proxy.LocalAuthProxyEndToEndTests.test_real_chromium_loads_app_through_authenticated_preview_proxy -v
 
+      - name: Install Firefox and WebKit with system prerequisites
+        run: python -m playwright install --with-deps firefox webkit
+
+      - name: Test authenticated Preview Proxy in Firefox
+        env:
+          DEBUG: pw:browser
+        run: python -m unittest tests.test_local_auth_proxy.LocalAuthProxyEndToEndTests.test_real_firefox_loads_app_through_authenticated_preview_proxy -v
+
+      - name: Test authenticated Preview Proxy in WebKit
+        env:
+          DEBUG: pw:browser
+        run: python -m unittest tests.test_local_auth_proxy.LocalAuthProxyEndToEndTests.test_real_webkit_loads_app_through_authenticated_preview_proxy -v
+
       - name: Test dashboard in a real browser
         run: node tests/browser_smoke.mjs
 
