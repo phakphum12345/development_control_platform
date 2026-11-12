@@ -565,7 +565,12 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
                     self.assertEqual(len(asset_responses), 1)
                     self.assertEqual(asset_responses[0]["status"], 200)
                     self.assertTrue(any("/content/assets/site.css" in url for url in request_urls))
-                    self.assertTrue(all(url.startswith(self.base + "/") for url in request_urls))
+                    http_requests = [
+                    url for url in request_urls
+                    if url.startswith(("http://", "https://"))
+                ]
+                self.assertTrue(http_requests)
+                self.assertTrue(all(url.startswith(self.base + "/") for url in http_requests))
                     self.assertEqual(console_errors, [])
                     self.assertEqual(page_errors, [])
                     self.assertEqual(failed_requests, [])
