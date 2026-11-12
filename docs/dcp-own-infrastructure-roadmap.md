@@ -8,10 +8,10 @@ The canonical architecture, API boundaries, repository trust model, provider con
 |---|---|---|---|
 | 0 | Baseline and safety | Work on feature branch; main untouched; Cloud Provisioning disabled; existing workflows and tests inventoried | In progress |
 | 1 | Repository Manager hardening | Installation catalog pagination, private/public metadata, authenticated API, server-side membership revalidation, branch/tag/SHA resolution, project detection | Implemented and CI-verified on head `ab8c558`; installation catalog, branch/tag/commit APIs, bounded Flutter/macOS detection, and 273 Python tests pass |
-| 2 | DCP Core and Job Control Plane | Stable Job API, durable state transitions, idempotency, cancellation, timeout, audit events, queue contract | Existing Gateway lifecycle is a starting point; scheduler/queue work pending |
-| 3 | DCP Runner Engine | Local runner agent, authenticated claim/heartbeat/report protocol, isolated workspace, logs, cancellation and cleanup reconciliation | Pending |
-| 4 | DCP Provisioning Engine | Provider-neutral capabilities/readiness/create/inspect/stop/delete; local no-cost simulation; host-specific adapters only after validation | Existing Azure/Orka routing is legacy adapter work; DCP-owned provider manager pending |
-| 5 | DCP Artifact Center | Upload/list/download, checksum verification, job/commit association, retention and access control | Pending |
+| 2 | DCP Core and Job Control Plane | Stable Job API, durable state transitions, idempotency, cancellation, lease recovery, bounded retries, audit events and capability-aware scheduling | Core API/SQLite queue/scheduler implemented; bounded retry and concurrent-claim acceptance being added |
+| 3 | DCP Runner Engine | Local runner agent, authenticated claim/heartbeat/report protocol, isolated workspace, logs, cancellation and cleanup reconciliation | Agent, registry, workspace and artifact handoff implemented in slices; crash workspace reconciliation and long-running supervisor acceptance remain |
+| 4 | DCP Provisioning Engine | Provider-neutral capabilities/readiness/create/inspect/stop/delete; local no-cost simulation; host-specific adapters only after validation | Fake Provider lifecycle and independent Cloud/VM safety gates implemented; live provider remains disabled |
+| 5 | DCP Artifact Center | Upload/list/download, checksum verification, job/commit association, retention and access control | Authenticated upload/download and SHA-256 checks implemented; scheduled retention and broader provenance acceptance remain |
 | 6 | Flutter Dashboard | Flutter screens use stable DCP APIs; existing HTML dashboard retained until parity | Pending |
 | 7 | Optional live provider acceptance | Explicit owner approval, bounded run, cost evidence, runner deregistration and VM teardown proof | Disabled; approval required |
 
@@ -66,7 +66,7 @@ The corrected implementation passed both PR workflows on head `ab8c558ee4d82f940
 5. Add isolated workspace handling and artifact handoff for local jobs.
 
 
-## Phase 4 progress — independent infrastructure gates (PR in progress)
+## Phase 4 progress — independent infrastructure gates (merged on main)
 
 - Added persistent SQLite switches for Cloud Provisioning and VM Creation, independent from each other and defaulting OFF.
 - Added owner-only, same-origin, CSRF-protected gate mutation API and owner/operator read API.
@@ -76,7 +76,7 @@ The corrected implementation passed both PR workflows on head `ab8c558ee4d82f940
 - Added persistence, audit, authorization, confirmation, readiness and independent-state tests. No live cloud or VM resources are created.
 
 
-## Phase 4 Dashboard progress — independent safety gates (PR in progress)
+## Phase 4 Dashboard progress — independent safety gates (merged on main)
 
 - Added separate Cloud Provisioning and VM Creation status cards to Infrastructure Manager.
 - Dashboard shows saved state, provider readiness and effective state independently; API failure is UNKNOWN and controls stay disabled.
@@ -84,3 +84,14 @@ The corrected implementation passed both PR workflows on head `ab8c558ee4d82f940
 - Cloud Runner creation UI now also requires the effective Cloud Provisioning gate.
 - Local Auth Proxy GET/POST allowlist and CSRF forwarding cover the gate APIs.
 - No provider is activated by this UI; current deployment remains fail-closed.
+
+
+## Phase 2 progress — bounded job lease recovery (PR in progress)
+
+- Added durable attempt_count/max_attempts metadata; each job is limited to three claimed attempts by server policy.
+- Expired running jobs are requeued only while attempts remain; the final expired attempt fails with LEASE_EXPIRED.
+- Expired cancellation requests become cancelled, not retried.
+- Lease recovery preserves last_worker provenance and records worker/attempt counters in audit events.
+- Added concurrent claims across independent JobStore instances to verify only one worker can lease a queued job.
+- Exposed attempt counters through authenticated Dashboard job status responses.
+- No repository code, VM, cloud provider or paid resource is executed/created by these tests.

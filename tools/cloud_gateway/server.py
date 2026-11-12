@@ -253,8 +253,9 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
         @staticmethod
         def public_job(row):
             keys = ("id", "repository", "commit_sha", "target", "state",
-                    "created_at", "updated_at", "worker", "lease_until",
-                    "cancel_at", "result", "error_code")
+                    "created_at", "updated_at", "worker", "last_worker",
+                    "lease_until", "cancel_at", "result", "error_code",
+                    "attempt_count", "max_attempts")
             public = {key: row.get(key) for key in keys}
             payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
             public["source_type"] = payload.get("source_type", "github")

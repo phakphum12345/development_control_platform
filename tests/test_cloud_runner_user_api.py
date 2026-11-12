@@ -365,11 +365,19 @@ class AuthenticatedControlAPITests(unittest.TestCase):
             created = json.loads(response.read())
             self.assertEqual(response.status, 202)
             self.assertEqual(created["state"], "queued")
+            self.assertEqual(created["attempt_count"], 0)
+            self.assertEqual(created["max_attempts"], 3)
         job_id = created["id"]
         with urlopen(self.request("GET", "/api/jobs", "nonce_job_list_00001")) as response:
-            self.assertEqual(json.loads(response.read())["jobs"][0]["id"], job_id)
+            listed = json.loads(response.read())["jobs"][0]
+            self.assertEqual(listed["id"], job_id)
+            self.assertEqual(listed["attempt_count"], 0)
+            self.assertEqual(listed["max_attempts"], 3)
         with urlopen(self.request("GET", "/api/jobs/" + job_id, "nonce_job_get_000001")) as response:
-            self.assertEqual(json.loads(response.read())["id"], job_id)
+            fetched = json.loads(response.read())
+            self.assertEqual(fetched["id"], job_id)
+            self.assertEqual(fetched["attempt_count"], 0)
+            self.assertEqual(fetched["max_attempts"], 3)
         csrf = self._csrf("nonce_job_session_owner")
         with self.assertRaises(HTTPError) as error:
             urlopen(self._dashboard_post("/api/jobs/" + job_id + "/cancel",

@@ -26,6 +26,8 @@ class JobStoreTests(unittest.TestCase):
         self.assertFalse(created_again)
         self.assertEqual(first["id"], again["id"])
         self.assertEqual(first["state"], "queued")
+        self.assertEqual(first["attempt_count"], 0)
+        self.assertEqual(first["max_attempts"], 3)
         self.assertEqual(self.store.events(first["id"])[0]["event"], "queued")
 
     def test_conflicting_idempotency_and_invalid_payload(self):
@@ -127,6 +129,8 @@ class JobStoreTests(unittest.TestCase):
             with migrated.db() as db:
                 columns = {row["name"] for row in db.execute("PRAGMA table_info(jobs)")}
             self.assertIn("last_worker", columns)
+            self.assertIn("attempt_count", columns)
+            self.assertIn("max_attempts", columns)
 
     def test_cancel_queued_and_running(self):
         queued, _ = self.create()
@@ -155,6 +159,79 @@ class JobStoreTests(unittest.TestCase):
         self.assertEqual(reclaimed["worker"], "local-worker-2")
         with self.assertRaises(JobConflict):
             self.store.finish(job["id"], "local-worker-1", "succeeded")
+
+    def test_expired_worker_lease_retries_are_bounded(self):
+        job, _ = self.create("job-retry-limit-01")
+        first = self.store.claim("retry-worker-1")
+        self.assertEqual(first["id"], job["id"])
+        self.assertEqual(first["attempt_count"], 1)
+        self.assertEqual(first["max_attempts"], 3)
+
+        for attempt in (1, 2):
+            with self.store.db() as db:
+                db.execute(
+                    "UPDATE jobs SET lease_until=? WHERE id=?",
+                    ("2000-01-01T00:00:00+00:00", job["id"]),
+                )
+            recovered = self.store.recover_expired_leases()
+            self.assertEqual(recovered, [{"id": job["id"], "state": "queued"}])
+            claimed = self.store.claim("retry-worker-" + str(attempt + 1))
+            self.assertEqual(claimed["attempt_count"], attempt + 1)
+
+        with self.store.db() as db:
+            db.execute(
+                "UPDATE jobs SET lease_until=? WHERE id=?",
+                ("2000-01-01T00:00:00+00:00", job["id"]),
+            )
+        recovered = self.store.recover_expired_leases()
+        self.assertEqual(recovered, [{"id": job["id"], "state": "failed"}])
+        final = self.store.get(job["id"])
+        self.assertEqual(final["state"], "failed")
+        self.assertEqual(final["error_code"], "LEASE_EXPIRED")
+        self.assertEqual(final["attempt_count"], 3)
+        self.assertEqual(final["last_worker"], "retry-worker-3")
+        self.assertIsNone(self.store.claim("retry-worker-4"))
+        events = self.store.events(job["id"])
+        self.assertEqual(
+            [event["event"] for event in events].count("lease_expired_requeued"), 2
+        )
+        self.assertEqual(
+            [event["event"] for event in events].count("lease_expired_failed"), 1
+        )
+        failed_event = next(event for event in events if event["event"] == "lease_expired_failed")
+        self.assertEqual(failed_event["detail"]["worker"], "retry-worker-3")
+        self.assertEqual(failed_event["detail"]["attempt_count"], 3)
+
+    def test_concurrent_workers_cannot_claim_the_same_job(self):
+        import threading
+
+        job, _ = self.create("job-concurrent-claim-01")
+        second_store = JobStore(self.store.path)
+        barrier = threading.Barrier(3)
+        results = []
+        lock = threading.Lock()
+
+        def claim(store, worker):
+            barrier.wait()
+            result = store.claim(worker)
+            with lock:
+                results.append(result)
+
+        threads = [
+            threading.Thread(target=claim, args=(self.store, "claim-worker-1")),
+            threading.Thread(target=claim, args=(second_store, "claim-worker-2")),
+        ]
+        for thread in threads:
+            thread.start()
+        barrier.wait()
+        for thread in threads:
+            thread.join(timeout=5)
+            self.assertFalse(thread.is_alive())
+
+        claimed = [item for item in results if item is not None]
+        self.assertEqual(len(claimed), 1)
+        self.assertEqual(claimed[0]["id"], job["id"])
+        self.assertEqual(self.store.get(job["id"])["state"], "running")
 
     def test_expired_cancel_request_becomes_cancelled(self):
         job, _ = self.create()

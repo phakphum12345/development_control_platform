@@ -245,3 +245,25 @@ The static RuntimeManager binds to `127.0.0.1`, serves only generated output, ch
 Playwright uses a fixed DCP-owned test plan, Chromium sandboxing, exact loopback HTTP origin routing, WebSocket blocking, WebRTC API denial and service-worker blocking. These browser controls are defense-in-depth, not OS-level process isolation or a host firewall. Only trusted projects on a suitably isolated Runner may be tested.
 
 The test evidence currently consists of three viewport screenshots, a JSON report and a bounded ZIP artifact. It does not include traces, cross-browser results, visual baselines, full WCAG conformance or authenticated preview-proxy browser coverage. See `docs/DCP-PLAYWRIGHT-TESTING.md` and `docs/DCP-ACCEPTANCE-TEST-PLAN.md`.
+
+## Lease retry and worker-crash policy
+
+Every new job starts with attempt_count=0 and max_attempts=3. A successful
+claim increments attempt_count inside the same SQLite transaction that moves
+the job to running. The retry limit is server-owned; clients cannot raise it.
+
+- An expired running lease is requeued while attempts remain.
+- When the third claimed attempt expires, the job becomes failed with
+  error_code LEASE_EXPIRED instead of returning to the queue forever.
+- An expired cancel_requested lease becomes cancelled and is never retried.
+- Lease recovery preserves last_worker provenance and emits an audit event
+  containing worker ID and attempt counters.
+- Old workers remain fenced: heartbeat, log, or finish calls after lease expiry
+  cannot mutate the recovered job.
+- Claims use SQLite BEGIN IMMEDIATE and a conditional state transition so two
+  independent Gateway/Store instances cannot own the same queued job.
+
+The Dashboard job API returns attempt_count and max_attempts as operational
+metadata. This is retry accounting, not a guarantee that an interrupted
+workspace was cleaned; workspace reconciliation remains a separate acceptance
+requirement before treating Runner crash recovery as fully production-ready.
