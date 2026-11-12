@@ -93,6 +93,8 @@ def build_azure_provider_runtime(
         egress = AzureEgressPolicyVerifier.from_environment(arm, values)
     else:
         egress = egress_factory(arm, values)
+    if not callable(egress):
+        raise ValueError("A live Azure Firewall egress verifier is required")
 
     vm_sizes = {
         "linux": values["DCP_AZURE_LINUX_VM_SIZE"],
