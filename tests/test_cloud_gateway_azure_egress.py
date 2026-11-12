@@ -63,7 +63,18 @@ def base_responses(domains=DOMAINS):
         NSG: {
             "properties": {
                 "provisioningState": "Succeeded",
-                "securityRules": [],
+                "securityRules": [{
+                    "properties": {
+                        "direction": "Inbound",
+                        "access": "Deny",
+                        "priority": 1000,
+                        "protocol": "*",
+                        "sourceAddressPrefix": "*",
+                        "destinationAddressPrefix": "*",
+                        "sourcePortRange": "*",
+                        "destinationPortRange": "*",
+                    }
+                }],
             }
         },
         ROUTE_TABLE: {
@@ -176,6 +187,17 @@ class AzureEgressPolicyVerifierTests(unittest.TestCase):
         responses[NSG]["properties"]["securityRules"] = [{
             "properties": {"direction": "Inbound", "access": "Allow"}
         }]
+        with self.assertRaises(AzureEgressPolicyError):
+            verifier(responses).verify("linux", SUBNET, NSG)
+
+
+    def test_rejects_nsg_without_a_custom_deny_all_override(self):
+        responses = base_responses()
+        responses[NSG]["properties"]["securityRules"] = []
+        with self.assertRaises(AzureEgressPolicyError):
+            verifier(responses).verify("linux", SUBNET, NSG)
+        responses = base_responses()
+        responses[NSG]["properties"]["securityRules"][0]["properties"]["destinationPortRange"] = "22"
         with self.assertRaises(AzureEgressPolicyError):
             verifier(responses).verify("linux", SUBNET, NSG)
 
