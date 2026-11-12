@@ -47,7 +47,8 @@ Acceptance evidence must be produced on the exact commit under review. A passing
 
 ### Authenticated-preview browser acceptance — implemented
 - `tests/test_local_auth_proxy.py::LocalAuthProxyEndToEndTests.test_real_chromium_loads_app_through_authenticated_preview_proxy` starts a completed static job, creates the preview through the owner-authenticated Local Auth Proxy API, and navigates Chromium to the returned same-origin preview URL.
-- Chromium runs with `chromium_sandbox=True`; the test verifies HTML/title/content, relative CSS loading, computed style, same-origin requests, no console/page/request errors, screenshot capture, and HTTP 404 after preview stop.
+- Chromium runs with `chromium_sandbox=True`; the test verifies HTML/title/content, relative CSS loading, computed style, same-origin requests, no console/page/request errors, screenshot capture, and an unavailable response after preview stop.
+- The Local Auth Proxy issues a short-lived HttpOnly/Secure preview cookie scoped to that job/runtime content path; it is revoked on stop/logout/expiry. Runtime capability token and upstream port remain server-side.
 - The API-level acceptance verifies unauthenticated denial, cross-job denial, query rejection, owner CSRF-protected stop, logout denial, and that runtime capability tokens/upstream ports are not exposed.
 - The proxy implementation fixes upstream host/port to loopback, rejects path traversal, limits response size and allowed content types, and does not accept browser-selected upstream addresses.
 - Remaining: cross-owner identity tests beyond the single local owner model, trace/log evidence, visual baselines, full WCAG/axe coverage and cross-browser engines.
