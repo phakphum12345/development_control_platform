@@ -70,10 +70,10 @@ def validate_command_pack(pack: dict) -> list[dict]:
         name = _text(row.get("name"), f"{label}.name", 80)
         description = _text(row.get("description"), f"{label}.description", 500)
         category = row.get("category")
-        if category not in _ALLOWED_CATEGORIES:
+        if not isinstance(category, str) or category not in _ALLOWED_CATEGORIES:
             raise TerminalTemplateError(f"{label}.category is not supported")
         executable_id = row.get("executable_id")
-        if executable_id not in _ALLOWED_EXECUTABLES:
+        if not isinstance(executable_id, str) or executable_id not in _ALLOWED_EXECUTABLES:
             raise TerminalTemplateError(f"{label}.executable_id is not allowlisted")
 
         argv = row.get("argv")
@@ -90,8 +90,8 @@ def validate_command_pack(pack: dict) -> list[dict]:
 
         platforms = row.get("platforms")
         if (not isinstance(platforms, list) or not platforms or len(platforms) > 3
-                or len(set(platforms)) != len(platforms)
-                or any(item not in _ALLOWED_PLATFORMS for item in platforms)):
+                or any(not isinstance(item, str) or item not in _ALLOWED_PLATFORMS for item in platforms)
+                or len(set(platforms)) != len(platforms)):
             raise TerminalTemplateError(f"{label}.platforms must be unique supported platforms")
 
         timeout = row.get("timeout_seconds")
@@ -104,7 +104,7 @@ def validate_command_pack(pack: dict) -> list[dict]:
         if row.get("network") != "denied":
             raise TerminalTemplateError(f"{label}.network must be denied")
         mutation = row.get("mutation_class")
-        if mutation not in _ALLOWED_MUTATIONS:
+        if not isinstance(mutation, str) or mutation not in _ALLOWED_MUTATIONS:
             raise TerminalTemplateError(f"{label}.mutation_class is not supported")
 
         normalized.append({
