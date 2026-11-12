@@ -46,12 +46,12 @@ Acceptance evidence must be produced on the exact commit under review. A passing
 - Bind all reported results to the exact full commit SHA and inspect every required CI check.
 
 ### Authenticated-preview browser acceptance — implemented
-- A dedicated real-Chromium test starts a completed static job preview through the owner-authenticated Local Auth Proxy API and navigates to the returned same-origin browser URL.
-- Chromium runs with `chromium_sandbox=True`; the test verifies HTML/title/content, relative CSS loading, computed style, same-origin requests, no console/page/request errors, screenshot capture, and an unavailable response after preview stop.
+- Dedicated real-browser tests start a completed static job preview through the owner-authenticated Local Auth Proxy API and navigate to the returned same-origin browser URL.
+- Chromium runs with `chromium_sandbox=True`; Firefox and WebKit run as separate browser-engine acceptance checks. Each verifies HTML/title/content, relative CSS loading, computed style, same-origin requests, no console/page/request errors, screenshot capture, and an unavailable response after preview stop.
 - The Local Auth Proxy issues a short-lived HttpOnly/Secure preview cookie scoped to that job/runtime content path; it is revoked on stop, owner logout, or expiry. Runtime capability token and upstream port remain server-side.
 - API acceptance verifies unauthenticated denial, cross-job denial, query rejection, owner CSRF-protected stop, logout denial, and no exposure of runtime capability tokens or upstream ports.
 - The proxy fixes upstream host/port to loopback, rejects path traversal, limits response size and allowed content types, and does not accept browser-selected upstream addresses.
-- Remaining: cross-owner identity tests beyond the single local-owner model, trace/log evidence, visual baselines, full WCAG/axe coverage and cross-browser engines.
+- Cross-browser preview fixture coverage is being added for Firefox and WebKit; the exact-commit CI result is required before marking it verified. Remaining after that: cross-owner identity tests beyond the single local-owner model, trace/log evidence, visual baselines, full WCAG/axe coverage, and broader real-application compatibility across browser engines.
 
 ## Infrastructure safety
 - Cloud Provisioning gate starts OFF after fresh install and restart.
