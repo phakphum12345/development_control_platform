@@ -1351,7 +1351,6 @@ def _start_expiry_reconciler(service, interval_seconds):
     return worker
 
 
-
 def configured_port(env=None):
     """Return a valid TCP port; zero asks the OS to allocate an available port."""
     values = os.environ if env is None else env
@@ -1360,9 +1359,10 @@ def configured_port(env=None):
         port = int(raw)
     except (TypeError, ValueError) as exc:
         raise ValueError("DCP_GATEWAY_PORT must be an integer from 0 to 65535") from exc
-    if not 0 <= port <= 65535:
+    if isinstance(raw, bool) or not 0 <= port <= 65535:
         raise ValueError("DCP_GATEWAY_PORT must be an integer from 0 to 65535")
     return port
+
 
 def main():
     settings = GatewaySettings.from_env()
@@ -1459,7 +1459,7 @@ def main():
         raise SystemExit("DCP Infrastructure Manager configuration is invalid") from exc
     _start_expiry_reconciler(service, int(os.getenv("DCP_GATEWAY_RECONCILE_SECONDS", "30")))
     server = ThreadingHTTPServer(
-        (host, port), make_handler(service, settings.api_token, proxy_secret, public_origin, runner_tokens)
+        (host, port), make_handler(service, settings.api_token, proxy_secret, public_origin)
     )
     bound_host, bound_port = server.server_address[:2]
     print(f"DCP Gateway listening on http://{bound_host}:{bound_port}", flush=True)

@@ -14,44 +14,6 @@ Azure deployment preparation is documented in [docs/azure-production-deployment.
 
 The dashboard includes a mobile-friendly Cloud Runner Control view for Azure Linux/Windows and Orka macOS. Browser requests use the authenticated same-origin API contract documented in [docs/cloud-runner-user-api.md](docs/cloud-runner-user-api.md). The browser never receives Gateway or provider credentials. Deploy the dashboard and API behind one HTTPS origin and a trusted OIDC reverse proxy; GitHub Pages alone cannot host the API. The repository contains GitHub App runner registration, protected Azure Linux/Windows bootstrap, an explicit Azure provider runtime (opt-in only), Azure Firewall egress verification, Orka 4.0 macOS User Data bootstrap, budget gates, and lifecycle cleanup with mock-backed tests. The default runtime remains fail-closed: Azure is composed only with `DCP_AZURE_PROVIDER_ENABLED=true` and complete deployment inputs; Orka remains disabled until an authoritative provider-specific budget, live cluster/network checks and RBAC review are supplied. Global provisioning and owner approval remain separate OFF gates. No cloud resources are created by CI.
 
-## Windows 11 self-hosted setup
-
-For the quickest local startup, run `Setup-DCP-Local.cmd` once and then double-click `Start-DCP-Local.cmd`. The scripts check the local Python environment, start the loopback-only Gateway with cloud provisioning disabled, verify its health, and open the Dashboard. See [docs/windows-11-one-click.md](docs/windows-11-one-click.md) for the exact startup, stop, data, and security behavior. No cloud resources or paid services are used.
-
-Use your own Windows 11 PC as the local host without Azure or paid cloud resources. The guide covers the local Dashboard and fail-closed Gateway, prerequisites, safe loopback binding, local data storage, and the optional manually registered GitHub Actions self-hosted runner: [docs/windows-11-self-hosted.md](docs/windows-11-self-hosted.md). The integrated local stack includes owner password authentication through the loopback-only Local Auth Proxy; it is not a remote, multi-user, or production identity service. The Gateway still uses `DisabledProvider`, so dynamic runner provisioning is not enabled.
-
-## Central local GitHub Runner manager
-
-The Windows local runner manager creates a separate, uniquely named ephemeral GitHub Actions runner for one exact private repository. It uses the existing authenticated GitHub CLI session to request a short-lived registration token at runtime, then supervises only the process and workspace it created. It does not modify or stop existing runner installations, services, registrations, ports, or workspaces. Public repositories are blocked. See [docs/local-runner-manager.md](docs/local-runner-manager.md).
-
-Run the read-only preflight and then start the supervisor:
-
-```powershell
-py -3 -m tools.local_runner_manager doctor --repository OWNER/PRIVATE-REPOSITORY
-py -3 -m tools.local_runner_manager start --repository OWNER/PRIVATE-REPOSITORY
-```
-
-The manager uses ephemeral runners, bounded restart attempts, GitHub online/busy status checks, and fail-safe behavior during GitHub API outages. This is a local Windows implementation; it does not enable cloud provisioning or rewrite workflow labels.
-
-## DCP Gateway Runner Agent
-
-The separate Gateway-backed Runner Agent can enroll with the local DCP Job Control Plane. It is distinct from the Central Local Runner Manager above: the manager starts an ephemeral GitHub Actions runner, while this agent claims DCP jobs through the local Gateway.
-
-Prepare a protected worker credential, restart the local stack, then enroll offline:
-
-```powershell
-.\Setup-DCP-Local-Runner.cmd
-.\Start-DCP-Gateway-Runner.cmd -WorkerId windows-local-01
-```
-
-Job execution remains disabled by default. Enable it only for an explicitly trusted repository after host preflight:
-
-```powershell
-.\Start-DCP-Gateway-Runner.cmd -WorkerId windows-local-01 -EnableExecution -TrustedRepository "owner/repository" -Once
-```
-
-See [Local Job Control Plane](docs/local-job-control-plane.md). Cloud provisioning remains disabled.
-
 ## Local-first development (zero-cost by default)
 
 DCP development does not require paid cloud resources. Start with the

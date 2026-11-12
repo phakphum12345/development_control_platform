@@ -32,8 +32,8 @@ def _https_origin(value: str) -> bool:
     return (
         parsed.scheme == "https"
         and bool(parsed.hostname)
-        and parsed.username is None
-        and parsed.password is None
+        and not parsed.username
+        and not parsed.password
         and parsed.path in ("", "/")
         and not parsed.query
         and not parsed.fragment
