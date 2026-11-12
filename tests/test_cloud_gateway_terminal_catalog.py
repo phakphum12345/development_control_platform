@@ -9,7 +9,7 @@ class TerminalCatalogTests(unittest.TestCase):
         rows = list_templates()
         self.assertEqual(
             {row["id"] for row in rows},
-            {"git_status", "git_diff", "git_log", "python_version", "node_version"},
+            {"git_status", "git_diff", "git_log", "git_show_commit", "git_diff_commit", "python_version", "node_version"},
         )
         for row in rows:
             with self.subTest(template=row["id"]):
@@ -34,6 +34,36 @@ class TerminalCatalogTests(unittest.TestCase):
         for value in ("", "../git_status", "git status", "python -c", None, ["git_status"]):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 preview_template(value)
+
+
+    def test_visual_builder_git_log_limit_is_typed_and_bounded(self):
+        default = preview_template("git_log")
+        self.assertEqual(default["argv"], ["log", "-5", "--oneline", "--decorate"])
+        custom = preview_template("git_log", {"limit": 20})
+        self.assertEqual(custom["argv"], ["log", "-20", "--oneline", "--decorate"])
+        self.assertEqual(custom["parameter_values"], {"limit": "20"})
+        for value in (0, 51, True, "-1", "1;whoami", "1.5", []):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                preview_template("git_log", {"limit": value})
+        with self.assertRaisesRegex(ValueError, "unknown command parameter"):
+            preview_template("git_log", {"limit": 5, "shell": "whoami"})
+
+    def test_visual_builder_commit_inputs_require_exact_full_sha(self):
+        sha = "a" * 40
+        show = preview_template("git_show_commit", {"commit_sha": sha})
+        self.assertEqual(show["argv"], ["show", "--no-ext-diff", "--stat", "--oneline", sha])
+        diff = preview_template("git_diff_commit", {"commit_sha": sha})
+        self.assertEqual(diff["argv"], ["diff", "--no-ext-diff", "--no-color", sha, "--"])
+        self.assertEqual(show["network"], "denied")
+        self.assertFalse(show["execution_enabled"])
+        for value in ("a" * 39, "a" * 41, "a" * 39 + "g", "a" * 39 + " "):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                preview_template("git_show_commit", {"commit_sha": value})
+        with self.assertRaisesRegex(ValueError, "missing required parameter"):
+            preview_template("git_show_commit")
+        with self.assertRaisesRegex(ValueError, "parameters must be an object"):
+            preview_template("git_show_commit", [])
+
 
     def test_callers_cannot_mutate_shared_catalog(self):
         first = list_templates()
