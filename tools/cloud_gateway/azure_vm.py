@@ -88,10 +88,16 @@ class AzureVMProvider:
   nic_url=self._url("Microsoft.Network","networkInterfaces",nic_name,API_NETWORK)
   nic_id=self.arm.resource_id("Microsoft.Network","networkInterfaces",nic_name)
   nic_body={"location":self.location,"tags":tags,"properties":{"networkSecurityGroup":{"id":self.nsg_id},"ipConfigurations":[{"name":"primary","properties":{"primary":True,"privateIPAllocationMethod":"Dynamic","subnet":{"id":self.subnet_id}}}]}}
-  vm_body={"location":self.location,"tags":tags,"hardwareProfile":{"vmSize":self.vm_sizes[os_name]},
+  extension=dict(bootstrap["extension"])
+  extension["location"]=self.location
+  extension["type"]="Microsoft.Compute/virtualMachines/extensions"
+  vm_body={"location":self.location,"tags":tags,"properties":{
+   "hardwareProfile":{"vmSize":self.vm_sizes[os_name]},
    "storageProfile":{"imageReference":self.image_references[os_name],"osDisk":{"name":vm_name+"-os","createOption":"FromImage","caching":"ReadOnly","managedDisk":{"storageAccountType":"Standard_LRS"},"diffDiskSettings":{"option":"Local"}}},
    "osProfile":bootstrap["os_profile"],"networkProfile":{"networkInterfaces":[{"id":nic_id,"properties":{"primary":True}}]},
-   "securityProfile":{"uefiSettings":{"secureBootEnabled":True,"vTpmEnabled":True},"securityType":"TrustedLaunch"},"resources":[bootstrap["extension"]]}
+   "securityProfile":{"uefiSettings":{"secureBootEnabled":True,"vTpmEnabled":True},"securityType":"TrustedLaunch"},
+   "extensionsTimeBudget":"PT45M"
+  },"resources":[extension]}
   vm_url=self._url("Microsoft.Compute","virtualMachines",vm_name)
   vm_create_started=False
   try:
