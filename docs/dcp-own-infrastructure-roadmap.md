@@ -64,3 +64,13 @@ The corrected implementation passed both PR workflows on head `ab8c558ee4d82f940
 3. Define and test the DCP Job API/queue contract before introducing Redis or PostgreSQL migrations.
 4. Implement a local-only Runner Agent with authenticated claim, heartbeat, log, cancel, and result reporting.
 5. Add isolated workspace handling and artifact handoff for local jobs.
+
+
+## Phase 4 progress — independent infrastructure gates (PR in progress)
+
+- Added persistent SQLite switches for Cloud Provisioning and VM Creation, independent from each other and defaulting OFF.
+- Added owner-only, same-origin, CSRF-protected gate mutation API and owner/operator read API.
+- Enabling requires an exact confirmation phrase and provider capability readiness; unavailable providers fail closed.
+- Cloud runner creation now requires the effective Cloud Provisioning gate in addition to existing budget, approval, repository and circuit-breaker controls.
+- Non-fake Infrastructure Manager creation requires the effective VM Creation gate; the current composition remains fake-only with provisioning disabled.
+- Added persistence, audit, authorization, confirmation, readiness and independent-state tests. No live cloud or VM resources are created.
