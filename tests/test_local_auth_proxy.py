@@ -487,7 +487,7 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
             self.assertEqual(len(cookies), 1)
 
             with sync_playwright() as playwright:
-                browser = playwright.chromium.launch(headless=True)
+                browser = playwright.chromium.launch(headless=True, chromium_sandbox=True)
                 context = browser.new_context(viewport={"width": 1366, "height": 768})
                 context.add_cookies(cookies)
                 page = context.new_page()
