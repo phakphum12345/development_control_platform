@@ -94,11 +94,9 @@ class RuntimeManagerTests(unittest.TestCase):
         bindir = self.root / "fake-node"
         bindir.mkdir()
         node = bindir / "node"
-        node.write_text(
-            "#!/bin/sh\\n"
-            f'exec "{sys.executable}" -m http.server "$6" --bind 127.0.0.1 --directory .next\\n',
-            encoding="utf-8",
-        )
+        node.write_text(f"""#!/bin/sh
+exec "{sys.executable}" -m http.server "$6" --bind 127.0.0.1 --directory .next
+""", encoding="utf-8")
         node.chmod(0o700)
         old_path = os.environ.get("PATH", "")
         os.environ["PATH"] = str(bindir) + os.pathsep + old_path
