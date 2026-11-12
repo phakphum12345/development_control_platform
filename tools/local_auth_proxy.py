@@ -30,7 +30,7 @@ MIN_PASSWORD_LENGTH = 14
 COOKIE = "DCP_LOCAL_SESSION"
 MAX_BODY = 32_768
 MAX_PREVIEW_RESPONSE_BYTES = 12 * 1024 * 1024
-ALLOWED_GET = ("/api/cloud-runners/status", "/api/cloud-runners", "/api/local-projects", "/api/local-projects/roots", "/api/github/repositories", "/api/infrastructure/gates")
+ALLOWED_GET = ("/api/cloud-runners/status", "/api/cloud-runners", "/api/local-projects", "/api/local-projects/roots", "/api/github/repositories", "/api/infrastructure/gates", "/api/runners", "/api/terminal/templates")
 CREDENTIALS = Path(os.getenv("DCP_LOCAL_AUTH_CREDENTIAL_FILE", str(Path(os.getenv("LOCALAPPDATA", str(Path.home()))) / "DCP" / "owner-auth.json")))
 
 
@@ -494,14 +494,48 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                     r"/api/github/repositories/[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}/refs",
                     path,
                 )
+                job_list_path = path == "/api/jobs"
+                job_logs_path = re.fullmatch(
+                    r"/api/jobs/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/logs",
+                    path,
+                )
+                job_read_path = re.fullmatch(
+                    r"/api/jobs/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:/(?:artifacts|events))?",
+                    path,
+                )
+                artifact_download_path = re.fullmatch(
+                    r"/api/artifacts/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/download",
+                    path,
+                )
+                terminal_events_path = re.fullmatch(
+                    r"/api/terminal/templates/custom-[a-z0-9][a-z0-9-]{1,62}/events",
+                    path,
+                )
                 query_allowed = not parsed.query or (
                     bool(github_refs_path) and parsed.query in ("kind=branches", "kind=tags")
                 )
+                if job_list_path and parsed.query:
+                    list_query = re.fullmatch(r"limit=([1-9][0-9]{0,2})", parsed.query)
+                    query_allowed = bool(list_query) and int(list_query.group(1)) <= 200
+                if job_logs_path and parsed.query:
+                    logs_query = re.fullmatch(
+                        r"after_id=([0-9]{1,18})&limit=([1-9][0-9]{0,2})|"
+                        r"limit=([1-9][0-9]{0,2})&after_id=([0-9]{1,18})",
+                        parsed.query,
+                    )
+                    if logs_query:
+                        after_id = int(logs_query.group(1) or logs_query.group(4))
+                        limit = int(logs_query.group(2) or logs_query.group(3))
+                        query_allowed = after_id <= 9223372036854775807 and limit <= 500
+                    else:
+                        query_allowed = False
                 if (not query_allowed or (
-                    path not in ALLOWED_GET and not (
+                    path not in ALLOWED_GET and not job_list_path and not (
                         path.startswith("/api/cloud-runners/") and path.count("/") == 3
                     ) and not re.fullmatch(r"/api/local-projects/[0-9a-f-]{36}", path)
-                    and not github_read_path
+                    and not github_read_path and not job_read_path
+                    and not job_logs_path and not artifact_download_path
+                    and not terminal_events_path
                 )):
                     return self.send_json(404, {"error": "not found"})
                 gateway_path = path + (("?" + parsed.query) if parsed.query else "")
