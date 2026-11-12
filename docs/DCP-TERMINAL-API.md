@@ -11,11 +11,18 @@ The preview request accepts exactly one field, `template_id`. It rejects arbitra
 
 The initial catalog contains read-only Git status/diff/log and Python/Node version checks. Every entry is marked `PREVIEW_ONLY`, network denied and `execution_enabled=false`. These endpoints do not launch processes and are not an execution API.
 
+## Implemented inert command-pack import
+
+- `POST /api/terminal/templates/import` — owner-only JSON command-pack import. Requires same-origin and CSRF validation.
+- Schema version 1 accepts 1–50 templates, a 32 KiB request cap, allowlisted executable identifiers (`git`, `python`, `node`), bounded argv/platform/time/output metadata, and network policy `denied`.
+- Unknown fields, shell metacharacters, code-evaluation flags, unsupported executables/platforms and duplicate IDs are rejected.
+- Imported templates are stored in a separate private SQLite database (default Gateway database path plus `.terminal`; override with `DCP_GATEWAY_TERMINAL_DATABASE`). Import is atomic and audited.
+- Imported templates are always `enabled=false`, `execution_enabled=false`, and `approval_status=pending_review`. They can be listed and previewed, but cannot be executed or enabled by this API.
+- Imported template previews are labelled `PENDING_REVIEW`; built-in templates remain `PREVIEW_ONLY`.
+
 ## Proposed, not implemented
 
 The following remain design targets and must not be treated as available endpoints:
-
-- POST /api/terminal/templates/import — inert command-pack validation/storage.
 - POST /api/terminal/jobs — typed job submission through an approved Local Agent adapter.
 - GET /api/terminal/jobs/{id} — status and bounded output metadata.
 - POST /api/terminal/jobs/{id}/cancel — owner-authorized process-tree cancellation.
