@@ -8,6 +8,7 @@ repository allowlist.
 from __future__ import annotations
 
 import os
+import re
 import queue
 import shutil
 import signal
@@ -285,6 +286,8 @@ class WebBuildExecutor:
                     self._terminate_tree(process)
             return_code = process.wait(timeout=5)
             reader.join(timeout=2)
+            if process.stdout is not None:
+                process.stdout.close()
             if outcome == "succeeded" and return_code != 0:
                 outcome, error_code = "failed", "BUILD_FAILED"
         finally:
