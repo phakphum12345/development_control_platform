@@ -11,7 +11,7 @@ from tools.cloud_gateway.orka_bootstrap import OrkaBootstrapError, OrkaRunnerBoo
 class FakeGitHubApp:
     def __init__(self, token="short-lived-runner-registration-token", expiry=None):
         self.token = token
-        self.expiry = expiry or (datetime.now(timezone.utc) + timedelta(minutes=30))
+        self.expiry = expiry or (datetime.now(timezone.utc) + timedelta(minutes=60))
         self.repositories = []
 
     def create_registration_token(self, repository):
