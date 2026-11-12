@@ -98,6 +98,49 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
             self.assertEqual(body["error"], "not found")
         self.assertEqual(len(self.gateway_requests), 0)
 
+    def test_allows_bounded_dashboard_job_artifact_runner_and_terminal_reads(self):
+        job_id = "123e4567-e89b-42d3-a456-426614174000"
+        artifact_id = "223e4567-e89b-42d3-a456-426614174000"
+        for path in (
+            "/api/jobs",
+            "/api/jobs?limit=25",
+            "/api/jobs/" + job_id,
+            "/api/jobs/" + job_id + "/artifacts",
+            "/api/jobs/" + job_id + "/events",
+            "/api/jobs/" + job_id + "/logs?after_id=0&limit=500",
+            "/api/artifacts/" + artifact_id + "/download",
+            "/api/runners",
+            "/api/terminal/templates",
+            "/api/terminal/templates/custom-example/events",
+        ):
+            status, _ = self.get(path)
+            self.assertEqual(status, 200, path)
+            self.assertEqual(self.gateway_requests[-1], path)
+
+    def test_rejects_unbounded_or_unapproved_dashboard_read_routes(self):
+        job_id = "123e4567-e89b-42d3-a456-426614174000"
+        for path in (
+            "/api/jobs?limit=201",
+            "/api/jobs?limit=25&unexpected=1",
+            "/api/jobs?limit=25&limit=30",
+            "/api/jobs/" + job_id + "/artifacts?unexpected=1",
+            "/api/jobs/" + job_id + "/logs?after_id=-1&limit=500",
+            "/api/jobs/not-a-uuid",
+            "/api/artifacts/not-a-uuid/download",
+            "/api/terminal/templates/not-custom/events",
+            "/api/runners?unexpected=1",
+        ):
+            status, body = self.get(path)
+            self.assertEqual(status, 404, path)
+            self.assertEqual(body["error"], "not found")
+        self.assertEqual(len(self.gateway_requests), 0)
+
+    def test_dashboard_job_reads_require_authenticated_session(self):
+        status, body = self.get("/api/jobs?limit=25", authenticated=False)
+        self.assertEqual(status, 401)
+        self.assertEqual(body["error"], "authenticated session required")
+        self.assertEqual(len(self.gateway_requests), 0)
+
     def test_requires_authenticated_owner_session(self):
         status, body = self.get("/api/local-projects", authenticated=False)
         self.assertEqual(status, 401)
