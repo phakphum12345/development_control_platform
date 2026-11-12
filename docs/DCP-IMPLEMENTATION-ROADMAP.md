@@ -175,3 +175,11 @@ Do not merge PR #71 until the real Chromium sandbox test, Dashboard browser smok
 - The Local Runner remains authoritative: it checks the exact package manifest, framework dependencies and preinstalled local CLI before executing fixed argv.
 - The Dashboard does not install dependencies or infer toolchain readiness from a manifest. Truncated/unknown inspections keep build submission disabled.
 - Build target changes immediately recompute the UI gate; API and Runner policy remain authoritative.
+
+
+## 2026-11-12 Terminal Studio Visual Command Builder
+
+- Added schema-driven typed parameters to the curated read-only command catalog: bounded Git history limit and exact full commit SHA for Git show/diff.
+- Gateway validates request shape and each typed parameter; it rejects arbitrary fields, unknown names, malformed values and parameters on imported templates.
+- Dashboard builds form controls from the catalog schema and renders exact argv/normalized values as text.
+- Real-browser smoke and unit tests cover the builder. No command is executed; terminal execution remains blocked pending OS isolation and cancellation guarantees.
