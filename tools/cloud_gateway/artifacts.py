@@ -169,7 +169,7 @@ class ArtifactStore:
         self._validate_identity(job_id, worker_id, name, size)
         if size > self.max_artifact_bytes:
             raise ArtifactError("artifact exceeds configured size limit")
-        self._assert_lease(job_store, job_id, worker_id)
+        job = self._assert_lease(job_store, job_id, worker_id)
         job_dir = self.root / job_id
         if job_dir.exists() and job_dir.is_symlink():
             raise ArtifactError("artifact job directory must not be a symlink")
@@ -199,18 +199,24 @@ class ArtifactStore:
                     remaining -= len(chunk)
                 output.flush()
                 os.fsync(output.fileno())
-            self._assert_lease(job_store, job_id, worker_id)
+            job = self._assert_lease(job_store, job_id, worker_id)
             os.replace(temp_path, final_path)
+            created_at = datetime.now(timezone.utc).isoformat()
+            provenance = self._build_provenance(job, worker_id, name, size, digest.hexdigest(), created_at)
+            provenance_json = json.dumps(provenance, sort_keys=True, separators=(",", ":"))
+            provenance_sha256 = hashlib.sha256(provenance_json.encode("utf-8")).hexdigest()
             metadata = {
                 "id": artifact_id, "job_id": job_id, "worker_id": worker_id,
                 "name": name, "size": size, "sha256": digest.hexdigest(),
-                "created_at": datetime.now(timezone.utc).isoformat(),
+                "created_at": created_at,
+                "provenance": provenance,
+                "provenance_sha256": provenance_sha256,
             }
             with self.lock, self._db() as db:
                 db.execute(
-                    "INSERT INTO artifacts(id,job_id,worker_id,name,storage_key,size,sha256,created_at) VALUES(?,?,?,?,?,?,?,?)",
+                    "INSERT INTO artifacts(id,job_id,worker_id,name,storage_key,size,sha256,created_at,provenance_json,provenance_sha256) VALUES(?,?,?,?,?,?,?,?,?,?)",
                     (artifact_id, job_id, worker_id, name, storage_key, size,
-                     metadata["sha256"], metadata["created_at"]),
+                     metadata["sha256"], metadata["created_at"], provenance_json, provenance_sha256),
                 )
             return {key: value for key, value in metadata.items() if key != "worker_id"}
         except Exception:
@@ -229,10 +235,18 @@ class ArtifactStore:
             raise ArtifactError("invalid job ID") from None
         with self.lock, self._db() as db:
             rows = db.execute(
-                "SELECT id,job_id,name,size,sha256,created_at FROM artifacts WHERE job_id=? ORDER BY created_at,id",
+                "SELECT id,job_id,name,size,sha256,created_at,provenance_json,provenance_sha256 FROM artifacts WHERE job_id=? ORDER BY created_at,id",
                 (job_id,),
             ).fetchall()
-        return [dict(row) for row in rows]
+        result = []
+        for row in rows:
+            item = dict(row)
+            provenance, provenance_sha256 = self._decode_provenance(row)
+            item.pop("provenance_json", None)
+            item["provenance"] = provenance
+            item["provenance_sha256"] = provenance_sha256
+            result.append(item)
+        return result
 
     def get(self, artifact_id: str) -> tuple[dict, Path]:
         try:
@@ -253,10 +267,12 @@ class ArtifactStore:
         info = path.stat()
         if not stat.S_ISREG(info.st_mode) or info.st_size != row["size"]:
             raise ArtifactError("artifact storage integrity check failed")
+        provenance, provenance_sha256 = self._decode_provenance(row)
         metadata = {
             "id": row["id"], "job_id": row["job_id"], "name": row["name"],
             "size": row["size"], "sha256": row["sha256"],
-            "created_at": row["created_at"],
+            "created_at": row["created_at"], "provenance": provenance,
+            "provenance_sha256": provenance_sha256,
         }
         return metadata, path
 
