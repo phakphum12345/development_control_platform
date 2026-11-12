@@ -4,7 +4,7 @@
 
 1. Owner enrolls an approved local root and registers a project through the Local Project Registry CLI.
 2. Dashboard lists opaque project IDs, relative paths, snapshot SHA-256, and static framework detection. Absolute host paths are never returned.
-3. Owner selects the registered snapshot and queues a `build_static_web` job.
+3. Owner selects the registered snapshot and queues a supported `build_static_web` or explicitly enabled `test_static_web` job.
 4. Gateway refreshes the registry fingerprint and rejects a stale selection with HTTP 409.
 5. Runner revalidates the exact SHA-256, materializes a read-only snapshot, then creates a separate writable build copy.
 6. Runner executes only after `DCP_RUNNER_EXECUTION_ENABLED=1` and the project ID is in `DCP_RUNNER_TRUSTED_LOCAL_PROJECTS`.
@@ -22,7 +22,7 @@ Import/registration alone does not add a project to the Runner trust allowlist a
 
 ## Current build scope
 
-Local Folder jobs currently support dependency-free `Static HTML/CSS/JS` projects only, using `build_static_web`. React/Vite and other dependency-managed projects may be detected, but are not queueable from Local Folder yet: `node_modules` is intentionally excluded and no dependency installation is performed automatically. A later dependency-management phase must add explicit, owner-approved dependency preparation before those targets can be enabled.
+Local Folder jobs currently support dependency-free `Static HTML/CSS/JS` projects only, using `build_static_web` and the separately opt-in `test_static_web` target. The latter requires both `web` and `playwright` Runner capabilities plus `DCP_RUNNER_PLAYWRIGHT_ENABLED=1`. React/Vite and other dependency-managed projects may be detected, but are not queueable from Local Folder yet: `node_modules` is intentionally excluded and no dependency installation is performed automatically. A later dependency-management phase must add explicit, owner-approved dependency preparation before those targets can be enabled.
 
 ## Snapshot and secret handling
 
@@ -42,3 +42,11 @@ Local jobs expose `source_type=local_folder`, `source_id=<project UUID>`, and `s
 - Local Folder source execution is still subject to the Runner host's OS isolation limits. Workspace separation is not an OS sandbox.
 - No automatic npm/pip/pub dependency installation, arbitrary project scripts, dev server, cloud runner, VM, or deployment fallback is enabled.
 - Local Folder currently builds static HTML/CSS/JS only; unknown or unsupported frameworks remain UNKNOWN/unsupported.
+
+
+## Acceptance evidence still required
+
+- Execute the supported workflow on a real Windows host using the documented launcher and a disposable, explicitly trusted static project.
+- Verify the completed artifact's SHA-256 from both upload metadata and authenticated download; verify unauthorized download denial.
+- Exercise preview through the authenticated Dashboard path and verify stop/expiry cleanup.
+- Force Runner interruption and confirm workspace reconciliation removes only the interrupted job's owned workspace.
