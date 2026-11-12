@@ -373,6 +373,74 @@ class InfrastructureApiTests(unittest.TestCase):
     def service_template_rows(self):
         return self.terminal_template_store.list_imported()
 
+
+    def test_owner_review_is_explicit_audited_and_never_enables_execution(self):
+        status, imported = self.request(
+            "POST", "/api/terminal/templates/import", payload=self.terminal_pack()
+        )
+        self.assertEqual(status, 201)
+        digest = imported["source_sha256"]
+        path = "/api/terminal/templates/custom-api-git-status/review"
+
+        status, denied = self.request(
+            "POST", path, role="operator",
+            payload={
+                "decision": "approve",
+                "confirmation": "APPROVE TEMPLATE custom-api-git-status",
+                "source_sha256": digest,
+            },
+        )
+        self.assertEqual(status, 403)
+
+        status, bad = self.request(
+            "POST", path,
+            payload={
+                "decision": "approve",
+                "confirmation": "yes",
+                "source_sha256": digest,
+            },
+        )
+        self.assertEqual(status, 400)
+
+        status, stale = self.request(
+            "POST", path,
+            payload={
+                "decision": "approve",
+                "confirmation": "APPROVE TEMPLATE custom-api-git-status",
+                "source_sha256": "0" * 64,
+            },
+        )
+        self.assertEqual(status, 409)
+
+        status, approved = self.request(
+            "POST", path,
+            payload={
+                "decision": "approve",
+                "confirmation": "APPROVE TEMPLATE custom-api-git-status",
+                "source_sha256": digest,
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(approved["template"]["approval_status"], "approved")
+        self.assertFalse(approved["template"]["enabled"])
+        self.assertFalse(approved["template"]["execution_enabled"])
+
+        status, preview = self.request(
+            "POST", "/api/terminal/commands/preview",
+            payload={"template_id": "custom-api-git-status"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(preview["preview"]["status"], "APPROVED_NOT_EXECUTABLE")
+        self.assertFalse(preview["execution_enabled"])
+
+        status, events = self.request(
+            "GET", "/api/terminal/templates/custom-api-git-status/events"
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            [event["event"] for event in events["events"]],
+            ["imported_pending_review", "approved_not_executable"],
+        )
     def test_command_pack_import_denies_unauthenticated_access(self):
         request = Request(
             self.base + "/api/terminal/templates/import",
