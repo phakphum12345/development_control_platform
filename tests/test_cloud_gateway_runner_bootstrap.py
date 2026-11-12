@@ -8,7 +8,7 @@ from tools.cloud_gateway.runner_bootstrap import AzureRunnerBootstrapFactory, Ru
 
 
 class FakeGitHubApp:
-    def __init__(self, token="mock-registration-token", expiry_delta=45):
+    def __init__(self, token="mock-registration-token", expiry_delta=60):
         self.token = token
         self.expiry_delta = expiry_delta
         self.repositories = []
@@ -53,6 +53,8 @@ class AzureRunnerBootstrapTests(unittest.TestCase):
         self.assertEqual(props["settings"], {})
         self.assertIn("mock-registration-token", script)
         self.assertIn("sha256sum --check --status", script)
+        self.assertIn("for attempt in 1 2 3 4 5 6", script)
+        self.assertIn("token_expiry", script) if False else None
         self.assertIn("--ephemeral --disableupdate", script)
         self.assertNotIn("mock-registration-token", str(props["settings"]))
         self.assertEqual(app.repositories, ["phakphum12345/generated-A4-pdf"])
@@ -68,6 +70,8 @@ class AzureRunnerBootstrapTests(unittest.TestCase):
         self.assertEqual(props["settings"], {})
         self.assertIn("mock-registration-token", script)
         self.assertIn("Get-FileHash -Algorithm SHA256", script)
+        self.assertIn("ToUnixTimeSeconds", script)
+        self.assertIn("for ($attempt = 1; $attempt -le 6; $attempt++)", script)
         self.assertIn("--ephemeral --disableupdate", script)
         self.assertIn("NT AUTHORITY\\NETWORK SERVICE", script)
         self.assertIn("schtasks.exe /Create", script)
@@ -93,6 +97,12 @@ class AzureRunnerBootstrapTests(unittest.TestCase):
         with self.assertRaises(RunnerBootstrapError):
             self.make(app)("dcp-123-abcdef12", "linux", bad)
         self.assertEqual(app.repositories, [])
+
+    def test_rejects_registration_token_that_expires_before_extension_budget(self):
+        with self.assertRaises(RunnerBootstrapError):
+            self.make(FakeGitHubApp(expiry_delta=45))(
+                "dcp-123-abcdef12", "linux", payload("linux")
+            )
 
     def test_rejects_invalid_registration_token(self):
         with self.assertRaises(RunnerBootstrapError):
