@@ -2,7 +2,7 @@
 
 ## Scope and current implementation status
 
-This repository implements the DCP client, policy profiles, workflow dispatch, and provider-neutral API contract. It does **not** deploy Azure resources or implement a live Azure/Orka gateway. No live runner or successful build is implied by accepting a provisioning request.
+This repository implements the DCP client, policy profiles, workflow dispatch, provider-neutral API contract, an explicit opt-in Azure runtime composition path, and an Orka adapter with protected User Data bootstrap. It does **not** deploy Azure/Orka resources or activate a live provider by default. No live runner or successful build is implied by accepting a provisioning request.
 
 ## Target topology
 
