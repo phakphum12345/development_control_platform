@@ -52,6 +52,14 @@ def valid_environment():
         "DCP_AZURE_PROJECTED_RUN_COST_USD": "1.25",
         "DCP_AZURE_LINUX_VM_SIZE": "Standard_D2s_v5",
         "DCP_AZURE_WINDOWS_VM_SIZE": "Standard_D4s_v5",
+        "DCP_AZURE_LINUX_IMAGE_PUBLISHER": "Canonical",
+        "DCP_AZURE_LINUX_IMAGE_OFFER": "ubuntu-24_04-lts",
+        "DCP_AZURE_LINUX_IMAGE_SKU": "server",
+        "DCP_AZURE_LINUX_IMAGE_VERSION": "24.04.202501010",
+        "DCP_AZURE_WINDOWS_IMAGE_PUBLISHER": "MicrosoftWindowsServer",
+        "DCP_AZURE_WINDOWS_IMAGE_OFFER": "WindowsServer",
+        "DCP_AZURE_WINDOWS_IMAGE_SKU": "2025-datacenter-g2",
+        "DCP_AZURE_WINDOWS_IMAGE_VERSION": "2025.01.15",
         "DCP_RUNNER_VERSION": "2.331.0",
         "DCP_RUNNER_LINUX_SHA256": "a" * 64,
         "DCP_RUNNER_WINDOWS_SHA256": "b" * 64,
@@ -87,7 +95,7 @@ class GatewayPreflightTests(unittest.TestCase):
             "repository_allowlist", "github_app_configuration",
             "azure_configuration_presence", "azure_guest_profile_configuration",
             "azure_network_configuration", "azure_extra_egress_domains",
-            "orka_configuration_presence",
+            "azure_provider_opt_in", "orka_configuration_presence",
         ):
             self.assertEqual(checks[name]["status"], "PASS", name)
         self.assertEqual(checks["azure_network_policy"]["status"], "UNKNOWN")
@@ -134,6 +142,22 @@ class GatewayPreflightTests(unittest.TestCase):
 
 
 
+
+
+    def test_latest_vm_image_version_is_rejected(self):
+        env = valid_environment()
+        env["DCP_AZURE_LINUX_IMAGE_VERSION"] = "latest"
+        result = inspect_environment(env)
+        checks = {item["check"]: item for item in result["checks"]}
+        self.assertEqual(checks["azure_configuration_presence"]["status"], "FAIL")
+
+    def test_global_provisioning_cannot_be_enabled_without_provider_opt_in(self):
+        env = valid_environment()
+        env["DCP_GATEWAY_PROVISIONING_ENABLED"] = "true"
+        result = inspect_environment(env)
+        checks = {item["check"]: item for item in result["checks"]}
+        self.assertEqual(checks["azure_provider_opt_in"]["status"], "FAIL")
+        self.assertEqual(checks["provisioning_disabled_by_default"]["status"], "FAIL")
 
     def test_invalid_extra_egress_domain_fails_preflight(self):
         env = valid_environment()
