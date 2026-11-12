@@ -154,7 +154,10 @@ class AzureVMProvider:
   ] if isinstance(resources,list) and extension_name else []
   if len(extension_matches)!=1:
    return RunnerInstance(provider_id,"provisioning",provider_id,detail="runner bootstrap extension status is not available")
-  extension_state=str(extension_matches[0].get("properties",{}).get("provisioningState","")).lower()
+  extension_properties=extension_matches[0].get("properties",{})
+  if not isinstance(extension_properties,dict):
+   return RunnerInstance(provider_id,"provisioning",provider_id,detail="runner bootstrap extension status is malformed")
+  extension_state=str(extension_properties.get("provisioningState","")).lower()
   if extension_state in ("failed","canceled"):
    self.arm.request("DELETE",self._url("Microsoft.Compute","virtualMachines",provider_id),allow_missing=True)
    return RunnerInstance(provider_id,"terminating",provider_id,detail="runner bootstrap extension failed; VM cleanup requested")
