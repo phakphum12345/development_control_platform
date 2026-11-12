@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from .policy import GatewaySettings, PolicyDenied
 from .service import GatewayService
 from .provider_router import ProviderRouter
+from .azure_provider_runtime import build_azure_provider_runtime
 from .store import LifecycleConflict, RunnerStore
 from .github_app_runtime import build_github_app_runtime
 from .job_control import JobConflict, JobNotFound, JobStore
@@ -1389,10 +1390,17 @@ def main():
         raise SystemExit("DCP_RUNNER_TOKENS must be a JSON object") from exc
     if not isinstance(runner_tokens, dict):
         raise SystemExit("DCP_RUNNER_TOKENS must be a JSON object")
-    github_app, _, runner_cleanup = build_github_app_runtime(settings)
+    github_app, runner_online_checker, runner_cleanup = build_github_app_runtime(settings)
+    budget_guard = _budget_guard_from_env(settings)
+    try:
+        azure_provider = build_azure_provider_runtime(
+            settings, github_app, runner_online_checker, budget_guard,
+        )
+    except Exception as exc:
+        raise SystemExit("Azure provider configuration is invalid; refusing to start") from exc
     service = GatewayService(
-        settings, store, ProviderRouter(DisabledProvider(), DisabledProvider()),
-        _budget_guard_from_env(settings), runner_cleanup=runner_cleanup,
+        settings, store, ProviderRouter(azure_provider or DisabledProvider(), DisabledProvider()),
+        budget_guard, runner_cleanup=runner_cleanup,
         repository_catalog=github_app.list_installation_repositories if github_app else None,
         repository_authorizer=(lambda repository: github_app.is_repository_accessible(repository, refresh=True)) if github_app else None,
         repository_ref_catalog=github_app.list_repository_refs if github_app else None,
