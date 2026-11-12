@@ -463,7 +463,7 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
             _, _, session_body = self.request("/api/auth/session")
             csrf = json.loads(session_body)["csrfToken"]
 
-            started, _, start_body = self.request(
+            started, start_headers, start_body = self.request(
                 f"/api/jobs/{job['id']}/previews", "POST", {}, csrf
             )
             self.assertEqual(started, 201, start_body.decode(errors="replace"))
@@ -478,19 +478,25 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
             self.assertIn("text/css", css_headers.get("Content-Type", ""))
             self.assertIn(b"rgb(1, 2, 3)", css_body)
 
-            cookies = [
-                {
-                    "name": cookie.name,
-                    "value": cookie.value,
-                    "domain": "127.0.0.1",
-                    "path": "/",
-                    "httpOnly": True,
-                    "sameSite": "Strict",
-                }
-                for cookie in self.cookie_jar
-                if cookie.name == auth.COOKIE
-            ]
-            self.assertEqual(len(cookies), 1)
+            from http.cookies import SimpleCookie
+            preview_set_cookie = start_headers.get("Set-Cookie", "")
+            parsed_preview_cookie = SimpleCookie()
+            parsed_preview_cookie.load(preview_set_cookie)
+            preview_cookie_name = next(
+                (name for name in parsed_preview_cookie if name.startswith("DCP_PREVIEW_")),
+                None,
+            )
+            self.assertIsNotNone(preview_cookie_name, preview_set_cookie)
+            preview_cookie = parsed_preview_cookie[preview_cookie_name]
+            cookies = [{
+                "name": preview_cookie_name,
+                "value": preview_cookie.value,
+                "domain": "127.0.0.1",
+                "path": preview_cookie["path"],
+                "httpOnly": True,
+                "secure": True,
+                "sameSite": "None",
+            }]
 
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch(headless=True, chromium_sandbox=True)
