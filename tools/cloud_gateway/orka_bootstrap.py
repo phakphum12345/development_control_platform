@@ -110,7 +110,7 @@ class OrkaRunnerBootstrapFactory:
             "cd \"$RUNNER_DIR\"",
             "if [ ! -f .runner ]; then",
             f"  curl --fail --location --silent --show-error {shlex.quote(url)} --output \"$ARCHIVE\"",
-            f"  echo {shlex.quote(self.runner_sha256 + '  ' + archive)} | shasum -a 256 --check --status",
+            f"  echo {shlex.quote(self.runner_sha256 + '  ' + archive)} | shasum -a 256 -c - >/dev/null 2>&1 || {{ echo 'DCP runner archive checksum mismatch'; exit 1; }}",
             "  tar -xzf \"$ARCHIVE\"",
             "  chown -R \"$RUNNER_USER\":staff \"$RUNNER_DIR\"",
             f"  su - \"$RUNNER_USER\" -c {shlex.quote(config_command)} >/dev/null 2>&1 || {{ echo 'DCP runner configuration failed'; exit 1; }}",
