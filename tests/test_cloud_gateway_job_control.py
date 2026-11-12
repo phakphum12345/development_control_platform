@@ -167,7 +167,7 @@ class JobStoreTests(unittest.TestCase):
         self.assertEqual(first["attempt_count"], 1)
         self.assertEqual(first["max_attempts"], 3)
 
-        for attempt, worker in ((1, "retry-worker-1"), (2, "retry-worker-2")):
+        for attempt in (1, 2):
             with self.store.db() as db:
                 db.execute(
                     "UPDATE jobs SET lease_until=? WHERE id=?",
@@ -189,6 +189,7 @@ class JobStoreTests(unittest.TestCase):
         self.assertEqual(final["state"], "failed")
         self.assertEqual(final["error_code"], "LEASE_EXPIRED")
         self.assertEqual(final["attempt_count"], 3)
+        self.assertEqual(final["last_worker"], "retry-worker-3")
         self.assertIsNone(self.store.claim("retry-worker-4"))
         events = self.store.events(job["id"])
         self.assertEqual(
@@ -197,6 +198,9 @@ class JobStoreTests(unittest.TestCase):
         self.assertEqual(
             [event["event"] for event in events].count("lease_expired_failed"), 1
         )
+        failed_event = next(event for event in events if event["event"] == "lease_expired_failed")
+        self.assertEqual(failed_event["detail"]["worker"], "retry-worker-3")
+        self.assertEqual(failed_event["detail"]["attempt_count"], 3)
 
     def test_concurrent_workers_cannot_claim_the_same_job(self):
         import threading
