@@ -339,13 +339,36 @@ class AzureEgressPolicyVerifier:
         nsg_rules = nsg.get("properties", {}).get("securityRules")
         if not isinstance(nsg_rules, list):
             raise AzureEgressPolicyError("Runner NSG security rules are invalid")
+        inbound_deny_all = False
         for rule in nsg_rules:
             properties = rule.get("properties", {})
-            if (
-                str(properties.get("direction", "")).lower() == "inbound"
-                and str(properties.get("access", "")).lower() == "allow"
-            ):
+            if str(properties.get("direction", "")).lower() != "inbound":
+                continue
+            access = str(properties.get("access", "")).lower()
+            if access == "allow":
                 raise AzureEgressPolicyError("Runner NSG must not contain custom inbound allow rules")
+            source = properties.get("sourceAddressPrefix")
+            if source is None and properties.get("sourceAddressPrefixes"):
+                source = properties.get("sourceAddressPrefixes")
+            destination = properties.get("destinationAddressPrefix")
+            if destination is None and properties.get("destinationAddressPrefixes"):
+                destination = properties.get("destinationAddressPrefixes")
+            source_ports = properties.get("sourcePortRange", properties.get("sourcePortRanges"))
+            destination_ports = properties.get("destinationPortRange", properties.get("destinationPortRanges"))
+            priority = properties.get("priority")
+            if (
+                access == "deny"
+                and isinstance(priority, int) and not isinstance(priority, bool)
+                and 100 <= priority < 65000
+                and properties.get("protocol") == "*"
+                and source in ("*", ["*"])
+                and destination in ("*", ["*"])
+                and source_ports in ("*", ["*"])
+                and destination_ports in ("*", ["*"])
+            ):
+                inbound_deny_all = True
+        if not inbound_deny_all:
+            raise AzureEgressPolicyError("Runner NSG must override Azure's default VNet inbound allow with a custom deny-all rule")
 
         route_table = self._get(self.route_table_id, API_NETWORK)
         firewall = self._get(self.firewall_id, API_FIREWALL)
