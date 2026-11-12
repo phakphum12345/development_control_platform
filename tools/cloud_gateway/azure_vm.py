@@ -6,7 +6,7 @@ from urllib.parse import quote
 from urllib.request import Request,urlopen
 from tools.runner_backend.provider import RunnerInstance
 class AzureProvisionError(RuntimeError): pass
-API_COMPUTE="2024-03-01"; API_NETWORK="2023-09-01"
+API_COMPUTE="2025-04-01"; API_NETWORK="2023-09-01"
 class AzureArmClient:
  def __init__(self,subscription_id,resource_group,credential,timeout=30):
   if not re.fullmatch(r"[0-9a-fA-F-]{36}",subscription_id): raise ValueError("Invalid Azure subscription ID")
