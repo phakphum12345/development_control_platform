@@ -51,7 +51,7 @@ Acceptance evidence must be produced on the exact commit under review. A passing
 - The Local Auth Proxy issues a short-lived HttpOnly/Secure preview cookie scoped to that job/runtime content path; it is revoked on stop, owner logout, or expiry. Runtime capability token and upstream port remain server-side.
 - API acceptance verifies unauthenticated denial, cross-job denial, query rejection, owner CSRF-protected stop, logout denial, and no exposure of runtime capability tokens or upstream ports.
 - The proxy fixes upstream host/port to loopback, rejects path traversal, limits response size and allowed content types, and does not accept browser-selected upstream addresses.
-- Cross-browser preview fixture coverage is being added for Firefox and WebKit; the exact-commit CI result is required before marking it verified. Remaining after that: cross-owner identity tests beyond the single local-owner model, trace/log evidence, visual baselines, full WCAG/axe coverage, and broader real-application compatibility across browser engines.
+- PR #96 added and passed exact-head CI acceptance for Chromium, Firefox and WebKit. The shared browser fixture verifies HTML/title/content, relative CSS, computed styles, same-origin requests, no browser/request errors, screenshot capture, and denial after preview stop. Remaining: cross-owner identity tests beyond the single local-owner model, trace/log evidence, visual baselines, full WCAG/axe coverage, and broader real-application compatibility across browser engines.
 
 ## Infrastructure safety
 - Cloud Provisioning gate starts OFF after fresh install and restart.
@@ -82,3 +82,12 @@ No phase is accepted until required tests, security checks, documentation, evide
 - Session capability remains server-side; status/content/stop continue through the authenticated Preview Proxy. TTL expiry and process-tree stop must terminate the Next server.
 - Angular static output may be served from `source/dist/browser`; symlink and path traversal checks remain enforced.
 - This is trusted-code execution, not a sandbox. Outbound network is not blocked; the Owner must trust the source before confirming.
+
+
+## Local Folder job-to-Runner acceptance — current implementation
+
+- Dashboard owner session loads enrolled Local Folder projects and selects an opaque project UUID plus snapshot SHA-256; the browser never submits an absolute host path.
+- Gateway accepts only the exact Local Folder job payload, re-fingerprints the registered project and rejects stale SHA-256 selections before queueing.
+- Runner checks the trusted-local-project allowlist, materializes the exact snapshot and executes only supported fixed targets with the global execution opt-in.
+- Focused automated coverage exists in `tests/test_cloud_gateway_local_projects.py`, `tests/test_local_project_snapshot.py`, and `tests/test_local_runner_pipeline_e2e.py`.
+- Remaining release evidence: run the full authenticated Dashboard-to-Gateway flow on a real supported Windows host; build a representative approved static project; verify artifact download SHA-256 and authorization; force a Runner interruption and verify workspace cleanup/reconciliation.
