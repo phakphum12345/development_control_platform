@@ -22,6 +22,15 @@ from urllib.request import (
 from tools import local_auth_proxy as auth
 
 
+def _chromium_ready():
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as playwright:
+            return Path(playwright.chromium.executable_path).is_file()
+    except Exception:
+        return False
+
+
 def free_port():
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
@@ -400,6 +409,209 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
             "/api/auth/logout", "POST", csrf=logout_csrf
         )
         self.assertEqual(logged_out, 200)
+
+    @unittest.skipUnless(_chromium_ready(), "Python Playwright and Chromium are optional test prerequisites")
+    def test_real_chromium_loads_app_through_authenticated_preview_proxy(self):
+        from playwright.sync_api import sync_playwright
+
+        from tools.cloud_gateway.job_control import JobStore
+        from tools.local_runner_agent.workspace import WorkspaceManager
+
+        worker_id = "preview-chromium-worker"
+        jobs = JobStore(self.jobs_db)
+        job, created = jobs.create(
+            {
+                "repository": "example/preview-chromium-fixture",
+                "commit_sha": "b" * 40,
+                "target": "build_static_web",
+            },
+            "authenticated-preview-chromium-0001",
+        )
+        self.assertTrue(created)
+        claimed = jobs.claim(worker_id, allowed_targets=["build_static_web"])
+        self.assertEqual(claimed["id"], job["id"])
+
+        workspace = WorkspaceManager(self.workspace_root).create(job["id"], worker_id)
+        dist = workspace / "source" / "dist"
+        (dist / "assets").mkdir(parents=True)
+        (dist / "index.html").write_text(
+            "<!doctype html><html lang='en'><head><meta name='viewport' "
+            "content='width=device-width,initial-scale=1'><title>Preview Proxy Browser E2E</title>"
+            "<link rel='icon' href='data:,'><link rel='stylesheet' href='assets/site.css'></head>"
+            "<body><main><h1 id='preview-ready'>Browser reached authenticated preview</h1>"
+            "<button type='button'>Continue</button></main></body></html>",
+            encoding="utf-8",
+        )
+        (dist / "assets" / "site.css").write_text(
+            "body { color: rgb(1, 2, 3); }", encoding="utf-8"
+        )
+        jobs.finish(job["id"], worker_id, "succeeded", {"exit_code": 0})
+
+        browser = None
+        preview = None
+        csrf = None
+        try:
+            _, _, preauth_body = self.request("/api/auth/session")
+            preauth = json.loads(preauth_body)
+            login, _, login_body = self.request(
+                "/api/auth/login", "POST",
+                {"username": "owner-test", "password": "correct horse battery staple 2026!"},
+                preauth["csrfToken"],
+            )
+            self.assertEqual(login, 200, login_body.decode(errors="replace"))
+            _, _, session_body = self.request("/api/auth/session")
+            csrf = json.loads(session_body)["csrfToken"]
+
+            started, start_headers, start_body = self.request(
+                f"/api/jobs/{job['id']}/previews", "POST", {}, csrf
+            )
+            self.assertEqual(started, 201, start_body.decode(errors="replace"))
+            preview = json.loads(start_body)
+            self.assertTrue(preview["preview_path"].endswith("/content/"))
+            self.assertNotIn("port", preview)
+            self.assertNotIn("session_token", start_body.decode("utf-8", "ignore"))
+            css_status, css_headers, css_body = self.request(
+                preview["preview_path"] + "assets/site.css"
+            )
+            self.assertEqual(css_status, 200, css_body.decode("utf-8", "replace"))
+            self.assertIn("text/css", css_headers.get("Content-Type", ""))
+            self.assertIn(b"rgb(1, 2, 3)", css_body)
+
+            from http.cookies import SimpleCookie
+            preview_set_cookie = start_headers.get("Set-Cookie", "")
+            parsed_preview_cookie = SimpleCookie()
+            parsed_preview_cookie.load(preview_set_cookie)
+            preview_cookie_name = next(
+                (name for name in parsed_preview_cookie if name.startswith("DCP_PREVIEW_")),
+                None,
+            )
+            self.assertIsNotNone(preview_cookie_name, preview_set_cookie)
+            preview_cookie = parsed_preview_cookie[preview_cookie_name]
+            self.assertTrue(preview_cookie["httponly"])
+            self.assertTrue(preview_cookie["secure"])
+            self.assertEqual(preview_cookie["samesite"], "None")
+            self.assertEqual(preview_cookie["path"], preview["preview_path"])
+            self.assertGreater(int(preview_cookie["max-age"]), 0)
+            cookies = [{
+                "name": preview_cookie_name,
+                "value": preview_cookie.value,
+                "domain": "127.0.0.1",
+                "path": preview_cookie["path"],
+                "httpOnly": True,
+                "secure": True,
+                "sameSite": "None",
+            }]
+
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch(headless=True, chromium_sandbox=True)
+                try:
+                    context = browser.new_context(viewport={"width": 1366, "height": 768})
+                    context.add_cookies(cookies)
+                    page = context.new_page()
+                    console_errors = []
+                    page_errors = []
+                    failed_requests = []
+                    request_urls = []
+                    css_requests = []
+                    asset_responses = []
+                    page.on("console", lambda message: console_errors.append(message.text) if message.type == "error" else None)
+                    page.on("pageerror", lambda error: page_errors.append(str(error)))
+
+                    def capture_request(request):
+                        request_urls.append(request.url)
+                        if "site.css" in request.url:
+                            css_requests.append({
+                                "url": request.url,
+                                "headers": request.all_headers(),
+                            })
+
+                    def capture_failed_request(request):
+                        if "site.css" in request.url:
+                            failed_requests.append({
+                                "url": request.url,
+                                "failure": request.failure,
+                            })
+
+                    page.on("requestfailed", capture_failed_request)
+                    page.on("request", capture_request)
+
+                    def capture_asset_response(response):
+                        if "site.css" in response.url:
+                            asset_responses.append({
+                                "url": response.url,
+                                "status": response.status,
+                                "content_type": response.headers.get("content-type"),
+                            })
+
+                    page.on("response", capture_asset_response)
+                    response = page.goto(
+                        self.base + preview["preview_path"],
+                        wait_until="networkidle",
+                        timeout=15000,
+                    )
+                    self.assertIsNotNone(response)
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(page.title(), "Preview Proxy Browser E2E")
+                    self.assertEqual(
+                        page.locator("#preview-ready").inner_text(),
+                        "Browser reached authenticated preview",
+                    )
+                    css_color = page.locator("body").evaluate(
+                        "(element) => getComputedStyle(element).color"
+                    )
+                    self.assertEqual(
+                        css_color, "rgb(1, 2, 3)",
+                        "CSS diagnostics: responses=%r console=%r requests=%r css_requests=%r failed=%r cookies=%r" % (
+                            asset_responses, console_errors, request_urls, css_requests,
+                            failed_requests, context.cookies(self.base)
+                        ),
+                    )
+                    self.assertEqual(len(asset_responses), 1)
+                    self.assertEqual(asset_responses[0]["status"], 200)
+                    self.assertTrue(any("/content/assets/site.css" in url for url in request_urls))
+                    http_requests = [
+                        url for url in request_urls
+                        if url.startswith(("http://", "https://"))
+                    ]
+                    self.assertTrue(http_requests)
+                    self.assertTrue(
+                        all(url.startswith(self.base + "/") for url in http_requests)
+                    )
+                    self.assertEqual(console_errors, [])
+                    self.assertEqual(page_errors, [])
+                    self.assertEqual(failed_requests, [])
+    
+                    screenshot = Path(self.temp.name) / "authenticated-preview.png"
+                    page.screenshot(path=str(screenshot), full_page=True)
+                    self.assertTrue(screenshot.is_file())
+    
+                    stopped, stop_headers, stop_body = self.request(
+                        f"/api/jobs/{job['id']}/previews/{preview['runtime_id']}",
+                        "DELETE", csrf=csrf,
+                    )
+                    self.assertEqual(stopped, 200, stop_body.decode(errors="replace"))
+                    self.assertIn("Max-Age=0", stop_headers.get("Set-Cookie", ""))
+                    after_stop = page.goto(
+                        self.base + preview["preview_path"],
+                        wait_until="domcontentloaded",
+                        timeout=10000,
+                    )
+                    self.assertIsNotNone(after_stop)
+                    self.assertIn(after_stop.status, (401, 404))
+                    context.close()
+                finally:
+                    browser.close()
+                    browser = None
+        finally:
+            if browser is not None:
+                browser.close()
+            if preview and csrf:
+                self.request(
+                    f"/api/jobs/{job['id']}/previews/{preview['runtime_id']}",
+                    "DELETE", csrf=csrf,
+                )
+            if csrf:
+                self.request("/api/auth/logout", "POST", csrf=csrf)
 
     def test_real_authenticated_preview_proxy_serves_and_stops_completed_job(self):
         import uuid

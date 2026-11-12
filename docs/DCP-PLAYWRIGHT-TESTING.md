@@ -136,3 +136,8 @@ Official references:
   https://playwright.dev/docs/ci
 - Chromium Linux sandbox architecture:
   https://chromium.googlesource.com/chromium/src/+/HEAD/sandbox/linux/README.md
+
+
+## Authenticated Preview Proxy browser E2E — 2026-11-12
+
+A real Chromium test now exercises the owner-authenticated browser-facing preview URL, not the RuntimeManager upstream port. It requires Chromium sandboxing, checks HTML/CSS and browser request/error behavior, captures a screenshot, and verifies access is unavailable after preview stop. A short-lived HttpOnly/Secure cookie is scoped to the job runtime content path and revoked on stop, logout or expiry. Runtime capability tokens and upstream ports stay server-side. CI runs the test in the control-plane validation workflow. This does not claim cross-browser, visual-regression or WCAG conformance.

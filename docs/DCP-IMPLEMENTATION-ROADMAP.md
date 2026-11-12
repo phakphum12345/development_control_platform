@@ -151,3 +151,11 @@ Do not merge PR #71 until the real Chromium sandbox test, Dashboard browser smok
 - Terminal execution remains BLOCKED by design until a verified OS isolation approach is available. Per-job workspace separation is not equivalent to an OS sandbox.
 - Phase 4 — Runtime/Preview: static runtime and authenticated preview lifecycle are implemented for supported static output; arbitrary app servers and HMR/WebSocket remain unsupported.
 - Phase 5 — Testing: real Chromium static-project acceptance is implemented in CI. Broader framework coverage, cross-browser and visual regression remain outstanding.
+
+
+## 2026-11-12 authenticated Preview Proxy browser acceptance
+
+- Added a real Chromium E2E test that creates a preview through the owner-authenticated Local Auth Proxy API and uses the browser-facing same-origin URL.
+- Sandboxed Chromium verifies HTML and relative CSS, computed style, same-origin requests, absence of browser/request errors, screenshot capture, and denial after stop.
+- Short-lived HttpOnly/Secure, path-scoped preview cookie is revoked on stop, logout or expiry; runtime capability and upstream port remain server-side.
+- CI runs this test alongside the static browser smoke. Cross-owner identity, cross-browser, visual baselines, trace evidence and full WCAG/axe remain follow-up scope.
