@@ -28,12 +28,12 @@ Imported shell scripts and command packs are inert until reviewed and explicitly
 ### Implemented slices
 - Runtime Manager currently supervises generated static output through a loopback-only Python static server. It does not launch arbitrary project server scripts.
 - Authenticated Preview Proxy primitives retain runtime capabilities server-side and enforce owner/job/session checks for supported static preview content.
-- The PR #71 `test_static_web` path currently starts RuntimeManager directly and runs DCP-owned Playwright checks against that loopback URL. It records viewport screenshots and a JSON report in a bounded ZIP artifact.
-- The Playwright browser path enables Chromium sandboxing and applies browser-level loopback request routing, WebSocket blocking, WebRTC API denial and service-worker blocking. These controls are defense-in-depth, not an OS sandbox or host egress firewall.
+- The `test_static_web` Runner target starts RuntimeManager directly and runs DCP-owned Playwright checks against generated static output. It records viewport screenshots and a JSON report in a bounded ZIP artifact.
+- A separate authenticated Preview Proxy E2E starts a completed job preview through the Local Auth Proxy and navigates a real browser to the same-origin preview URL. CI exercises Chromium with sandboxing enabled and adds Firefox/WebKit checks against a synthetic fixture. These checks verify the preview session contract, not general app compatibility.
 
 ### Target integration and explicit gaps
-- The target architecture is for Playwright to navigate the authenticated Preview Proxy URL, not call RuntimeManager directly or use DCP's prototype iframe. This integration is not yet proven by PR #71.
-- Browser traces, full interaction coverage, cross-browser testing, visual baselines and full accessibility audits remain future work.
+- The authenticated Preview Proxy path is now covered by a separate browser E2E; the static `test_static_web` build/test target still uses RuntimeManager directly.
+- Browser traces, full interaction coverage, visual baselines and full accessibility audits remain future work. Firefox/WebKit fixture checks do not imply full cross-browser certification.
 - Preview Proxy support is static-output focused; arbitrary server runtimes, HMR and WebSocket proxying are not implied.
 - Screenshots and reports are evidence of only the implemented checks, not WCAG, security or production-readiness certification.
 
