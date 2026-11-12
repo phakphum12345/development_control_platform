@@ -167,6 +167,67 @@ class WebBuildExecutorTests(unittest.TestCase):
                 import shutil
                 shutil.rmtree(output)
 
+
+    @unittest.skipIf(os.name == "nt", "POSIX fixture executable used for deterministic Node process test")
+    def test_next_and_angular_builds_run_fixed_local_clis_and_package_real_outputs(self):
+        bindir = self.root / "bin"
+        bindir.mkdir()
+        node = bindir / "node"
+        node.write_text(
+            "#!/bin/sh\\n"
+            "case \\"$1\\" in\\n"
+            "  *next) mkdir -p .next; printf next-build > .next/BUILD_ID ;;\\n"
+            "  *ng.js) mkdir -p dist; printf '<h1>angular</h1>' > dist/index.html ;;\\n"
+            "  *) exit 19 ;;\\n"
+            "esac\\n"
+            "printf 'framework-build-ok\\n'\\n"
+        )
+        node.chmod(0o700)
+        old_path = os.environ.get("PATH", "")
+        os.environ["PATH"] = str(bindir) + os.pathsep + old_path
+        try:
+            (self.source / "package.json").write_text(json.dumps({
+                "dependencies": {"next": "^15", "react": "^19"},
+            }), encoding="utf-8")
+            next_cli = self.source / "node_modules" / "next" / "dist" / "bin"
+            next_cli.mkdir(parents=True)
+            (next_cli / "next").write_text("", encoding="utf-8")
+            logs = []
+            executor = WebBuildExecutor(self.manager, enabled=True, log=lambda stream, message: logs.append(message))
+            next_result = executor.run(self.job, self.worker, "build_next")
+            self.assertEqual(next_result.outcome, "succeeded")
+            self.assertTrue((self.source / ".next" / "BUILD_ID").is_file())
+            next_artifact, _ = WebArtifactPackager(self.manager).package(self.job, self.worker, "build_next")
+            self.assertTrue(next_artifact.is_file())
+            next_artifact.unlink()
+            import shutil
+            shutil.rmtree(self.source / ".next")
+            shutil.rmtree(self.source / "node_modules")
+
+            (self.source / "package.json").write_text(json.dumps({
+                "dependencies": {"@angular/core": "^20"},
+                "devDependencies": {"@angular/cli": "^20"},
+            }), encoding="utf-8")
+            (self.source / "angular.json").write_text(json.dumps({
+                "projects": {
+                    "sample-app": {
+                        "projectType": "application",
+                        "architect": {"build": {"builder": "@angular/build:application"}},
+                    }
+                }
+            }), encoding="utf-8")
+            angular_cli = self.source / "node_modules" / "@angular" / "cli" / "bin"
+            angular_cli.mkdir(parents=True)
+            (angular_cli / "ng.js").write_text("", encoding="utf-8")
+            angular_result = executor.run(self.job, self.worker, "build_angular")
+            self.assertEqual(angular_result.outcome, "succeeded")
+            self.assertTrue((self.source / "dist" / "index.html").is_file())
+            angular_artifact, _ = WebArtifactPackager(self.manager).package(self.job, self.worker, "build_angular")
+            self.assertTrue(angular_artifact.is_file())
+            self.assertTrue(any("framework-build-ok" in message for message in logs))
+        finally:
+            os.environ["PATH"] = old_path
+
     def test_vite_requires_node_and_unknown_framework_is_rejected(self):
         (self.source / "package.json").write_text(json.dumps({"dependencies": {"vite": "^7"}}), encoding="utf-8")
         cli = self.source / "node_modules" / "vite" / "bin"
