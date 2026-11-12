@@ -236,6 +236,9 @@ class LocalAuthProxy:
         session_remaining = max(1, int(SESSION_TTL - (now - session["created"])))
         ttl = min(expires_in_seconds, session_remaining)
         with self.lock:
+            for key, record in list(self.preview_sessions.items()):
+                if record["expires_at"] <= now:
+                    self.preview_sessions.pop(key, None)
             self.preview_sessions[(job_id, runtime_id)] = {
                 "token": token,
                 "session_id": session["id"],
@@ -258,11 +261,12 @@ class LocalAuthProxy:
         now = time.time()
         with self.lock:
             record = self.preview_sessions.get((job_id, runtime_id))
-            if (
-                not record
-                or record["expires_at"] <= now
-                or not hmac.compare_digest(token, record["token"])
-            ):
+            if not record:
+                return None
+            if record["expires_at"] <= now:
+                self.preview_sessions.pop((job_id, runtime_id), None)
+                return None
+            if not hmac.compare_digest(token, record["token"]):
                 return None
             session = self.sessions.get(record["session_id"])
             if (
