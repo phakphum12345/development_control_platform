@@ -33,9 +33,26 @@ The jobs database defaults to `DCP_GATEWAY_DATABASE + ".jobs"`; override with `D
 Expired leases are recovered before a claim. Old workers are fenced by the lease checks in the store. The API accepts no shell command, arbitrary environment, filesystem path, or provider selection. Workspace allocation is local to the Runner host and does not imply repository checkout or build execution. Artifact upload/storage, VM creation, and Cloud Provisioning remain disabled. Flutter build execution is opt-in and restricted to an explicit trusted-repository allowlist. It runs on the Runner host; it is not an OS sandbox, so only repositories approved by the operator may be executed, and production runners should be disposable/isolated hosts.
 
 
-## M3 — Local Runner Agent bootstrap
+## M3 — Unified Local Runner Agent and service modes
 
-The first Agent increment is a control-plane-only client. It can validate configuration, read Gateway health, and call the authenticated claim/heartbeat/log/finish contracts. It does not poll continuously, clone repositories, create workspaces, spawn subprocesses, or execute build commands.
+The supported Local Runner path is tools.local_runner_agent. The agent supports
+four explicit modes; Start-DCP-Gateway-Runner.ps1 maps its Windows workflow to
+offline enrollment, one-shot execution, or supervised execution (not the legacy
+tools.runner_agent entry point):
+
+- --check: read Gateway health only; no registration, claim, or execution.
+- --enroll-only: register the worker as offline; it cannot claim jobs.
+- --once: process at most one job; requires explicit execution opt-in.
+- --serve: run the local supervisor until Ctrl+C/SIGTERM; requires explicit
+  execution opt-in. The current job is allowed to finish, then the supervisor
+  stops claiming new work.
+
+The supervisor polls every 5 seconds by default (configurable from 1–60) and
+uses bounded exponential backoff (maximum 300 seconds) for transient Gateway
+errors. Permanent authorization/policy errors and a draining/offline Runner
+stop the service instead of retrying forever. It processes one job at a time.
+Execution is disabled by default and is never enabled by --check or
+--enroll-only.
 
 Required environment:
 - `DCP_GATEWAY_URL` — HTTPS Gateway origin; HTTP is accepted only for loopback development.
@@ -52,7 +69,7 @@ $env:DCP_RUNNER_TOKEN = "<dedicated-worker-token>"
 python -m tools.local_runner_agent --check
 ```
 
-The check reads only `/healthz`; it does not claim a job. The client uses Python's standard HTTPS certificate validation for remote Gateway origins. Job execution remains disabled until workspace isolation, command policy, cancellation, and resource limits are implemented and tested.
+The check reads only `/healthz`; it does not claim a job. The client uses Python's standard HTTPS certificate validation for remote Gateway origins. Job execution remains disabled unless the operator explicitly sets DCP_RUNNER_EXECUTION_ENABLED=1 and supplies at least one trusted repository or enrolled Local Project ID.
 
 
 ## M5 — Per-job Workspace Isolation
@@ -93,7 +110,7 @@ The Runner Agent now has a one-job execution pipeline:
 - Supported targets: `test`, `build` (Android APK), `package` (Android App Bundle), `build_android`, `build_web`, `build_windows`, `build_linux`, `build_macos`, and `build_ios`.
 - macOS/iOS targets require a macOS host; Windows and Linux targets require their corresponding host OS.
 - Process execution has a bounded timeout, bounded combined output, process-group termination, and periodic Runner lease heartbeat/cancellation checks.
-- Execution is disabled by default. `--check` remains health-only. `--once` processes at most one job and requires `DCP_RUNNER_EXECUTION_ENABLED=1`, an absolute `DCP_RUNNER_WORKSPACE_ROOT`, a non-empty JSON array in `DCP_RUNNER_TRUSTED_REPOSITORIES`, and a successful local Git/Flutter preflight. `DCP_RUNNER_CAPABILITIES`, when supplied, must be a unique subset of preflight-detected capabilities.
+- Execution is disabled by default. `--check` remains health-only and `--enroll-only` registers the worker offline. `--once` processes at most one job; `--serve` runs the explicit long-lived supervisor. Both require `DCP_RUNNER_EXECUTION_ENABLED=1`, an absolute `DCP_RUNNER_WORKSPACE_ROOT`, and at least one non-empty allowlist in `DCP_RUNNER_TRUSTED_REPOSITORIES` or `DCP_RUNNER_TRUSTED_LOCAL_PROJECTS`, plus a successful local preflight. `DCP_RUNNER_CAPABILITIES`, when supplied, must be a unique subset of preflight-detected capabilities.
 - Set `DCP_GITHUB_TOKEN` only as a host environment secret when private-repository read access is required. It is not stored in a job, logged, or passed in a URL.
 - Build outputs are packaged by `FlutterArtifactPackager`, uploaded through the authenticated Runner endpoint, indexed with SHA-256 metadata, and downloadable through the authenticated Dashboard Artifact Center.
 
@@ -145,7 +162,7 @@ The local Windows stack can provision a dedicated Runner credential without plac
    .\Start-DCP-Gateway-Runner.cmd -WorkerId windows-local-01 -EnableExecution -TrustedRepository "owner/repository" -Once
    ```
 
-   Omit `-Once` to run the worker loop until Ctrl+C. Execution is never enabled by the setup command or offline-enrollment default.
+   Omit `-Once` to run the unified `--serve` supervisor until Ctrl+C. Offline enrollment never enables execution.
 
 The Gateway listens on loopback port 18790; the Dashboard remains on 8789. The Gateway reads the protected token map at startup; Runner tokens are never injected into build subprocesses. Build subprocesses receive only the safe OS/toolchain environment allowlist. Cloud Provisioning remains disabled.
 
@@ -161,7 +178,7 @@ If the credential file is created or changed while the Gateway is running, resta
 - Runner liveness is refreshed during active builds. Workers older than `DCP_GATEWAY_RUNNER_STALE_SECONDS` (default 60 seconds; allowed 15–3600) are reported offline.
 - Dashboard operators can Drain a worker to stop new claims while allowing its active Job to finish, then Enable it again. A stale worker becomes online again only after it checks in.
 - `host_os` is recorded separately from build capabilities. Configure `DCP_RUNNER_CAPABILITIES` as a JSON array containing only targets actually detected by local preflight (for example `flutter`, `android`, `web`, `windows`, `linux`, `macos`, `ios`). A Windows host without Visual Studio may still register for Android/Web work but will not advertise Windows desktop builds. The default uses the full preflight-detected capability set; cross-platform targets are never assumed.
-- The CLI remains one-shot (`--once`); continuous polling/daemon supervision is a separate deployment decision.
+- The unified `tools.local_runner_agent` CLI supports `--enroll-only`, `--once`, and explicit `--serve`. The supported Windows launcher uses `--enroll-only` by default, `--once` only with `-Once`, and `--serve` when execution is enabled without `-Once`. Continuous mode uses bounded polling/backoff and stops on permanent policy errors.
 
 
 ## M7 — Explicit Local Folder project registry
@@ -278,3 +295,23 @@ provenance in the public claim response, rejects the first worker's stale
 heartbeat with HTTP 409, and allows only the current lease owner to finish.
 This validates the complete Gateway HTTP path in addition to the JobStore unit
 tests. It uses temporary SQLite stores and test-only Runner credentials.
+
+
+## M12 — Unified Windows Runner launcher and supervised mode
+
+The supported Windows launcher is Start-DCP-Gateway-Runner.ps1. It loads the
+worker token from the protected LocalAppData credential file, maps WorkerId to
+DCP_RUNNER_WORKER_ID, uses the unified tools.local_runner_agent module, and
+restores the caller's process environment after exit.
+
+- Default invocation without -EnableExecution performs offline enrollment only.
+- -EnableExecution requires at least one explicit -TrustedRepository or
+  -TrustedLocalProject. Local Project IDs must be canonical UUIDs.
+- -Once runs one job. Without -Once, the launcher uses --serve.
+- Playwright and custom capability overrides are cleared from inherited process
+  environment; they are not enabled implicitly by the launcher.
+- The service stops taking new jobs after Ctrl+C/SIGTERM and lets the current
+  pipeline call return before exiting. Transient Gateway errors use bounded
+  backoff; permanent authorization/policy errors stop the service.
+- The legacy tools.runner_agent.agent implementation remains for compatibility
+  tests but is no longer invoked by the supported Windows launcher.

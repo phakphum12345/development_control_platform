@@ -104,3 +104,13 @@ The corrected implementation passed both PR workflows on head `ab8c558ee4d82f940
 - Verified the former worker receives HTTP 409 when attempting a stale heartbeat after another worker owns the lease.
 - Verified the current worker can finish and that the lease-recovery audit event records the former worker.
 - Uses temporary SQLite databases and test-only worker tokens; no real Runner host or repository code is used.
+
+
+## Phase 3 progress — unified Local Runner service (PR in progress)
+
+- Added offline enrollment to the unified Runner client and CLI.
+- Added an opt-in long-running service mode with 5-second polling, bounded exponential backoff, and stop-on-permanent-policy-error behavior.
+- Added signal handling so shutdown prevents new claims after the current job returns.
+- Migrated Start-DCP-Gateway-Runner.ps1 from the legacy agent to tools.local_runner_agent.
+- Added explicit trusted GitHub repository and Local Project ID allowlists; the launcher defaults to offline enrollment and never enables Playwright implicitly.
+- Added CLI, service, client, launcher-contract and Windows PowerShell parser tests.

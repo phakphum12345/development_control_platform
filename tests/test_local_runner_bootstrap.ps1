@@ -1,6 +1,20 @@
 $ErrorActionPreference = 'Stop'
 $project = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $setup = Join-Path $project 'Setup-DCP-Local-Runner.ps1'
+$runnerScript = Join-Path $project 'Start-DCP-Gateway-Runner.ps1'
+$tokens = $null
+$parseErrors = $null
+[System.Management.Automation.Language.Parser]::ParseFile(
+    $runnerScript, [ref]$tokens, [ref]$parseErrors
+) | Out-Null
+if ($parseErrors.Count -gt 0) {
+    throw 'Unified Local Runner PowerShell launcher has syntax errors.'
+}
+$runnerSource = Get-Content -LiteralPath $runnerScript -Raw
+if ($runnerSource -notmatch '-m tools\.local_runner_agent' -or
+    $runnerSource -match '-m tools\.runner_agent\.agent') {
+    throw 'Windows launcher must invoke the unified Local Runner Agent.'
+}
 $testRoot = Join-Path $env:RUNNER_TEMP 'dcp-local-runner-credential-test'
 $previousLocalAppData = $env:LOCALAPPDATA
 

@@ -6,12 +6,15 @@ import json
 import os
 import platform
 import re
+import signal
 import sys
+import threading
 from pathlib import Path
 
 from .client import GatewayClient, RunnerAgentConfig, RunnerGatewayError
 from .checkout import GitHubCommitCheckout, LocalProjectCheckout
 from .execution import FlutterBuildExecutor
+from .service import RunnerAgentService
 from .web_build import WebBuildExecutor
 from .browser_test import StaticWebPlaywrightTester
 from .pipeline import RunnerPipeline
@@ -41,6 +44,14 @@ def main(argv=None) -> int:
     modes.add_argument(
         "--once", action="store_true",
         help="claim and process at most one job; requires explicit execution opt-in",
+    )
+    modes.add_argument(
+        "--serve", action="store_true",
+        help="run the local Runner service until Ctrl+C/SIGTERM; requires explicit execution opt-in",
+    )
+    modes.add_argument(
+        "--enroll-only", action="store_true",
+        help="register this host offline; never claim or execute jobs",
     )
     modes.add_argument(
         "--enroll-root", metavar="PATH",
@@ -89,8 +100,41 @@ def main(argv=None) -> int:
             }, indent=2, sort_keys=True))
             return 0
 
+        host_os = platform.system().lower()
+        if host_os == "darwin":
+            host_os = "macos"
+        if host_os not in ("linux", "windows", "macos"):
+            raise ValueError("unsupported Runner host operating system")
+        preflight = collect_preflight()
+        if preflight.get("host_os") != host_os:
+            raise ValueError("Runner host preflight OS does not match this machine")
+        raw_capabilities = os.environ.get("DCP_RUNNER_CAPABILITIES")
+        configured_capabilities = (
+            json.loads(raw_capabilities) if raw_capabilities is not None else None
+        )
+        capabilities = resolve_capabilities(preflight, configured_capabilities)
+        playwright_enabled = os.environ.get("DCP_RUNNER_PLAYWRIGHT_ENABLED") == "1"
+        if not playwright_enabled:
+            if configured_capabilities is not None and "playwright" in configured_capabilities:
+                raise ValueError("DCP_RUNNER_PLAYWRIGHT_ENABLED=1 is required to advertise Playwright capability")
+            capabilities = [item for item in capabilities if item != "playwright"]
+        elif "playwright" not in capabilities:
+            raise ValueError("Playwright package and Chromium browser must pass host preflight before opt-in")
+
+        if args.enroll_only:
+            runner = client.enroll(host_os, capabilities)
+            print(json.dumps({
+                "agent": "enrolled",
+                "worker_id": runner.get("worker_id", config.worker_id),
+                "host_os": runner.get("host_os", host_os),
+                "capabilities": runner.get("capabilities", capabilities),
+                "state": runner.get("state", "offline"),
+                "execution_enabled": False,
+            }, indent=2, sort_keys=True))
+            return 0
+
         if os.environ.get("DCP_RUNNER_EXECUTION_ENABLED") != "1":
-            raise ValueError("DCP_RUNNER_EXECUTION_ENABLED=1 is required for --once")
+            raise ValueError("DCP_RUNNER_EXECUTION_ENABLED=1 is required for --once or --serve")
         root = os.environ.get("DCP_RUNNER_WORKSPACE_ROOT", "").strip()
         if not root:
             root = str(default_registry_path().parent / "workspaces")
@@ -139,26 +183,6 @@ def main(argv=None) -> int:
                 "DCP_RUNNER_MAX_OUTPUT_BYTES", 5 * 1024 * 1024
             ),
         )
-        host_os = platform.system().lower()
-        if host_os == "darwin":
-            host_os = "macos"
-        if host_os not in ("linux", "windows", "macos"):
-            raise ValueError("unsupported Runner host operating system")
-        preflight = collect_preflight()
-        if preflight.get("host_os") != host_os:
-            raise ValueError("Runner host preflight OS does not match this machine")
-        raw_capabilities = os.environ.get("DCP_RUNNER_CAPABILITIES")
-        configured_capabilities = (
-            json.loads(raw_capabilities) if raw_capabilities is not None else None
-        )
-        capabilities = resolve_capabilities(preflight, configured_capabilities)
-        playwright_enabled = os.environ.get("DCP_RUNNER_PLAYWRIGHT_ENABLED") == "1"
-        if not playwright_enabled:
-            if configured_capabilities is not None and "playwright" in configured_capabilities:
-                raise ValueError("DCP_RUNNER_PLAYWRIGHT_ENABLED=1 is required to advertise Playwright capability")
-            capabilities = [item for item in capabilities if item != "playwright"]
-        elif "playwright" not in capabilities:
-            raise ValueError("Playwright package and Chromium browser must pass host preflight before opt-in")
         pipeline = RunnerPipeline(
             client, manager, checkout, executor,
             trusted_repositories=frozenset(raw_repositories),
@@ -178,6 +202,38 @@ def main(argv=None) -> int:
                 ) if playwright_enabled else None
             ),
         )
+        if args.serve:
+            poll_interval = _positive_int("DCP_RUNNER_POLL_INTERVAL_SECONDS", 5)
+            max_backoff = _positive_int("DCP_RUNNER_MAX_BACKOFF_SECONDS", 60)
+            if poll_interval > 60:
+                raise ValueError("DCP_RUNNER_POLL_INTERVAL_SECONDS must not exceed 60")
+            if max_backoff > 300:
+                raise ValueError("DCP_RUNNER_MAX_BACKOFF_SECONDS must not exceed 300")
+            stop_event = threading.Event()
+            previous_handlers = {}
+
+            def request_stop(_signum, _frame):
+                stop_event.set()
+
+            for signum in (signal.SIGINT, signal.SIGTERM):
+                previous_handlers[signum] = signal.getsignal(signum)
+                signal.signal(signum, request_stop)
+            try:
+                summary = RunnerAgentService(
+                    pipeline,
+                    poll_interval_seconds=poll_interval,
+                    max_backoff_seconds=max_backoff,
+                ).run(stop_event)
+            finally:
+                for signum, previous in previous_handlers.items():
+                    signal.signal(signum, previous)
+            print(json.dumps({
+                "agent": "stopped" if summary["stopped"] else "not_ready",
+                "worker_id": config.worker_id,
+                **summary,
+            }, indent=2, sort_keys=True))
+            return 0 if summary["stopped"] else 1
+
         result = pipeline.run_once()
         if result is None:
             print(json.dumps({"agent": "idle", "worker_id": config.worker_id}))
