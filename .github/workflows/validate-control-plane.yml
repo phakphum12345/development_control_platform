@@ -147,6 +147,20 @@ jobs:
       - name: Install Firefox and WebKit with system prerequisites
         run: python -m playwright install --with-deps firefox webkit
 
+      - name: Verify all browser engine executables are present
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from playwright.sync_api import sync_playwright
+
+          with sync_playwright() as playwright:
+              for name in ("chromium", "firefox", "webkit"):
+                  executable = Path(getattr(playwright, name).executable_path)
+                  if not executable.is_file():
+                      raise SystemExit(f"{name} executable is missing: {executable}")
+                  print(f"{name}: installed")
+          PY
+
       - name: Test authenticated Preview Proxy in Firefox
         env:
           DEBUG: pw:browser
