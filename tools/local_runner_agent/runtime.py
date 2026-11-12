@@ -242,13 +242,20 @@ class RuntimeManager:
             raise RuntimeErrorDCP("explicit Owner approval is required to run the Next.js server")
         try:
             workspace = self.workspaces.get(job_id, worker_id)
+        except WorkspaceError:
+            raise RuntimeErrorDCP("job workspace is not safe or available") from None
+        # Validate the runtime-specific output before the broad quota scan.
+        # The quota scanner intentionally rejects every symlink, but its
+        # generic WorkspaceError would otherwise hide the more actionable
+        # Next.js output validation error (and break security diagnostics).
+        root = self._safe_next_output(workspace)
+        try:
             self.workspaces.check_quota(job_id, worker_id)
         except WorkspaceError:
             raise RuntimeErrorDCP("job workspace is not safe or available") from None
         self.reap_expired()
         if len(self._runtimes) >= self.max_active:
             raise RuntimeErrorDCP("active runtime limit reached")
-        root = self._safe_next_output(workspace)
         source = workspace / "source"
         package = source / "package.json"
         if package.is_symlink() or not package.is_file():
