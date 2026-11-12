@@ -388,19 +388,37 @@ class AzureEgressPolicyVerifier:
         ip_configs = firewall_props.get("ipConfigurations")
         if not isinstance(ip_configs, list):
             raise AzureEgressPolicyError("Azure Firewall has no IP configurations")
-        private_ips = {
-            item.get("properties", {}).get("privateIPAddress")
-            for item in ip_configs
-            if item.get("properties", {}).get("privateIPAddress")
-        }
-        if len(private_ips) != 1:
-            raise AzureEgressPolicyError("Azure Firewall must have exactly one verified private IP")
-        firewall_ip = next(iter(private_ips))
+        if len(ip_configs) != 1 or not isinstance(ip_configs[0], dict):
+            raise AzureEgressPolicyError("Azure Firewall must expose exactly one IP configuration")
+        firewall_ip = ip_configs[0].get("properties", {}).get("privateIPAddress")
+        firewall_subnet_id = ip_configs[0].get("properties", {}).get("subnet", {}).get("id")
+        if not isinstance(firewall_ip, str) or not isinstance(firewall_subnet_id, str):
+            raise AzureEgressPolicyError("Azure Firewall must expose one private IP and its subnet")
         try:
-            if not ipaddress.ip_address(firewall_ip).is_private:
+            firewall_address = ipaddress.ip_address(firewall_ip)
+            if firewall_address.version != 4 or not firewall_address.is_private:
                 raise ValueError
         except ValueError as exc:
             raise AzureEgressPolicyError("Azure Firewall private IP is invalid") from exc
+        firewall_subnet_pattern = (
+            r"^/subscriptions/" + re.escape(self.arm.subscription_id)
+            + r"/resourceGroups/[A-Za-z0-9_.()-]{1,90}/providers/Microsoft\\.Network/"
+            r"virtualNetworks/[A-Za-z0-9_.()-]{1,90}/subnets/AzureFirewallSubnet$"
+        )
+        if not re.fullmatch(firewall_subnet_pattern, firewall_subnet_id, re.I):
+            raise AzureEgressPolicyError("Azure Firewall must use its dedicated AzureFirewallSubnet")
+        firewall_vnet_id = firewall_subnet_id.rsplit("/subnets/", 1)[0]
+        if firewall_vnet_id.lower() != vnet_id.lower():
+            raise AzureEgressPolicyError("Runner subnet and Azure Firewall must share one VNet; hub peering is not verified")
+        firewall_subnet = self._get(firewall_subnet_id, API_NETWORK)
+        self._state(firewall_subnet, "Azure Firewall subnet")
+        firewall_prefixes = self._subnet_prefixes(firewall_subnet.get("properties", {}))
+        if not any(
+            firewall_address in ipaddress.ip_network(prefix, strict=True)
+            and ipaddress.ip_network(prefix, strict=True).prefixlen <= 26
+            for prefix in firewall_prefixes
+        ):
+            raise AzureEgressPolicyError("Azure Firewall private IP is outside its dedicated subnet or the subnet is too small")
         self._check_route_table(route_table, firewall_ip)
 
         vnet = self._get(vnet_id, API_NETWORK)
