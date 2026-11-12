@@ -30,7 +30,7 @@ MIN_PASSWORD_LENGTH = 14
 COOKIE = "DCP_LOCAL_SESSION"
 MAX_BODY = 32_768
 MAX_PREVIEW_RESPONSE_BYTES = 12 * 1024 * 1024
-ALLOWED_GET = ("/api/cloud-runners/status", "/api/cloud-runners", "/api/local-projects", "/api/local-projects/roots", "/api/github/repositories")
+ALLOWED_GET = ("/api/cloud-runners/status", "/api/cloud-runners", "/api/local-projects", "/api/local-projects/roots", "/api/github/repositories", "/api/infrastructure/gates")
 CREDENTIALS = Path(os.getenv("DCP_LOCAL_AUTH_CREDENTIAL_FILE", str(Path(os.getenv("LOCALAPPDATA", str(Path.home()))) / "DCP" / "owner-auth.json")))
 
 
@@ -461,6 +461,20 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                 return self.send_bytes(status, data)
             preview_start = re.fullmatch(r"/api/jobs/([0-9a-f-]{36})/previews", path)
             if preview_start:
+                if not session or not session["authenticated"] or not self.csrf_ok(session):
+                    return self.send_json(403, {"error": "authenticated session and CSRF token required"})
+                try:
+                    _, raw = self.body()
+                except Exception:
+                    return self.send_json(400, {"error": "invalid JSON body"})
+                status, data = app.gateway_request(
+                    "POST", path, session, raw, self.headers.get("X-CSRF-Token", "")
+                )
+                return self.send_bytes(status, data)
+            gate_match = re.fullmatch(
+                r"/api/infrastructure/gates/(cloud_provisioning|vm_creation)", path
+            )
+            if gate_match:
                 if not session or not session["authenticated"] or not self.csrf_ok(session):
                     return self.send_json(403, {"error": "authenticated session and CSRF token required"})
                 try:

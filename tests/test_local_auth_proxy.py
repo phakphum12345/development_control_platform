@@ -323,6 +323,27 @@ class LocalAuthProxyEndToEndTests(unittest.TestCase):
         self.assertEqual(api["gateway"], "READY")
         self.assertFalse(api["provisioning_enabled"])
 
+        gates_status, _, gates_body = self.request("/api/infrastructure/gates")
+        self.assertEqual(gates_status, 200, gates_body.decode(errors="replace"))
+        gates = json.loads(gates_body)["gates"]
+        self.assertFalse(gates["cloud_provisioning"]["enabled"])
+        self.assertFalse(gates["vm_creation"]["enabled"])
+
+        gate_off, _, gate_off_body = self.request(
+            "/api/infrastructure/gates/vm_creation", "POST",
+            {"enabled": False}, session["csrfToken"],
+        )
+        self.assertEqual(gate_off, 200, gate_off_body.decode(errors="replace"))
+        self.assertFalse(json.loads(gate_off_body)["gate"]["enabled"])
+
+        gate_on, _, gate_on_body = self.request(
+            "/api/infrastructure/gates/vm_creation", "POST",
+            {"enabled": True, "confirmation": "ENABLE VM CREATION"},
+            session["csrfToken"],
+        )
+        self.assertEqual(gate_on, 503, gate_on_body.decode(errors="replace"))
+        self.assertIn("not ready", json.loads(gate_on_body)["error"])
+
         no_csrf, _, _ = self.request(
             "/api/auth/logout",
             "POST",
