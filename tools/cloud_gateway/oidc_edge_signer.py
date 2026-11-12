@@ -16,9 +16,14 @@ from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from .oidc_assertion import OIDCAssertionError, sign_verified_oidc_assertion
+
+
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 class OIDCProxyIdentitySigner:
@@ -41,6 +46,10 @@ class OIDCProxyIdentitySigner:
         clock=None,
     ):
         parsed = urlparse(auth_url)
+        try:
+            _ = parsed.port
+        except ValueError as exc:
+            raise ValueError("Invalid OIDC auth endpoint port") from exc
         if (
             parsed.scheme != "http"
             or parsed.hostname != "127.0.0.1"
@@ -70,8 +79,12 @@ class OIDCProxyIdentitySigner:
         from .oidc_assertion import map_oidc_groups
         if not isinstance(owner_groups, (list, tuple, set)) or not isinstance(operator_groups, (list, tuple, set)):
             raise ValueError("OIDC group mappings must be collections")
-        if not owner_groups or not operator_groups or set(owner_groups) & set(operator_groups):
-            raise ValueError("Owner and operator OIDC groups must be nonempty and distinct")
+        if (
+            not owner_groups or not operator_groups
+            or any(not isinstance(group, str) or not group for group in (*owner_groups, *operator_groups))
+            or set(owner_groups) & set(operator_groups)
+        ):
+            raise ValueError("Owner and operator OIDC groups must be nonempty, valid and distinct")
         self.owner_groups = tuple(owner_groups)
         self.operator_groups = tuple(operator_groups)
         # Validate group collection element types at startup.
@@ -84,7 +97,7 @@ class OIDCProxyIdentitySigner:
         self.session_cookie_name = session_cookie_name
         self.session_max_age = session_max_age
         self.timeout = float(timeout)
-        self.opener = opener or urlopen
+        self.opener = opener or build_opener(_NoRedirect()).open
         self.clock = clock or time.time
 
     @staticmethod
@@ -148,7 +161,9 @@ class OIDCProxyIdentitySigner:
         )
         try:
             with self.opener(request, timeout=self.timeout) as response:
-                status = getattr(response, "status", response.getcode())
+                status = getattr(response, "status", None)
+                if status is None:
+                    status = response.getcode()
                 body = response.read(4097)
                 if len(body) > 4096:
                     raise OIDCAssertionError("OIDC proxy auth response exceeded size limit")
@@ -166,12 +181,17 @@ class OIDCProxyIdentitySigner:
                 exc.close()
         except (URLError, TimeoutError, OSError) as exc:
             raise OIDCAssertionError("OIDC proxy authentication service unavailable") from exc
-        if not isinstance(subject, str) or not subject or len(subject) > 256:
+        if not isinstance(subject, str) or not re.fullmatch(r"[A-Za-z0-9._:@/-]{1,256}", subject):
             return None
         if not isinstance(raw_groups, str) or len(raw_groups) > 8192:
             return None
         groups = [item.strip() for item in raw_groups.split(",") if item.strip()]
         if not groups or len(groups) > 100:
+            return None
+        from .oidc_assertion import map_oidc_groups
+        try:
+            map_oidc_groups(groups, self.owner_groups, self.operator_groups)
+        except OIDCAssertionError:
             return None
         return subject, groups
 
