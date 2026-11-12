@@ -405,8 +405,11 @@ class AzureEgressPolicyVerifier:
         policy_props = policy.get("properties", {})
         if policy_props.get("basePolicy"):
             raise AzureEgressPolicyError("Inherited Azure Firewall policies are not accepted for runner egress")
-        if policy_props.get("dnsSettings", {}).get("enableProxy") is not True:
+        dns_settings = policy_props.get("dnsSettings", {})
+        if dns_settings.get("enableProxy") is not True:
             raise AzureEgressPolicyError("Azure Firewall Policy DNS proxy must be enabled")
+        if dns_settings.get("servers") not in (None, []):
+            raise AzureEgressPolicyError("Runner Firewall Policy must use Azure's default DNS upstream")
 
         catalog = self.domain_catalog()
         if not isinstance(catalog, (list, tuple, set)) or not catalog:
