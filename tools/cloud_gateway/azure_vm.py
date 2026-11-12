@@ -73,6 +73,8 @@ class AzureVMProvider:
   os_name=payload.get("target_os"); expected={"linux":"ubuntu-24.04-x64","windows":"windows-2025-x64"}
   if os_name not in expected or payload.get("image")!=expected[os_name]: raise AzureProvisionError("Azure adapter accepts only approved Linux or Windows profiles")
   if payload.get("ephemeral") is not True or payload.get("network_policy")!="restricted-egress": raise AzureProvisionError("Runner must be ephemeral with restricted egress")
+  gate=self.readiness(os_name)
+  if gate.get("ready") is not True: raise AzureProvisionError("Azure runner provider is not ready: "+str(gate.get("message","readiness check failed")))
   vm_name,nic_name=self._names(payload["workflow_run_id"]); bootstrap=self.bootstrap_factory(vm_name,os_name,payload)
   if not isinstance(bootstrap,dict) or not isinstance(bootstrap.get("os_profile"),dict) or not isinstance(bootstrap.get("extension"),dict): raise AzureProvisionError("Protected bootstrap factory returned an invalid contract")
   props=bootstrap["extension"].get("properties",{})
