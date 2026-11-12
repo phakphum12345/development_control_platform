@@ -69,3 +69,15 @@ Imported templates can now be explicitly approved or rejected by the Owner. Revi
 ## Dashboard Owner review controls
 
 For imported templates, Terminal Studio displays the stored source hash and review history, and exposes Approve/Reject actions while the item is pending review. The action requires an exact typed confirmation phrase. After a successful decision the catalog and preview are refreshed. Approved templates remain disabled and labelled APPROVED_NOT_EXECUTABLE.
+
+
+## Visual Command Builder checkpoint — typed preview only
+
+A bounded, schema-driven Visual Command Builder is now implemented for the curated read-only catalog:
+
+- Git history accepts a numeric commit limit from 1 to 50 (default 5).
+- Inspect Commit and Compare Working Tree to Commit require an exact 40-character hexadecimal SHA.
+- The Gateway accepts only `template_id` and an optional typed `parameters` object; unknown fields, unknown parameters, wrong types, out-of-range values and malformed SHAs are rejected.
+- The Dashboard renders fields from the trusted catalog schema using DOM APIs, then displays normalized parameter values and exact argv.
+- Imported command packs do not accept builder parameters and remain disabled regardless of Owner review status.
+- All built-in commands remain read-only, network-denied and preview-only. No shell, PTY or process execution is introduced.
