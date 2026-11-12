@@ -1,6 +1,6 @@
 """MacStadium Orka adapter. Runner-online evidence is checked separately from VM state."""
 from __future__ import annotations
-import json,re,uuid
+import base64,json,re,uuid
 from urllib.error import HTTPError,URLError
 from urllib.parse import quote,urlparse
 from urllib.request import Request,urlopen
@@ -11,7 +11,7 @@ class OrkaProvider:
  budget_provider="orka"
  requires_runner_cleanup=True
  requires_budget_guard=True
- def __init__(self,base_url,namespace,vm_config,secret_reader,secret_name="orka-api-token",runner_online_checker=None,timeout=20):
+ def __init__(self,base_url,namespace,vm_config,secret_reader,secret_name="orka-api-token",runner_online_checker=None,timeout=20,bootstrap_factory=None,userdata_rbac_reviewed=False,network_policy_checker=None,cluster_readiness_checker=None,budget_readiness_checker=None):
   parsed=urlparse(base_url)
   if parsed.scheme!="https" or not parsed.hostname or parsed.username is not None or parsed.password is not None or parsed.path not in ("","/") or parsed.query or parsed.fragment: raise ValueError("Orka endpoint must be an HTTPS origin")
   if not re.fullmatch(r"[a-z0-9]([-a-z0-9]*[a-z0-9])?",namespace): raise ValueError("Invalid Orka namespace")
@@ -19,6 +19,10 @@ class OrkaProvider:
   if not re.fullmatch(r"[A-Za-z0-9-]{1,127}",secret_name): raise ValueError("Invalid Key Vault secret name")
   self.base=base_url.rstrip("/"); self.namespace=namespace; self.vm_config=vm_config
   self.secret_reader=secret_reader; self.secret_name=secret_name; self.online=runner_online_checker; self.timeout=timeout
+  self.bootstrap_factory=bootstrap_factory; self.userdata_rbac_reviewed=userdata_rbac_reviewed is True
+  self.network_policy_checker=network_policy_checker
+  self.cluster_readiness_checker=cluster_readiness_checker
+  self.budget_readiness_checker=budget_readiness_checker
  def _request(self,method,path,payload=None,allow_missing=False):
   token=self.secret_reader.get_secret(self.secret_name)
   body=None if payload is None else json.dumps(payload,separators=(",",":")).encode()
@@ -41,14 +45,34 @@ class OrkaProvider:
   return data
  def readiness(self,os_name):
   if os_name!="macos": return {"ready":False,"message":"Orka supports only the approved macOS profile"}
-  if self.online is None: return {"ready":False,"message":"Independent GitHub runner-online verification is not configured"}
-  return {"ready":False,"message":"Orka User Data bootstrap and provider-specific cost guard are not verified; macOS runner remains disabled"}
+  if not callable(self.online): return {"ready":False,"message":"Independent GitHub runner-online verification is not configured"}
+  if not callable(self.bootstrap_factory): return {"ready":False,"message":"Protected Orka User Data bootstrap is not configured"}
+  if not self.userdata_rbac_reviewed: return {"ready":False,"message":"Orka namespace User Data RBAC review is not approved"}
+  checks=(
+   ("network_policy_checker","Orka runner network egress policy is not verified"),
+   ("cluster_readiness_checker","Orka 4.0 Apple-silicon cluster and VM Tools are not verified"),
+   ("budget_readiness_checker","Authoritative Orka provider-specific budget is not verified"),
+  )
+  for name,message in checks:
+   checker=getattr(self,name)
+   if not callable(checker): return {"ready":False,"message":message}
+   try: accepted=checker(self.namespace,self.vm_config) is True
+   except Exception: accepted=False
+   if not accepted: return {"ready":False,"message":message}
+  return {"ready":True,"message":"Orka macOS provider, User Data, egress, cluster and budget checks passed"}
  def provision(self,payload):
   if payload.get("target_os")!="macos" or payload.get("image")!="macos-15-arm64": raise OrkaError("Orka adapter accepts only the approved macOS 15 ARM64 profile")
   if payload.get("ephemeral") is not True or payload.get("network_policy")!="restricted-egress": raise OrkaError("Orka request violates ephemeral network policy")
+  gate=self.readiness("macos")
+  if gate.get("ready") is not True: raise OrkaError("Orka provider is not ready: "+str(gate.get("message","readiness check failed")))
   name="dcp-"+str(payload["workflow_run_id"])+"-"+uuid.uuid4().hex[:8]
+  bootstrap=self.bootstrap_factory(name,"macos",payload)
+  script=bootstrap.get("script") if isinstance(bootstrap,dict) else None
+  if not isinstance(script,str) or not script or "\\x00" in script: raise OrkaError("Orka User Data bootstrap factory returned an invalid script")
+  userdata=base64.b64encode(script.encode("utf-8")).decode("ascii")
+  if len(userdata)>65536: raise OrkaError("Orka User Data script exceeds the 64 KiB encoded limit")
   metadata={"managed-by":"dcp-cloud-runner","repository":payload["repository"],"workflow-run-id":str(payload["workflow_run_id"]),"commit-sha":payload["commit_sha"],"target-os":"macos"}
-  body={"name":name,"vmConfig":self.vm_config,"shouldGenerateName":False,"customMetadata":metadata}
+  body={"name":name,"vmConfig":self.vm_config,"shouldGenerateName":False,"customMetadata":metadata,"userdata":userdata}
   path="/api/v1/namespaces/"+quote(self.namespace,safe="")+"/vms/"+quote(name,safe="")
   collection="/api/v1/namespaces/"+quote(self.namespace,safe="")+"/vms"
   try:
@@ -82,11 +106,12 @@ class OrkaProvider:
   data=self._request("GET",path,allow_missing=True)
   if data is None: return RunnerInstance(provider_id,"terminated")
   vm_status=str(data.get("status","")).lower()
-  if vm_status in ("failed","error","crashed"):
+  userdata_phase=str(data.get("userdataPhase","")).lower()
+  if vm_status in ("failed","error","crashed") or userdata_phase in ("failed","timeout","skipped"):
    self._request("DELETE",path,allow_missing=True)
    state="terminating"
   elif vm_status in ("deleting","terminating"): state="terminating"
-  elif vm_status in ("running","ready") and self.online:
+  elif vm_status in ("running","ready") and userdata_phase=="success" and self.online:
    metadata=data.get("customMetadata",{})
    repository=metadata.get("repository") if isinstance(metadata,dict) else None
    try: online=self.online(provider_id,repository,"macos") is True
