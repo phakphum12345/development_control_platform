@@ -192,7 +192,7 @@ def preview_template(template_id: str, parameters: dict | None = None) -> dict:
     if not isinstance(template_id, str) or template_id not in _TEMPLATES:
         raise ValueError("unknown terminal template")
     result = deepcopy(_TEMPLATES[template_id])
-    values = _validate_parameters(result, parameters or {})
+    values = _validate_parameters(result, {} if parameters is None else parameters)
     argv = []
     for argument in result["argv"]:
         value = argument
