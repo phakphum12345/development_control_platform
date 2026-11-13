@@ -18,6 +18,7 @@ from tools.cloud_gateway.job_control import JobStore
 from tools.cloud_gateway.server import make_handler
 from tools.cloud_gateway.service import GatewayService
 from tools.cloud_gateway.store import RunnerStore
+from tools.cloud_gateway.terminal_grants import TerminalGrantStore
 from tools.local_runner_agent.local_project import LocalProjectRegistry
 
 
@@ -39,6 +40,7 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
         self.service = service
         service.local_project_registry = registry
         service.job_store = JobStore(base / "jobs.sqlite3")
+        service.terminal_grant_store = TerminalGrantStore(base / "terminal-grants.sqlite3")
         service.repository_catalog = lambda: []
         service.repository_authorizer = lambda repository: repository == "example/demo"
         service.repository_ref_catalog = lambda repository, kind: [
@@ -124,6 +126,52 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
         self.assertEqual(row["framework_detection"]["project_type"], "web")
         self.assertNotIn("workspace", row)
         self.assertNotIn("path", row)
+
+    def test_terminal_authorization_endpoint_fails_closed_while_templates_are_disabled(self):
+        payload = {
+            "project_id": self.project["project_id"],
+            "workspace_id": self.project["workspace_id"],
+            "snapshot_sha256": self.project["snapshot_sha256"],
+            "template_id": "git_status",
+            "parameters": {},
+        }
+        status, result = self.request(
+            "/api/terminal/authorize", method="POST", payload=payload
+        )
+        self.assertEqual(status, 409)
+        self.assertIn("not enabled", result["error"])
+        with self.service.terminal_grant_store.db() as db:
+            count = db.execute("SELECT count(*) FROM terminal_grants").fetchone()[0]
+        self.assertEqual(count, 0)
+
+    def test_terminal_authorization_endpoint_is_owner_only(self):
+        payload = {
+            "project_id": self.project["project_id"],
+            "workspace_id": self.project["workspace_id"],
+            "snapshot_sha256": self.project["snapshot_sha256"],
+            "template_id": "git_status",
+            "parameters": {},
+        }
+        status, result = self.request(
+            "/api/terminal/authorize", role="operator", method="POST", payload=payload
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(result["error"], "owner role required")
+
+    def test_terminal_authorization_endpoint_rejects_browser_shell_fields(self):
+        payload = {
+            "project_id": self.project["project_id"],
+            "workspace_id": self.project["workspace_id"],
+            "snapshot_sha256": self.project["snapshot_sha256"],
+            "template_id": "git_status",
+            "parameters": {},
+            "shell": "whoami",
+        }
+        status, result = self.request(
+            "/api/terminal/authorize", method="POST", payload=payload
+        )
+        self.assertEqual(status, 409)
+        self.assertIn("fields are invalid", result["error"])
 
     def test_owner_can_queue_job_bound_to_current_local_snapshot(self):
         payload = {
