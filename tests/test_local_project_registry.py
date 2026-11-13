@@ -72,6 +72,28 @@ class LocalProjectRegistryTests(unittest.TestCase):
         persisted = json.loads(self.registry_path.read_text(encoding="utf-8"))
         self.assertEqual(persisted["projects"][project["project_id"]]["workspace_id"], migrated["workspace_id"])
 
+    def test_resolves_workspace_id_to_trusted_project_path(self):
+        project = self.registry.register_project(self.root["root_id"], self.project)
+        resolved = self.registry.resolve_workspace(
+            project["project_id"], project["workspace_id"], project["snapshot_sha256"]
+        )
+        self.assertEqual(resolved["path"], str(self.project.resolve()))
+        self.assertEqual(resolved["project_id"], project["project_id"])
+        self.assertEqual(resolved["workspace_id"], project["workspace_id"])
+        self.assertEqual(resolved["relative_path"], "web-app")
+
+    def test_workspace_resolution_rejects_cross_project_and_stale_snapshot(self):
+        project = self.registry.register_project(self.root["root_id"], self.project)
+        with self.assertRaisesRegex(LocalProjectError, "does not belong"):
+            self.registry.resolve_workspace(
+                project["project_id"], str(__import__("uuid").uuid4()), project["snapshot_sha256"]
+            )
+        (self.project / "index.html").write_text("<h1>changed</h1>\n", encoding="utf-8")
+        with self.assertRaisesRegex(LocalProjectError, "snapshot changed"):
+            self.registry.resolve_workspace(
+                project["project_id"], project["workspace_id"], project["snapshot_sha256"]
+            )
+
     def test_rejects_unenrolled_root_and_project_outside_root(self):
         with self.assertRaises(LocalProjectError):
             self.registry.register_project("missing-root", self.project)
