@@ -193,10 +193,18 @@ class GatewayClient:
             raise ValueError("sequence must be a positive integer")
         if not isinstance(checkpoint, dict):
             raise ValueError("checkpoint must be an object")
-        job = self._request(
-            "POST", f"/v1/runner/{job_id}/checkpoint",
-            {"sequence": sequence, "checkpoint": checkpoint},
-        )
+        payload = {"sequence": sequence, "checkpoint": checkpoint}
+        try:
+            job = self._request("POST", f"/v1/runner/{job_id}/checkpoint", payload)
+        except RunnerGatewayError as exc:
+            retryable = exc.status_code in (429, 500, 502, 503, 504)
+            retryable = retryable or (
+                exc.status_code is None and str(exc) == "Gateway connection failed"
+            )
+            if not retryable:
+                raise
+            # Same sequence + same canonical digest is idempotent at the Gateway.
+            job = self._request("POST", f"/v1/runner/{job_id}/checkpoint", payload)
         if job.get("checkpoint_seq") != sequence:
             raise RunnerGatewayError("Gateway returned an invalid checkpoint acknowledgement")
         return job
