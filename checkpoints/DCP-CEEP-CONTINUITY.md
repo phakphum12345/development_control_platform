@@ -39,7 +39,8 @@
   - platform backend assessment for Windows, Linux and macOS;
   - Linux bwrap presence is reported only as READY_FOR_ACCEPTANCE, not as enforced isolation;
   - Windows AppContainer/LPAC and macOS signed App Sandbox helper remain BLOCKED;
-  - require_verified_isolation rejects incomplete filesystem, network or process-tree claims;
+  - require_verified_isolation rejects incomplete filesystem, network or process-tree claims and is now called by TerminalScriptExecutor before any process launch;
+  - executor unit tests use an explicit test-only VERIFIED assessment to retain coverage of process handling; production host verification remains absent;
   - tests assert fail-closed behavior.
 - Not yet implemented: actual OS process launchers, mount/capability policies, native helper signing, seccomp policy, host acceptance and process cleanup verification.
 - No CI has yet been run for this branch. Exact-head CI state is UNKNOWN.
