@@ -121,21 +121,40 @@ Build/test, file mutation, dependency installation, network access, imported tem
 
 ## Current implementation boundary
 
-The existing Terminal Studio catalog, preview, JSON import, and Owner review are metadata workflows. Existing Runner Pipeline handles existing build/test job types and is not yet a general terminal executor. Existing Workspace Manager allocates job-scoped directories but is not, by itself, a project ACL or OS sandbox. This work must integrate those components without claiming stronger isolation than they provide.
+The feature branch now contains a backend execution path through the existing Gateway, Job Store, Runner Registry/Scheduler and Runner Pipeline. It does not yet complete the Dashboard user experience, and it does not enable the built-in templates by default.
 
+The Runner resolves the selected registered Project Workspace directly from its local registry after checking project/workspace identity and the current snapshot fingerprint. This is the user's actual registered project directory, not an arbitrary path supplied by the browser. The fixed executor is intentionally restricted to catalog templates marked read-only and network-denied. This policy is not an OS-level sandbox: the process still runs under the Runner service account and inherits that account's operating-system access. Do not describe the Workspace Manager or template metadata as kernel-enforced isolation.
+
+Terminal output is captured within a strict byte limit, redacted as a complete bounded stream, then appended to the existing durable Job logs. This avoids leaking a credential split across reader chunk boundaries, but it is not live streaming while the process is running. Existing Job status, log, cancel, lease and recovery primitives are reused; there is no PTY or separate Terminal session manager.
 
 ## Implementation status — 2026-11-13
 
-The current feature branch adds the following foundations:
-- a strict typed Terminal request contract that rejects command, shell, executable, argv, cwd, env, runner, role, approval, and permission fields from the browser;
-- a durable SQLite Terminal Grant Store with short TTLs, read-only action scope, one-time Job/Runner binding, atomic one-time consumption, expiry, revocation, and exact actor/session/project/workspace/snapshot/template/parameter binding;
-- stable `workspace_id` values on registered Local Project records, including migration of older registry entries and preservation across project refresh;
-- trusted in-process workspace resolution that verifies project/workspace pairing, enrolled-root containment, and the current source fingerprint before returning a host path;
-- safe API exposure of the opaque workspace identifier without exposing host paths;
-- Gateway startup configuration for the separate private Terminal Grant database;
-- an Owner-only, same-origin, CSRF-protected authorization endpoint that remains fail-closed while templates are disabled;
-- a Runner-credential endpoint and client method that consume grants only for an active, unexpired Job lease.
+| Work package | Status | Evidence boundary |
+|---|---|---|
+| WP-01 Foundation audit | PASS — recorded | Existing auth, Project Registry, Job Store, Runner Registry/Scheduler, Workspace Manager and logs identified |
+| WP-02 Typed execution contract | IMPLEMENTED | Strict browser request contract; catalog parameter normalization; template and parameter digests; arbitrary command/shell/executable/argv/cwd/env/runner/role/approval fields rejected |
+| WP-03 App authorization and workspace binding | IMPLEMENTED — backend | Owner-only same-origin/CSRF grant issuance; short-lived SQLite grant; exact actor/session/project/workspace/snapshot/template/parameter scope; grant reserved to deterministic Job ID before queue visibility; one-time Runner binding and consumption after active lease verification |
+| WP-04 Durable Runner integration | IMPLEMENTED — backend | terminal_script Job target; explicit Runner terminal capability; capability-aware scheduling; Runner client grant verification; fixed-template executor; local trusted-project allowlist and workspace/snapshot revalidation |
+| WP-05 Output/cancel/recovery | PARTIAL | Bounded output, whole-stream secret redaction, timeout, cancellation polling and process-tree cleanup use existing Job primitives; output is not live-streamed; PTY and terminal-specific history UI are absent |
+| WP-06 Dashboard Run workflow | NOT IMPLEMENTED | Catalog/preview/import/review UI exists, but there is no Run control, project/workspace execution selector, grant confirmation UI or job-output panel for Terminal |
+| WP-07 Security/cross-platform acceptance | IN_PROGRESS | Unit and API tests added; exact-head CI is still required. No claim of PASS until all required workflows complete successfully |
 
-These are storage and identity foundations only. The grant store deliberately does not authenticate callers or decide Project ACLs: only an authenticated Gateway handler may issue or consume grants after verifying the app identity and Runner credential/active Job lease. The authorization and Runner verification endpoints now exist, but they cannot yet be used by a real Terminal job: the Job Store/Pipeline still has no terminal-script target and the Runner Pipeline does not yet call the verification client. The current Project Registry is Owner-only and does not provide a per-user capability/ACL model; any first execution endpoint must preserve that restriction unless a real ACL capability model is added. Per-user Project ACLs are not yet available; the existing Local Project API is Owner-only, so any first execution endpoint must preserve that restriction unless a real ACL capability model is added. All seven catalog templates remain `execution_enabled: false`; actual execution remains unavailable.
+### Implemented backend path
 
-Evidence status for this branch: implementation files and tests have been added, but the tests have not yet been executed by a local checkout or CI run. Do not label these tests PASS until a workflow reports success for the exact branch head SHA.
+1. POST /api/terminal/authorize authenticates the app session, enforces Owner role, same-origin and CSRF, resolves the registered Project Workspace and issues a scoped, short-lived grant.
+2. POST /api/terminal/jobs accepts only identifiers, a trusted template ID, typed parameters and the opaque grant reference. It validates the grant against the authenticated subject/session and reserves it to a deterministic Job ID before that Job becomes visible to Runner polling. Idempotency is scoped to the authenticated session.
+3. The existing Job Store validates the terminal_script payload and the existing Scheduler routes it only to a registered Runner advertising the explicit terminal capability.
+4. The Runner verifies the active Job lease through its credential-authenticated Gateway endpoint. The Gateway binds and consumes the grant once for that Job and Runner.
+5. The Runner resolves the registered project/workspace pair and current snapshot, then invokes only a trusted catalog template through a fixed executable allowlist, argv array and shell=false.
+6. Existing Job logs, status, cancellation, lease and recovery are reused. Terminal output is byte-bounded and redacted before it reaches durable logs.
+
+### Explicitly disabled / outstanding
+
+- All built-in catalog templates still have execution_enabled: false. The API and Runner therefore fail closed by default; this branch does not authorize production execution merely because the code path exists.
+- Imported command packs remain inert. Approval/review does not make an imported template executable.
+- The Project Registry and browser-facing Local Project API are Owner-only. There is no per-user Project ACL/capability model yet; do not broaden access beyond the existing Owner boundary.
+- The Runner executes read-only built-ins in the actual registered Project Workspace, but no OS sandbox or kernel-level network isolation is claimed.
+- The Dashboard Run flow, real-time output streaming, terminal-specific history and interactive PTY are not implemented.
+- CI must be evaluated against the exact latest PR head. Pending, skipped, missing or cancelled workflows are not PASS.
+- No PR merge, deployment or template enablement is implied by these implementation commits.
+
