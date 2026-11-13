@@ -101,7 +101,7 @@ def validate_terminal_request(payload: Any) -> dict:
     return {
         "request": normalized,
         "request_sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
-"        template_version_digest": template_version_digest(template_id, parameters),
+        "template_version_digest": template_version_digest(template_id, parameters),
         "execution_enabled": preview["execution_enabled"] is True,
         "status": "VALIDATED_INTENT_NOT_AUTHORIZED",
     }
