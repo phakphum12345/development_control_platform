@@ -171,7 +171,7 @@ class TerminalScriptExecutorTests(unittest.TestCase):
             "API_KEY=abc123\n"
             "Authorization: Bearer abcdefghijklmnopqrstuvwxyz\n"
             + token + "\n"
-            "-----BEGIN PRIVATE KEY-----\nsecret-material\n-----END PRIVATE KEY-----"
+            + "-----BEGIN PRIVATE KEY-----\nsecret-material\n-----END PRIVATE KEY-----"
         )
         redacted = redact_terminal_output(sample)
         self.assertNotIn("abc123", redacted)
