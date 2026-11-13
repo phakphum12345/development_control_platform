@@ -223,8 +223,38 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
         self.assertEqual(second_status, 403)
         rows = self.service.job_store.list_recent(10)
         terminal_rows = [row for row in rows if row["target"] == "terminal_script"]
-        self.assertEqual(len(terminal_rows), 2)
-        self.assertEqual(sum(row["state"] == "cancelled" for row in terminal_rows), 1)
+        self.assertEqual(len(terminal_rows), 1)
+        self.assertEqual(terminal_rows[0]["id"], first["id"])
+        self.assertEqual(terminal_rows[0]["state"], "queued")
+
+    def test_terminal_job_submission_is_idempotent_after_grant_reservation(self):
+        grant, enabled_template, _ = self._issue_terminal_test_grant()
+        payload = {
+            "project_id": self.project["project_id"],
+            "workspace_id": self.project["workspace_id"],
+            "snapshot_sha256": self.project["snapshot_sha256"],
+            "template_id": "git_status",
+            "parameters": {},
+            "authorization_id": grant["authorization_id"],
+        }
+        with patch("tools.cloud_gateway.terminal_execution_contract.preview_template", return_value=enabled_template), \\
+             patch("tools.cloud_gateway.job_control.preview_template", return_value=enabled_template):
+            first_status, first = self.request(
+                "/api/terminal/jobs", method="POST", payload=payload,
+                idempotency_key="terminal-job-idempotent-001",
+            )
+            retry_status, retry = self.request(
+                "/api/terminal/jobs", method="POST", payload=payload,
+                idempotency_key="terminal-job-idempotent-001",
+            )
+        self.assertEqual(first_status, 202)
+        self.assertEqual(retry_status, 200)
+        self.assertEqual(first["id"], retry["id"])
+        self.assertTrue(first["created"])
+        self.assertFalse(retry["created"])
+        rows = [row for row in self.service.job_store.list_recent(10)
+                if row["target"] == "terminal_script"]
+        self.assertEqual(len(rows), 1)
 
     def test_terminal_authorization_endpoint_fails_closed_while_templates_are_disabled(self):
         payload = {
