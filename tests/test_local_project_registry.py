@@ -56,6 +56,22 @@ class LocalProjectRegistryTests(unittest.TestCase):
         if os.name != "nt":
             self.assertEqual(self.registry_path.stat().st_mode & 0o777, 0o600)
 
+    def test_legacy_project_record_is_migrated_to_stable_workspace_id(self):
+        project = self.registry.register_project(self.root["root_id"], self.project)
+        legacy = dict(project)
+        legacy.pop("project_id")
+        legacy.pop("workspace_id")
+        self.registry_path.write_text(json.dumps({
+            "version": 1,
+            "roots": {self.root["root_id"]: self.registry._data["roots"][self.root["root_id"]]},
+            "projects": {project["project_id"]: legacy},
+        }), encoding="utf-8")
+        loaded = LocalProjectRegistry(self.registry_path)
+        migrated = loaded.get_project(project["project_id"])
+        self.assertEqual(len(migrated["workspace_id"]), 36)
+        persisted = json.loads(self.registry_path.read_text(encoding="utf-8"))
+        self.assertEqual(persisted["projects"][project["project_id"]]["workspace_id"], migrated["workspace_id"])
+
     def test_rejects_unenrolled_root_and_project_outside_root(self):
         with self.assertRaises(LocalProjectError):
             self.registry.register_project("missing-root", self.project)
