@@ -16,6 +16,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
 from .sqlite_security import prepare_private_sqlite_file
+from .terminal_execution_contract import parameters_digest as _parameters_digest
 
 
 class TerminalGrantError(RuntimeError):
@@ -95,10 +96,7 @@ class TerminalGrantStore:
 
     @staticmethod
     def parameters_digest(parameters: dict) -> str:
-        if not isinstance(parameters, dict):
-            raise ValueError("parameters must be an object")
-        canonical = json.dumps(parameters, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        return _parameters_digest(parameters)
 
     def issue(
         self, *, subject: str, session_id: str, project_id: str,
