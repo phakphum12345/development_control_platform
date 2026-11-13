@@ -42,6 +42,21 @@ def _canonical_uuid(value: Any, field: str) -> str:
     return value
 
 
+def template_version_digest(template_id: str, parameters: dict) -> str:
+    """Return a deterministic digest of the fully resolved trusted template version."""
+    preview = preview_template(template_id, parameters)
+    version_fields = (
+        "id", "executable", "argv", "platforms", "working_directory_policy",
+        "environment_allowlist", "network", "mutation_class", "timeout_seconds",
+        "max_output_bytes", "approval_required", "execution_enabled",
+    )
+    canonical = json.dumps(
+        {key: preview[key] for key in version_fields},
+        sort_keys=True, separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def validate_terminal_request(payload: Any) -> dict:
     """Validate a browser request containing identifiers and typed parameters only.
 
@@ -86,17 +101,7 @@ def validate_terminal_request(payload: Any) -> dict:
     return {
         "request": normalized,
         "request_sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
-        "template_version_digest": hashlib.sha256(
-            json.dumps(
-                {key: preview[key] for key in (
-                    "id", "executable", "argv", "platforms",
-                    "working_directory_policy", "environment_allowlist",
-                    "network", "mutation_class", "timeout_seconds",
-                    "max_output_bytes", "approval_required", "execution_enabled",
-                )},
-                sort_keys=True, separators=(",", ":"),
-            ).encode("utf-8")
-        ).hexdigest(),
+"        template_version_digest": template_version_digest(template_id, parameters),
         "execution_enabled": preview["execution_enabled"] is True,
         "status": "VALIDATED_INTENT_NOT_AUTHORIZED",
     }
