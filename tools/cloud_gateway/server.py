@@ -42,6 +42,7 @@ from .preview import AuthenticatedPreviewManager, PreviewError
 from .terminal_catalog import (list_templates as list_terminal_templates, preview_template as preview_terminal_template, validate_preview_payload)
 from .terminal_templates import (TerminalTemplateConflict, TerminalTemplateError, TerminalTemplateNotFound, TerminalTemplateStore)
 from .terminal_grants import TerminalGrantStore
+from .terminal_authorization import TerminalAuthorizationError, issue_terminal_grant
 
 
 class DisabledProvider:
@@ -781,6 +782,29 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
 
         def do_POST(self):
             path = urlparse(self.path).path
+            if path == "/api/terminal/authorize":
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if identity.get("role") != "owner":
+                    return self.send_json(403, {"error": "owner role required"})
+                if not self.same_origin():
+                    return self.send_json(403, {"error": "same-origin request required"})
+                if not self.csrf_valid(identity):
+                    return self.send_json(403, {"error": "CSRF validation failed"})
+                grants = self.terminal_grant_store()
+                registry = self.local_project_registry()
+                if grants is None or registry is None:
+                    return self.send_json(503, {"error": "Terminal authorization services unavailable"})
+                try:
+                    grant = issue_terminal_grant(identity, self.body(max_bytes=8192), registry, grants)
+                    return self.send_json(201, {"grant": grant})
+                except TerminalAuthorizationError as exc:
+                    return self.send_json(409, {"error": str(exc)})
+                except ValueError as exc:
+                    return self.send_json(400, {"error": str(exc)})
+                except Exception:
+                    return self.send_json(503, {"error": "Terminal authorization failed closed"})
             document_grant = path == "/api/document-workflow/grants"
             document_revoke = re.fullmatch(
                 r"/api/document-workflow/grants/([0-9a-f-]{36})/revoke", path
