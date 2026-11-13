@@ -265,14 +265,19 @@ class RunnerPipeline:
                     error_code = "WORKSPACE_CLEANUP_FAILED"
                     result["workspace_cleanup"] = "failed"
         try:
-            if not retained_for_preview and result.get("workspace_cleanup") != "failed":
+            if (not retained_for_preview and result.get("workspace_cleanup") != "failed"
+                    and outcome != "cancelled"):
                 checkpoint_seq = self._save_checkpoint(
                     job_id, checkpoint_seq, "ready-to-finish", True,
                     {"outcome": outcome, "result": result, "error_code": error_code},
                 )
             else:
+                checkpoint_step = (
+                    "cancelled-ready-to-finish" if outcome == "cancelled"
+                    else "workspace-not-transferable"
+                )
                 checkpoint_seq = self._save_checkpoint(
-                    job_id, checkpoint_seq, "workspace-not-transferable", False,
+                    job_id, checkpoint_seq, checkpoint_step, False,
                     {"outcome": outcome, "result": result, "error_code": error_code},
                 )
             completed = self.client.finish(
