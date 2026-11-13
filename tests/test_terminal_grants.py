@@ -1,6 +1,7 @@
 """Durable one-time Terminal authorization grant tests."""
 from datetime import datetime, timedelta, timezone
 import tempfile
+import threading
 import unittest
 import uuid
 from pathlib import Path
@@ -59,6 +60,33 @@ class TerminalGrantStoreTests(unittest.TestCase):
         self.assertTrue(self.consume(grant)["authorized"])
         with self.assertRaisesRegex(TerminalGrantError, "not active"):
             self.consume(grant)
+
+    def test_concurrent_consumption_allows_exactly_one_runner_claim(self):
+        grant = self.issue()
+        self.bind(grant)
+        stores = [TerminalGrantStore(self.path), TerminalGrantStore(self.path)]
+        barrier = threading.Barrier(2)
+        outcomes = []
+        lock = threading.Lock()
+
+        def consume_once(store):
+            barrier.wait()
+            try:
+                result = store.consume(grant["authorization_id"],
+                    job_id=self.job, worker_id="runner-local", **self.claims, now=NOW)
+                value = result["authorized"]
+            except TerminalGrantError:
+                value = False
+            with lock:
+                outcomes.append(value)
+
+        threads = [threading.Thread(target=consume_once, args=(store,)) for store in stores]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=5)
+        self.assertEqual(outcomes.count(True), 1)
+        self.assertEqual(outcomes.count(False), 1)
 
     def test_grant_cannot_be_bound_to_a_second_job_or_runner(self):
         grant = self.issue()
