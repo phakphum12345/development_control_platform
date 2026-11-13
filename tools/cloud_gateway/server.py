@@ -437,6 +437,24 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                         return self.send_json(200, {"jobs": [self.public_job(row) for row in jobs.list_recent(limit)]})
                     except (ValueError, TypeError):
                         return self.send_json(400, {"error": "invalid limit"})
+                job_match = re.fullmatch(r"/api/jobs/([0-9a-f-]{36})", path)
+                if job_match:
+                    job = jobs.get(job_match.group(1))
+                    if not job:
+                        return self.send_json(404, {"error": "job not found"})
+                    return self.send_json(200, self.public_job(job))
+                logs_match = re.fullmatch(r"/api/jobs/([0-9a-f-]{36})/logs", path)
+                if logs_match:
+                    query = parse_qs(urlparse(self.path).query)
+                    try:
+                        after_id = int(query.get("after_id", ["0"])[0])
+                        limit = int(query.get("limit", ["500"])[0])
+                        logs = jobs.logs(logs_match.group(1), after_id=after_id, limit=limit)
+                        return self.send_json(200, {"logs": logs})
+                    except JobNotFound:
+                        return self.send_json(404, {"error": "job not found"})
+                    except (ValueError, TypeError):
+                        return self.send_json(400, {"error": "invalid log cursor or limit"})
                 preview_list = re.fullmatch(r"/api/jobs/([0-9a-f-]{36})/previews", path)
                 if preview_list:
                     if identity.get("role") != "owner":
