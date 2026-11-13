@@ -167,6 +167,7 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
             )
         self.assertEqual(status, 202)
         self.assertEqual(job["source_type"], "terminal_script")
+        self.assertEqual(job["max_attempts"], 1)
         self.assertEqual(job["target"], "terminal_script")
         self.assertEqual(job["terminal"]["project_id"], self.project["project_id"])
         self.assertEqual(job["terminal"]["workspace_id"], self.project["workspace_id"])
