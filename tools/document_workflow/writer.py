@@ -172,6 +172,24 @@ def write_document(
             raise DocumentWriteError("Previous operation outcome is not verifiable; reconcile manually (UNKNOWN).")
 
         current_sha = _digest(target.read_bytes()) if target.exists() else None
+        # Recover a crash after atomic replace but before the journal transaction committed.
+        if current_sha == desired_sha:
+            db.execute(
+                """INSERT INTO document_operations
+                (operation_key,project_id,target_path,expected_sha256,desired_sha256,status,updated_at)
+                VALUES(?,?,?,?,?,'PASS',?)""",
+                (operation_key, project_id, rel_key, expected_sha256, desired_sha, time.time()),
+            )
+            db.execute("COMMIT")
+            return {
+                "status": "PASS",
+                "operation": "DOCUMENT_WRITE_RECOVERED",
+                "project_id": project_id,
+                "path": rel_key,
+                "sha256": desired_sha,
+                "idempotent_replay": True,
+                "read_back_verified": True,
+            }
         if current_sha != expected_sha256:
             raise DocumentWriteError("Target changed or existence differs from the expected base; refusing stale write.")
 
@@ -200,6 +218,7 @@ def write_document(
                     "UPDATE document_operations SET status='UNKNOWN',updated_at=? WHERE operation_key=?",
                     (time.time(), operation_key),
                 )
+                db.execute("COMMIT")
                 raise DocumentWriteError("Post-write read-back digest mismatch; operation status UNKNOWN.")
             try:
                 dir_fd = os.open(target.parent, os.O_RDONLY)
