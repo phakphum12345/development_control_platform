@@ -186,6 +186,22 @@ class GatewayClient:
             {"lease_seconds": lease_seconds},
         )
 
+    def checkpoint(self, job_id: str, sequence: int, checkpoint: dict) -> dict:
+        """Persist one monotonic, lease-bound resume checkpoint."""
+        self._validate_job_id(job_id)
+        if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence < 1:
+            raise ValueError("sequence must be a positive integer")
+        if not isinstance(checkpoint, dict):
+            raise ValueError("checkpoint must be an object")
+        result = self._request(
+            "POST", f"/v1/runner/{job_id}/checkpoint",
+            {"sequence": sequence, "checkpoint": checkpoint},
+        )
+        job = result.get("job")
+        if not isinstance(job, dict) or job.get("checkpoint_seq") != sequence:
+            raise RunnerGatewayError("Gateway returned an invalid checkpoint acknowledgement")
+        return job
+
     def append_log(self, job_id: str, message: str, stream: str = "system") -> dict:
         self._validate_job_id(job_id)
         if stream not in ("stdout", "stderr", "system"):
