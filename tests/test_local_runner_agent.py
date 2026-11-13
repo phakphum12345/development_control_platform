@@ -53,6 +53,10 @@ class FakeGatewayHandler(BaseHTTPRequestHandler):
             }})
         if self.path == "/v1/runner/claim":
             return self._send(200, {"job": {"id": JOB_ID, "state": "running"}})
+        if self.path.endswith("/terminal-grant"):
+            return self._send(200, {"grant": {
+                "authorized": True, "job_id": JOB_ID, "action": "terminal.read_only",
+            }})
         if self.path.endswith("/checkpoint"):
             self.server.checkpoint_requests += 1
             if self.server.checkpoint_requests == 1:
@@ -140,6 +144,17 @@ class RunnerAgentTests(unittest.TestCase):
         self.assertEqual(finished["state"], "running")
         for request in self.server.requests[1:]:
             self.assertEqual(request[2], "Bearer " + TOKEN)
+
+    def test_runner_client_verifies_terminal_grant_using_runner_credential(self):
+        grant_id = "223e4567-e89b-42d3-a456-426614174000"
+        result = self.client.verify_terminal_grant(JOB_ID, grant_id)
+        self.assertTrue(result["authorized"])
+        request = self.server.requests[-1]
+        self.assertEqual(request[1], f"/v1/runner/{JOB_ID}/terminal-grant")
+        self.assertEqual(request[2], "Bearer " + TOKEN)
+        self.assertEqual(request[3], {"authorization_id": grant_id})
+        with self.assertRaises(ValueError):
+            self.client.verify_terminal_grant(JOB_ID, "../grant")
 
     def test_client_rejects_invalid_job_ids_leases_logs_and_outcomes(self):
         with self.assertRaises(ValueError):
