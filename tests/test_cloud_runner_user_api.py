@@ -468,8 +468,9 @@ class AuthenticatedControlAPITests(unittest.TestCase):
         self.assertEqual(first["attempt_count"], 1)
         self.assertEqual(first["max_attempts"], 3)
         checkpoint = {
-            "version": 1, "step": "build-inputs-ready",
-            "safe_to_resume": True, "data": {"input_sha256": "f" * 64},
+            "version": 1, "step": "ready-to-finish",
+            "safe_to_resume": True,
+            "data": {"outcome": "succeeded", "result": {"exit_code": 0}},
         }
         with urlopen(runner_request(
             self.runner_token, "/v1/runner/" + job["id"] + "/checkpoint",
