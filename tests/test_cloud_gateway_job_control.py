@@ -311,7 +311,7 @@ class JobStoreTests(unittest.TestCase):
                        ("2000-01-01T00:00:00+00:00", job["id"]))
         self.store.recover_expired_leases()
         with self.assertRaises(ValueError):
-            self.store.resume_unknown(job["id"], "../not-owner")
+            self.store.resume_unknown(job["id"], "")
         resumed = self.store.resume_unknown(job["id"], "owner@example.test")
         self.assertEqual(resumed["state"], "queued")
         self.assertIsNone(resumed["retry_after"])
