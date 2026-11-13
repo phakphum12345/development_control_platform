@@ -274,10 +274,20 @@ class LocalProjectRegistry:
             key for key, value in self._data["projects"].items()
             if value.get("path") == str(project) and value.get("root_id") == root_id
         ), str(uuid.uuid4()))
+        previous = self._data["projects"].get(project_id, {})
+        workspace_id = previous.get("workspace_id")
+        try:
+            parsed_workspace_id = uuid.UUID(workspace_id)
+            if str(parsed_workspace_id) != workspace_id:
+                raise ValueError("non-canonical workspace ID")
+        except (ValueError, TypeError, AttributeError):
+            # Migrate older project records once; the identifier remains stable on refresh.
+            workspace_id = str(uuid.uuid4())
         record = {
             "root_id": root_id,
             "path": str(project),
             "relative_path": relative.as_posix(),
+            "workspace_id": workspace_id,
             "snapshot_sha256": fingerprint,
             "file_count": file_count,
             "total_bytes": total_bytes,
