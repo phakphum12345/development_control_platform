@@ -1143,8 +1143,11 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                         if identity.get("role") != "owner":
                             return self.send_json(403, {"error": "owner role required to resume UNKNOWN jobs"})
                         payload = self.body()
-                        if set(payload) != {"confirmation"} or payload.get("confirmation") != "RESUME UNKNOWN JOB":
-                            return self.send_json(400, {"error": "explicit RESUME UNKNOWN JOB confirmation is required"})
+                        if (set(payload) != {"confirmation"}
+                                or payload.get("confirmation") != "RESUME UNKNOWN JOB AFTER WORKER STOPPED AND WORKSPACE CLEANED"):
+                            return self.send_json(400, {
+                                "error": "confirm that the previous worker is stopped and its workspace is cleaned before resuming"
+                            })
                         row = jobs.resume_unknown(resume_match.group(1), identity.get("subject", "owner"))
                         return self.send_json(200, self.public_job(row))
                     if not suffix.endswith("/cancel"):
