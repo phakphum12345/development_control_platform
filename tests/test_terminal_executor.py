@@ -152,7 +152,7 @@ class TerminalScriptExecutorTests(unittest.TestCase):
         env = {"GIT_CONFIG_COUNT": "0"}
         listed = subprocess.CompletedProcess(
             args=["git", "config"], returncode=0,
-            stdout=b"filter.hostile.clean\\0filter.Hostile.clean\\0",
+            stdout=b"filter.hostile.clean\0filter.Hostile.clean\0",
         )
         with patch(
             "tools.local_runner_agent.terminal_executor.subprocess.run",
