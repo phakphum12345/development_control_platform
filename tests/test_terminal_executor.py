@@ -81,6 +81,43 @@ class TerminalScriptExecutorTests(unittest.TestCase):
                 "python_version", {}, template_version_digest("python_version", {}),
             )
 
+    def test_terminal_output_redacts_secrets_split_across_reader_chunks(self):
+        template = {
+            "id": "python_version",
+            "executable": "python",
+            "argv": ["-c", "import sys;sys.stdout.write('x'*4094+'ghp_'+'A'*40)"],
+            "parameters": [],
+            "parameter_values": {},
+            "execution_enabled": True,
+            "mutation_class": "read-only",
+            "network": "denied",
+            "approval_required": False,
+            "working_directory_policy": "assigned_workspace_required",
+            "environment_allowlist": ["PATH"],
+            "timeout_seconds": 10,
+            "max_output_bytes": 65536,
+        }
+        logs = []
+        executor = TerminalScriptExecutor(
+            enabled=True, log=lambda stream, message: logs.append((stream, message)),
+        )
+        with patch(
+            "tools.local_runner_agent.terminal_executor.preview_template",
+            return_value=template,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.template_version_digest",
+            return_value="a" * 64,
+        ):
+            result = executor.run(
+                str(uuid.uuid4()), "runner-local", self.workspace,
+                "python_version", {}, "a" * 64,
+            )
+        combined = "".join(message for stream, message in logs if stream == "stdout")
+        self.assertEqual(result.outcome, "succeeded")
+        self.assertNotIn("ghp_", combined)
+        self.assertNotIn("A" * 40, combined)
+        self.assertIn("[REDACTED TOKEN]", combined)
+
     def test_terminal_output_redacts_common_secrets_and_private_keys(self):
         sample = (
             "API_KEY=abc123\n"
