@@ -85,6 +85,12 @@ class RunnerRegistryTests(unittest.TestCase):
         self.assertIn("test_static_web", targets)
         self.assertNotIn("test", targets)
 
+    def test_terminal_jobs_require_explicit_terminal_runner_capability(self):
+        self.registry.register("runner-no-terminal", "linux", ["flutter", "linux"])
+        self.assertNotIn("terminal_script", self.registry.allowed_targets("runner-no-terminal"))
+        self.registry.register("runner-terminal", "linux", ["flutter", "linux", "terminal"])
+        self.assertIn("terminal_script", self.registry.allowed_targets("runner-terminal"))
+
     def test_stale_runner_is_reported_offline_and_cannot_claim(self):
         self.registry.register("runner-stale", "linux", ["flutter", "linux"])
         with self.registry.db() as conn:

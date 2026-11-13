@@ -220,5 +220,5 @@ def preview_template(template_id: str, parameters: dict | None = None) -> dict:
     result["parameter_values"] = values
     result["command_preview"] = [result["executable"], *argv]
     result["requires_execution_approval"] = False
-    result["status"] = "PREVIEW_ONLY"
+    result["status"] = "EXECUTION_ENABLED" if result["execution_enabled"] is True else "PREVIEW_ONLY"
     return result

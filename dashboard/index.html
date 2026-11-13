@@ -412,7 +412,7 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
 <section class="view" id="terminal-studio">
  <div class="panel">
   <div class="row"><div><h2>Terminal Studio</h2><p>Command Library สำหรับตรวจสอบ Git และ Toolchain พร้อมดูคำสั่งแบบ argv ก่อนใช้งาน</p></div><span class="pill" id="terminal-studio-state">PREVIEW ONLY</span></div>
-  <div class="warn"><b>Safety:</b> รุ่นนี้แสดง Catalog, Visual Builder และ Preview เท่านั้น ไม่มีการรันคำสั่ง ไม่มี Shell/PTY ไม่มีการติดตั้ง Dependencies และไม่รับคำสั่งอิสระจาก Browser. ค่าพารามิเตอร์ต้องผ่าน Schema ที่ Gateway ตรวจซ้ำ</div>
+  <div class="warn"><b>Safety:</b> อนุญาตเฉพาะ Built-in Template ที่เปิดใช้งานโดยนโยบายเท่านั้น ต้องเลือก Project Workspace และขอสิทธิ์จากแอปก่อนส่ง Job. ไม่มีช่อง Shell Command, ไม่มี argv อิสระ, ไม่มี PTY และไม่รัน Imported Template.</div>
   <div class="actions"><button class="primary" id="terminal-load-templates" type="button">Load Command Library</button><label for="terminal-template-select">Command template</label><select id="terminal-template-select" disabled><option value="">Load templates first</option></select><button id="terminal-preview" type="button" disabled>Preview exact argv</button></div>
   <div id="terminal-status" class="output" role="status" aria-live="polite">Owner session and command catalog have not been checked.</div>
  </div>
@@ -423,8 +423,31 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
  </div>
  <div class="panel">
   <h3>Exact command preview</h3>
-  <p class="small muted">Preview displays the trusted executable, validated parameter values and exact argument array—not a shell command string. This feature never executes the command; workspace binding and execution remain disabled.</p>
+  <p class="small muted">Preview displays the trusted executable, validated parameter values and exact argument array—not a shell command string. Execution is a separate app-authorized action and remains disabled for templates unless the trusted catalog explicitly enables them.</p>
   <pre id="terminal-preview-output" class="output" aria-label="Terminal command preview">No command selected.</pre>
+ </div>
+ <div class="panel" id="terminal-execution-panel">
+  <h3>App-authorized Project Workspace execution</h3>
+  <p class="small muted">เลือก Project Workspace ที่ลงทะเบียนไว้ แล้ว Preview ก่อนขอสิทธิ์จากแอป. ระบบส่งได้เฉพาะ Template ID และ Parameters ที่กำหนดไว้; Browser ไม่สามารถส่ง Shell, Executable, argv, cwd หรือ Environment เองได้.</p>
+  <div class="grid">
+   <div><label for="terminal-project-select">Registered Project Workspace</label><select id="terminal-project-select" disabled><option value="">Load registered projects first</option></select></div>
+   <div><label>Workspace binding</label><div id="terminal-workspace-summary" class="output" role="status">No Project Workspace selected.</div></div>
+  </div>
+  <div class="actions"><button class="primary" id="terminal-authorize-run" type="button" disabled>Request App Authorization</button></div>
+  <div id="terminal-execution-gate" class="output" role="status" aria-live="polite">Execution is disabled until a trusted catalog template is explicitly enabled.</div>
+  <div id="terminal-runner-status" class="output" role="status" aria-live="polite">Terminal Runner availability has not been checked.</div>
+  <div class="panel" id="terminal-grant-confirmation" hidden>
+   <h4>Confirm authorized execution</h4>
+   <p class="small muted">ตรวจสอบ Project, Workspace, Template และเวลาหมดอายุ ก่อนยืนยันส่ง Job. Grant ใช้ได้ครั้งเดียวและยกเลิกได้ก่อน Runner ใช้งาน.</p>
+   <pre id="terminal-grant-details" class="output">No authorization requested.</pre>
+   <div class="actions"><button class="primary" id="terminal-confirm-run" type="button" disabled>Confirm & Queue Job</button><button id="terminal-discard-grant" type="button">Revoke Grant</button></div>
+  </div>
+  <div class="panel" id="terminal-job-panel" hidden>
+   <h4>Terminal Job History & Output</h4>
+   <div class="actions"><select id="terminal-job-history" aria-label="Recent Terminal Jobs"><option value="">No Terminal Jobs loaded</option></select><button id="terminal-job-open" type="button" disabled>Open Job</button><button id="terminal-job-refresh" type="button" disabled>Refresh</button><button id="terminal-job-cancel" type="button" hidden>Cancel Job</button></div>
+   <div id="terminal-job-status" class="output" role="status" aria-live="polite">No Terminal Job selected.</div>
+   <pre id="terminal-job-output" class="output" aria-label="Terminal Job output">Output will appear here after the Runner starts.</pre>
+  </div>
  </div>
  <div class="panel" id="terminal-review-panel" hidden>
   <h3>Owner review</h3>
@@ -1175,7 +1198,7 @@ function projectImportStatus(text,state){
 async function projectImportApi(path){
  const response=await fetch("."+path,{method:"GET",credentials:"same-origin",cache:"no-store",headers:{Accept:"application/json"}});
  let data={};try{data=await response.json()}catch(_){}
- if(!response.ok)throw new Error((data&&data.error)||("HTTP "+response.status));
+ if(!response.ok){const error=new Error((data&&data.error)||("HTTP "+response.status));error.status=response.status;throw error;}
  if(!data||typeof data!=="object"||Array.isArray(data))throw new Error("Invalid API response");
  return data;
 }
@@ -1387,55 +1410,154 @@ function initProjectImport(){
 
 initProjectImport();
 
-const terminalStudioState={templates:[],selected:"",loaded:false,lastPreview:null};
+const terminalStudioState={
+ templates:[],selected:"",loaded:false,lastPreview:null,projects:[],
+ pendingGrant:null,pendingSubmission:null,activeJob:null,jobHistory:[],
+ logCursor:0,pollTimer:null,pollFailures:0
+};
 function terminalStudioStatus(message,state){
  const el=$("terminal-status");el.textContent=message;el.dataset.state=state||"unknown";
- $("terminal-studio-state").textContent=state==="ready"?"PREVIEW ONLY · READY":"PREVIEW ONLY";
+ const badge=$("terminal-studio-state");
+ if(state==="execution-ready")badge.textContent="TEMPLATE ENABLED · GRANT REQUIRED";
+ else if(state==="grant-issued")badge.textContent="GRANT ISSUED · CONFIRM";
+ else if(state==="queued")badge.textContent="JOB QUEUED";
+ else if(state==="ready")badge.textContent="PREVIEW / RUN GATED";
+ else if(state==="error")badge.textContent="CHECK REQUIRED";
+ else badge.textContent="PREVIEW ONLY";
 }
-async function terminalStudioRequest(path,method="GET",payload=null){
- if(!projectImportState.authenticated||!projectImportState.csrf)throw new Error("Owner session and server-issued CSRF token are required.");
- const headers={Accept:"application/json"};
+async function terminalStudioRequest(path,method="GET",payload=null,extraHeaders={}){
+ if(!projectImportState.authenticated&&!await projectImportCheckSession())throw new Error("Owner session is required.");
+ if(!projectImportState.csrf)throw new Error("Server-issued CSRF token is required.");
+ const headers={Accept:"application/json",...extraHeaders};
  const options={method,credentials:"same-origin",cache:"no-store",headers};
- if(payload!==null){
-  headers["Content-Type"]="application/json";
-  headers["X-CSRF-Token"]=projectImportState.csrf;
-  options.body=JSON.stringify(payload);
- }
+ if(method!=="GET")headers["X-CSRF-Token"]=projectImportState.csrf;
+ if(payload!==null){headers["Content-Type"]="application/json";options.body=JSON.stringify(payload);}
  const response=await fetch("."+path,options);
  let data={};try{data=await response.json()}catch(_){}
  if(!response.ok)throw new Error((data&&data.error)||("HTTP "+response.status));
  if(!data||typeof data!=="object"||Array.isArray(data))throw new Error("Invalid Terminal Studio API response");
  return data;
 }
+function terminalStudioSelectedTemplate(){
+ const id=$("terminal-template-select").value;
+ return terminalStudioState.templates.find(row=>row&&row.id===id)||null;
+}
+function terminalStudioSelectedProject(){
+ const id=$("terminal-project-select").value;
+ return terminalStudioState.projects.find(row=>row&&row.project_id===id)||null;
+}
+function terminalStudioRenderExecutionGate(){
+ const template=terminalStudioSelectedTemplate();
+ const project=terminalStudioSelectedProject();
+ const preview=terminalStudioState.lastPreview;
+ const previewReady=!!(preview&&template&&preview.id===template.id&&preview.execution_enabled===true);
+ const canAuthorize=!!(template&&template.execution_enabled===true&&!String(template.id).startsWith("custom-")&&project&&project.workspace_id&&project.snapshot_sha256&&previewReady&&!terminalStudioState.pendingGrant&&!terminalStudioState.pendingSubmission);
+ $("terminal-authorize-run").disabled=!canAuthorize;
+ $("terminal-authorize-run").textContent=template&&template.execution_enabled===true?"Request App Authorization":"Execution disabled by catalog";
+ if(!project){
+  $("terminal-workspace-summary").textContent="Select a registered Project Workspace.";
+ }else{
+  $("terminal-workspace-summary").textContent=(project.relative_path||project.project_id)+"\nProject: "+project.project_id+"\nWorkspace: "+project.workspace_id+"\nSnapshot: "+project.snapshot_sha256;
+ }
+ let message;
+ if(!template)message="Choose a built-in template and select a registered Project Workspace.";
+ else if(String(template.id).startsWith("custom-"))message="Imported templates are inert and cannot be executed.";
+ else if(template.execution_enabled!==true)message="This built-in template is disabled by trusted catalog policy. Preview is available; no Job can be created.";
+ else if(!project)message="Select a registered Project Workspace before requesting app authorization.";
+ else if(!previewReady)message="Preview this exact template and parameter set before requesting app authorization.";
+ else message="Ready to request a short-lived, one-time grant from the app. A second confirmation is required before queueing.";
+ $("terminal-execution-gate").textContent=message;
+}
+function terminalStudioLockSubmission(locked){
+ const value=!!locked;
+ $("terminal-template-select").disabled=value||!terminalStudioState.loaded||$("terminal-template-select").options.length<=1;
+ $("terminal-project-select").disabled=value||terminalStudioState.projects.length===0;
+ $("terminal-builder-fields").querySelectorAll("[data-terminal-parameter]").forEach(input=>{input.disabled=value;});
+ terminalStudioRenderExecutionGate();
+}
+async function terminalStudioLoadProjects(){
+ const data=await terminalStudioRequest("/api/local-projects");
+ if(!Array.isArray(data.projects))throw new Error("Project Registry response is invalid.");
+ terminalStudioState.projects=data.projects.filter(row=>row&&typeof row.project_id==="string"&&typeof row.workspace_id==="string"&&typeof row.snapshot_sha256==="string");
+ const select=$("terminal-project-select");
+ select.replaceChildren(new Option("Choose a registered Project Workspace",""));
+ for(const project of terminalStudioState.projects){
+  const label=(project.relative_path||project.project_id)+" · "+project.project_id.slice(0,8);
+  select.add(new Option(label,project.project_id));
+ }
+ select.disabled=terminalStudioState.projects.length===0;
+ terminalStudioRenderExecutionGate();
+}
+async function terminalStudioLoadRunners(){
+ const data=await terminalStudioRequest("/api/runners");
+ if(!Array.isArray(data.runners))throw new Error("Runner registry response is invalid.");
+ const terminalRunners=data.runners.filter(row=>row&&Array.isArray(row.capabilities)&&row.capabilities.includes("terminal"));
+ const online=terminalRunners.filter(row=>row.state==="online");
+ if(online.length){
+  $("terminal-runner-status").textContent="Online Terminal-capable Runner(s): "+online.map(row=>row.worker_id+" ("+row.host_os+")").join(", ")+". Local project allowlists are still enforced by each Runner.";
+ }else{
+  $("terminal-runner-status").textContent="No online Terminal-capable Runner. Jobs may remain queued until the local Runner is started with DCP_RUNNER_EXECUTION_ENABLED=1, DCP_RUNNER_TERMINAL_ENABLED=1 and the selected Project ID in DCP_RUNNER_TRUSTED_LOCAL_PROJECTS.";
+ }
+}
+async function terminalStudioLoadRecentJobs(){
+ const data=await terminalStudioRequest("/api/jobs?limit=50");
+ if(!Array.isArray(data.jobs))throw new Error("Job history response is invalid.");
+ terminalStudioState.jobHistory=data.jobs.filter(job=>job&&job.target==="terminal_script");
+ const select=$("terminal-job-history");
+ select.replaceChildren(new Option("Choose a recent Terminal Job",""));
+ for(const job of terminalStudioState.jobHistory){
+  select.add(new Option((job.state||"unknown")+" · "+job.id.slice(0,8)+" · "+(job.created_at||""),job.id));
+ }
+ $("terminal-job-open").disabled=select.options.length<=1;
+ if(terminalStudioState.jobHistory.length)$("terminal-job-panel").hidden=false;
+}
 async function terminalStudioLoad(){
  const button=$("terminal-load-templates");button.disabled=true;
  try{
   if(!projectImportState.authenticated&&!await projectImportCheckSession())throw new Error("Sign in as owner before loading the Command Library.");
   const data=await terminalStudioRequest("/api/terminal/templates");
-  if(!Array.isArray(data.templates)||data.execution_enabled!==false)throw new Error("Terminal API did not confirm preview-only mode.");
-  terminalStudioState.templates=data.templates;terminalStudioState.loaded=true;
-  const select=$("terminal-template-select");select.replaceChildren(new Option("Choose a command template",""));terminalStudioState.lastPreview=null;$("terminal-review-panel").hidden=true;
+  if(!Array.isArray(data.templates)||typeof data.execution_enabled!=="boolean")throw new Error("Terminal API did not return a valid catalog gate.");
+  terminalStudioState.templates=data.templates;terminalStudioState.loaded=true;terminalStudioState.lastPreview=null;
+  const select=$("terminal-template-select");select.replaceChildren(new Option("Choose a command template",""));
+  $("terminal-review-panel").hidden=true;
   for(const item of data.templates){
-   if(!item||typeof item.id!=="string"||typeof item.name!=="string"||item.execution_enabled!==false)continue;
-   select.add(new Option(item.name+" · "+item.category,item.id));
+   if(!item||typeof item.id!=="string"||typeof item.name!=="string")continue;
+   const state=item.execution_enabled===true?"RUN ENABLED":"PREVIEW ONLY";
+   select.add(new Option(item.name+" · "+item.category+" · "+state,item.id));
   }
   select.disabled=select.options.length<=1;
-  terminalStudioRenderBuilder();
-  $("terminal-preview").disabled=true;
+  terminalStudioRenderBuilder();$("terminal-preview").disabled=true;
   $("terminal-import-pack").disabled=false;
-  $("terminal-import-status").textContent="Owner session connected. Imported templates remain disabled pending review.";
-  terminalStudioStatus("Loaded "+(select.options.length-1)+" curated templates. Execution remains disabled.","ready");
+  $("terminal-import-status").textContent="Owner session connected. Imported templates remain inert and non-executable.";
+  try{await terminalStudioLoadProjects();}catch(error){terminalStudioState.projects=[];$("terminal-project-select").replaceChildren(new Option("Project Registry unavailable",""));$("terminal-project-select").disabled=true;$("terminal-workspace-summary").textContent=error.message;}
+  try{await terminalStudioLoadRunners();}catch(error){$("terminal-runner-status").textContent="Runner registry unavailable: "+error.message;}
+  try{await terminalStudioLoadRecentJobs();}catch(error){$("terminal-job-status").textContent="Job history unavailable: "+error.message;}
+  const activeJob=terminalStudioState.jobHistory.find(job=>["queued","running","cancel_requested"].includes(job.state));
+  if(activeJob)terminalStudioShowJob(activeJob);
+  const enabled=data.templates.filter(item=>item&&item.execution_enabled===true&&!String(item.id).startsWith("custom-")).length;
+  terminalStudioStatus("Loaded "+(select.options.length-1)+" templates; "+enabled+" built-in templates are execution-enabled by trusted catalog policy.","ready");
+  terminalStudioRenderExecutionGate();
  }catch(error){terminalStudioStatus("Could not load Command Library: "+error.message,"error");}
  finally{button.disabled=false;}
+}
+function terminalStudioInvalidatePreview(){
+ terminalStudioState.lastPreview=null;
+ $("terminal-preview-output").textContent="Preview is stale. Preview the current template and parameters again.";
+ if(terminalStudioState.pendingGrant)void terminalStudioRevokeGrant(true);
+ terminalStudioRenderExecutionGate();
 }
 function terminalStudioRenderBuilder(){
  const host=$("terminal-builder-fields");
  const selected=$("terminal-template-select").value;
  const item=terminalStudioState.templates.find(row=>row&&row.id===selected);
  host.replaceChildren();
- if(!item){host.textContent="Choose a command template to see its typed parameters.";return;}
+ if(!item){host.textContent="Choose a command template to see its typed parameters.";terminalStudioRenderExecutionGate();return;}
  const specs=Array.isArray(item.parameters)?item.parameters:[];
- if(!specs.length){const note=document.createElement("div");note.className="empty";note.textContent="No parameters. This template uses fixed, curated arguments.";host.append(note);return;}
+ if(!specs.length){
+  const note=document.createElement("div");note.className="empty";
+  note.textContent="No parameters. This template uses fixed, curated arguments.";
+  host.append(note);terminalStudioRenderExecutionGate();return;
+ }
  for(const spec of specs){
   if(!spec||typeof spec.name!=="string"||!["integer","commit_sha"].includes(spec.type))continue;
   const field=document.createElement("div");field.className="field";
@@ -1451,8 +1573,10 @@ function terminalStudioRenderBuilder(){
   if(spec.default!==undefined)input.value=String(spec.default);
   if(typeof spec.placeholder==="string")input.placeholder=spec.placeholder;
   label.htmlFor=input.id;label.textContent=spec.label||spec.name;
+  input.addEventListener("input",terminalStudioInvalidatePreview);
   field.append(label,input);host.append(field);
  }
+ terminalStudioRenderExecutionGate();
 }
 function terminalStudioCollectParameters(){
  const values={};
@@ -1465,9 +1589,11 @@ async function terminalStudioPreview(){
  const id=$("terminal-template-select").value;
  if(!id){terminalStudioStatus("Select a command template first.","unknown");return}
  const button=$("terminal-preview");button.disabled=true;
+ terminalStudioState.lastPreview=null;
+ terminalStudioRenderExecutionGate();
  try{
   const data=await terminalStudioRequest("/api/terminal/commands/preview","POST",{template_id:id,parameters:terminalStudioCollectParameters()});
-  if(data.execution_enabled!==false||!data.preview||!["PREVIEW_ONLY","PENDING_REVIEW","APPROVED_NOT_EXECUTABLE","REJECTED"].includes(data.preview.status)||!Array.isArray(data.preview.command_preview))throw new Error("API did not return a safe preview-only result.");
+  if(typeof data.execution_enabled!=="boolean"||!data.preview||data.execution_enabled!==(data.preview.execution_enabled===true)||!["PREVIEW_ONLY","EXECUTION_ENABLED","PENDING_REVIEW","APPROVED_NOT_EXECUTABLE","REJECTED"].includes(data.preview.status)||!Array.isArray(data.preview.command_preview))throw new Error("API did not return a valid trusted-template preview.");
   $("terminal-preview-output").textContent=JSON.stringify({
    name:data.preview.name,
    executable:data.preview.executable,
@@ -1483,7 +1609,7 @@ async function terminalStudioPreview(){
    status:data.preview.status,
    approval_status:data.preview.approval_status||null,
    source_sha256:data.preview.source_sha256||null,
-   execution_enabled:false
+   execution_enabled:data.execution_enabled
   },null,2);
   terminalStudioState.lastPreview=data.preview;
   const imported=data.preview.id&&data.preview.id.startsWith("custom-");
@@ -1491,10 +1617,213 @@ async function terminalStudioPreview(){
   $("terminal-review-approve").hidden=data.preview.status!=="PENDING_REVIEW";
   $("terminal-review-reject").hidden=data.preview.status!=="PENDING_REVIEW";
   if(imported)await terminalStudioLoadEvents(data.preview.id);
-  const message=data.preview.status==="PENDING_REVIEW"?"Imported template is pending owner review. No process was started.":data.preview.status==="APPROVED_NOT_EXECUTABLE"?"Owner approved this template, but execution remains disabled.":data.preview.status==="REJECTED"?"Owner rejected this template. Execution remains disabled.":"Exact argv preview loaded. No process was started.";
-  terminalStudioStatus(message,"ready");
- }catch(error){$("terminal-preview-output").textContent="No verified preview available.";terminalStudioStatus("Preview rejected: "+error.message,"error");}
+  const message=data.preview.status==="PENDING_REVIEW"?"Imported template is pending owner review. No process was started.":data.preview.status==="APPROVED_NOT_EXECUTABLE"?"Owner approved this template, but execution remains disabled.":data.preview.status==="REJECTED"?"Owner rejected this template. Execution remains disabled.":data.execution_enabled?"Trusted template is enabled. App authorization and a separate confirmation are still required.":"Exact argv preview loaded. No process was started; this template is disabled by catalog policy.";
+  terminalStudioStatus(message,data.execution_enabled?"execution-ready":"ready");
+  terminalStudioRenderExecutionGate();
+ }catch(error){$("terminal-preview-output").textContent="No verified preview available.";terminalStudioStatus("Preview rejected: "+error.message,"error");terminalStudioRenderExecutionGate();}
  finally{button.disabled=!$("terminal-template-select").value;}
+}
+async function terminalStudioAuthorizeRun(){
+ const template=terminalStudioSelectedTemplate();
+ const project=terminalStudioSelectedProject();
+ const preview=terminalStudioState.lastPreview;
+ if(!template||template.execution_enabled!==true||!project||!preview||preview.id!==template.id||preview.execution_enabled!==true){
+  terminalStudioRenderExecutionGate();return;
+ }
+ if(terminalStudioState.pendingGrant)await terminalStudioRevokeGrant(true);
+ const button=$("terminal-authorize-run");button.disabled=true;
+ try{
+  const requestPayload={
+   project_id:project.project_id,
+   workspace_id:project.workspace_id,
+   snapshot_sha256:project.snapshot_sha256,
+   template_id:template.id,
+   parameters:terminalStudioCollectParameters()
+  };
+  const response=await terminalStudioRequest("/api/terminal/authorize","POST",requestPayload);
+  const grant=response.grant;
+  if(!grant||typeof grant.authorization_id!=="string"||typeof grant.expires_at!=="string")throw new Error("Gateway did not return a valid one-time grant.");
+  terminalStudioState.pendingGrant={grant,requestPayload};
+  terminalStudioState.pendingSubmission=null;
+  $("terminal-grant-details").textContent=JSON.stringify({
+   template:template.name,
+   project:project.relative_path||project.project_id,
+   project_id:project.project_id,
+   workspace_id:project.workspace_id,
+   snapshot_sha256:project.snapshot_sha256,
+   action:grant.action||"terminal.read_only",
+   expires_at:grant.expires_at,
+   one_time:true
+  },null,2);
+  $("terminal-grant-confirmation").hidden=false;
+  $("terminal-confirm-run").disabled=false;
+  $("terminal-confirm-run").textContent="Confirm & Queue Job";
+  $("terminal-discard-grant").hidden=false;
+  terminalStudioStatus("App authorization issued. Review the exact Project Workspace and template, then confirm separately.","grant-issued");
+  terminalStudioRenderExecutionGate();
+ }catch(error){terminalStudioStatus("App authorization denied: "+error.message,"error");}
+ finally{button.disabled=false;terminalStudioRenderExecutionGate();}
+}
+async function terminalStudioConfirmRun(){
+ const pending=terminalStudioState.pendingGrant;
+ if(!pending)return;
+ const button=$("terminal-confirm-run");button.disabled=true;
+ if(!terminalStudioState.pendingSubmission){
+  if(!window.crypto||typeof window.crypto.randomUUID!=="function"){
+   button.disabled=false;terminalStudioStatus("Secure idempotency key generation is unavailable in this browser.","error");return;
+  }
+  terminalStudioState.pendingSubmission={
+   idempotencyKey:window.crypto.randomUUID(),
+   payload:{...pending.requestPayload,authorization_id:pending.grant.authorization_id}
+  };
+ }
+ terminalStudioLockSubmission(true);
+ $("terminal-discard-grant").hidden=true;
+ button.textContent="Queueing…";
+ try{
+  const submission=terminalStudioState.pendingSubmission;
+  const job=await terminalStudioRequest(
+   "/api/terminal/jobs","POST",submission.payload,
+   {"Idempotency-Key":submission.idempotencyKey}
+  );
+  if(!job||typeof job.id!=="string"||job.target!=="terminal_script")throw new Error("Gateway did not return a valid Terminal Job.");
+  terminalStudioState.pendingGrant=null;terminalStudioState.pendingSubmission=null;
+  $("terminal-grant-confirmation").hidden=true;
+  terminalStudioLockSubmission(false);
+  terminalStudioStatus("Terminal Job accepted by the durable queue. Runner execution is separately authorized and lease-bound.","queued");
+  terminalStudioShowJob(job);
+ }catch(error){
+  if(error.status===400||error.status===403){
+   terminalStudioState.pendingGrant=null;terminalStudioState.pendingSubmission=null;
+   $("terminal-grant-confirmation").hidden=true;
+   terminalStudioLockSubmission(false);
+   terminalStudioStatus("Gateway rejected this grant or request. Preview again and request a fresh app authorization: "+error.message,"error");
+  }else{
+   button.disabled=false;button.textContent="Retry Queue Request (same Idempotency-Key)";
+   $("terminal-grant-details").textContent+="\n\nSubmission result is uncertain. Retry uses the same Idempotency-Key; do not request a second grant.";
+   terminalStudioStatus("Job submission needs retry: "+error.message,"error");
+  }
+ }finally{
+  if(!terminalStudioState.pendingSubmission)button.disabled=false;
+ }
+}
+async function terminalStudioRevokeGrant(silent=false){
+ const pending=terminalStudioState.pendingGrant;
+ if(!pending)return;
+ if(terminalStudioState.pendingSubmission){
+  if(!silent)terminalStudioStatus("A Job submission is pending. Retry the same request to resolve its durable state before changing the grant.","error");
+  return;
+ }
+ try{
+  await terminalStudioRequest(
+   "/api/terminal/grants/"+encodeURIComponent(pending.grant.authorization_id)+"/revoke",
+   "POST",null
+  );
+  if(!silent)terminalStudioStatus("Unused authorization grant revoked.","ready");
+ }catch(error){
+  if(!silent)terminalStudioStatus("Grant could not be confirmed revoked: "+error.message+". It will expire automatically.","error");
+ }
+ terminalStudioState.pendingGrant=null;
+ $("terminal-grant-confirmation").hidden=true;
+ $("terminal-confirm-run").disabled=true;
+ terminalStudioRenderExecutionGate();
+}
+function terminalStudioRenderJobHistory(){
+ const select=$("terminal-job-history");
+ const current=select.value;
+ select.replaceChildren(new Option("Choose a recent Terminal Job",""));
+ for(const job of terminalStudioState.jobHistory){
+  if(!job||typeof job.id!=="string")continue;
+  select.add(new Option((job.state||"unknown")+" · "+job.id.slice(0,8)+" · "+(job.created_at||""),job.id));
+ }
+ if(current&&terminalStudioState.jobHistory.some(job=>job.id===current))select.value=current;
+ $("terminal-job-open").disabled=select.options.length<=1||!select.value;
+}
+function terminalStudioShowJob(job){
+ terminalStudioState.activeJob=job;
+ terminalStudioState.logCursor=0;
+ terminalStudioState.pollFailures=0;
+ if(!terminalStudioState.jobHistory.some(row=>row.id===job.id))terminalStudioState.jobHistory.unshift(job);
+ terminalStudioRenderJobHistory();
+ $("terminal-job-history").value=job.id;
+ $("terminal-job-panel").hidden=false;
+ $("terminal-job-output").textContent="Waiting for Runner output…";
+ $("terminal-job-status").textContent="Job "+job.id+" · "+job.state;
+ $("terminal-job-refresh").disabled=false;
+ $("terminal-job-cancel").hidden=["succeeded","failed","cancelled","unknown"].includes(job.state);
+ terminalStudioStartPolling();
+}
+function terminalStudioAppendLogs(logs){
+ if(!Array.isArray(logs))return;
+ const output=$("terminal-job-output");
+ for(const row of logs){
+  if(!row||typeof row.message!=="string")continue;
+  const id=Number(row.id)||0;
+  if(id>terminalStudioState.logCursor)terminalStudioState.logCursor=id;
+  output.textContent+="["+String(row.stream||"stdout")+"] "+row.message+"\n";
+ }
+ if(output.textContent.length>250000)output.textContent=output.textContent.slice(-250000);
+ output.scrollTop=output.scrollHeight;
+}
+async function terminalStudioPollJob(){
+ const active=terminalStudioState.activeJob;
+ if(!active||typeof active.id!=="string")return;
+ try{
+  const id=active.id;
+  const [job,logs]=await Promise.all([
+   terminalStudioRequest("/api/jobs/"+encodeURIComponent(id)),
+   terminalStudioRequest("/api/jobs/"+encodeURIComponent(id)+"/logs?after_id="+terminalStudioState.logCursor+"&limit=200")
+  ]);
+  if(job.id!==id||job.target!=="terminal_script")throw new Error("Job identity changed or is not a Terminal Job.");
+  terminalStudioAppendLogs(logs.logs||[]);
+  terminalStudioState.activeJob=job;
+  const state=String(job.state||"unknown");
+  $("terminal-job-status").textContent="Job "+id+" · "+state+" · attempts "+String(job.attempt_count||0)+"/"+String(job.max_attempts||1)+(job.error_code?" · "+job.error_code:"");
+  const finished=["succeeded","failed","cancelled","unknown"].includes(state);
+  $("terminal-job-cancel").hidden=finished;
+  const idx=terminalStudioState.jobHistory.findIndex(row=>row.id===id);
+  if(idx>=0)terminalStudioState.jobHistory[idx]=job;
+  terminalStudioRenderJobHistory();
+  if(finished){terminalStudioState.pollTimer=null;$("terminal-job-refresh").disabled=false;return;}
+  terminalStudioState.pollFailures=0;
+  terminalStudioState.pollTimer=setTimeout(terminalStudioPollJob,1000);
+ }catch(error){
+  terminalStudioState.pollFailures+=1;
+  $("terminal-job-status").textContent="Connection interrupted: "+error.message;
+  if(terminalStudioState.pollFailures<=6){
+   const delay=Math.min(1000*Math.pow(2,terminalStudioState.pollFailures),15000);
+   terminalStudioState.pollTimer=setTimeout(terminalStudioPollJob,delay);
+  }else{
+   terminalStudioState.pollTimer=null;
+   $("terminal-job-refresh").disabled=false;
+   $("terminal-job-status").textContent+=" · Automatic polling paused; use Refresh to reconnect.";
+  }
+ }
+}
+function terminalStudioStartPolling(){
+ if(terminalStudioState.pollTimer)clearTimeout(terminalStudioState.pollTimer);
+ terminalStudioState.pollFailures=0;
+ $("terminal-job-refresh").disabled=true;
+ terminalStudioState.pollTimer=setTimeout(terminalStudioPollJob,0);
+}
+async function terminalStudioOpenJob(){
+ const id=$("terminal-job-history").value;
+ if(!id)return;
+ const job=terminalStudioState.jobHistory.find(row=>row.id===id);
+ if(!job)return;
+ terminalStudioShowJob(job);
+}
+async function terminalStudioCancelJob(){
+ const job=terminalStudioState.activeJob;
+ if(!job||!job.id)return;
+ const button=$("terminal-job-cancel");button.disabled=true;
+ try{
+  const updated=await terminalStudioRequest("/api/jobs/"+encodeURIComponent(job.id)+"/cancel","POST",null);
+  terminalStudioState.activeJob=updated;
+  $("terminal-job-status").textContent="Cancellation requested · "+updated.state;
+  terminalStudioStartPolling();
+ }catch(error){$("terminal-job-status").textContent="Cancel request failed: "+error.message;}
+ finally{button.disabled=false;}
 }
 async function terminalStudioLoadEvents(id){
  try{
@@ -1534,7 +1863,7 @@ async function terminalStudioImport(){
   $("terminal-template-select").value=first.id;terminalStudioRenderBuilder();
   $("terminal-preview").disabled=false;
   $("terminal-import-status").textContent="Imported "+result.imported.length+" template(s). SHA-256: "+result.source_sha256+"\nAll imported templates are disabled and pending Owner review. No command was executed.";
-  terminalStudioStatus("Command pack imported as inert data. Owner review is required before any future execution feature.","ready");
+  terminalStudioStatus("Command pack imported as inert metadata. Owner review records a decision only; imported templates remain non-executable.","ready");
  }catch(error){
   $("terminal-import-status").textContent="Import rejected: "+error.message;
   terminalStudioStatus("Command pack was not imported: "+error.message,"error");
@@ -1542,8 +1871,24 @@ async function terminalStudioImport(){
 }
 function initTerminalStudio(){
  $("terminal-load-templates").addEventListener("click",terminalStudioLoad);
- $("terminal-template-select").addEventListener("change",()=>{terminalStudioState.lastPreview=null;$("terminal-review-panel").hidden=true;terminalStudioRenderBuilder();$("terminal-preview").disabled=!$("terminal-template-select").value});
+ $("terminal-template-select").addEventListener("change",()=>{
+  if(terminalStudioState.pendingGrant&&!terminalStudioState.pendingSubmission)void terminalStudioRevokeGrant(true);
+  terminalStudioState.lastPreview=null;$("terminal-review-panel").hidden=true;
+  terminalStudioRenderBuilder();$("terminal-preview").disabled=!$("terminal-template-select").value;
+  terminalStudioRenderExecutionGate();
+ });
+ $("terminal-project-select").addEventListener("change",()=>{
+  if(terminalStudioState.pendingGrant&&!terminalStudioState.pendingSubmission)void terminalStudioRevokeGrant(true);
+  terminalStudioRenderExecutionGate();
+ });
  $("terminal-preview").addEventListener("click",terminalStudioPreview);
+ $("terminal-authorize-run").addEventListener("click",terminalStudioAuthorizeRun);
+ $("terminal-confirm-run").addEventListener("click",terminalStudioConfirmRun);
+ $("terminal-discard-grant").addEventListener("click",()=>terminalStudioRevokeGrant(false));
+ $("terminal-job-history").addEventListener("change",()=>{$("terminal-job-open").disabled=!$("terminal-job-history").value;});
+ $("terminal-job-open").addEventListener("click",terminalStudioOpenJob);
+ $("terminal-job-refresh").addEventListener("click",()=>{if(terminalStudioState.activeJob)terminalStudioStartPolling();else void terminalStudioOpenJob();});
+ $("terminal-job-cancel").addEventListener("click",terminalStudioCancelJob);
  $("terminal-import-pack").addEventListener("click",terminalStudioImport);
  $("terminal-review-approve").addEventListener("click",()=>terminalStudioReview("approve"));
  $("terminal-review-reject").addEventListener("click",()=>terminalStudioReview("reject"));

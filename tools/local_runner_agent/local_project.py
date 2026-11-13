@@ -121,6 +121,20 @@ class LocalProjectRegistry:
         self.max_files = max_files
         self.max_bytes = max_bytes
         self._data = self._load()
+        migrated = False
+        for record in self._data["projects"].values():
+            if not isinstance(record, dict):
+                continue
+            workspace_id = record.get("workspace_id")
+            try:
+                parsed_workspace_id = uuid.UUID(workspace_id)
+                if str(parsed_workspace_id) != workspace_id:
+                    raise ValueError("non-canonical workspace ID")
+            except (ValueError, TypeError, AttributeError):
+                record["workspace_id"] = str(uuid.uuid4())
+                migrated = True
+        if migrated:
+            self._save()
 
     def _load(self) -> dict:
         if not self.registry_file.exists():
@@ -274,10 +288,20 @@ class LocalProjectRegistry:
             key for key, value in self._data["projects"].items()
             if value.get("path") == str(project) and value.get("root_id") == root_id
         ), str(uuid.uuid4()))
+        previous = self._data["projects"].get(project_id, {})
+        workspace_id = previous.get("workspace_id")
+        try:
+            parsed_workspace_id = uuid.UUID(workspace_id)
+            if str(parsed_workspace_id) != workspace_id:
+                raise ValueError("non-canonical workspace ID")
+        except (ValueError, TypeError, AttributeError):
+            # Migrate older project records once; the identifier remains stable on refresh.
+            workspace_id = str(uuid.uuid4())
         record = {
             "root_id": root_id,
             "path": str(project),
             "relative_path": relative.as_posix(),
+            "workspace_id": workspace_id,
             "snapshot_sha256": fingerprint,
             "file_count": file_count,
             "total_bytes": total_bytes,
@@ -477,6 +501,48 @@ class LocalProjectRegistry:
         if not isinstance(record, dict):
             raise LocalProjectError("project is not registered")
         return {"project_id": project_id, **record}
+
+    def resolve_workspace(self, project_id: str, workspace_id: str, expected_sha256: str) -> dict:
+        """Resolve a browser-selected workspace ID to a trusted registered project path.
+
+        The path is returned only to trusted in-process callers. The registry is
+        reloaded, workspace identity is matched, root containment is revalidated,
+        and the live source fingerprint must still match the requested snapshot.
+        """
+        try:
+            parsed_project = uuid.UUID(project_id)
+            parsed_workspace = uuid.UUID(workspace_id)
+        except (ValueError, TypeError, AttributeError):
+            raise LocalProjectError("project and workspace IDs must be canonical UUIDs") from None
+        if str(parsed_project) != project_id or str(parsed_workspace) != workspace_id:
+            raise LocalProjectError("project and workspace IDs must use canonical lowercase UUID form")
+        if not isinstance(expected_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_sha256):
+            raise LocalProjectError("expected snapshot SHA-256 is invalid")
+        self.reload()
+        record = self.get_project(project_id)
+        if record.get("workspace_id") != workspace_id:
+            raise LocalProjectError("workspace does not belong to the selected project")
+        refreshed = self.refresh_project(project_id)
+        if refreshed.get("workspace_id") != workspace_id:
+            raise LocalProjectError("workspace identity changed during resolution")
+        if refreshed.get("snapshot_sha256") != expected_sha256:
+            raise LocalProjectError("project snapshot changed; refresh and authorize again")
+        root_record = self._data["roots"].get(refreshed.get("root_id"))
+        if not isinstance(root_record, dict):
+            raise LocalProjectError("approved project root is no longer enrolled")
+        root = _canonical_directory(root_record.get("path", ""), "enrolled root")
+        project = _canonical_directory(refreshed.get("path", ""), "registered project")
+        try:
+            relative = project.relative_to(root)
+        except ValueError:
+            raise LocalProjectError("registered project escaped its approved root") from None
+        if not relative.parts:
+            raise LocalProjectError("registered project cannot be the approved root")
+        return {
+            "project_id": project_id, "workspace_id": workspace_id,
+            "snapshot_sha256": expected_sha256, "root_id": refreshed["root_id"],
+            "relative_path": relative.as_posix(), "path": str(project),
+        }
 
     def list_projects(self) -> list[dict]:
         return [{"project_id": key, **value} for key, value in sorted(self._data["projects"].items())]

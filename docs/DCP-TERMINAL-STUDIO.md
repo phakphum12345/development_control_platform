@@ -81,3 +81,25 @@ A bounded, schema-driven Visual Command Builder is now implemented for the curat
 - The Dashboard renders fields from the trusted catalog schema using DOM APIs, then displays normalized parameter values and exact argv.
 - Imported command packs do not accept builder parameters and remain disabled regardless of Owner review status.
 - All built-in commands remain read-only, network-denied and preview-only. No shell, PTY or process execution is introduced.
+
+
+## App-authorized backend execution checkpoint — 2026-11-13
+
+The feature branch now implements the backend path for a future Dashboard Run action:
+
+- Owner-only POST /api/terminal/authorize issues a short-lived, one-time grant bound to the authenticated subject/session, project, workspace, current snapshot, trusted template version and normalized parameter digest. Same-origin and CSRF checks are mandatory.
+- Owner-only POST /api/terminal/jobs accepts only typed project/workspace identifiers, snapshot digest, trusted template ID, typed parameters and the opaque grant reference. It reserves the grant to a deterministic Job ID before the Job becomes visible to Runner polling and scopes idempotency to the authenticated session.
+- The existing durable Job Store and capability-aware Runner Scheduler carry the terminal_script target. Only a registered Runner that explicitly advertises the terminal capability can claim it.
+- The Runner verifies the active Job lease through its credential-authenticated Gateway endpoint. The grant is bound to that Runner and atomically consumed once.
+- The Runner resolves the registered Project Workspace from its own Local Project Registry and checks the project/workspace pairing and current snapshot. It invokes only the fixed catalog template with a trusted native executable, server-derived argv and shell=false.
+- Terminal output is bounded and redacted before being appended to existing durable Job logs. Timeout, cancellation polling, process-tree termination and scratch-workspace cleanup use the existing Runner/Job primitives.
+
+### Current release gate
+
+- Every built-in template remains execution_enabled=false. The new backend API therefore fails closed by default; Runner opt-in does not override catalog policy.
+- Imported templates remain inert even after Owner review. No imported script is runnable.
+- The Dashboard still has only catalog, preview, import and review controls. The Run button, Project/Workspace selector, grant confirmation view and Terminal job output panel are not implemented yet.
+- The Runner captures output within the byte ceiling, redacts the complete bounded stream, then appends bounded messages to durable Job logs. The Dashboard does not yet display those logs live; the Run panel and live log view remain outstanding. Interactive PTY is out of scope.
+- Project discovery and authorization remain Owner-only. There is no per-user Project ACL model yet.
+- The Runner executes the read-only fixed templates in the actual registered project directory, but this is not an OS sandbox and does not provide kernel-enforced network isolation. Processes retain the Runner service account's OS permissions.
+- The implementation and acceptance tests are on a draft PR. Do not mark the work complete until all required workflows pass for the exact latest PR head and the Dashboard Run workflow is implemented and verified.

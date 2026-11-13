@@ -3,6 +3,7 @@ import json
 import os
 import tempfile
 import unittest
+import uuid
 from pathlib import Path
 
 from tools.local_runner_agent.local_project import (
@@ -32,6 +33,7 @@ class LocalProjectRegistryTests(unittest.TestCase):
     def test_enrolls_root_and_registers_project_without_executing_source(self):
         registered = self.registry.register_project(self.root["root_id"], self.project)
         self.assertEqual(registered["relative_path"], "web-app")
+        self.assertEqual(len(registered["workspace_id"]), 36)
         self.assertEqual(registered["file_count"], 2)
         self.assertEqual(registered["total_bytes"], len(
             (self.project / "index.html").read_bytes()
@@ -46,6 +48,7 @@ class LocalProjectRegistryTests(unittest.TestCase):
         first = self.registry.register_project(self.root["root_id"], self.project)
         second = self.registry.register_project(self.root["root_id"], self.project)
         self.assertEqual(first["project_id"], second["project_id"])
+        self.assertEqual(first["workspace_id"], second["workspace_id"])
 
     def test_registry_persists_roots_and_projects(self):
         project = self.registry.register_project(self.root["root_id"], self.project)
@@ -53,6 +56,44 @@ class LocalProjectRegistryTests(unittest.TestCase):
         self.assertEqual(loaded.get_project(project["project_id"]), project)
         if os.name != "nt":
             self.assertEqual(self.registry_path.stat().st_mode & 0o777, 0o600)
+
+    def test_legacy_project_record_is_migrated_to_stable_workspace_id(self):
+        project = self.registry.register_project(self.root["root_id"], self.project)
+        legacy = dict(project)
+        legacy.pop("project_id")
+        legacy.pop("workspace_id")
+        self.registry_path.write_text(json.dumps({
+            "version": 1,
+            "roots": {self.root["root_id"]: self.registry._data["roots"][self.root["root_id"]]},
+            "projects": {project["project_id"]: legacy},
+        }), encoding="utf-8")
+        loaded = LocalProjectRegistry(self.registry_path)
+        migrated = loaded.get_project(project["project_id"])
+        self.assertEqual(len(migrated["workspace_id"]), 36)
+        persisted = json.loads(self.registry_path.read_text(encoding="utf-8"))
+        self.assertEqual(persisted["projects"][project["project_id"]]["workspace_id"], migrated["workspace_id"])
+
+    def test_resolves_workspace_id_to_trusted_project_path(self):
+        project = self.registry.register_project(self.root["root_id"], self.project)
+        resolved = self.registry.resolve_workspace(
+            project["project_id"], project["workspace_id"], project["snapshot_sha256"]
+        )
+        self.assertEqual(resolved["path"], str(self.project.resolve()))
+        self.assertEqual(resolved["project_id"], project["project_id"])
+        self.assertEqual(resolved["workspace_id"], project["workspace_id"])
+        self.assertEqual(resolved["relative_path"], "web-app")
+
+    def test_workspace_resolution_rejects_cross_project_and_stale_snapshot(self):
+        project = self.registry.register_project(self.root["root_id"], self.project)
+        with self.assertRaisesRegex(LocalProjectError, "does not belong"):
+            self.registry.resolve_workspace(
+                project["project_id"], str(uuid.uuid4()), project["snapshot_sha256"]
+            )
+        (self.project / "index.html").write_text("<h1>changed</h1>\n", encoding="utf-8")
+        with self.assertRaisesRegex(LocalProjectError, "snapshot changed"):
+            self.registry.resolve_workspace(
+                project["project_id"], project["workspace_id"], project["snapshot_sha256"]
+            )
 
     def test_rejects_unenrolled_root_and_project_outside_root(self):
         with self.assertRaises(LocalProjectError):
@@ -71,6 +112,7 @@ class LocalProjectRegistryTests(unittest.TestCase):
         (self.project / "index.html").write_text("<h1>changed</h1>\n", encoding="utf-8")
         refreshed = self.registry.refresh_project(first["project_id"])
         self.assertEqual(refreshed["project_id"], first["project_id"])
+        self.assertEqual(refreshed["workspace_id"], first["workspace_id"])
         self.assertNotEqual(refreshed["snapshot_sha256"], first["snapshot_sha256"])
 
     def test_ignores_known_generated_directories(self):
