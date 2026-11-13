@@ -55,6 +55,8 @@ class DashboardDocumentLifecycleTests(unittest.TestCase):
         self.assertTrue(stages.issubset(self.parser.values))
         self.assertIn("pr-lifecycle-verify", self.parser.ids)
         self.assertIn("does not open, merge, or close PRs", self.source)
+        self.assertIn("requiredChecksPass", self.source)
+        self.assertIn("branch-protection", self.source)
 
     def test_read_only_network_requests_have_bounded_retries(self):
         self.assertIn("attempt<3", self.source)
