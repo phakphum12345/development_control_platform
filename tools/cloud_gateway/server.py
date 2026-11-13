@@ -209,6 +209,9 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
         def terminal_template_store(self):
             return getattr(service, "terminal_template_store", None)
 
+        def terminal_grant_store(self):
+            return getattr(service, "terminal_grant_store", None)
+
         @staticmethod
         def public_local_project(row):
             public = {key: row.get(key) for key in (
