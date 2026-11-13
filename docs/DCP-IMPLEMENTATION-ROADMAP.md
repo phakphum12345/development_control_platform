@@ -185,7 +185,7 @@ Historical gate for PR #71: its Chromium sandbox launch failure applied to that 
 - PR #59 was closed as superseded: its head was 49 commits behind and its net diff removed already-integrated Gateway proxy allowlists and newer import/snapshot documentation. No branch was deleted.
 
 
-## M14 — Durable Job Coordinator and checkpoint recovery (feature branch)
+## M14 — Durable Job Coordinator and checkpoint recovery (merged PR #107)
 
 **Scope:** persist worker progress and make interrupted-job recovery explicit without silently repeating an uncertain build.
 
@@ -197,4 +197,18 @@ Historical gate for PR #71: its Chromium sandbox launch failure applied to that 
 - Added owner-only Gateway and Local Auth Proxy resume routes and a Dashboard recovery control.
 - Added JobStore, authenticated Gateway API, Local Auth Proxy, Runner client, Dashboard contract, and full Runner pipeline recovery tests.
 
-**Verification boundary:** implementation is on `feat/durable-job-coordinator-checkpoints`. Exact-head CI, Windows/Linux filesystem behavior, and deployed Local Auth Proxy acceptance must pass before merge. A manual owner attestation is not proof of process termination or filesystem cleanup; unknown outcomes remain blocked until that cleanup is independently verified.
+**Verification boundary:** PR #107 is merged. Its merge CI passed; deployed Local Auth Proxy acceptance and independent evidence of prior worker process termination and workspace cleanup remain separate operational gates. A manual owner attestation is not proof of process termination or filesystem cleanup; unknown outcomes remain blocked until that cleanup is independently verified.
+
+
+## M15 — Cross-platform recovery acceptance (PR #108 merged)
+
+- Added a dedicated GitHub Actions matrix for Ubuntu and Windows using Python 3.12.
+- Both platforms passed the durable JobStore recovery, authenticated Runner checkpoint/recovery API, and Local Runner interruption/recovery pipeline suites on exact head `de16d16132714c1c26ee009cee8275f016a5bb1c`.
+- The workflow also passed the repository's Local-first Minimal Emulator and Validate Control Plane checks before PR #108 was squash-merged as `959bc49e3e7116f96d8156b07d0df62de045e944`.
+- This proves the selected CI test suites on GitHub-hosted Ubuntu and Windows; it does not prove a deployed user environment, self-hosted Runner process termination, or real-host workspace cleanup.
+
+### M15 follow-up — Local Auth Proxy recovery integration
+
+- Extend the same Ubuntu/Windows matrix to run `tests.test_local_auth_proxy` so authenticated Local Auth Proxy and Gateway integration behavior is exercised on both operating systems.
+- Keep the workflow read-only, secret-free, provider-free, and independent of cloud provisioning.
+- Remaining operational acceptance: execute the supported launcher on an actual Windows host, verify the live Dashboard → Local Auth Proxy → Gateway owner flow, and independently inspect process-tree termination and workspace cleanup before allowing any UNKNOWN job to resume.
