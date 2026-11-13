@@ -60,6 +60,45 @@ def redact_terminal_output(value: str) -> str:
     return _SECRET_TOKEN.sub("[REDACTED TOKEN]", text)
 
 
+class TerminalOutputRedactor:
+    """Redact complete output lines so secrets split across pipe chunks are not leaked."""
+
+    def __init__(self):
+        self._buffer = ""
+        self._inside_private_key = False
+
+    def feed(self, value: str, *, final: bool = False) -> str:
+        self._buffer += value
+        lines = self._buffer.splitlines(keepends=True)
+        self._buffer = ""
+        if not final and lines and not lines[-1].endswith(("\n", "\r")):
+            self._buffer = lines.pop()
+        output = []
+        for line in lines:
+            if self._inside_private_key:
+                if "-----END " in line and "PRIVATE KEY-----" in line:
+                    self._inside_private_key = False
+                continue
+            if "-----BEGIN " in line and "PRIVATE KEY-----" in line:
+                output.append("[REDACTED PRIVATE KEY]\n")
+                if not ("-----END " in line and "PRIVATE KEY-----" in line):
+                    self._inside_private_key = True
+                continue
+            output.append(redact_terminal_output(line))
+        if final and self._buffer:
+            line, self._buffer = self._buffer, ""
+            if self._inside_private_key:
+                if "-----END " in line and "PRIVATE KEY-----" in line:
+                    self._inside_private_key = False
+            elif "-----BEGIN " in line and "PRIVATE KEY-----" in line:
+                output.append("[REDACTED PRIVATE KEY]")
+                if not ("-----END " in line and "PRIVATE KEY-----" in line):
+                    self._inside_private_key = True
+            else:
+                output.append(redact_terminal_output(line))
+        return "".join(output)
+
+
 class TerminalScriptExecutor:
     """Run only catalog-defined read-only scripts in a trusted project directory."""
 
