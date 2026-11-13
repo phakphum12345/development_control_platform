@@ -229,10 +229,11 @@ class JobStore:
                     raise JobConflict("Idempotency key conflict")
                 db.execute("COMMIT")
                 return self._decode(old), False
+            max_attempts = 1 if source_type == "terminal_script" else 3
             db.execute(
-                "INSERT INTO jobs(id,idem,fingerprint,repository,commit_sha,target,state,payload,created_at,updated_at) VALUES(?,?,?,?,?,?,'queued',?,?,?)",
+                "INSERT INTO jobs(id,idem,fingerprint,repository,commit_sha,target,state,payload,created_at,updated_at,max_attempts) VALUES(?,?,?,?,?,?,'queued',?,?,?,?)",
                 (job_id, idempotency_key, fingerprint, repository, sha, target,
-                 json.dumps(normalized), timestamp, timestamp),
+                 json.dumps(normalized), timestamp, timestamp, max_attempts),
             )
             self._event(db, job_id, "queued", {"source_type": normalized["source_type"]})
             db.execute("COMMIT")
