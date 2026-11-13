@@ -58,7 +58,7 @@ class TerminalScriptExecutorTests(unittest.TestCase):
         self.assertEqual(env["HOME"], str(job_home))
         self.assertEqual(env["USERPROFILE"], str(job_home))
 
-    def test_repository_fsmonitor_hook_is_not_invoked_by_git_status(self):
+    def test_repository_fsmonitor_and_clean_filters_are_not_invoked_by_git_status(self):
         git = shutil.which("git")
         if not git:
             self.skipTest("Git is unavailable on this test host")
