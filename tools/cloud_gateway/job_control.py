@@ -10,6 +10,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .sqlite_security import prepare_private_sqlite_file
+from .terminal_catalog import preview_template
+from .terminal_execution_contract import template_version_digest
+from .terminal_grants import TerminalGrantStore
 
 class JobConflict(RuntimeError):
     pass
@@ -95,7 +98,7 @@ class JobStore:
             (job_id, event, json.dumps(detail or {}, sort_keys=True), utcnow().isoformat()),
         )
 
-    def create(self, payload, idempotency_key):
+    def create(self, payload, idempotency_key, *, job_id=None):
         if not isinstance(idempotency_key, str) or not re.fullmatch(r"[A-Za-z0-9._:-]{8,200}", idempotency_key):
             raise ValueError("Invalid Idempotency-Key")
         if not isinstance(payload, dict):
@@ -103,9 +106,11 @@ class JobStore:
         source_type = payload.get("source_type", "github")
         target = payload.get("target", "test")
         if target not in ("test", "build", "package", "build_android", "build_web", "build_windows",
-                          "build_linux", "build_macos", "build_ios", "build_static_web", "build_vite", "build_next", "build_angular", "test_static_web"):
+                          "build_linux", "build_macos", "build_ios", "build_static_web", "build_vite", "build_next", "build_angular", "test_static_web", "terminal_script"):
             raise ValueError("Unsupported target")
         if source_type == "github":
+            if target == "terminal_script":
+                raise ValueError("Terminal script jobs require an app-authorized local project workspace")
             if not set(payload).issubset({"source_type", "repository", "commit_sha", "target"}):
                 raise ValueError("Unsupported GitHub job payload fields")
             repository, sha = payload.get("repository"), payload.get("commit_sha")
@@ -138,10 +143,84 @@ class JobStore:
                 "source_sha256": snapshot_sha, "repository": repository,
                 "commit_sha": sha, "target": target,
             }
+        elif source_type == "terminal_script":
+            required = {
+                "source_type", "project_id", "workspace_id", "snapshot_sha256",
+                "target", "template_id", "parameters", "authorization_id",
+                "template_digest", "parameters_sha256",
+            }
+            if set(payload) != required or target != "terminal_script":
+                raise ValueError("Terminal jobs require only the typed, app-authorized execution fields")
+            identifiers = ("project_id", "workspace_id", "authorization_id")
+            for field in identifiers:
+                try:
+                    parsed = uuid.UUID(payload[field])
+                except (ValueError, TypeError, AttributeError):
+                    raise ValueError(f"Invalid Terminal {field}") from None
+                if str(parsed) != payload[field]:
+                    raise ValueError(f"Terminal {field} must use canonical lowercase UUID form")
+            project_id = payload["project_id"]
+            workspace_id = payload["workspace_id"]
+            snapshot_sha = payload["snapshot_sha256"]
+            if not isinstance(snapshot_sha, str) or not re.fullmatch(r"[0-9a-f]{64}", snapshot_sha):
+                raise ValueError("Invalid Terminal workspace snapshot SHA-256")
+            template_id = payload["template_id"]
+            if not isinstance(template_id, str) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", template_id):
+                raise ValueError("Invalid Terminal template ID")
+            parameters = payload["parameters"]
+            if not isinstance(parameters, dict) or len(parameters) > 16:
+                raise ValueError("Terminal parameters must be a bounded object")
+            try:
+                preview = preview_template(template_id, parameters)
+            except (ValueError, TypeError) as exc:
+                raise ValueError(f"Invalid Terminal template parameters: {exc}") from None
+            if (preview.get("execution_enabled") is not True
+                    or preview.get("mutation_class") != "read-only"
+                    or preview.get("network") != "denied"
+                    or preview.get("approval_required") is not False):
+                raise ValueError("Terminal execution is disabled or outside the read-only MVP policy")
+            normalized_parameters = preview.get("parameter_values")
+            if not isinstance(normalized_parameters, dict):
+                raise ValueError("Terminal template parameter normalization failed")
+            expected_template_digest = template_version_digest(template_id, parameters)
+            expected_parameters_digest = TerminalGrantStore.parameters_digest(normalized_parameters)
+            if payload["template_digest"] != expected_template_digest:
+                raise ValueError("Terminal template version digest does not match the trusted catalog")
+            if payload["parameters_sha256"] != expected_parameters_digest:
+                raise ValueError("Terminal parameter digest does not match normalized parameters")
+            repository = "local-terminal/" + project_id
+            sha = hashlib.sha1(
+                ("dcp-terminal:" + project_id + ":" + workspace_id + ":" + snapshot_sha).encode("utf-8")
+            ).hexdigest()
+            normalized = {
+                "source_type": "terminal_script",
+                "source_id": project_id,
+                "source_sha256": snapshot_sha,
+                "repository": repository,
+                "commit_sha": sha,
+                "target": "terminal_script",
+                "project_id": project_id,
+                "workspace_id": workspace_id,
+                "snapshot_sha256": snapshot_sha,
+                "template_id": template_id,
+                "parameters": normalized_parameters,
+                "authorization_id": payload["authorization_id"],
+                "template_digest": expected_template_digest,
+                "parameters_sha256": expected_parameters_digest,
+            }
         else:
             raise ValueError("Unsupported job source type")
         fingerprint = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
-        job_id, timestamp = str(uuid.uuid4()), utcnow().isoformat()
+        if job_id is None:
+            job_id = str(uuid.uuid4())
+        else:
+            try:
+                parsed_job_id = uuid.UUID(job_id)
+            except (ValueError, TypeError, AttributeError):
+                raise ValueError("Invalid supplied Job ID") from None
+            if str(parsed_job_id) != job_id:
+                raise ValueError("Supplied Job ID must use canonical lowercase UUID form")
+        timestamp = utcnow().isoformat()
         with self.lock, self.db() as db:
             db.execute("BEGIN IMMEDIATE")
             old = db.execute("SELECT * FROM jobs WHERE idem=?", (idempotency_key,)).fetchone()
@@ -150,14 +229,24 @@ class JobStore:
                     raise JobConflict("Idempotency key conflict")
                 db.execute("COMMIT")
                 return self._decode(old), False
+            max_attempts = 1 if source_type == "terminal_script" else 3
             db.execute(
-                "INSERT INTO jobs(id,idem,fingerprint,repository,commit_sha,target,state,payload,created_at,updated_at) VALUES(?,?,?,?,?,?,'queued',?,?,?)",
+                "INSERT INTO jobs(id,idem,fingerprint,repository,commit_sha,target,state,payload,created_at,updated_at,max_attempts) VALUES(?,?,?,?,?,?,'queued',?,?,?,?)",
                 (job_id, idempotency_key, fingerprint, repository, sha, target,
-                 json.dumps(normalized), timestamp, timestamp),
+                 json.dumps(normalized), timestamp, timestamp, max_attempts),
             )
             self._event(db, job_id, "queued", {"source_type": normalized["source_type"]})
             db.execute("COMMIT")
         return self.get(job_id), True
+
+    def get_by_idempotency_key(self, idempotency_key):
+        """Return the existing durable Job for a validated idempotency key, if any."""
+        if not isinstance(idempotency_key, str) or not re.fullmatch(r"[A-Za-z0-9._:-]{8,200}", idempotency_key):
+            raise ValueError("Invalid Idempotency-Key")
+        with self.lock, self.db() as db:
+            return self._decode(
+                db.execute("SELECT * FROM jobs WHERE idem=?", (idempotency_key,)).fetchone()
+            )
 
     def get(self, job_id):
         with self.lock, self.db() as db:
@@ -239,7 +328,8 @@ class JobStore:
         if allowed_targets is not None:
             supported = {"test", "build", "package", "build_android", "build_web",
                          "build_windows", "build_linux", "build_macos", "build_ios",
-                         "build_static_web", "build_vite", "build_next", "build_angular", "test_static_web"}
+                         "build_static_web", "build_vite", "build_next", "build_angular", "test_static_web",
+                         "terminal_script"}
             if (not isinstance(allowed_targets, (list, tuple, set, frozenset))
                     or any(not isinstance(item, str) or item not in supported for item in allowed_targets)):
                 raise ValueError("Invalid allowed target list")

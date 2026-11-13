@@ -13,6 +13,8 @@ import os
 import re
 import threading
 import time
+import uuid
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -41,6 +43,9 @@ from tools.local_runner_agent.runtime import RuntimeManager
 from .preview import AuthenticatedPreviewManager, PreviewError
 from .terminal_catalog import (list_templates as list_terminal_templates, preview_template as preview_terminal_template, validate_preview_payload)
 from .terminal_templates import (TerminalTemplateConflict, TerminalTemplateError, TerminalTemplateNotFound, TerminalTemplateStore)
+from .terminal_grants import TerminalGrantStore, TerminalGrantError
+from .terminal_execution_contract import TerminalContractError, validate_terminal_request
+from .terminal_authorization import TerminalAuthorizationError, issue_terminal_grant
 
 
 class DisabledProvider:
@@ -208,10 +213,13 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
         def terminal_template_store(self):
             return getattr(service, "terminal_template_store", None)
 
+        def terminal_grant_store(self):
+            return getattr(service, "terminal_grant_store", None)
+
         @staticmethod
         def public_local_project(row):
             public = {key: row.get(key) for key in (
-                "project_id", "root_id", "relative_path", "snapshot_sha256",
+                "project_id", "workspace_id", "root_id", "relative_path", "snapshot_sha256",
                 "file_count", "total_bytes",
             )}
             raw_path = row.get("path")
@@ -274,9 +282,17 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
             public["source_type"] = payload.get("source_type", "github")
             public["source_id"] = payload.get("source_id", row.get("repository"))
             public["source_sha256"] = payload.get("source_sha256")
-            if public["source_type"] == "local_folder":
+            if public["source_type"] in ("local_folder", "terminal_script"):
                 public["repository"] = None
                 public["commit_sha"] = None
+            if public["source_type"] == "terminal_script":
+                public["terminal"] = {
+                    key: payload.get(key) for key in (
+                        "project_id", "workspace_id", "snapshot_sha256",
+                        "template_id", "parameters", "authorization_id",
+                        "template_digest", "parameters_sha256",
+                    )
+                }
             return public
 
         def proxy_identity(self):
@@ -401,9 +417,12 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                 template_store = self.terminal_template_store()
                 if template_store is None:
                     return self.send_json(503, {"error": "Terminal Template Store unavailable"})
+                templates = list_terminal_templates() + template_store.list_imported()
                 return self.send_json(200, {
-                    "templates": list_terminal_templates() + template_store.list_imported(),
-                    "execution_enabled": False,
+                    "templates": templates,
+                    "execution_enabled": any(
+                        item.get("execution_enabled") is True for item in templates
+                    ),
                 })
             if path == "/api/jobs" or path.startswith("/api/jobs/"):
                 identity = self.proxy_identity()
@@ -421,6 +440,24 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                         return self.send_json(200, {"jobs": [self.public_job(row) for row in jobs.list_recent(limit)]})
                     except (ValueError, TypeError):
                         return self.send_json(400, {"error": "invalid limit"})
+                job_match = re.fullmatch(r"/api/jobs/([0-9a-f-]{36})", path)
+                if job_match:
+                    job = jobs.get(job_match.group(1))
+                    if not job:
+                        return self.send_json(404, {"error": "job not found"})
+                    return self.send_json(200, self.public_job(job))
+                logs_match = re.fullmatch(r"/api/jobs/([0-9a-f-]{36})/logs", path)
+                if logs_match:
+                    query = parse_qs(urlparse(self.path).query)
+                    try:
+                        after_id = int(query.get("after_id", ["0"])[0])
+                        limit = int(query.get("limit", ["500"])[0])
+                        logs = jobs.logs(logs_match.group(1), after_id=after_id, limit=limit)
+                        return self.send_json(200, {"logs": logs})
+                    except JobNotFound:
+                        return self.send_json(404, {"error": "job not found"})
+                    except (ValueError, TypeError):
+                        return self.send_json(400, {"error": "invalid log cursor or limit"})
                 preview_list = re.fullmatch(r"/api/jobs/([0-9a-f-]{36})/previews", path)
                 if preview_list:
                     if identity.get("role") != "owner":
@@ -777,6 +814,152 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
 
         def do_POST(self):
             path = urlparse(self.path).path
+            if path == "/api/terminal/jobs":
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if identity.get("role") != "owner":
+                    return self.send_json(403, {"error": "owner role required"})
+                if not self.same_origin():
+                    return self.send_json(403, {"error": "same-origin request required"})
+                if not self.csrf_valid(identity):
+                    return self.send_json(403, {"error": "CSRF validation failed"})
+                jobs = self.job_store()
+                grants = self.terminal_grant_store()
+                registry = self.local_project_registry()
+                if jobs is None or grants is None or registry is None:
+                    return self.send_json(503, {"error": "Terminal job services unavailable"})
+                client_idempotency_key = self.headers.get("Idempotency-Key", "")
+                if not isinstance(client_idempotency_key, str) or not re.fullmatch(
+                    r"[A-Za-z0-9._:-]{8,200}", client_idempotency_key
+                ):
+                    return self.send_json(400, {"error": "valid Idempotency-Key is required"})
+                try:
+                    contract = validate_terminal_request(self.body(max_bytes=8192))
+                    if not contract["execution_enabled"]:
+                        return self.send_json(409, {"error": "Terminal template execution is disabled"})
+                    request = contract["request"]
+                    workspace = registry.resolve_workspace(
+                        request["project_id"], request["workspace_id"], request["snapshot_sha256"]
+                    )
+                    parameters_sha256 = grants.parameters_digest(request["parameters"])
+                    job_payload = {
+                        "source_type": "terminal_script",
+                        "project_id": workspace["project_id"],
+                        "workspace_id": workspace["workspace_id"],
+                        "snapshot_sha256": workspace["snapshot_sha256"],
+                        "target": "terminal_script",
+                        "template_id": request["template_id"],
+                        "parameters": request["parameters"],
+                        "authorization_id": request["authorization_id"],
+                        "template_digest": contract["template_version_digest"],
+                        "parameters_sha256": parameters_sha256,
+                    }
+                    # Scope idempotency to the authenticated app session. A browser
+                    # cannot collide with another user's Job by reusing its key.
+                    scoped_key = hashlib.sha256(
+                        (identity["subject"] + "\n" + identity["session_id"] + "\n"
+                         + client_idempotency_key).encode("utf-8")
+                    ).hexdigest()
+                    existing = jobs.get_by_idempotency_key(scoped_key)
+                    if existing is not None:
+                        existing_payload = existing.get("payload") or {}
+                        expected_fields = (
+                            "source_type", "project_id", "workspace_id", "snapshot_sha256",
+                            "target", "template_id", "parameters", "authorization_id",
+                            "template_digest", "parameters_sha256",
+                        )
+                        if any(existing_payload.get(key) != job_payload.get(key) for key in expected_fields):
+                            return self.send_json(409, {"error": "Idempotency-Key conflicts with an existing Terminal Job"})
+                        return self.send_json(200, {
+                            **self.public_job(existing), "created": False,
+                        })
+                    grants.validate_pending(
+                        request["authorization_id"],
+                        subject=identity.get("subject"),
+                        session_id=identity.get("session_id"),
+                        project_id=workspace["project_id"],
+                        workspace_id=workspace["workspace_id"],
+                        snapshot_sha256=workspace["snapshot_sha256"],
+                        template_id=request["template_id"],
+                        template_digest=contract["template_version_digest"],
+                        parameters_sha256=parameters_sha256,
+                        action="terminal.read_only",
+                    )
+                    # Reserve the grant before the Job becomes visible to Runner
+                    # polling. The deterministic ID also makes a retried request safe.
+                    job_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "dcp-terminal-job:" + scoped_key))
+                    grants.reserve_job(request["authorization_id"], job_id=job_id)
+                    try:
+                        job, created = jobs.create(
+                            job_payload, scoped_key, job_id=job_id
+                        )
+                    except Exception:
+                        grants.revoke(request["authorization_id"])
+                        raise
+                    return self.send_json(202 if created else 200, {
+                        **self.public_job(job), "created": created,
+                    })
+                except TerminalContractError as exc:
+                    return self.send_json(400, {"error": str(exc)})
+                except TerminalGrantError as exc:
+                    return self.send_json(403, {"error": str(exc)})
+                except LocalProjectError as exc:
+                    return self.send_json(409, {"error": str(exc)})
+                except JobConflict as exc:
+                    return self.send_json(409, {"error": str(exc)})
+                except ValueError as exc:
+                    return self.send_json(400, {"error": str(exc)})
+                except Exception:
+                    return self.send_json(503, {"error": "Terminal Job creation failed closed"})
+            terminal_grant_revoke = re.fullmatch(
+                r"/api/terminal/grants/([0-9a-f-]{36})/revoke", path
+            )
+            if terminal_grant_revoke:
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if identity.get("role") != "owner":
+                    return self.send_json(403, {"error": "owner role required"})
+                if not self.same_origin():
+                    return self.send_json(403, {"error": "same-origin request required"})
+                if not self.csrf_valid(identity):
+                    return self.send_json(403, {"error": "CSRF validation failed"})
+                grants = self.terminal_grant_store()
+                if grants is None:
+                    return self.send_json(503, {"error": "Terminal Grant Store unavailable"})
+                try:
+                    revoked = grants.revoke(terminal_grant_revoke.group(1))
+                    if not revoked:
+                        return self.send_json(409, {"error": "grant is missing, already consumed or already revoked"})
+                    return self.send_json(200, {"revoked": True})
+                except TerminalGrantError as exc:
+                    return self.send_json(400, {"error": str(exc)})
+            if path == "/api/terminal/authorize":
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if identity.get("role") != "owner":
+                    return self.send_json(403, {"error": "owner role required"})
+                if not self.same_origin():
+                    return self.send_json(403, {"error": "same-origin request required"})
+                if not self.csrf_valid(identity):
+                    return self.send_json(403, {"error": "CSRF validation failed"})
+                grants = self.terminal_grant_store()
+                registry = self.local_project_registry()
+                if grants is None or registry is None:
+                    return self.send_json(503, {"error": "Terminal authorization services unavailable"})
+                try:
+                    grant = issue_terminal_grant(identity, self.body(max_bytes=8192), registry, grants)
+                    return self.send_json(201, {"grant": grant})
+                except PolicyDenied as exc:
+                    return self.send_json(exc.status_code, {"error": str(exc)})
+                except TerminalAuthorizationError as exc:
+                    return self.send_json(409, {"error": str(exc)})
+                except ValueError as exc:
+                    return self.send_json(400, {"error": str(exc)})
+                except Exception:
+                    return self.send_json(503, {"error": "Terminal authorization failed closed"})
             document_grant = path == "/api/document-workflow/grants"
             document_revoke = re.fullmatch(
                 r"/api/document-workflow/grants/([0-9a-f-]{36})/revoke", path
@@ -965,7 +1148,7 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                         }.get(approval_status, "UNKNOWN")
                     return self.send_json(200, {
                         "preview": preview,
-                        "execution_enabled": False,
+                        "execution_enabled": preview.get("execution_enabled") is True,
                     })
                 except ValueError as exc:
                     return self.send_json(400, {"error": str(exc)})
@@ -1221,6 +1404,44 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                     if len(parts) != 2 or not re.fullmatch(r"[0-9a-f-]{36}", parts[0]):
                         return self.send_json(404, {"error": "not found"})
                     job_id, action = parts
+                    if action == "terminal-grant":
+                        payload = self.body()
+                        if set(payload) != {"authorization_id"}:
+                            return self.send_json(400, {"error": "Terminal grant verification fields are invalid"})
+                        job = jobs.get(job_id)
+                        now_iso = datetime.now(timezone.utc).isoformat()
+                        if (not job or job.get("state") != "running"
+                                or job.get("worker") != worker
+                                or not job.get("lease_until")
+                                or job["lease_until"] <= now_iso):
+                            return self.send_json(409, {"error": "active Runner Job lease required"})
+                        job_payload = job.get("payload") if isinstance(job.get("payload"), dict) else {}
+                        if (job.get("target") != "terminal_script"
+                                or job_payload.get("source_type") != "terminal_script"):
+                            return self.send_json(409, {"error": "Job is not a Terminal execution job"})
+                        grant_id = payload.get("authorization_id")
+                        if grant_id != job_payload.get("authorization_id"):
+                            return self.send_json(403, {"error": "grant reference does not match the queued Job"})
+                        grants = self.terminal_grant_store()
+                        if grants is None:
+                            return self.send_json(503, {"error": "Terminal grant storage unavailable"})
+                        try:
+                            grants.bind_job(grant_id, job_id=job_id, worker_id=worker)
+                            result = grants.consume_for_job(
+                                grant_id, job_id=job_id, worker_id=worker,
+                                project_id=job_payload.get("project_id"),
+                                workspace_id=job_payload.get("workspace_id"),
+                                snapshot_sha256=job_payload.get("snapshot_sha256"),
+                                template_id=job_payload.get("template_id"),
+                                template_digest=job_payload.get("template_digest"),
+                                parameters_sha256=job_payload.get("parameters_sha256"),
+                                action="terminal.read_only",
+                            )
+                            return self.send_json(200, {"grant": result})
+                        except TerminalGrantError as exc:
+                            return self.send_json(403, {"error": str(exc)})
+                        except ValueError as exc:
+                            return self.send_json(400, {"error": str(exc)})
                     if action == "artifacts":
                         artifacts = self.artifact_store()
                         if artifacts is None:
@@ -1529,6 +1750,9 @@ def main():
     )
     service.terminal_template_store = TerminalTemplateStore(
         os.getenv("DCP_GATEWAY_TERMINAL_DATABASE", database_path + ".terminal")
+    )
+    service.terminal_grant_store = TerminalGrantStore(
+        os.getenv("DCP_GATEWAY_TERMINAL_GRANTS_DATABASE", database_path + ".terminal-grants")
     )
     registry_path = os.getenv("DCP_LOCAL_PROJECT_REGISTRY", "").strip()
     service.local_project_registry = None

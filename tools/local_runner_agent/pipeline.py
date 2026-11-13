@@ -3,12 +3,16 @@ from __future__ import annotations
 
 import time
 import sys
+from pathlib import Path
 from dataclasses import asdict
 from typing import Protocol
 
 from .artifacts import ArtifactPackageError, FlutterArtifactPackager
 from .checkout import CheckoutError
+from .local_project import LocalProjectError
 from .execution import ExecutionError, FlutterBuildExecutor
+from .terminal_executor import TerminalExecutionError, TerminalScriptExecutor
+from tools.cloud_gateway.terminal_execution_contract import parameters_digest
 from .workspace import WorkspaceError, WorkspaceManager
 from .web_build import WebBuildExecutor, WebArtifactPackager
 from .browser_test import BrowserTestError, StaticWebPlaywrightTester
@@ -39,6 +43,7 @@ class RunnerPipeline:
         local_project_checkout=None,
         trusted_local_projects: set[str] | frozenset[str] = frozenset(),
         browser_test_executor: StaticWebPlaywrightTester | None = None,
+        terminal_executor: TerminalScriptExecutor | None = None,
     ):
         if isinstance(heartbeat_interval_seconds, bool) or not isinstance(heartbeat_interval_seconds, int) or not 5 <= heartbeat_interval_seconds <= 60:
             raise ValueError("heartbeat interval must be between 5 and 60 seconds")
@@ -53,6 +58,7 @@ class RunnerPipeline:
         self.local_project_checkout = local_project_checkout
         self.trusted_local_projects = frozenset(trusted_local_projects)
         self.browser_test_executor = browser_test_executor
+        self.terminal_executor = terminal_executor or TerminalScriptExecutor(enabled=False)
         self.artifact_packager = artifact_packager or FlutterArtifactPackager(workspaces)
         detected_os = "windows" if sys.platform == "win32" else "macos" if sys.platform == "darwin" else "linux"
         self.worker_os = worker_os or detected_os
@@ -114,6 +120,7 @@ class RunnerPipeline:
             # The Gateway's public claim response deliberately omits the private payload.
             # Source identity and immutable revision are exposed as sanitized top-level fields.
             source_type = job.get("source_type") or job_payload.get("source_type", "github")
+            terminal_job = job.get("terminal") if isinstance(job.get("terminal"), dict) else {}
             if source_type == "github":
                 if job["repository"] not in self.trusted_repositories:
                     raise ExecutionError("repository is not in the Runner trusted-repository allowlist")
@@ -126,6 +133,34 @@ class RunnerPipeline:
                     raise CheckoutError("Local Project snapshot checkout is not configured")
                 if not isinstance(snapshot_sha256, str):
                     raise CheckoutError("Local Project snapshot revision is unavailable")
+            elif source_type == "terminal_script":
+                project_id = terminal_job.get("project_id")
+                workspace_id = terminal_job.get("workspace_id")
+                snapshot_sha256 = terminal_job.get("snapshot_sha256")
+                if job.get("target") != "terminal_script":
+                    raise ExecutionError("Terminal source requires the terminal_script target")
+                if project_id not in self.trusted_local_projects:
+                    raise ExecutionError("Terminal project is not in the Runner trusted-project allowlist")
+                if self.local_project_checkout is None:
+                    raise CheckoutError("Terminal Project Workspace registry is not configured")
+                if not self.terminal_executor.enabled:
+                    raise TerminalExecutionError("Terminal execution is disabled on this Runner")
+                required = (
+                    project_id, workspace_id, snapshot_sha256,
+                    terminal_job.get("template_id"), terminal_job.get("authorization_id"),
+                    terminal_job.get("template_digest"), terminal_job.get("parameters_sha256"),
+                )
+                if any(not isinstance(value, str) or not value for value in required):
+                    raise ExecutionError("Terminal job contract is incomplete")
+                if not isinstance(terminal_job.get("parameters"), dict):
+                    raise ExecutionError("Terminal job parameters are invalid")
+                if parameters_digest(terminal_job["parameters"]) != terminal_job["parameters_sha256"]:
+                    raise TerminalExecutionError("Terminal parameter digest does not match the queued Job")
+                # The Gateway verifies the current Job lease and consumes the app-issued
+                # one-time grant before the Runner resolves or executes the project path.
+                grant = self.client.verify_terminal_grant(job_id, terminal_job["authorization_id"])
+                if grant.get("action") != "terminal.read_only":
+                    raise TerminalExecutionError("Runner received an unsupported Terminal grant scope")
             else:
                 raise ExecutionError("job source type is not supported by this Runner")
             self.workspaces.cleanup_expired_preview_workspaces()
@@ -141,6 +176,21 @@ class RunnerPipeline:
                 self.client.append_log(
                     job_id, "Materialized owner-approved Local Folder snapshot SHA-256 "
                     + snapshot["snapshot_sha256"], "system"
+                )
+            elif source_type == "terminal_script":
+                resolved = self.local_project_checkout.registry.resolve_workspace(
+                    project_id, workspace_id, snapshot_sha256
+                )
+                source = Path(resolved["path"])
+                result.update({
+                    "source_type": "terminal_script",
+                    "source_sha256": snapshot_sha256,
+                    "project_workspace_id": workspace_id,
+                    "project_relative_path": resolved["relative_path"],
+                })
+                self.client.append_log(
+                    job_id, "Resolved the authorized Project Workspace and verified its current snapshot",
+                    "system",
                 )
             else:
                 source = self.checkout_provider.checkout(
@@ -170,47 +220,85 @@ class RunnerPipeline:
                 last_heartbeat = now
                 return current.get("state") == "cancel_requested"
 
-            build_target = "build_static_web" if job["target"] == "test_static_web" else job["target"]
-            selected_executor = self.web_executor if build_target in WebBuildExecutor.TARGETS else self.executor
-            selected_executor.log = lambda stream, message: self.client.append_log(job_id, message, stream)
-            build = selected_executor.run(
-                job_id, worker_id, build_target,
-                cancel_requested=cancellation_requested,
-            )
-            outcome = build.outcome
-            error_code = build.error_code
-            build_succeeded = outcome == "succeeded"
-            result.update({
-                "command": list(build.command),
-                "return_code": build.return_code,
-                "duration_seconds": build.duration_seconds,
-                "output_bytes": build.output_bytes,
-                "source_directory": str(source.relative_to(self.workspaces.get(job_id, worker_id))),
-            })
-            if build_succeeded and job["target"] == "test_static_web":
-                if self.browser_test_executor is None:
-                    raise BrowserTestError("Playwright test capability is not configured on this Runner")
-                browser_result = self.browser_test_executor.run(job_id, worker_id)
-                browser_test_artifact_path = browser_result.get("artifact_path")
-                result["browser_test"] = {
-                    key: value for key, value in browser_result.items()
-                    if key not in ("artifact_path",)
-                }
+            if source_type == "terminal_script":
+                self.terminal_executor.log = lambda stream, message: self.client.append_log(job_id, message, stream)
+                terminal_result = self.terminal_executor.run(
+                    job_id, worker_id, source,
+                    terminal_job["template_id"], terminal_job["parameters"],
+                    terminal_job["template_digest"],
+                    cancel_requested=cancellation_requested,
+                )
+                outcome = terminal_result.outcome
+                error_code = terminal_result.error_code
+                try:
+                    self.local_project_checkout.registry.resolve_workspace(
+                        project_id, workspace_id, snapshot_sha256
+                    )
+                except LocalProjectError:
+                    outcome = "failed"
+                    error_code = "TERMINAL_WORKSPACE_CHANGED"
+                    self.client.append_log(
+                        job_id, "Project Workspace changed during Terminal execution; result rejected",
+                        "stderr",
+                    )
+                build_succeeded = outcome == "succeeded"
+                result.update({
+                    "template_id": terminal_job["template_id"],
+                    "return_code": terminal_result.return_code,
+                    "duration_seconds": terminal_result.duration_seconds,
+                    "output_bytes": terminal_result.output_bytes,
+                })
                 self.client.append_log(
                     job_id,
-                    "Playwright static preview tests " + browser_result["status"],
+                    f"Terminal template {terminal_job['template_id']} {outcome}; "
+                    f"exit={terminal_result.return_code}; output={terminal_result.output_bytes} bytes",
                     "system",
                 )
-                if browser_result["status"] != "PASS":
-                    outcome = "failed"
-                    error_code = "WEB_BROWSER_TESTS_FAILED"
-            self.client.append_log(
-                job_id,
-                f"Build execution {outcome}; exit={build.return_code}; "
-                f"duration={build.duration_seconds}s; output={build.output_bytes} bytes",
-                "system",
-            )
-            if build_succeeded:
+                if outcome == "succeeded":
+                    error_code = None
+            else:
+                build_target = "build_static_web" if job["target"] == "test_static_web" else job["target"]
+                selected_executor = self.web_executor if build_target in WebBuildExecutor.TARGETS else self.executor
+                selected_executor.log = lambda stream, message: self.client.append_log(job_id, message, stream)
+                build = selected_executor.run(
+                    job_id, worker_id, build_target,
+                    cancel_requested=cancellation_requested,
+                )
+                outcome = build.outcome
+                error_code = build.error_code
+                build_succeeded = outcome == "succeeded"
+                result.update({
+                    "command": list(build.command),
+                    "return_code": build.return_code,
+                    "duration_seconds": build.duration_seconds,
+                    "output_bytes": build.output_bytes,
+                    "source_directory": str(source.relative_to(self.workspaces.get(job_id, worker_id))),
+                })
+                if build_succeeded and job["target"] == "test_static_web":
+                    if self.browser_test_executor is None:
+                        raise BrowserTestError("Playwright test capability is not configured on this Runner")
+                    browser_result = self.browser_test_executor.run(job_id, worker_id)
+                    browser_test_artifact_path = browser_result.get("artifact_path")
+                    result["browser_test"] = {
+                        key: value for key, value in browser_result.items()
+                        if key not in ("artifact_path",)
+                    }
+                    self.client.append_log(
+                        job_id,
+                        "Playwright static preview tests " + browser_result["status"],
+                        "system",
+                    )
+                    if browser_result["status"] != "PASS":
+                        outcome = "failed"
+                        error_code = "WEB_BROWSER_TESTS_FAILED"
+                self.client.append_log(
+                    job_id,
+                    f"Build execution {outcome}; exit={build.return_code}; "
+                    f"duration={build.duration_seconds}s; output={build.output_bytes} bytes",
+                    "system",
+                )
+
+            if build_succeeded and source_type != "terminal_script":
                 packager = self.web_artifact_packager if build_target in ("build_static_web", "build_vite") else self.artifact_packager
                 artifact = packager.package(job_id, worker_id, build_target)
                 if artifact is not None:
@@ -236,7 +324,7 @@ class RunnerPipeline:
                     result["workspace_retained_for_preview"] = True
                 if outcome == "succeeded":
                     error_code = None
-        except (ArtifactPackageError, BrowserTestError, CheckoutError, ExecutionError, WorkspaceError) as exc:
+        except (ArtifactPackageError, BrowserTestError, CheckoutError, ExecutionError, TerminalExecutionError, WorkspaceError) as exc:
             self.client.append_log(
                 job_id, f"Runner rejected job safely: {type(exc).__name__}", "stderr"
             )

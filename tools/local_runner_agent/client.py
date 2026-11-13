@@ -191,6 +191,21 @@ class GatewayClient:
             {"lease_seconds": lease_seconds},
         )
 
+    def verify_terminal_grant(self, job_id: str, authorization_id: str) -> dict:
+        """Ask the authenticated Gateway to verify a grant against this active Job lease."""
+        self._validate_job_id(job_id)
+        self._validate_job_id(authorization_id)
+        result = self._request(
+            "POST", f"/v1/runner/{job_id}/terminal-grant",
+            {"authorization_id": authorization_id},
+        )
+        grant = result.get("grant")
+        if not isinstance(grant, dict) or grant.get("authorized") is not True:
+            raise RunnerGatewayError("Gateway did not authorize the Terminal grant")
+        if grant.get("job_id") != job_id:
+            raise RunnerGatewayError("Gateway grant is bound to a different Job")
+        return grant
+
     def checkpoint(self, job_id: str, sequence: int, checkpoint: dict) -> dict:
         """Persist one monotonic, lease-bound resume checkpoint."""
         self._validate_job_id(job_id)

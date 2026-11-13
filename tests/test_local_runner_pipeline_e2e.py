@@ -4,10 +4,14 @@ import tempfile
 import threading
 import unittest
 import uuid
+from unittest.mock import patch
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 from tools.cloud_gateway.job_control import JobStore
+from tools.cloud_gateway.terminal_grants import TerminalGrantStore
+from tools.cloud_gateway.terminal_catalog import preview_template
+from tools.cloud_gateway.terminal_execution_contract import template_version_digest
 from tools.cloud_gateway.artifacts import ArtifactStore
 from tools.cloud_gateway.runner_registry import RunnerRegistry
 from tools.cloud_gateway.server import make_handler
@@ -18,6 +22,7 @@ from tools.local_runner_agent.service import RunnerAgentService
 from tools.local_runner_agent.workspace import WorkspaceManager
 from tools.local_runner_agent.local_project import LocalProjectRegistry
 from tools.local_runner_agent.checkout import LocalProjectCheckout
+from tools.local_runner_agent.terminal_executor import TerminalScriptExecutor
 
 
 TOKEN = "runner-pipeline-e2e-token-which-is-long-enough"
@@ -28,6 +33,7 @@ class _Service:
         self.job_store = jobs
         self.artifact_store = artifacts
         self.runner_registry = registry
+        self.terminal_grant_store = None
 
 
 class _FixtureCheckout:
@@ -53,9 +59,12 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
         self.jobs = JobStore(str(self.root / "jobs.sqlite3"))
         self.artifacts = ArtifactStore(self.root / "artifacts")
         self.registry = RunnerRegistry(self.root / "runners.sqlite3")
+        self.grants = TerminalGrantStore(self.root / "terminal-grants.sqlite3")
+        service = _Service(self.jobs, self.artifacts, self.registry)
+        service.terminal_grant_store = self.grants
         self.server = ThreadingHTTPServer(
             ("127.0.0.1", 0),
-            make_handler(_Service(self.jobs, self.artifacts, self.registry), "internal-gateway-token", runner_tokens={
+            make_handler(service, "internal-gateway-token", runner_tokens={
                 "runner-e2e": TOKEN,
             }),
         )
@@ -518,6 +527,81 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
         self.assertTrue((retained_workspace / "source" / "dist" / "index.html").is_file())
         self.assertTrue((retained_workspace / ".dcp-preview-retention.json").is_file())
 
+
+    def test_terminal_template_runs_only_after_grant_in_the_actual_registered_project_workspace(self):
+        project_root = self.root / "approved-project-root"
+        project_root.mkdir()
+        project_path = project_root / "sample-project"
+        project_path.mkdir()
+        readme = project_path / "README.md"
+        readme.write_text("unchanged project workspace\n", encoding="utf-8")
+        registry = LocalProjectRegistry(self.root / "terminal-projects.json")
+        approved_root = registry.enroll_root(project_root)
+        project = registry.register_project(approved_root["root_id"], project_path)
+
+        template = preview_template("python_version", {})
+        template["execution_enabled"] = True
+        with patch("tools.cloud_gateway.terminal_execution_contract.preview_template", return_value=template):
+            digest = template_version_digest("python_version", {})
+        parameters_sha256 = self.grants.parameters_digest(template["parameter_values"])
+        grant = self.grants.issue(
+            subject="owner@example.test", session_id="owner_session_token_123456",
+            project_id=project["project_id"], workspace_id=project["workspace_id"],
+            snapshot_sha256=project["snapshot_sha256"], template_id="python_version",
+            template_digest=digest, parameters_sha256=parameters_sha256,
+        )
+        payload = {
+            "source_type": "terminal_script",
+            "project_id": project["project_id"],
+            "workspace_id": project["workspace_id"],
+            "snapshot_sha256": project["snapshot_sha256"],
+            "target": "terminal_script",
+            "template_id": "python_version",
+            "parameters": template["parameter_values"],
+            "authorization_id": grant["authorization_id"],
+            "template_digest": digest,
+            "parameters_sha256": parameters_sha256,
+        }
+        with patch("tools.cloud_gateway.job_control.preview_template", return_value=template), \
+             patch("tools.cloud_gateway.terminal_execution_contract.preview_template", return_value=template):
+            job, created = self.jobs.create(payload, "terminal-pipeline-e2e-0001")
+        self.assertTrue(created)
+        self.grants.reserve_job(grant["authorization_id"], job_id=job["id"])
+
+        host_os = "windows" if os.name == "nt" else "linux"
+        pipeline = RunnerPipeline(
+            self.client, self.manager, _FixtureCheckout(self.manager),
+            FlutterBuildExecutor(self.manager, enabled=False),
+            trusted_repositories=frozenset(),
+            worker_os=host_os,
+            capabilities=frozenset({"flutter", host_os, "terminal"}),
+            local_project_checkout=LocalProjectCheckout(self.manager, registry),
+            trusted_local_projects=frozenset({project["project_id"]}),
+            terminal_executor=TerminalScriptExecutor(enabled=True),
+        )
+        with patch("tools.local_runner_agent.terminal_executor.preview_template", return_value=template), \
+             patch("tools.cloud_gateway.terminal_execution_contract.preview_template", return_value=template):
+            result = pipeline.run_once()
+
+        self.assertEqual(result["outcome"], "succeeded", result)
+        self.assertEqual(result["job"]["id"], job["id"])
+        self.assertEqual(result["job"]["state"], "succeeded")
+        self.assertEqual(result["result"]["source_type"], "terminal_script")
+        self.assertEqual(result["result"]["project_workspace_id"], project["workspace_id"])
+        self.assertEqual(result["result"]["template_id"], "python_version")
+        self.assertEqual(result["result"]["return_code"], 0)
+        self.assertGreater(result["result"]["output_bytes"], 0)
+        self.assertEqual(readme.read_text(encoding="utf-8"), "unchanged project workspace\n")
+        self.assertEqual(sorted(item.name for item in project_path.iterdir()), ["README.md"])
+        self.assertFalse((self.root / "workspaces" / job["id"]).exists())
+        with self.grants.db() as db:
+            grant_row = db.execute(
+                "SELECT job_id,worker_id,consumed_at FROM terminal_grants WHERE grant_id=?",
+                (grant["authorization_id"],),
+            ).fetchone()
+        self.assertEqual(grant_row["job_id"], job["id"])
+        self.assertEqual(grant_row["worker_id"], "runner-e2e")
+        self.assertIsNotNone(grant_row["consumed_at"])
 
 @unittest.skipUnless(os.name == "nt", "Requires the real Windows cmd.exe batch-file launcher")
 class WindowsRunnerPipelineAcceptanceTests(RunnerPipelineEndToEndTests):

@@ -23,10 +23,22 @@ The initial catalog contains read-only Git status/diff/log and Python/Node versi
 - `GET /api/terminal/templates/{custom-id}/events` — owner/operator audit history.
 - Approval changes only the review status. The template remains disabled and non-executable; this API does not grant execution permission.
 
+## App-authorized execution API (implemented, fail-closed by default)
+
+- `POST /api/terminal/authorize` — owner-only grant issuance. Requires same-origin and CSRF validation. The Gateway resolves the registered Project Workspace and current snapshot, resolves the trusted built-in template, and issues a short-lived one-time grant bound to the authenticated subject/session, project, workspace, snapshot, template digest and normalized parameter digest.
+- `POST /api/terminal/jobs` — owner-only typed Job submission. Requires same-origin, CSRF and an `Idempotency-Key`. The request contains only project/workspace identifiers, snapshot digest, trusted template ID, typed parameters and the opaque authorization ID. The Gateway reserves the grant to a deterministic Job ID before making the durable Job visible to Runner polling. Idempotency is scoped to the authenticated subject/session.
+- `POST /v1/runner/{job-id}/terminal-grant` — Runner-credential-only grant verification. The Gateway verifies the active Job lease and Runner identity, binds the reserved grant to that Runner, and atomically consumes it once before the Runner resolves or executes the registered Project Workspace.
+- Terminal Jobs are routed only to explicitly registered Runners advertising the `terminal` capability. The Runner independently checks the local trusted-project allowlist, workspace identity and snapshot, template digest, read-only/network-denied policy, process timeout, output ceiling, cancellation and process-tree cleanup.
+- Runner capability is opt-in via `DCP_RUNNER_TERMINAL_ENABLED=1` and requires a non-empty trusted Local Project allowlist. `DCP_RUNNER_TERMINAL_TIMEOUT_SECONDS` and `DCP_RUNNER_TERMINAL_OUTPUT_BYTES` set bounded ceilings; the catalog may impose lower limits.
+- Executable lookup uses a sanitized host PATH that excludes the selected Project Workspace, preventing a repository-local `git`, `python` or `node` binary from shadowing the trusted native tool. The executor uses a temporary HOME outside the Project Workspace and `shell=false`.
+- The fixed-template executor uses a trusted executable registry and argv arrays with `shell=false`. Browser-supplied executable, argv, cwd, environment, shell, runner, role, approval or permission fields are rejected. Imported templates remain inert and cannot be selected for execution.
+- **Current default state:** every built-in catalog entry remains `execution_enabled=false`; authorization and Job submission therefore return a fail-closed response until an explicit reviewed catalog opt-in and the corresponding acceptance gates are completed. Runner-side opt-in alone does not enable execution.
+
+The Dashboard currently displays catalog and preview metadata and supports inert template import/review. A Dashboard Run control and end-to-end UI flow are not yet implemented; the API does not imply that the user-facing feature is complete.
+
 ## Proposed, not implemented
 
 The following remain design targets and must not be treated as available endpoints:
-- POST /api/terminal/jobs — typed job submission through an approved Local Agent adapter.
 - GET /api/terminal/jobs/{id} — status and bounded output metadata.
 - POST /api/terminal/jobs/{id}/cancel — owner-authorized process-tree cancellation.
 - GET /api/terminal/jobs/{id}/logs — paginated redacted logs.

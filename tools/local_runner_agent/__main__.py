@@ -18,6 +18,7 @@ from .service import RunnerAgentService
 from .web_build import WebBuildExecutor
 from .browser_test import StaticWebPlaywrightTester
 from .pipeline import RunnerPipeline
+from .terminal_executor import TerminalScriptExecutor
 from .workspace import WorkspaceManager
 from .local_project import LocalProjectError, LocalProjectRegistry, default_registry_path
 from tools.runner_agent.preflight import collect_preflight, resolve_capabilities
@@ -153,6 +154,11 @@ def main(argv=None) -> int:
             raise ValueError("DCP_RUNNER_TRUSTED_LOCAL_PROJECTS must be a JSON array of canonical project UUIDs")
         if not raw_repositories and not raw_local_projects:
             raise ValueError("configure at least one trusted GitHub repository or Local Project ID")
+        terminal_enabled = os.environ.get("DCP_RUNNER_TERMINAL_ENABLED") == "1"
+        if terminal_enabled:
+            if not raw_local_projects:
+                raise ValueError("Terminal capability requires at least one trusted Local Project ID")
+            capabilities = sorted(set(capabilities) | {"terminal"})
         manager = WorkspaceManager(
             root,
             max_active=_positive_int("DCP_RUNNER_MAX_ACTIVE_WORKSPACES", 8),
@@ -200,6 +206,11 @@ def main(argv=None) -> int:
                     manager, enabled=True,
                     timeout_ms=_positive_int("DCP_RUNNER_PLAYWRIGHT_TIMEOUT_MS", 15000),
                 ) if playwright_enabled else None
+            ),
+            terminal_executor=TerminalScriptExecutor(
+                enabled=terminal_enabled,
+                timeout_ceiling_seconds=_positive_int("DCP_RUNNER_TERMINAL_TIMEOUT_SECONDS", 60),
+                output_ceiling_bytes=_positive_int("DCP_RUNNER_TERMINAL_OUTPUT_BYTES", 1024 * 1024),
             ),
         )
         if args.serve:
