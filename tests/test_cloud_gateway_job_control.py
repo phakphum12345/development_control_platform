@@ -176,16 +176,16 @@ class JobStoreTests(unittest.TestCase):
         self.assertEqual(first["max_attempts"], 3)
 
         for attempt in (1, 2):
-            with self.store.db() as db:
-                db.execute(
-                    "UPDATE jobs SET lease_until=? WHERE id=?",
-                    ("2000-01-01T00:00:00+00:00", job["id"]),
-                )
             checkpoint = {
                 "version": 1, "step": "safe-boundary-" + str(attempt),
                 "safe_to_resume": True, "data": {"completed_units": attempt},
             }
             self.store.checkpoint(job["id"], "retry-worker-" + str(attempt), attempt, checkpoint)
+            with self.store.db() as db:
+                db.execute(
+                    "UPDATE jobs SET lease_until=? WHERE id=?",
+                    ("2000-01-01T00:00:00+00:00", job["id"]),
+                )
             recovered = self.store.recover_expired_leases()
             self.assertEqual(recovered[0]["id"], job["id"])
             self.assertEqual(recovered[0]["state"], "retry_wait")
@@ -200,15 +200,15 @@ class JobStoreTests(unittest.TestCase):
             self.assertEqual(claimed["attempt_count"], attempt + 1)
             self.assertEqual(claimed["checkpoint"]["step"], "safe-boundary-" + str(attempt))
 
+        self.store.checkpoint(
+            job["id"], "retry-worker-3", 3,
+            {"version": 1, "step": "final-safe-boundary", "safe_to_resume": True, "data": {"done": False}},
+        )
         with self.store.db() as db:
             db.execute(
                 "UPDATE jobs SET lease_until=? WHERE id=?",
                 ("2000-01-01T00:00:00+00:00", job["id"]),
             )
-        self.store.checkpoint(
-            job["id"], "retry-worker-3", 3,
-            {"version": 1, "step": "final-safe-boundary", "safe_to_resume": True, "data": {"done": False}},
-        )
         recovered = self.store.recover_expired_leases()
         self.assertEqual(recovered[0]["id"], job["id"])
         self.assertEqual(recovered[0]["state"], "failed")
