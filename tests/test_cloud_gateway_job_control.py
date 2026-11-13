@@ -340,7 +340,7 @@ class JobStoreTests(unittest.TestCase):
                 ("2000-01-01T00:00:00+00:00", job["id"]),
             )
         recovered = self.store.recover_expired_leases()
-        self.assertEqual(recovered, [{"id": job["id"], "state": "cancelled"}])
+        self.assertEqual(recovered, [{"id": job["id"], "state": "cancelled", "retry_after": None}])
         self.assertEqual(self.store.get(job["id"])["state"], "cancelled")
 
     def test_worker_ownership_and_missing_job(self):
