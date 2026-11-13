@@ -229,3 +229,11 @@ Historical gate for PR #71: its Chromium sandbox launch failure applied to that 
 - Windows-only real `cmd.exe` batch-shim acceptance must run on Windows; POSIX process-group timeout fixtures remain explicitly skipped on Windows and must not be counted as Windows coverage.
 - Keep CI read-only, secret-free, provider-free and independent of cloud provisioning.
 - This suite is automated CI acceptance, not proof of a real Flutter SDK build on the user's host or independent OS-level process-tree cleanup. Those remain separate operational gates.
+
+## DCP-CEEP v1.0 — central operating protocol adopted
+
+- The repository adopts [DCP-CEEP v1.0](DCP-CEEP-PROTOCOL.md) as the central operating protocol for all Work Packages and pull requests.
+- The protocol defines the mandatory execution loop, evidence states, exact-SHA baseline, resilience/checkpoint rules, documentation obligations, full reporting structure, continuity ledger, merge safety gate, scope constraints and completion definition.
+- PASS, FAIL, SKIPPED, UNKNOWN and IN_PROGRESS remain distinct. Missing or skipped evidence is never promoted to PASS.
+- Every new PR and every changed head SHA requires a fresh baseline and exact-head CI verification. Merge remains blocked until all required gates pass and user authorization is present.
+- Protocol adoption does not waive existing operational acceptance requirements or convert CI evidence into real-host evidence.
