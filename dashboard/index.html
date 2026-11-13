@@ -1687,7 +1687,7 @@ async function terminalStudioConfirmRun(){
    terminalStudioStatus("Gateway rejected this grant or request. Preview again and request a fresh app authorization: "+error.message,"error");
   }else{
    button.disabled=false;button.textContent="Retry Queue Request (same Idempotency-Key)";
-   $("terminal-grant-details").textContent+="\\n\\nSubmission result is uncertain. Retry uses the same Idempotency-Key; do not request a second grant.";
+   $("terminal-grant-details").textContent+="\n\nSubmission result is uncertain. Retry uses the same Idempotency-Key; do not request a second grant.";
    terminalStudioStatus("Job submission needs retry: "+error.message,"error");
   }
  }finally{
