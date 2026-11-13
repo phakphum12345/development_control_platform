@@ -6,8 +6,6 @@ the authenticated Gateway handler before issue/bind/consume are called.
 """
 from __future__ import annotations
 
-import hashlib
-import json
 import re
 import sqlite3
 import threading
