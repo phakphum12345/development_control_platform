@@ -132,6 +132,15 @@ class DocumentWorkflowStore:
         db = sqlite3.connect(self.database_path, timeout=15)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA journal_mode=WAL")
+        for candidate in (
+            self.database_path, Path(str(self.database_path) + "-wal"),
+            Path(str(self.database_path) + "-shm"),
+        ):
+            try:
+                if candidate.exists():
+                    os.chmod(candidate, 0o600)
+            except OSError:
+                pass
         return db
 
     @contextmanager
@@ -159,6 +168,12 @@ class DocumentWorkflowStore:
             raise DocumentWorkflowError("Registered Local Project is unavailable.", 404) from None
         if not root.is_dir() or root.is_symlink():
             raise DocumentWorkflowError("Registered Local Project is not a safe directory.", 409)
+        for state_path in (self.database_path, self.journal_path.resolve()):
+            try:
+                state_path.relative_to(root)
+            except ValueError:
+                continue
+            raise DocumentWorkflowError("Workflow database and journal must be outside every selected project.", 503)
         return root
 
     @staticmethod
