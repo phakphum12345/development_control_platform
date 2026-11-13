@@ -239,6 +239,51 @@ class TerminalScriptExecutor:
         return [resolved, *command_args]
 
     @staticmethod
+    def _disable_repository_filters(
+        resolved: str, workspace: Path, env: dict[str, str]
+    ) -> None:
+        """Disable repository-defined clean/smudge/process filters before Git inspection."""
+        try:
+            result = subprocess.run(
+                [resolved, "config", "--name-only", "--null", "--list"],
+                cwd=str(workspace), env=env, stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                shell=False, close_fds=True, timeout=5, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            raise TerminalExecutionError(
+                "Git repository filter configuration could not be inspected safely"
+            ) from None
+        if result.returncode != 0:
+            raise TerminalExecutionError(
+                "Git repository filter configuration could not be inspected safely"
+            )
+
+        drivers: dict[str, str] = {}
+        for raw_key in result.stdout.split(b"\\0"):
+            if not raw_key:
+                continue
+            key = raw_key.decode("utf-8", "replace")
+            section, separator, setting = key.rpartition(".")
+            if not separator or setting.casefold() not in {"clean", "smudge", "process", "required"}:
+                continue
+            if not section.casefold().startswith("filter."):
+                continue
+            driver = section[len("filter."):]
+            if driver:
+                drivers.setdefault(driver.casefold(), driver)
+
+        index = int(env.get("GIT_CONFIG_COUNT", "0"))
+        for driver in drivers.values():
+            for setting, value in (
+                ("clean", ""), ("smudge", ""), ("process", ""), ("required", "false")
+            ):
+                env[f"GIT_CONFIG_KEY_{index}"] = f"filter.{driver}.{setting}"
+                env[f"GIT_CONFIG_VALUE_{index}"] = value
+                index += 1
+        env["GIT_CONFIG_COUNT"] = str(index)
+
+    @staticmethod
     def _log_chunks(value: str, max_bytes: int = 7000):
         current = []
         current_bytes = 0
@@ -339,6 +384,12 @@ class TerminalScriptExecutor:
             shutil.rmtree(job_home, ignore_errors=True)
             raise TerminalExecutionError("Temporary Terminal environment could not be secured") from None
         env = self._environment(template, job_home, safe_path)
+        if executable == "git":
+            try:
+                self._disable_repository_filters(resolved, workspace, env)
+            except TerminalExecutionError:
+                shutil.rmtree(job_home, ignore_errors=True)
+                raise
         timeout = min(int(template["timeout_seconds"]), self.timeout_ceiling_seconds)
         output_limit = min(int(template["max_output_bytes"]), self.output_ceiling_bytes)
         command = self._build_command(resolved, executable, argv)
