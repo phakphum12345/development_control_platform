@@ -122,3 +122,17 @@ Build/test, file mutation, dependency installation, network access, imported tem
 ## Current implementation boundary
 
 The existing Terminal Studio catalog, preview, JSON import, and Owner review are metadata workflows. Existing Runner Pipeline handles existing build/test job types and is not yet a general terminal executor. Existing Workspace Manager allocates job-scoped directories but is not, by itself, a project ACL or OS sandbox. This work must integrate those components without claiming stronger isolation than they provide.
+
+
+## Implementation status — 2026-11-13
+
+The current feature branch adds the following foundations:
+- a strict typed Terminal request contract that rejects command, shell, executable, argv, cwd, env, runner, role, approval, and permission fields from the browser;
+- a durable SQLite Terminal Grant Store with short TTLs, read-only action scope, one-time Job/Runner binding, atomic one-time consumption, expiry, revocation, and exact actor/session/project/workspace/snapshot/template/parameter binding;
+- stable `workspace_id` values on registered Local Project records, including migration of older registry entries and preservation across project refresh;
+- safe API exposure of the opaque workspace identifier without exposing host paths;
+- Gateway startup configuration for the separate private Terminal Grant database.
+
+These are storage and identity foundations only. The grant store deliberately does not authenticate callers or decide Project ACLs: only an authenticated Gateway handler may issue or consume grants after verifying the app identity and Runner credential/active Job lease. No Terminal grant endpoint is enabled yet. The current Project Registry is Owner-only and does not yet provide a per-user capability/ACL model. The Runner does not yet receive or independently revalidate Terminal grants, and the Job Store/Pipeline still has no terminal-script target. All seven catalog templates remain `execution_enabled: false`; actual execution remains unavailable.
+
+Evidence status for this branch: implementation files and tests have been added, but the tests have not yet been executed by a local checkout or CI run. Do not label these tests PASS until a workflow reports success for the exact branch head SHA.
