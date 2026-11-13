@@ -1838,8 +1838,24 @@ async function terminalStudioImport(){
 }
 function initTerminalStudio(){
  $("terminal-load-templates").addEventListener("click",terminalStudioLoad);
- $("terminal-template-select").addEventListener("change",()=>{terminalStudioState.lastPreview=null;$("terminal-review-panel").hidden=true;terminalStudioRenderBuilder();$("terminal-preview").disabled=!$("terminal-template-select").value});
+ $("terminal-template-select").addEventListener("change",()=>{
+  if(terminalStudioState.pendingGrant&&!terminalStudioState.pendingSubmission)void terminalStudioRevokeGrant(true);
+  terminalStudioState.lastPreview=null;$("terminal-review-panel").hidden=true;
+  terminalStudioRenderBuilder();$("terminal-preview").disabled=!$("terminal-template-select").value;
+  terminalStudioRenderExecutionGate();
+ });
+ $("terminal-project-select").addEventListener("change",()=>{
+  if(terminalStudioState.pendingGrant&&!terminalStudioState.pendingSubmission)void terminalStudioRevokeGrant(true);
+  terminalStudioRenderExecutionGate();
+ });
  $("terminal-preview").addEventListener("click",terminalStudioPreview);
+ $("terminal-authorize-run").addEventListener("click",terminalStudioAuthorizeRun);
+ $("terminal-confirm-run").addEventListener("click",terminalStudioConfirmRun);
+ $("terminal-discard-grant").addEventListener("click",()=>terminalStudioRevokeGrant(false));
+ $("terminal-job-history").addEventListener("change",()=>{$("terminal-job-open").disabled=!$("terminal-job-history").value;});
+ $("terminal-job-open").addEventListener("click",terminalStudioOpenJob);
+ $("terminal-job-refresh").addEventListener("click",()=>{if(terminalStudioState.activeJob)terminalStudioStartPolling();else void terminalStudioOpenJob();});
+ $("terminal-job-cancel").addEventListener("click",terminalStudioCancelJob);
  $("terminal-import-pack").addEventListener("click",terminalStudioImport);
  $("terminal-review-approve").addEventListener("click",()=>terminalStudioReview("approve"));
  $("terminal-review-reject").addEventListener("click",()=>terminalStudioReview("reject"));
