@@ -172,6 +172,21 @@ class RunnerPipeline:
                     job_id, "Materialized owner-approved Local Folder snapshot SHA-256 "
                     + snapshot["snapshot_sha256"], "system"
                 )
+            elif source_type == "terminal_script":
+                resolved = self.local_project_checkout.registry.resolve_workspace(
+                    project_id, workspace_id, snapshot_sha256
+                )
+                source = Path(resolved["path"])
+                result.update({
+                    "source_type": "terminal_script",
+                    "source_sha256": snapshot_sha256,
+                    "project_workspace_id": workspace_id,
+                    "project_relative_path": resolved["relative_path"],
+                })
+                self.client.append_log(
+                    job_id, "Resolved the authorized Project Workspace and verified its current snapshot",
+                    "system",
+                )
             else:
                 source = self.checkout_provider.checkout(
                     job_id, worker_id, job["repository"], job["commit_sha"]
