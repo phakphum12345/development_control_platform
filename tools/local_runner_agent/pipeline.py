@@ -9,6 +9,7 @@ from typing import Protocol
 from .artifacts import ArtifactPackageError, FlutterArtifactPackager
 from .checkout import CheckoutError
 from .execution import ExecutionError, FlutterBuildExecutor
+from .terminal_executor import TerminalExecutionError, TerminalScriptExecutor
 from .workspace import WorkspaceError, WorkspaceManager
 from .web_build import WebBuildExecutor, WebArtifactPackager
 from .browser_test import BrowserTestError, StaticWebPlaywrightTester
@@ -39,6 +40,7 @@ class RunnerPipeline:
         local_project_checkout=None,
         trusted_local_projects: set[str] | frozenset[str] = frozenset(),
         browser_test_executor: StaticWebPlaywrightTester | None = None,
+        terminal_executor: TerminalScriptExecutor | None = None,
     ):
         if isinstance(heartbeat_interval_seconds, bool) or not isinstance(heartbeat_interval_seconds, int) or not 5 <= heartbeat_interval_seconds <= 60:
             raise ValueError("heartbeat interval must be between 5 and 60 seconds")
@@ -53,6 +55,7 @@ class RunnerPipeline:
         self.local_project_checkout = local_project_checkout
         self.trusted_local_projects = frozenset(trusted_local_projects)
         self.browser_test_executor = browser_test_executor
+        self.terminal_executor = terminal_executor or TerminalScriptExecutor(enabled=False)
         self.artifact_packager = artifact_packager or FlutterArtifactPackager(workspaces)
         detected_os = "windows" if sys.platform == "win32" else "macos" if sys.platform == "darwin" else "linux"
         self.worker_os = worker_os or detected_os
