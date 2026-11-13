@@ -197,6 +197,22 @@ class DocumentWorkflowStore:
         return target
 
     @staticmethod
+    def _directory(root: Path, relative: PurePosixPath) -> Path:
+        current = root
+        for part in relative.parts:
+            current = current / part
+            if current.is_symlink():
+                raise DocumentWorkflowError("Symlinks are not allowed in document paths.", 400)
+        try:
+            resolved = current.resolve(strict=True)
+            resolved.relative_to(root)
+        except (OSError, ValueError):
+            raise DocumentWorkflowError("Write scope must exist inside the registered project.", 400) from None
+        if not resolved.is_dir() or resolved.is_symlink():
+            raise DocumentWorkflowError("Every granted scope must be an existing directory.")
+        return resolved
+
+    @staticmethod
     def _matches_scope(path: PurePosixPath, prefixes: list[str]) -> bool:
         for prefix in prefixes:
             scope = PurePosixPath(prefix)
@@ -215,9 +231,7 @@ class DocumentWorkflowStore:
         normalized = []
         for raw in prefixes:
             prefix = _relative(raw)
-            target = self._target(root, prefix)
-            if not target.exists() or not target.is_dir():
-                raise DocumentWorkflowError("Every granted scope must be an existing directory.")
+            self._directory(root, prefix)
             normalized.append(prefix.as_posix())
         if len(set(normalized)) != len(normalized):
             raise DocumentWorkflowError("Duplicate write-scope paths are not allowed.")
