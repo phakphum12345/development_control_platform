@@ -82,6 +82,25 @@ class TerminalScriptExecutorTests(unittest.TestCase):
                 "python_version", {}, template_version_digest("python_version", {}),
             )
 
+    def test_temporary_terminal_home_inside_project_workspace_is_rejected(self):
+        template = dict(preview_template("python_version", {}), execution_enabled=True)
+        unsafe_home = self.workspace / ".dcp-terminal-home-test"
+        unsafe_home.mkdir()
+        executor = TerminalScriptExecutor(enabled=True)
+        with patch(
+            "tools.local_runner_agent.terminal_executor.preview_template",
+            return_value=template,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.tempfile.mkdtemp",
+            return_value=str(unsafe_home),
+        ):
+            with self.assertRaisesRegex(TerminalExecutionError, "outside the Project Workspace"):
+                executor.run(
+                    str(uuid.uuid4()), "runner-local", self.workspace,
+                    "python_version", {}, template_version_digest("python_version", {}),
+                )
+        self.assertFalse(unsafe_home.exists())
+
     def test_terminal_output_redacts_secrets_split_across_reader_chunks(self):
         template = {
             "id": "python_version",
