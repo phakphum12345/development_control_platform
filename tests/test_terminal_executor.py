@@ -148,6 +148,30 @@ class TerminalScriptExecutorTests(unittest.TestCase):
         self.assertFalse(fsmonitor_marker.exists(), "repository-controlled fsmonitor hook was invoked")
         self.assertFalse(filter_marker.exists(), "repository-controlled clean filter was invoked")
 
+    def test_repository_filter_driver_names_are_case_sensitive(self):
+        env = {"GIT_CONFIG_COUNT": "0"}
+        listed = subprocess.CompletedProcess(
+            args=["git", "config"], returncode=0,
+            stdout=b"filter.hostile.clean\\0filter.Hostile.clean\\0",
+        )
+        with patch(
+            "tools.local_runner_agent.terminal_executor.subprocess.run",
+            return_value=listed,
+        ):
+            TerminalScriptExecutor._disable_repository_filters(
+                "git", self.workspace, env
+            )
+
+        self.assertEqual(env["GIT_CONFIG_COUNT"], "8")
+        configured = {
+            env[f"GIT_CONFIG_KEY_{index}"]: env[f"GIT_CONFIG_VALUE_{index}"]
+            for index in range(8)
+        }
+        self.assertEqual(configured["filter.hostile.clean"], "")
+        self.assertEqual(configured["filter.Hostile.clean"], "")
+        self.assertEqual(configured["filter.hostile.required"], "false")
+        self.assertEqual(configured["filter.Hostile.required"], "false")
+
     def test_git_diff_and_show_disable_external_diff_and_textconv(self):
         diff = TerminalScriptExecutor._build_command(
             "git", "git", ["diff", "--no-ext-diff", "--"]
