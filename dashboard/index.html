@@ -1599,6 +1599,199 @@ async function terminalStudioPreview(){
  }catch(error){$("terminal-preview-output").textContent="No verified preview available.";terminalStudioStatus("Preview rejected: "+error.message,"error");terminalStudioRenderExecutionGate();}
  finally{button.disabled=!$("terminal-template-select").value;}
 }
+async function terminalStudioAuthorizeRun(){
+ const template=terminalStudioSelectedTemplate();
+ const project=terminalStudioSelectedProject();
+ const preview=terminalStudioState.lastPreview;
+ if(!template||template.execution_enabled!==true||!project||!preview||preview.id!==template.id||preview.execution_enabled!==true){
+  terminalStudioRenderExecutionGate();return;
+ }
+ if(terminalStudioState.pendingGrant)await terminalStudioRevokeGrant(true);
+ const button=$("terminal-authorize-run");button.disabled=true;
+ try{
+  const requestPayload={
+   project_id:project.project_id,
+   workspace_id:project.workspace_id,
+   snapshot_sha256:project.snapshot_sha256,
+   template_id:template.id,
+   parameters:terminalStudioCollectParameters()
+  };
+  const response=await terminalStudioRequest("/api/terminal/authorize","POST",requestPayload);
+  const grant=response.grant;
+  if(!grant||typeof grant.authorization_id!=="string"||typeof grant.expires_at!=="string")throw new Error("Gateway did not return a valid one-time grant.");
+  terminalStudioState.pendingGrant={grant,requestPayload};
+  terminalStudioState.pendingSubmission=null;
+  $("terminal-grant-details").textContent=JSON.stringify({
+   template:template.name,
+   project:project.relative_path||project.project_id,
+   project_id:project.project_id,
+   workspace_id:project.workspace_id,
+   snapshot_sha256:project.snapshot_sha256,
+   action:grant.action||"terminal.read_only",
+   expires_at:grant.expires_at,
+   one_time:true
+  },null,2);
+  $("terminal-grant-confirmation").hidden=false;
+  $("terminal-confirm-run").disabled=false;
+  $("terminal-confirm-run").textContent="Confirm & Queue Job";
+  $("terminal-discard-grant").hidden=false;
+  terminalStudioStatus("App authorization issued. Review the exact Project Workspace and template, then confirm separately.","execution-ready");
+  terminalStudioRenderExecutionGate();
+ }catch(error){terminalStudioStatus("App authorization denied: "+error.message,"error");}
+ finally{button.disabled=false;terminalStudioRenderExecutionGate();}
+}
+async function terminalStudioConfirmRun(){
+ const pending=terminalStudioState.pendingGrant;
+ if(!pending)return;
+ const button=$("terminal-confirm-run");button.disabled=true;
+ if(!terminalStudioState.pendingSubmission){
+  if(!window.crypto||typeof window.crypto.randomUUID!=="function"){
+   button.disabled=false;terminalStudioStatus("Secure idempotency key generation is unavailable in this browser.","error");return;
+  }
+  terminalStudioState.pendingSubmission={
+   idempotencyKey:window.crypto.randomUUID(),
+   payload:{...pending.requestPayload,authorization_id:pending.grant.authorization_id}
+  };
+ }
+ $("terminal-discard-grant").hidden=true;
+ button.textContent="Queueing…";
+ try{
+  const submission=terminalStudioState.pendingSubmission;
+  const job=await terminalStudioRequest(
+   "/api/terminal/jobs","POST",submission.payload,
+   {"Idempotency-Key":submission.idempotencyKey}
+  );
+  if(!job||typeof job.id!=="string"||job.target!=="terminal_script")throw new Error("Gateway did not return a valid Terminal Job.");
+  terminalStudioState.pendingGrant=null;terminalStudioState.pendingSubmission=null;
+  $("terminal-grant-confirmation").hidden=true;
+  terminalStudioStatus("Terminal Job accepted by the durable queue. Runner execution is separately authorized and lease-bound.","execution-ready");
+  terminalStudioShowJob(job);
+ }catch(error){
+  button.disabled=false;button.textContent="Retry Queue Request (same Idempotency-Key)";
+  $("terminal-grant-details").textContent+="\n\nSubmission result is uncertain. Retry uses the same Idempotency-Key; do not request a second grant.";
+  terminalStudioStatus("Job submission needs retry: "+error.message,"error");
+ }finally{
+  if(!terminalStudioState.pendingSubmission)button.disabled=false;
+ }
+}
+async function terminalStudioRevokeGrant(silent=false){
+ const pending=terminalStudioState.pendingGrant;
+ if(!pending)return;
+ if(terminalStudioState.pendingSubmission){
+  if(!silent)terminalStudioStatus("A Job submission is pending. Retry the same request to resolve its durable state before changing the grant.","error");
+  return;
+ }
+ try{
+  await terminalStudioRequest(
+   "/api/terminal/grants/"+encodeURIComponent(pending.grant.authorization_id)+"/revoke",
+   "POST",null
+  );
+  if(!silent)terminalStudioStatus("Unused authorization grant revoked.","ready");
+ }catch(error){
+  if(!silent)terminalStudioStatus("Grant could not be confirmed revoked: "+error.message+". It will expire automatically.","error");
+ }
+ terminalStudioState.pendingGrant=null;
+ $("terminal-grant-confirmation").hidden=true;
+ $("terminal-confirm-run").disabled=true;
+ terminalStudioRenderExecutionGate();
+}
+function terminalStudioRenderJobHistory(){
+ const select=$("terminal-job-history");
+ const current=select.value;
+ select.replaceChildren(new Option("Choose a recent Terminal Job",""));
+ for(const job of terminalStudioState.jobHistory){
+  if(!job||typeof job.id!=="string")continue;
+  select.add(new Option((job.state||"unknown")+" · "+job.id.slice(0,8)+" · "+(job.created_at||""),job.id));
+ }
+ if(current&&terminalStudioState.jobHistory.some(job=>job.id===current))select.value=current;
+ $("terminal-job-open").disabled=select.options.length<=1||!select.value;
+}
+function terminalStudioShowJob(job){
+ terminalStudioState.activeJob=job;
+ terminalStudioState.logCursor=0;
+ terminalStudioState.pollFailures=0;
+ if(!terminalStudioState.jobHistory.some(row=>row.id===job.id))terminalStudioState.jobHistory.unshift(job);
+ terminalStudioRenderJobHistory();
+ $("terminal-job-history").value=job.id;
+ $("terminal-job-panel").hidden=false;
+ $("terminal-job-output").textContent="Waiting for Runner output…";
+ $("terminal-job-status").textContent="Job "+job.id+" · "+job.state;
+ $("terminal-job-refresh").disabled=false;
+ $("terminal-job-cancel").hidden=["succeeded","failed","cancelled","unknown"].includes(job.state);
+ terminalStudioStartPolling();
+}
+function terminalStudioAppendLogs(logs){
+ if(!Array.isArray(logs))return;
+ const output=$("terminal-job-output");
+ for(const row of logs){
+  if(!row||typeof row.message!=="string")continue;
+  const id=Number(row.id)||0;
+  if(id>terminalStudioState.logCursor)terminalStudioState.logCursor=id;
+  output.textContent+="["+String(row.stream||"stdout")+"] "+row.message+"\n";
+ }
+ if(output.textContent.length>250000)output.textContent=output.textContent.slice(-250000);
+ output.scrollTop=output.scrollHeight;
+}
+async function terminalStudioPollJob(){
+ const active=terminalStudioState.activeJob;
+ if(!active||typeof active.id!=="string")return;
+ try{
+  const id=active.id;
+  const [job,logs]=await Promise.all([
+   terminalStudioRequest("/api/jobs/"+encodeURIComponent(id)),
+   terminalStudioRequest("/api/jobs/"+encodeURIComponent(id)+"/logs?after_id="+terminalStudioState.logCursor+"&limit=200")
+  ]);
+  if(job.id!==id||job.target!=="terminal_script")throw new Error("Job identity changed or is not a Terminal Job.");
+  terminalStudioAppendLogs(logs.logs||[]);
+  terminalStudioState.activeJob=job;
+  const state=String(job.state||"unknown");
+  $("terminal-job-status").textContent="Job "+id+" · "+state+" · attempts "+String(job.attempt_count||0)+"/"+String(job.max_attempts||1)+(job.error_code?" · "+job.error_code:"");
+  const finished=["succeeded","failed","cancelled","unknown"].includes(state);
+  $("terminal-job-cancel").hidden=finished;
+  const idx=terminalStudioState.jobHistory.findIndex(row=>row.id===id);
+  if(idx>=0)terminalStudioState.jobHistory[idx]=job;
+  terminalStudioRenderJobHistory();
+  if(finished){terminalStudioState.pollTimer=null;$("terminal-job-refresh").disabled=false;return;}
+  terminalStudioState.pollFailures=0;
+  terminalStudioState.pollTimer=setTimeout(terminalStudioPollJob,1000);
+ }catch(error){
+  terminalStudioState.pollFailures+=1;
+  $("terminal-job-status").textContent="Connection interrupted: "+error.message;
+  if(terminalStudioState.pollFailures<=6){
+   const delay=Math.min(1000*Math.pow(2,terminalStudioState.pollFailures),15000);
+   terminalStudioState.pollTimer=setTimeout(terminalStudioPollJob,delay);
+  }else{
+   terminalStudioState.pollTimer=null;
+   $("terminal-job-refresh").disabled=false;
+   $("terminal-job-status").textContent+=" · Automatic polling paused; use Refresh to reconnect.";
+  }
+ }
+}
+function terminalStudioStartPolling(){
+ if(terminalStudioState.pollTimer)clearTimeout(terminalStudioState.pollTimer);
+ terminalStudioState.pollFailures=0;
+ $("terminal-job-refresh").disabled=true;
+ terminalStudioState.pollTimer=setTimeout(terminalStudioPollJob,0);
+}
+async function terminalStudioOpenJob(){
+ const id=$("terminal-job-history").value;
+ if(!id)return;
+ const job=terminalStudioState.jobHistory.find(row=>row.id===id);
+ if(!job)return;
+ terminalStudioShowJob(job);
+}
+async function terminalStudioCancelJob(){
+ const job=terminalStudioState.activeJob;
+ if(!job||!job.id)return;
+ const button=$("terminal-job-cancel");button.disabled=true;
+ try{
+  const updated=await terminalStudioRequest("/api/jobs/"+encodeURIComponent(job.id)+"/cancel","POST",null);
+  terminalStudioState.activeJob=updated;
+  $("terminal-job-status").textContent="Cancellation requested · "+updated.state;
+  terminalStudioStartPolling();
+ }catch(error){$("terminal-job-status").textContent="Cancel request failed: "+error.message;}
+ finally{button.disabled=false;}
+}
 async function terminalStudioLoadEvents(id){
  try{
   const data=await terminalStudioRequest("/api/terminal/templates/"+encodeURIComponent(id)+"/events");
