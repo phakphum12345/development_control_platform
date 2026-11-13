@@ -121,6 +121,20 @@ class LocalProjectRegistry:
         self.max_files = max_files
         self.max_bytes = max_bytes
         self._data = self._load()
+        migrated = False
+        for record in self._data["projects"].values():
+            if not isinstance(record, dict):
+                continue
+            workspace_id = record.get("workspace_id")
+            try:
+                parsed_workspace_id = uuid.UUID(workspace_id)
+                if str(parsed_workspace_id) != workspace_id:
+                    raise ValueError("non-canonical workspace ID")
+            except (ValueError, TypeError, AttributeError):
+                record["workspace_id"] = str(uuid.uuid4())
+                migrated = True
+        if migrated:
+            self._save()
 
     def _load(self) -> dict:
         if not self.registry_file.exists():
