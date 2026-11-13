@@ -691,7 +691,7 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                     idempotency_key=self.headers.get("Idempotency-Key", ""),
                 )
                 return self.send_bytes(status, data)
-            job_resume = re.fullmatch(r"/api/jobs/([0-9a-f-]{36})/resume", path)
+            job_resume = None if parsed.query else re.fullmatch(r"/api/jobs/([0-9a-f-]{36})/resume", path)
             if job_resume:
                 if not session or not session["authenticated"] or not self.csrf_ok(session):
                     return self.send_json(403, {"error": "authenticated session and CSRF token required"})
