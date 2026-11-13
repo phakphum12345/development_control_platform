@@ -35,7 +35,8 @@ class TerminalGrantStoreTests(unittest.TestCase):
         self.temp.cleanup()
 
     def issue(self, *, ttl=120, now=NOW, action="terminal.read_only"):
-        return self.store.issue(**self.claims, ttl_seconds=ttl, now=now, action=action)
+        claims = {**self.claims, "action": action}
+        return self.store.issue(**claims, ttl_seconds=ttl, now=now)
 
     def bind(self, grant, *, job_id=None, worker="runner-local", now=NOW):
         return self.store.bind_job(
@@ -54,7 +55,7 @@ class TerminalGrantStoreTests(unittest.TestCase):
     def test_grant_is_durable_and_consumable_only_once(self):
         grant = self.issue()
         self.bind(grant)
-        reopened = TerminalGrantStore(self.path)
+        self.store = TerminalGrantStore(self.path)
         self.assertTrue(self.consume(grant)["authorized"])
         with self.assertRaisesRegex(TerminalGrantError, "not active"):
             self.consume(grant)
