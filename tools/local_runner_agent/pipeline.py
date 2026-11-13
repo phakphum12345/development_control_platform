@@ -8,6 +8,7 @@ from typing import Protocol
 
 from .artifacts import ArtifactPackageError, FlutterArtifactPackager
 from .checkout import CheckoutError
+from .local_project import LocalProjectError
 from .execution import ExecutionError, FlutterBuildExecutor
 from .terminal_executor import TerminalExecutionError, TerminalScriptExecutor
 from tools.cloud_gateway.terminal_execution_contract import parameters_digest
@@ -228,6 +229,17 @@ class RunnerPipeline:
                 )
                 outcome = terminal_result.outcome
                 error_code = terminal_result.error_code
+                try:
+                    self.local_project_checkout.registry.resolve_workspace(
+                        project_id, workspace_id, snapshot_sha256
+                    )
+                except LocalProjectError:
+                    outcome = "failed"
+                    error_code = "TERMINAL_WORKSPACE_CHANGED"
+                    self.client.append_log(
+                        job_id, "Project Workspace changed during Terminal execution; result rejected",
+                        "stderr",
+                    )
                 build_succeeded = outcome == "succeeded"
                 result.update({
                     "template_id": terminal_job["template_id"],
