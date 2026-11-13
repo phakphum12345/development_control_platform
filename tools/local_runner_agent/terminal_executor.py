@@ -205,6 +205,21 @@ class TerminalScriptExecutor:
         return env
 
     @staticmethod
+    def _log_chunks(value: str, max_bytes: int = 7000):
+        current = []
+        current_bytes = 0
+        for char in value:
+            size = len(char.encode("utf-8"))
+            if current and current_bytes + size > max_bytes:
+                yield "".join(current)
+                current = []
+                current_bytes = 0
+            current.append(char)
+            current_bytes += size
+        if current:
+            yield "".join(current)
+
+    @staticmethod
     def _terminate_tree(process: subprocess.Popen) -> None:
         if process.poll() is not None:
             return
