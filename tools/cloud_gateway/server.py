@@ -1242,7 +1242,7 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                             return self.send_json(201, {"artifact": metadata})
                         except ArtifactError as exc:
                             return self.send_json(409, {"error": str(exc)})
-                    payload = self.body()
+                    payload = self.body(max_bytes=40 * 1024) if action == "checkpoint" else self.body()
                     if action == "heartbeat":
                         row = jobs.heartbeat(job_id, worker, payload.get("lease_seconds", 30))
                         return self.send_json(200, self.public_job(row))
