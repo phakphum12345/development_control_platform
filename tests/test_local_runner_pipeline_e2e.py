@@ -161,6 +161,10 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
             os.environ["PATH"] = old_path
         self.assertEqual(result["outcome"], "succeeded", result)
         self.assertEqual(result["job"]["state"], "succeeded")
+        saved_job = self.jobs.get(job["id"])
+        self.assertEqual(saved_job["checkpoint"]["step"], "ready-to-finish")
+        self.assertTrue(saved_job["checkpoint"]["safe_to_resume"])
+        self.assertEqual(saved_job["checkpoint_seq"], 2)
         self.assertTrue(any("fixture-flutter-build-ok" in row["message"] for row in self.jobs.logs(job["id"])))
         self.assertFalse((self.root / "workspaces" / job["id"]).exists())
         events = self.jobs.events(job["id"])
@@ -189,6 +193,8 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
             os.environ["PATH"] = old_path
         self.assertEqual(result["outcome"], "cancelled")
         self.assertEqual(result["job"]["state"], "cancelled")
+        self.assertEqual(self.jobs.get(job["id"])["checkpoint"]["step"], "ready-to-finish")
+        self.assertTrue(self.jobs.get(job["id"])["checkpoint"]["safe_to_resume"])
         self.assertFalse((self.root / "workspaces" / job["id"]).exists())
 
 
@@ -226,6 +232,74 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
         self.assertEqual(metadata["sha256"], artifact["sha256"])
         self.assertFalse((self.root / "workspaces" / job["id"]).exists())
 
+
+    @unittest.skipIf(os.name == "nt", "POSIX fixture executable used for deterministic process tests")
+    def test_lost_finish_response_replays_terminal_checkpoint_without_rebuilding(self):
+        job, _ = self.jobs.create({
+            "repository": "owner/mobile-app",
+            "commit_sha": "7" * 40,
+            "target": "test",
+        }, "runner-finish-replay-0001")
+        old_path = os.environ.get("PATH", "")
+        os.environ["PATH"] = self._fake_flutter(
+            "#!/bin/sh\nprintf 'checkpoint-replay-build\n'\nexit 0\n"
+        )
+
+        class DropFinishOnce:
+            def __init__(self, client):
+                self.client = client
+                self.drop = True
+            def __getattr__(self, name):
+                return getattr(self.client, name)
+            def finish(self, *args, **kwargs):
+                if self.drop:
+                    self.drop = False
+                    raise OSError("simulated lost finish response")
+                return self.client.finish(*args, **kwargs)
+
+        class NeverCheckout:
+            def checkout(self, *args, **kwargs):
+                raise AssertionError("safe terminal checkpoint must not rebuild or checkout")
+
+        try:
+            first_pipeline = RunnerPipeline(
+                DropFinishOnce(self.client), self.manager, _FixtureCheckout(self.manager),
+                FlutterBuildExecutor(self.manager, enabled=True, timeout_seconds=10),
+                trusted_repositories={"owner/mobile-app"},
+                capabilities={"flutter", "linux", "android"},
+            )
+            first = first_pipeline.run_once()
+        finally:
+            os.environ["PATH"] = old_path
+
+        self.assertEqual(first["outcome"], "unconfirmed")
+        stored = self.jobs.get(job["id"])
+        self.assertEqual(stored["state"], "running")
+        self.assertEqual(stored["checkpoint"]["step"], "ready-to-finish")
+        self.assertTrue(stored["checkpoint"]["safe_to_resume"])
+        self.assertFalse((self.root / "workspaces" / job["id"]).exists())
+
+        with self.jobs.db() as db:
+            db.execute("UPDATE jobs SET lease_until=? WHERE id=?",
+                       ("2000-01-01T00:00:00+00:00", job["id"]))
+        recovered = self.jobs.recover_expired_leases()
+        self.assertEqual(recovered[0]["state"], "retry_wait")
+        with self.jobs.db() as db:
+            db.execute("UPDATE jobs SET retry_after=? WHERE id=?",
+                       ("2000-01-01T00:00:00+00:00", job["id"]))
+
+        second_pipeline = RunnerPipeline(
+            self.client, self.manager, NeverCheckout(),
+            FlutterBuildExecutor(self.manager, enabled=False),
+            trusted_repositories={"owner/mobile-app"},
+            capabilities={"flutter", "linux", "android"},
+        )
+        second = second_pipeline.run_once()
+        self.assertEqual(second["outcome"], "succeeded")
+        self.assertTrue(second["resumed_from_checkpoint"])
+        self.assertEqual(second["job"]["state"], "succeeded")
+        self.assertEqual(second["job"]["attempt_count"], 2)
+        self.assertEqual(second["result"]["command"][0], "flutter")
 
     def test_local_folder_static_build_uses_immutable_snapshot_and_trusted_project_allowlist(self):
         approved = self.root / "approved"
@@ -392,6 +466,9 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
                 with handle:
                     self.assertEqual(handle.read(), b"fixture-playwright-evidence")
                 self.assertEqual(metadata["sha256"], test_artifact["sha256"])
+                checkpoint = self.jobs.get(job["id"])["checkpoint"]
+                self.assertEqual(checkpoint["step"], "workspace-not-transferable")
+                self.assertFalse(checkpoint["safe_to_resume"])
                 self.assertTrue(result["result"]["workspace_retained_for_preview"])
 
     def test_static_web_job_runs_through_scheduler_and_uploads_artifact(self):
@@ -426,6 +503,7 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
         result = pipeline.run_once()
         self.assertEqual(result["outcome"], "succeeded")
         self.assertEqual(result["job"]["state"], "succeeded")
+        self.assertEqual(self.jobs.get(job["id"])["checkpoint"]["step"], "ready-to-finish")
         artifact = result["result"]["artifact"]
         self.assertEqual(artifact["name"], "web-build.zip")
         metadata, handle = self.artifacts.open(artifact["id"])
