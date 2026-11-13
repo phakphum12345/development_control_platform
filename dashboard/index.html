@@ -447,25 +447,30 @@ const state={repo:null,pr:null,user:null,evidence:null,gates:null,audit:null};
 function msg(id,s){$(id).textContent=s}function link(url,label){return '<a target="_blank" rel="noopener noreferrer" href="'+esc(url)+'">'+esc(label||url)+'</a>'}
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function api(path){
- let lastError;
  for(let attempt=0;attempt<3;attempt++){
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
+  let response;
   try{
-   const r=await fetch("https://api.github.com"+path,{headers:{Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"},signal:controller.signal});
-   if(r.ok)return await r.json();
-   let m="HTTP "+r.status;try{m=(await r.json()).message||m}catch(_){}
-   const retryable=r.status===429||r.status>=500;
-   if(!retryable||attempt===2)throw Error(m+(r.status===403||r.status===429?" (rate limit/permission restriction)":""));
-   const retryAfter=Number(r.headers.get("Retry-After")||0);
-   await sleep(Math.min(10000,Math.max(retryAfter*1000,500*Math.pow(2,attempt))));
+   response=await fetch("https://api.github.com"+path,{headers:{Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"},signal:controller.signal});
   }catch(error){
-   lastError=error;
+   clearTimeout(timer);
    const transient=error.name==="AbortError"||error instanceof TypeError;
-   if(!transient||attempt===2)throw Error((error.name==="AbortError"?"Request timed out after 12 seconds: ": "Network request failed: ")+error.message+"; status UNKNOWN.");
-   await sleep(500*Math.pow(2,attempt));
-  }finally{clearTimeout(timer)}
+   if(transient&&attempt<2){await sleep(500*Math.pow(2,attempt));continue}
+   throw Error((error.name==="AbortError"?"Request timed out after 12 seconds. ":"Network connection failed. ")+"Remote outcome is UNKNOWN; retry manually after checking current state.");
+  }
+  clearTimeout(timer);
+  if(response.ok)return response.json();
+  let message="HTTP "+response.status;
+  try{message=(await response.json()).message||message}catch(_){}
+  const retryable=response.status===429||response.status>=500;
+  if(retryable&&attempt<2){
+   const retryAfter=Number(response.headers.get("Retry-After")||0);
+   await sleep(Math.min(10000,Math.max(retryAfter*1000,500*Math.pow(2,attempt))));
+   continue;
+  }
+  throw Error(message+(response.status===403||response.status===429?" (rate limit/permission restriction)":""));
  }
- throw lastError||Error("Request status UNKNOWN.");
+ throw Error("Request status UNKNOWN.");
 }
 function table(head,rows){return rows.length?'<table><thead><tr>'+head.map(x=>'<th>'+esc(x)+'</th>').join("")+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(x=>'<td>'+x+'</td>').join("")+'</tr>').join("")+'</tbody></table>':'<div class="empty">No records returned.</div>'}
 function tab(name){document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id===name));document.querySelectorAll("[data-tab]").forEach(x=>x.classList.toggle("active",x.dataset.tab===name))}
