@@ -42,6 +42,14 @@ def _canonical_uuid(value: Any, field: str) -> str:
     return value
 
 
+def parameters_digest(parameters: dict) -> str:
+    """Hash normalized typed parameters using the same canonical form at Gateway and Runner."""
+    if not isinstance(parameters, dict):
+        raise TerminalContractError("parameters must be an object")
+    canonical = json.dumps(parameters, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def template_version_digest(template_id: str, parameters: dict) -> str:
     """Return a deterministic digest of the fully resolved trusted template version."""
     preview = preview_template(template_id, parameters)
