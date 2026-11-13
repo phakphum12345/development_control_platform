@@ -4,10 +4,14 @@ import tempfile
 import threading
 import unittest
 import uuid
+from unittest.mock import patch
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 from tools.cloud_gateway.job_control import JobStore
+from tools.cloud_gateway.terminal_grants import TerminalGrantStore
+from tools.cloud_gateway.terminal_catalog import preview_template
+from tools.cloud_gateway.terminal_execution_contract import template_version_digest
 from tools.cloud_gateway.artifacts import ArtifactStore
 from tools.cloud_gateway.runner_registry import RunnerRegistry
 from tools.cloud_gateway.server import make_handler
@@ -18,6 +22,7 @@ from tools.local_runner_agent.service import RunnerAgentService
 from tools.local_runner_agent.workspace import WorkspaceManager
 from tools.local_runner_agent.local_project import LocalProjectRegistry
 from tools.local_runner_agent.checkout import LocalProjectCheckout
+from tools.local_runner_agent.terminal_executor import TerminalScriptExecutor
 
 
 TOKEN = "runner-pipeline-e2e-token-which-is-long-enough"
@@ -28,6 +33,7 @@ class _Service:
         self.job_store = jobs
         self.artifact_store = artifacts
         self.runner_registry = registry
+        self.terminal_grant_store = None
 
 
 class _FixtureCheckout:
@@ -53,9 +59,12 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
         self.jobs = JobStore(str(self.root / "jobs.sqlite3"))
         self.artifacts = ArtifactStore(self.root / "artifacts")
         self.registry = RunnerRegistry(self.root / "runners.sqlite3")
+        self.grants = TerminalGrantStore(self.root / "terminal-grants.sqlite3")
+        service = _Service(self.jobs, self.artifacts, self.registry)
+        service.terminal_grant_store = self.grants
         self.server = ThreadingHTTPServer(
             ("127.0.0.1", 0),
-            make_handler(_Service(self.jobs, self.artifacts, self.registry), "internal-gateway-token", runner_tokens={
+            make_handler(service, "internal-gateway-token", runner_tokens={
                 "runner-e2e": TOKEN,
             }),
         )
