@@ -40,6 +40,8 @@ Do not use the deprecated sandbox-exec interface as a production substitute.
 - Windows and macOS remain blocked until their native helper implementations exist.
 - require_verified_isolation() rejects every state except a complete VERIFIED
   assessment with all three enforcement claims.
+- TerminalScriptExecutor now calls require_verified_isolation() before workspace resolution or process launch. The default platform assessment cannot return VERIFIED, so the executor fails closed on every host until a trusted verifier is implemented and accepted.
+- Unit tests inject a test-only VERIFIED assessment to exercise the executor's existing process-control behavior; this is not production evidence.
 - This module is a gate contract, not a process launcher and not a security boundary.
 
 ## Mandatory acceptance matrix
