@@ -417,9 +417,12 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                 template_store = self.terminal_template_store()
                 if template_store is None:
                     return self.send_json(503, {"error": "Terminal Template Store unavailable"})
+                templates = list_terminal_templates() + template_store.list_imported()
                 return self.send_json(200, {
-                    "templates": list_terminal_templates() + template_store.list_imported(),
-                    "execution_enabled": False,
+                    "templates": templates,
+                    "execution_enabled": any(
+                        item.get("execution_enabled") is True for item in templates
+                    ),
                 })
             if path == "/api/jobs" or path.startswith("/api/jobs/"):
                 identity = self.proxy_identity()
@@ -909,6 +912,29 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                     return self.send_json(400, {"error": str(exc)})
                 except Exception:
                     return self.send_json(503, {"error": "Terminal Job creation failed closed"})
+            terminal_grant_revoke = re.fullmatch(
+                r"/api/terminal/grants/([0-9a-f-]{36})/revoke", path
+            )
+            if terminal_grant_revoke:
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if identity.get("role") != "owner":
+                    return self.send_json(403, {"error": "owner role required"})
+                if not self.same_origin():
+                    return self.send_json(403, {"error": "same-origin request required"})
+                if not self.csrf_valid(identity):
+                    return self.send_json(403, {"error": "CSRF validation failed"})
+                grants = self.terminal_grant_store()
+                if grants is None:
+                    return self.send_json(503, {"error": "Terminal Grant Store unavailable"})
+                try:
+                    revoked = grants.revoke(terminal_grant_revoke.group(1))
+                    if not revoked:
+                        return self.send_json(409, {"error": "grant is missing, already consumed or already revoked"})
+                    return self.send_json(200, {"revoked": True})
+                except TerminalGrantError as exc:
+                    return self.send_json(400, {"error": str(exc)})
             if path == "/api/terminal/authorize":
                 identity = self.proxy_identity()
                 if not identity:
@@ -1122,7 +1148,7 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                         }.get(approval_status, "UNKNOWN")
                     return self.send_json(200, {
                         "preview": preview,
-                        "execution_enabled": False,
+                        "execution_enabled": preview.get("execution_enabled") is True,
                     })
                 except ValueError as exc:
                     return self.send_json(400, {"error": str(exc)})
