@@ -10,6 +10,7 @@ from tools.cloud_gateway.terminal_execution_contract import template_version_dig
 from tools.local_runner_agent.terminal_executor import (
     TerminalExecutionError,
     TerminalScriptExecutor,
+    TerminalOutputRedactor,
     redact_terminal_output,
 )
 
@@ -117,6 +118,17 @@ class TerminalScriptExecutorTests(unittest.TestCase):
         self.assertNotIn("ghp_", combined)
         self.assertNotIn("A" * 40, combined)
         self.assertIn("[REDACTED TOKEN]", combined)
+
+    def test_streaming_redactor_handles_tokens_and_private_keys_split_across_chunks(self):
+        redactor = TerminalOutputRedactor()
+        first = redactor.feed("API_KEY=super-secret-value\nBearer abcdefghijkl")
+        second = redactor.feed("mnopqrstuvwxyz\n-----BEGIN PRIVATE KEY-----\nprivate-")
+        third = redactor.feed("key-material\n-----END PRIVATE KEY-----\n", final=True)
+        combined = first + second + third
+        self.assertNotIn("super-secret-value", combined)
+        self.assertNotIn("abcdefghijklmnopqrstuvwxyz", combined)
+        self.assertNotIn("private-key-material", combined)
+        self.assertIn("[REDACTED PRIVATE KEY]", combined)
 
     def test_terminal_output_redacts_common_secrets_and_private_keys(self):
         sample = (
