@@ -260,7 +260,7 @@ class TerminalScriptExecutor:
             )
 
         drivers: dict[str, str] = {}
-        for raw_key in result.stdout.split(b"\\0"):
+        for raw_key in result.stdout.split(b"\0"):
             if not raw_key:
                 continue
             key = raw_key.decode("utf-8", "replace")
