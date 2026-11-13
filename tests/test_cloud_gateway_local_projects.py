@@ -135,7 +135,8 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
         parameters = {}
         template = preview_template("git_status", parameters)
         template["execution_enabled"] = True
-        digest = template_version_digest("git_status", parameters)
+        with patch("tools.cloud_gateway.terminal_execution_contract.preview_template", return_value=template):
+            digest = template_version_digest("git_status", parameters)
         grant = self.service.terminal_grant_store.issue(
             subject="dcp-owner@example.test", session_id=session,
             project_id=self.project["project_id"],
