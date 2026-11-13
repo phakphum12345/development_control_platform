@@ -110,7 +110,7 @@ class DashboardContractTests(unittest.TestCase):
         self.assertIn('<option value="build_next">Next.js (preinstalled dependencies)</option>', HTML)
         self.assertIn('<option value="build_angular">Angular (preinstalled dependencies)</option>', HTML)
 
-    def test_terminal_studio_dashboard_is_preview_only(self):
+    def test_terminal_studio_dashboard_uses_app_authorized_fixed_template_execution(self):
         for expected in (
             'id="terminal-studio"',
             'data-tab="terminal-studio"',
@@ -120,23 +120,42 @@ class DashboardContractTests(unittest.TestCase):
             'function terminalStudioImport()',
             'function terminalStudioReview(decision)',
             'function terminalStudioLoadEvents(id)',
+            'function terminalStudioAuthorizeRun()',
+            'function terminalStudioConfirmRun()',
+            'function terminalStudioRevokeGrant(silent=false)',
+            'function terminalStudioPollJob()',
+            'function terminalStudioCancelJob()',
             'id="terminal-pack-json"',
             'id="terminal-import-pack"',
             'id="terminal-review-panel"',
             'id="terminal-review-approve"',
             'id="terminal-review-reject"',
+            'id="terminal-execution-panel"',
+            'id="terminal-project-select"',
+            'id="terminal-authorize-run"',
+            'id="terminal-confirm-run"',
+            'id="terminal-grant-confirmation"',
+            'id="terminal-job-history"',
+            'id="terminal-job-output"',
+            'id="terminal-job-cancel"',
             'APPROVE TEMPLATE ',
             'REJECT TEMPLATE ',
             'APPROVED_NOT_EXECUTABLE',
+            '"/api/terminal/authorize"',
+            '"/api/terminal/jobs"',
+            '"/api/terminal/grants/"+encodeURIComponent(pending.grant.authorization_id)+"/revoke"',
+            '"/api/local-projects"',
+            '"/api/jobs/"+encodeURIComponent(id)+"/logs?after_id="',
+            '"/api/jobs/"+encodeURIComponent(job.id)+"/cancel"',
             '"/api/terminal/templates/"+encodeURIComponent(item.id)+"/review"',
             '"/api/terminal/templates/"+encodeURIComponent(id)+"/events"',
             '"/api/terminal/templates"',
             '"/api/terminal/templates/import"',
             '"/api/terminal/commands/preview"',
-            'Imported templates are disabled and pending Owner review.',
+            'Idempotency-Key',
             'credentials:"same-origin"',
             '"X-CSRF-Token"',
-            'execution_enabled:false',
+            'execution_enabled:data.execution_enabled',
             'No process was started.',
             'PENDING_REVIEW',
             'Imported template is pending owner review.',
@@ -144,6 +163,10 @@ class DashboardContractTests(unittest.TestCase):
         ):
             with self.subTest(expected=expected):
                 self.assertIn(expected, HTML)
+        for forbidden in ('id="terminal-shell-command"', 'name="shell"', 'name="executable"', 'name="argv"', 'name="cwd"', 'name="env"'):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, HTML)
+
 
 
     def test_unknown_is_default_for_gate_results(self):
