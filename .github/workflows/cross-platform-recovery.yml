@@ -10,6 +10,7 @@ on:
       - "tests/test_cloud_runner_user_api.py"
       - "tests/test_local_runner_pipeline_e2e.py"
       - "tests/test_local_auth_proxy.py"
+      - "tests/test_local_runner_execution.py"
   push:
     branches: [main]
     paths:
@@ -20,6 +21,7 @@ on:
       - "tests/test_cloud_runner_user_api.py"
       - "tests/test_local_runner_pipeline_e2e.py"
       - "tests/test_local_auth_proxy.py"
+      - "tests/test_local_runner_execution.py"
   workflow_dispatch:
 
 permissions:
@@ -65,6 +67,9 @@ jobs:
 
       - name: Run Local Auth Proxy authentication and recovery integration tests
         run: python -m unittest tests.test_local_auth_proxy -v
+
+      - name: Run Flutter executor policy and platform acceptance tests
+        run: python -m unittest tests.test_local_runner_execution -v
 
       - name: Report host identity
         shell: bash
