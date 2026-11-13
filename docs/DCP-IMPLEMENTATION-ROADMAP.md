@@ -212,3 +212,21 @@ Historical gate for PR #71: its Chromium sandbox launch failure applied to that 
 - Extend the same Ubuntu/Windows matrix to run `tests.test_local_auth_proxy` so authenticated Local Auth Proxy and Gateway integration behavior is exercised on both operating systems.
 - Keep the workflow read-only, secret-free, provider-free, and independent of cloud provisioning.
 - Remaining operational acceptance: execute the supported launcher on an actual Windows host, verify the live Dashboard → Local Auth Proxy → Gateway owner flow, and independently inspect process-tree termination and workspace cleanup before allowing any UNKNOWN job to resume.
+
+
+## DCP-CEEP v1.0 — central operating protocol adopted
+
+- The repository adopts [DCP-CEEP v1.0](DCP-CEEP-PROTOCOL.md) as the central operating protocol for all Work Packages and pull requests.
+- The protocol defines the mandatory execution loop, evidence states, exact-SHA baseline, resilience/checkpoint rules, documentation obligations, full reporting structure, continuity ledger, merge safety gate, scope constraints and completion definition.
+- PASS, FAIL, SKIPPED, UNKNOWN and IN_PROGRESS remain distinct. Missing or skipped evidence is never promoted to PASS.
+- Every new PR and every changed head SHA requires a fresh baseline and exact-head CI verification. Merge remains blocked until all required gates pass and user authorization is present.
+- Protocol adoption does not waive existing operational acceptance requirements or convert CI evidence into real-host evidence.
+
+## M16 — Flutter executor cross-platform acceptance (PR #110; merge pending)
+
+- PR #110 adds `tests.test_local_runner_execution` to the Ubuntu/Windows recovery matrix and to both PR/push path filters.
+- Exact head SHA: `76b830fc2cd55fd3b27fa1a5279b471499b1ace0`; base SHA: `a34281ffc837ac171508df009ff504b4d4dd22b1`.
+- Exact-head workflows observed: Local-first Minimal Emulator — SUCCESS; Cross-platform Recovery Acceptance — SUCCESS; Validate Control Plane — SUCCESS.
+- Both Windows and Ubuntu recovery jobs completed successfully, including the Flutter executor policy and platform acceptance test step.
+- PR #110 remains OPEN and unmerged. Reviews and review threads were empty at the latest check; merge authorization has not been granted for this PR.
+- Automated CI does not establish a real Flutter SDK build on the user's Windows host or independent OS-level process-tree termination/workspace cleanup. Those operational gates remain UNKNOWN until direct host evidence is supplied.
