@@ -392,6 +392,21 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
  <div id="doc-status" class="output" role="status" aria-live="polite">No document generated. Missing facts will be marked TBD / UNKNOWN, not invented.</div>
  <div class="field"><label for="doc-output">Generated document preview</label><textarea id="doc-output" class="output" rows="22" spellcheck="false" aria-label="Generated document preview"></textarea></div>
  <div id="doc-integrity" class="output" role="status" aria-live="polite">Integrity: UNKNOWN — generate a document first.</div>
+ <div class="panel" id="doc-local-write-panel">
+  <div class="row"><div><h3>Owner-approved Local Project Write</h3><p>บันทึกเอกสารลง Local Project ผ่าน Gateway โดยต้องมี Scope Grant และอนุมัติ Proposal ที่ผูกกับ SHA-256 ก่อนเขียนทุกครั้ง</p></div><span class="pill">OWNER · SCOPED · READ-BACK</span></div>
+  <div class="warn">การเชื่อมต่อจะทำงานเมื่อ Gateway ตั้งค่า DCP_LOCAL_PROJECT_REGISTRY และ DCP_DOCUMENT_WORKFLOW_DATABASE แล้วเท่านั้น ไม่มีการเขียน GitHub, push, merge หรือ deploy</div>
+  <div class="grid">
+   <div class="field"><label for="doc-local-project">Registered Local Project</label><select id="doc-local-project"><option value="">Refresh project list</option></select></div>
+   <div class="field"><label for="doc-local-path">Document path inside project</label><input id="doc-local-path" value="docs/ROADMAP.md" autocomplete="off"></div>
+   <div class="field"><label for="doc-scope-prefix">Write-scope directory to grant</label><input id="doc-scope-prefix" value="docs" autocomplete="off"></div>
+  </div>
+  <label class="check"><input type="checkbox" id="doc-scope-confirm"><span>I explicitly grant this directory write access for this Local Project for up to 30 days.</span></label>
+  <div class="actions"><button id="doc-local-refresh" type="button">Refresh Local Projects</button><button id="doc-scope-grant" type="button">Grant write scope</button><button class="primary" id="doc-propose-write" type="button">Create write proposal</button></div>
+  <div id="doc-local-status" class="output" role="status" aria-live="polite">Local write: UNKNOWN — owner authentication and Gateway configuration have not been checked.</div>
+  <div id="doc-write-proposal" class="output" role="status" aria-live="polite">No pending write proposal.</div>
+  <label class="check"><input type="checkbox" id="doc-write-confirm"><span>I reviewed the exact Local Project, path, current base SHA, and content SHA-256, and approve writing these exact bytes.</span></label>
+  <button class="primary" id="doc-approve-write" type="button" disabled>Approve and write exact proposal</button>
+ </div>
 </div>
 </section>
 <section class="view" id="terminal-studio">
