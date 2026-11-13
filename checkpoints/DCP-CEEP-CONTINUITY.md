@@ -44,7 +44,8 @@
   - tests assert fail-closed behavior.
 - Not yet implemented: actual OS process launchers, mount/capability policies, native helper signing, seccomp policy, host acceptance and process cleanup verification.
 - CI was triggered on earlier head 8e5180376c3b8ea843903d4755e75fe5063969b7 (runs 43530605448 Validate Control Plane, 43530605527 Cross-platform Recovery Acceptance, 43530605511 Local-first Minimal Emulator). These runs are stale after subsequent executor-gate and documentation commits; they are not current-head evidence.
-- Latest code head before this ledger refresh: d02bfe5e704f8c4e5df946aa3e83cb40658cd349. GitHub returned zero check runs for that exact SHA. Exact-current-head CI state is UNKNOWN.
+- Earlier CI on head 19bb0b25b6474cd3dff8658bf43914aef843b58e failed across Recovery (Linux/Windows), Validate Control Plane, Linux Minimal Emulator and Windows dynamic-port integration. Log analysis isolated the common failure to test_terminal_template_runs_only_after_grant_in_the_actual_registered_project_workspace: the new production isolation gate correctly blocked execution, while this pre-existing integration test still expected a successful process run.
+- Fixed the test boundary on commit 292f539d430f29472247a8701aae7426ce7343aa: the test now injects an explicit test-only VERIFIED assessment to exercise grant/workspace/pipeline behavior, with an explicit reason that this is not production isolation evidence. Production assessment remains fail-closed. Exact-head CI for 292f539d430f29472247a8701aae7426ce7343aa is pending/UNKNOWN until GitHub reports checks.
 - No PR has yet been opened for WP-18.
 
 ## Outstanding operational gates
