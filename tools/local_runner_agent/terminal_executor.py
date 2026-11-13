@@ -197,6 +197,24 @@ class TerminalScriptExecutor:
             env["GIT_OPTIONAL_LOCKS"] = "0"
             env["GIT_TERMINAL_PROMPT"] = "0"
             env["GIT_CONFIG_NOSYSTEM"] = "1"
+            env["GIT_ATTR_NOSYSTEM"] = "1"
+            env["GIT_PAGER"] = "cat"
+            env["PAGER"] = "cat"
+            # Environment config is applied after repository-local config. This
+            # prevents a project-controlled fsmonitor hook or external diff/pager
+            # helper from running during otherwise read-only Git inspection.
+            git_config = (
+                ("core.fsmonitor", "false"),
+                ("diff.external", ""),
+                ("core.pager", "cat"),
+                ("pager.diff", "false"),
+                ("pager.log", "false"),
+                ("pager.show", "false"),
+            )
+            env["GIT_CONFIG_COUNT"] = str(len(git_config))
+            for index, (key, value) in enumerate(git_config):
+                env[f"GIT_CONFIG_KEY_{index}"] = key
+                env[f"GIT_CONFIG_VALUE_{index}"] = value
         system_root = os.environ.get("SYSTEMROOT") or os.environ.get("SystemRoot")
         if system_root:
             env["SYSTEMROOT"] = system_root
@@ -204,6 +222,21 @@ class TerminalScriptExecutor:
         env["PYTHONDONTWRITEBYTECODE"] = "1"
         env["PYTHONNOUSERSITE"] = "1"
         return env
+
+    @staticmethod
+    def _build_command(resolved: str, executable: str, argv: list[str]) -> list[str]:
+        """Build argv while disabling Git hooks/helpers that can execute project config."""
+        if executable != "git":
+            return [resolved, *argv]
+        if not argv:
+            raise TerminalExecutionError("Git template did not provide a subcommand")
+        command_args = list(argv)
+        if command_args[0] in {"diff", "show"}:
+            command_args = [
+                command_args[0], "--no-ext-diff", "--no-textconv",
+                *(arg for arg in command_args[1:] if arg not in {"--no-ext-diff", "--no-textconv"}),
+            ]
+        return [resolved, *command_args]
 
     @staticmethod
     def _log_chunks(value: str, max_bytes: int = 7000):
@@ -308,7 +341,7 @@ class TerminalScriptExecutor:
         env = self._environment(template, job_home, safe_path)
         timeout = min(int(template["timeout_seconds"]), self.timeout_ceiling_seconds)
         output_limit = min(int(template["max_output_bytes"]), self.output_ceiling_bytes)
-        command = [resolved, *argv]
+        command = self._build_command(resolved, executable, argv)
         creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
         started = time.monotonic()
         try:
