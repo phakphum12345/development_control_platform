@@ -61,6 +61,21 @@ class TerminalGrantStoreTests(unittest.TestCase):
         with self.assertRaisesRegex(TerminalGrantError, "not active"):
             self.consume(grant)
 
+    def test_runner_verification_uses_persisted_actor_session_claims(self):
+        grant = self.issue()
+        self.bind(grant)
+        result = self.store.consume_for_job(
+            grant["authorization_id"], job_id=self.job, worker_id="runner-local",
+            project_id=self.project, workspace_id=self.workspace,
+            snapshot_sha256=self.claims["snapshot_sha256"],
+            template_id=self.claims["template_id"],
+            template_digest=self.claims["template_digest"],
+            parameters_sha256=self.claims["parameters_sha256"],
+            now=NOW,
+        )
+        self.assertTrue(result["authorized"])
+        self.assertEqual(result["action"], "terminal.read_only")
+
     def test_concurrent_consumption_allows_exactly_one_runner_claim(self):
         grant = self.issue()
         self.bind(grant)
