@@ -315,7 +315,7 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
             proposal_match = re.fullmatch(
                 r"/api/document-workflow/proposals/([0-9a-f-]{36})", path
             )
-            if path == "/api/document-workflow/grants" or proposal_match:
+            if path in ("/api/document-workflow/grants", "/api/document-workflow/target") or proposal_match:
                 identity = self.proxy_identity()
                 if not identity:
                     return self.send_json(401, {"error": "authenticated session required"})
@@ -329,6 +329,11 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                         query = parse_qs(urlparse(self.path).query)
                         project_id = query.get("project_id", [None])[0]
                         return self.send_json(200, {"grants": workflow.list_grants(project_id)})
+                    if path == "/api/document-workflow/target":
+                        query = parse_qs(urlparse(self.path).query)
+                        project_id = query.get("project_id", [""])[0]
+                        relative_path = query.get("path", [""])[0]
+                        return self.send_json(200, {"target": workflow.inspect_target(project_id, relative_path)})
                     return self.send_json(200, {"proposal": workflow.get_proposal(proposal_match.group(1))})
                 except DocumentWorkflowError as exc:
                     return self.send_json(exc.status_code, {"error": str(exc)})
