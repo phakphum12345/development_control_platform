@@ -503,7 +503,9 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
         result = pipeline.run_once()
         self.assertEqual(result["outcome"], "succeeded")
         self.assertEqual(result["job"]["state"], "succeeded")
-        self.assertEqual(self.jobs.get(job["id"])["checkpoint"]["step"], "ready-to-finish")
+        checkpoint = self.jobs.get(job["id"])["checkpoint"]
+        self.assertEqual(checkpoint["step"], "workspace-not-transferable")
+        self.assertFalse(checkpoint["safe_to_resume"])
         artifact = result["result"]["artifact"]
         self.assertEqual(artifact["name"], "web-build.zip")
         metadata, handle = self.artifacts.open(artifact["id"])
