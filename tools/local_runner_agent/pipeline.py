@@ -60,6 +60,16 @@ class RunnerPipeline:
         if self.worker_os not in ("linux", "windows", "macos"):
             raise ValueError("worker_os must be linux, windows, or macos")
 
+    def _save_checkpoint(self, job_id, sequence, step, safe_to_resume, data):
+        checkpoint = {
+            "version": 1,
+            "step": step,
+            "safe_to_resume": safe_to_resume,
+            "data": data,
+        }
+        saved = self.client.checkpoint(job_id, sequence + 1, checkpoint)
+        return saved["checkpoint_seq"]
+
     def run_once(self) -> dict | None:
         """Claim at most one job. Returns None when the queue is empty."""
         runner = self.client.register(self.worker_os, sorted(self.capabilities))
@@ -70,6 +80,28 @@ class RunnerPipeline:
             return None
         job_id = job["id"]
         worker_id = job["worker"]
+        checkpoint = job.get("checkpoint") if isinstance(job.get("checkpoint"), dict) else None
+        checkpoint_seq = job.get("checkpoint_seq", 0)
+        if (checkpoint and checkpoint.get("safe_to_resume") is True
+                and checkpoint.get("step") == "ready-to-finish"):
+            saved = checkpoint.get("data", {})
+            if (not isinstance(saved, dict)
+                    or saved.get("outcome") not in ("succeeded", "failed", "cancelled")
+                    or not isinstance(saved.get("result"), dict)):
+                return {"job_id": job_id, "outcome": "unconfirmed",
+                        "error": "CHECKPOINT_CONTRACT_INVALID"}
+            try:
+                completed = self.client.finish(
+                    job_id, saved["outcome"], result=saved["result"],
+                    error_code=saved.get("error_code"),
+                )
+                return {
+                    "job": completed, "outcome": saved["outcome"],
+                    "result": saved["result"], "resumed_from_checkpoint": True,
+                }
+            except Exception:
+                return {"job_id": job_id, "outcome": "unconfirmed",
+                        "error": "CHECKPOINT_FINISH_NOT_CONFIRMED"}
         allocated = False
         retained_for_preview = False
         outcome = "failed"
@@ -118,6 +150,15 @@ class RunnerPipeline:
                 self.client.append_log(
                     job_id, f"Checked out immutable commit {job['commit_sha']}", "system"
                 )
+
+            checkpoint_seq = self._save_checkpoint(
+                job_id, checkpoint_seq, "source-materialized", False,
+                {
+                    "source_type": source_type,
+                    "source_id": job.get("source_id") or job.get("repository"),
+                    "source_sha256": job.get("source_sha256") or job.get("commit_sha"),
+                },
+            )
 
             def cancellation_requested():
                 nonlocal last_heartbeat
@@ -224,6 +265,16 @@ class RunnerPipeline:
                     error_code = "WORKSPACE_CLEANUP_FAILED"
                     result["workspace_cleanup"] = "failed"
         try:
+            if not retained_for_preview and result.get("workspace_cleanup") != "failed":
+                checkpoint_seq = self._save_checkpoint(
+                    job_id, checkpoint_seq, "ready-to-finish", True,
+                    {"outcome": outcome, "result": result, "error_code": error_code},
+                )
+            else:
+                checkpoint_seq = self._save_checkpoint(
+                    job_id, checkpoint_seq, "workspace-not-transferable", False,
+                    {"outcome": outcome, "result": result, "error_code": error_code},
+                )
             completed = self.client.finish(
                 job_id, outcome, result=result, error_code=error_code
             )
