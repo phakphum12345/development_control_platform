@@ -236,48 +236,63 @@ class TerminalScriptExecutor:
         cancelled = False
         reader_done = False
         deadline = started + timeout
-        while not reader_done or process.poll() is None:
-            if process.poll() is None:
-                if cancel_requested is not None and cancel_requested():
-                    cancelled = True
-                    self._terminate_tree(process)
-                elif time.monotonic() >= deadline:
-                    timed_out = True
+        try:
+            while not reader_done or process.poll() is None:
+                if process.poll() is None:
+                    try:
+                        should_cancel = cancel_requested is not None and cancel_requested()
+                    except Exception:
+                        raise TerminalExecutionError("Runner could not renew the active Job lease") from None
+                    if should_cancel:
+                        cancelled = True
+                        self._terminate_tree(process)
+                    elif time.monotonic() >= deadline:
+                        timed_out = True
+                        self._terminate_tree(process)
+                try:
+                    chunk = chunks.get(timeout=0.05)
+                except queue.Empty:
+                    continue
+                if chunk is None:
+                    reader_done = True
+                    continue
+                remaining = max(0, output_limit - output_bytes)
+                accepted = chunk[:remaining]
+                output_bytes += len(accepted)
+                if accepted:
+                    safe_text = redact_terminal_output(accepted.decode("utf-8", errors="replace"))
+                    self.log("stdout", safe_text)
+                if len(accepted) != len(chunk):
+                    output_exceeded = True
                     self._terminate_tree(process)
             try:
-                chunk = chunks.get(timeout=0.05)
-            except queue.Empty:
-                continue
-            if chunk is None:
-                reader_done = True
-                continue
-            remaining = max(0, output_limit - output_bytes)
-            accepted = chunk[:remaining]
-            output_bytes += len(accepted)
-            if accepted:
-                self.log("stdout", accepted.decode("utf-8", errors="replace"))
-            if len(accepted) != len(chunk):
-                output_exceeded = True
+                return_code = process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
                 self._terminate_tree(process)
-        try:
-            return_code = process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
+                return_code = process.wait(timeout=5)
+            reader.join(timeout=2)
+            duration = round(time.monotonic() - started, 3)
+            if cancelled:
+                outcome, error = "cancelled", "TERMINAL_CANCELLED"
+            elif timed_out:
+                outcome, error = "failed", "TERMINAL_TIMEOUT"
+            elif output_exceeded:
+                outcome, error = "failed", "TERMINAL_OUTPUT_LIMIT"
+            elif return_code != 0:
+                outcome, error = "failed", "TERMINAL_EXIT_NONZERO"
+            else:
+                outcome, error = "succeeded", None
+            self.log("system", f"Terminal execution {outcome}; exit={return_code}; duration={duration}s; output={output_bytes} bytes")
+            return TerminalExecutionResult(
+                outcome=outcome, command=tuple(command), return_code=return_code,
+                duration_seconds=duration, output_bytes=output_bytes, error_code=error,
+            )
+        except Exception:
             self._terminate_tree(process)
-            return_code = process.wait(timeout=5)
-        reader.join(timeout=2)
-        duration = round(time.monotonic() - started, 3)
-        if cancelled:
-            outcome, error = "cancelled", "TERMINAL_CANCELLED"
-        elif timed_out:
-            outcome, error = "failed", "TERMINAL_TIMEOUT"
-        elif output_exceeded:
-            outcome, error = "failed", "TERMINAL_OUTPUT_LIMIT"
-        elif return_code != 0:
-            outcome, error = "failed", "TERMINAL_EXIT_NONZERO"
-        else:
-            outcome, error = "succeeded", None
-        self.log("system", f"Terminal execution {outcome}; exit={return_code}; duration={duration}s; output={output_bytes} bytes")
-        return TerminalExecutionResult(
-            outcome=outcome, command=tuple(command), return_code=return_code,
-            duration_seconds=duration, output_bytes=output_bytes, error_code=error,
-        )
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+            raise
+        finally:
+            shutil.rmtree(job_home, ignore_errors=True)
