@@ -258,6 +258,7 @@ class TerminalScriptExecutor:
         reader = threading.Thread(target=read_output, name="dcp-terminal-output", daemon=True)
         reader.start()
         output_bytes = 0
+        raw_output = bytearray()
         output_exceeded = False
         timed_out = False
         cancelled = False
@@ -287,8 +288,9 @@ class TerminalScriptExecutor:
                 accepted = chunk[:remaining]
                 output_bytes += len(accepted)
                 if accepted:
-                    safe_text = redact_terminal_output(accepted.decode("utf-8", errors="replace"))
-                    self.log("stdout", safe_text)
+                    # Redact the complete bounded output rather than individual
+                    # reader chunks; credentials may straddle a 4096-byte boundary.
+                    raw_output.extend(accepted)
                 if len(accepted) != len(chunk):
                     output_exceeded = True
                     self._terminate_tree(process)
@@ -298,6 +300,26 @@ class TerminalScriptExecutor:
                 self._terminate_tree(process)
                 return_code = process.wait(timeout=5)
             reader.join(timeout=2)
+            safe_output = redact_terminal_output(
+                raw_output.decode("utf-8", errors="replace")
+            ).encode("utf-8")
+            # Gateway log messages are capped at 8192 bytes. Emit bounded UTF-8
+            # chunks only after whole-stream redaction has removed split secrets.
+            offset = 0
+            while offset < len(safe_output):
+                end = min(offset + 4096, len(safe_output))
+                while end > offset:
+                    try:
+                        message = safe_output[offset:end].decode("utf-8")
+                        break
+                    except UnicodeDecodeError:
+                        end -= 1
+                if end == offset:
+                    message = safe_output[offset:offset + 1].decode("utf-8", errors="replace")
+                    end = offset + 1
+                if message:
+                    self.log("stdout", message)
+                offset = end
             duration = round(time.monotonic() - started, 3)
             if cancelled:
                 outcome, error = "cancelled", "TERMINAL_CANCELLED"
