@@ -318,6 +318,34 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
             self.gateway_idempotency_keys[-1], "cloud-runner-create-test-001"
         )
 
+    def test_forwards_owner_resume_unknown_job_through_authenticated_proxy(self):
+        job_id = "123e4567-e89b-42d3-a456-426614174000"
+        path = "/api/jobs/" + job_id + "/resume"
+        payload = {
+            "confirmation": "RESUME UNKNOWN JOB AFTER WORKER STOPPED AND WORKSPACE CLEANED"
+        }
+        status, _ = self.post(path, payload)
+        self.assertEqual(status, 200)
+        self.assertEqual(self.gateway_requests[-1], path)
+        self.assertEqual(self.gateway_methods[-1], "POST")
+        self.assertEqual(json.loads(self.gateway_bodies[-1]), payload)
+
+    def test_unknown_job_resume_requires_session_csrf_and_exact_route(self):
+        job_id = "123e4567-e89b-42d3-a456-426614174000"
+        path = "/api/jobs/" + job_id + "/resume"
+        payload = {
+            "confirmation": "RESUME UNKNOWN JOB AFTER WORKER STOPPED AND WORKSPACE CLEANED"
+        }
+        status, _ = self.post(path, payload, authenticated=False)
+        self.assertEqual(status, 403)
+        status, _ = self.post(path, payload, valid_csrf=False)
+        self.assertEqual(status, 403)
+        status, _ = self.post(path + "?unexpected=1", payload)
+        self.assertEqual(status, 404)
+        status, _ = self.post("/api/jobs/not-a-uuid/resume", payload)
+        self.assertEqual(status, 404)
+        self.assertEqual(len(self.gateway_requests), 0)
+
     def test_forwards_csrf_protected_terminal_studio_actions(self):
         requests = (
             ("/api/terminal/commands/preview", {"template_id": "git.status", "parameters": {}}),
