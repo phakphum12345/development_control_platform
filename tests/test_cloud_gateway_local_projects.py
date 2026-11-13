@@ -237,7 +237,7 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
             "parameters": {},
             "authorization_id": grant["authorization_id"],
         }
-        with patch("tools.cloud_gateway.terminal_execution_contract.preview_template", return_value=enabled_template), \\
+        with patch("tools.cloud_gateway.terminal_execution_contract.preview_template", return_value=enabled_template), \
              patch("tools.cloud_gateway.job_control.preview_template", return_value=enabled_template):
             first_status, first = self.request(
                 "/api/terminal/jobs", method="POST", payload=payload,
