@@ -390,7 +390,7 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
  <div class="field"><label for="doc-risks">Risks, dependencies, and acceptance criteria</label><textarea id="doc-risks" rows="4" placeholder="List known risks, dependencies, measurable acceptance criteria, and verification evidence."></textarea></div>
  <div class="actions"><button class="primary" id="doc-generate" type="button">Generate & Download complete file</button><button id="doc-copy" type="button">Copy</button><button id="doc-download" type="button" disabled>Download file</button></div>
  <div id="doc-status" class="output" role="status" aria-live="polite">No document generated. Missing facts will be marked TBD / UNKNOWN, not invented.</div>
- <div class="field"><label for="doc-output">Generated document preview</label><textarea id="doc-output" class="output" rows="22" spellcheck="false" aria-label="Generated document preview"></textarea></div>
+ <div class="field"><label for="doc-output">Generated document preview</label><textarea id="doc-output" class="output" rows="22" spellcheck="false" readonly aria-label="Generated document preview"></textarea></div>
  <div id="doc-integrity" class="output" role="status" aria-live="polite">Integrity: UNKNOWN — generate a document first.</div>
  <div class="panel" id="doc-local-write-panel">
   <div class="row"><div><h3>Owner-approved Local Project Write</h3><p>บันทึกเอกสารลง Local Project ผ่าน Gateway โดยต้องมี Scope Grant และอนุมัติ Proposal ที่ผูกกับ SHA-256 ก่อนเขียนทุกครั้ง</p></div><span class="pill">OWNER · SCOPED · READ-BACK</span></div>
