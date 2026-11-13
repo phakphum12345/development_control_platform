@@ -2,9 +2,14 @@
 import json
 import tempfile
 import unittest
+import uuid
+from unittest.mock import patch
 from contextlib import closing
 from pathlib import Path
 from tools.cloud_gateway.job_control import JobConflict, JobNotFound, JobStore
+from tools.cloud_gateway.terminal_catalog import preview_template
+from tools.cloud_gateway.terminal_execution_contract import template_version_digest
+from tools.cloud_gateway.terminal_grants import TerminalGrantStore
 
 SHA = "a" * 40
 
@@ -94,6 +99,56 @@ class JobStoreTests(unittest.TestCase):
         ):
             with self.subTest(payload=payload), self.assertRaises(ValueError):
                 self.store.create(payload, "local-folder-invalid-" + str(len(json.dumps(payload))))
+
+    def _terminal_payload(self):
+        project_id = str(uuid.uuid4())
+        workspace_id = str(uuid.uuid4())
+        authorization_id = str(uuid.uuid4())
+        parameters = {}
+        template = preview_template("git_status", parameters)
+        return {
+            "source_type": "terminal_script",
+            "project_id": project_id,
+            "workspace_id": workspace_id,
+            "snapshot_sha256": "d" * 64,
+            "target": "terminal_script",
+            "template_id": "git_status",
+            "parameters": parameters,
+            "authorization_id": authorization_id,
+            "template_digest": template_version_digest("git_status", parameters),
+            "parameters_sha256": TerminalGrantStore.parameters_digest(template["parameter_values"]),
+        }
+
+    def test_terminal_job_rejects_until_trusted_catalog_enables_execution(self):
+        payload = self._terminal_payload()
+        with self.assertRaisesRegex(ValueError, "execution is disabled"):
+            self.store.create(payload, "terminal-disabled-job-01")
+
+    def test_terminal_job_requires_exact_typed_fields_and_rejects_browser_shell(self):
+        payload = self._terminal_payload()
+        with self.assertRaisesRegex(ValueError, "typed, app-authorized"):
+            self.store.create({**payload, "shell": "whoami"}, "terminal-shell-job-01")
+        github_payload = {
+            "repository": "owner/repo", "commit_sha": SHA, "target": "terminal_script",
+        }
+        with self.assertRaisesRegex(ValueError, "app-authorized local project"):
+            self.store.create(github_payload, "terminal-github-job-01")
+
+    def test_enabled_terminal_job_is_bound_to_project_workspace_and_typed_template(self):
+        payload = self._terminal_payload()
+        enabled_preview = preview_template("git_status", {})
+        enabled_preview["execution_enabled"] = True
+        with patch("tools.cloud_gateway.job_control.preview_template", return_value=enabled_preview):
+            job, created = self.store.create(payload, "terminal-enabled-job-01")
+        self.assertTrue(created)
+        self.assertEqual(job["target"], "terminal_script")
+        self.assertEqual(job["payload"]["source_type"], "terminal_script")
+        self.assertEqual(job["payload"]["project_id"], payload["project_id"])
+        self.assertEqual(job["payload"]["workspace_id"], payload["workspace_id"])
+        self.assertEqual(job["payload"]["authorization_id"], payload["authorization_id"])
+        claimed = self.store.claim("terminal-runner", 30, ["terminal_script"])
+        self.assertEqual(claimed["id"], job["id"])
+        self.assertEqual(claimed["payload"]["template_id"], "git_status")
 
     def test_claim_heartbeat_logs_and_finish(self):
         job, _ = self.create()
