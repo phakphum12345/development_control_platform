@@ -197,7 +197,16 @@ class JobStore:
                     state, event, error_code = "failed", "lease_expired_failed", "LEASE_EXPIRED"
                 else:
                     checkpoint = json.loads(row["checkpoint_json"]) if row["checkpoint_json"] else None
-                    if checkpoint and checkpoint.get("safe_to_resume") is True:
+                    replay_data = checkpoint.get("data") if isinstance(checkpoint, dict) else None
+                    replayable = (
+                        checkpoint
+                        and checkpoint.get("safe_to_resume") is True
+                        and checkpoint.get("step") == "ready-to-finish"
+                        and isinstance(replay_data, dict)
+                        and replay_data.get("outcome") in ("succeeded", "failed", "cancelled")
+                        and isinstance(replay_data.get("result"), dict)
+                    )
+                    if replayable:
                         state, event, error_code = "retry_wait", "lease_expired_retry_wait", None
                         retry_after = (
                             current_dt + timedelta(
