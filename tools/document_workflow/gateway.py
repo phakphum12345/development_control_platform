@@ -257,6 +257,31 @@ class DocumentWorkflowStore:
             )
         return {"grant_id": grant_id, "revoked_by": actor, "status": "REVOKED"}
 
+    def inspect_target(self, project_id: str, relative_path: str) -> dict:
+        relative = _relative(relative_path, {".md", ".txt"})
+        root = self._project(project_id)
+        target = self._target(root, relative)
+        current_sha = _sha(target.read_bytes()) if target.exists() else None
+        now = time.time()
+        active_grant = None
+        with self._db() as db:
+            grants = db.execute(
+                """SELECT * FROM document_write_grants
+                WHERE project_id=? AND revoked_at IS NULL AND expires_at>?
+                ORDER BY created_at DESC""", (project_id, now)
+            ).fetchall()
+            for grant in grants:
+                prefixes = json.loads(grant["prefixes_json"])
+                if self._matches_scope(relative, prefixes):
+                    active_grant = grant
+                    break
+        return {
+            "project_id": project_id, "path": relative.as_posix(),
+            "exists": target.exists(), "current_sha256": current_sha,
+            "write_scope": "PASS" if active_grant else "FAIL",
+            "grant_id": active_grant["grant_id"] if active_grant else None,
+        }
+
     def propose(self, *, project_id: str, relative_path: str, content: str,
                 expected_sha256: str | None, idempotency_key: str, actor: str) -> dict:
         if not isinstance(idempotency_key, str) or not _KEY.fullmatch(idempotency_key):
