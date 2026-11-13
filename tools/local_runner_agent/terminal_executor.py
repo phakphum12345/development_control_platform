@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import os
 import queue
+import re
+import shutil
+import tempfile
 import shutil
 import signal
 import subprocess
@@ -36,6 +39,26 @@ class TerminalExecutionResult:
 
 
 _EXECUTABLES = frozenset({"git", "python", "node"})
+_SECRET_ASSIGNMENT = re.compile(
+    r"(?i)\b(api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|"
+    r"password|passwd|secret|token|private[_-]?key)\b(\s*[:=]\s*)([^\s,;]+)"
+)
+_SECRET_TOKEN = re.compile(
+    r"(?i)(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|"
+    r"sk-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|"
+    r"AKIA[0-9A-Z]{16}|Bearer\s+[A-Za-z0-9._~+/-]{16,})"
+)
+_PRIVATE_KEY = re.compile(
+    r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----",
+    re.DOTALL,
+)
+
+
+def redact_terminal_output(value: str) -> str:
+    """Redact common credential formats before any output reaches durable logs."""
+    text = _PRIVATE_KEY.sub("[REDACTED PRIVATE KEY]", value)
+    text = _SECRET_ASSIGNMENT.sub(lambda match: match.group(1) + match.group(2) + "[REDACTED]", text)
+    return _SECRET_TOKEN.sub("[REDACTED TOKEN]", text)
 
 
 class TerminalScriptExecutor:
