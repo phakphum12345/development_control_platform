@@ -252,12 +252,12 @@ Historical gate for PR #71: its Chromium sandbox launch failure applied to that 
 
 **Objective:** close unsafe Git helper/config execution paths and make Dashboard grant retry handling reliable without enabling any command template.
 
-- Force safe Git configuration for read-only inspection: disable repository-configured fsmonitor, external diff helpers and pagers; disable textconv for diff/show; retain a fresh temporary HOME, sanitized PATH, `shell=false`, and bounded process controls.
+- Force safe Git configuration for read-only inspection: disable repository-configured fsmonitor, external diff helpers, pagers and all configured clean/smudge/process filters; disable textconv for diff/show; retain a fresh temporary HOME, sanitized PATH, `shell=false`, and bounded process controls.
 - Preserve HTTP response status on Dashboard API errors so 400/403 grant rejection clears the stale grant while uncertain transport/server failures retry only with the same idempotency key.
 - Add focused unit and Dashboard contract tests.
 - Reconcile Terminal API, architecture, Studio, backlog and continuity documentation with merged PR #112 behavior.
 - Keep every built-in template disabled. This work does not prove OS isolation, enable execution, or substitute for real-host acceptance.
 
-**PR #114:** [security(terminal): harden Git helpers and grant retry handling](https://github.com/phakphum12345/development_control_platform/pull/114), OPEN, non-draft. The last observed head before the latest continuity-ledger update was `d1481b3ffe840b5c326b1906cd6a0e6bff0fbfee`; the PR has 12 changed files. Three exact-head workflows were in progress at the last check; the continuity-ledger commit advances the PR head, so fetch and verify the new SHA before accepting any CI result.
+**PR #114:** [security(terminal): harden Git helpers and grant retry handling](https://github.com/phakphum12345/development_control_platform/pull/114), OPEN, non-draft. The last observed code/test head was `3a039e0e40ad4bccce741905a6377a0ff819440d`; PR #114 has 12 changed files. Three exact-head workflows were queued at the last check; fetch and verify the current SHA after the continuity-ledger update before accepting any CI result.
 
 **Remaining gates:** exact-head CI; security review of the Git invocation path; adversarial tests for repository-controlled helper configuration; supported Windows/Linux host acceptance; independent process-tree termination and workspace cleanup evidence; then a separate reviewed decision before any catalog template is enabled. PR #114 has not been approved for merge.
