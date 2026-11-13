@@ -47,6 +47,30 @@ class DashboardDocumentLifecycleTests(unittest.TestCase):
         self.assertIn("browser cannot confirm disk persistence", self.source)
         self.assertIn("Repository write/read-back: UNKNOWN", self.source)
 
+    def test_owner_approved_local_write_controls_and_api_contract_exist(self):
+        required = {
+            "doc-local-project", "doc-local-path", "doc-scope-prefix",
+            "doc-scope-confirm", "doc-local-refresh", "doc-scope-grant",
+            "doc-propose-write", "doc-write-proposal", "doc-write-confirm",
+            "doc-approve-write", "doc-local-status",
+        }
+        self.assertTrue(required.issubset(self.parser.ids))
+        for route in (
+            "/api/local-projects", "/api/document-workflow/grants",
+            "/api/document-workflow/target", "/api/document-workflow/proposals",
+        ):
+            self.assertIn(route, self.source)
+        self.assertIn("X-CSRF-Token", self.source)
+        self.assertIn("GRANT DOCUMENT WRITE SCOPE", self.source)
+        self.assertIn("WRITE DOCUMENT", self.source)
+        self.assertIn("read_back_verified", self.source)
+        self.assertIn("No blind retry was sent", self.source)
+
+    def test_dashboard_never_treats_download_as_repository_write(self):
+        self.assertIn("browser cannot confirm disk persistence", self.source)
+        self.assertIn("GitHub write actions:", self.source)
+        self.assertIn("LOCAL DOC WRITE GATED", self.source)
+
     def test_pr_lifecycle_stages_are_all_present(self):
         stages = {
             "before-open", "after-open", "before-merge",

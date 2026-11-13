@@ -28,6 +28,17 @@ def _digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _digest_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while True:
+            chunk = stream.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _normalize_relative_path(value: str) -> PurePosixPath:
     if not isinstance(value, str) or not value.strip():
         raise DocumentWriteError("A non-empty relative document path is required.")
@@ -89,6 +100,13 @@ def _open_journal(path: Path, root: Path) -> sqlite3.Connection:
     journal.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(journal, timeout=15, isolation_level=None)
     connection.execute("PRAGMA journal_mode=WAL")
+    if os.name != "nt":
+        for candidate in (journal, Path(str(journal) + "-wal"), Path(str(journal) + "-shm")):
+            try:
+                if candidate.exists():
+                    os.chmod(candidate, 0o600)
+            except OSError:
+                pass
     connection.execute(
         """CREATE TABLE IF NOT EXISTS document_operations (
             operation_key TEXT PRIMARY KEY,
@@ -153,7 +171,7 @@ def write_document(
         if prior:
             if prior[:4] != (project_id, rel_key, expected_sha256, desired_sha):
                 raise DocumentWriteError("Idempotency key was already used for a different operation.")
-            actual = _digest(target.read_bytes()) if target.exists() else None
+            actual = _digest_file(target) if target.exists() else None
             if actual == desired_sha:
                 db.execute(
                     "UPDATE document_operations SET status='PASS',updated_at=? WHERE operation_key=?",
@@ -211,8 +229,7 @@ def write_document(
             if latest_sha != expected_sha256:
                 raise DocumentWriteError("Target changed during write preparation; refusing stale replacement.")
             os.replace(temp_name, target)
-            read_back = target.read_bytes()
-            read_back_sha = _digest(read_back)
+            read_back_sha = _digest_file(target)
             if read_back_sha != desired_sha:
                 db.execute(
                     "UPDATE document_operations SET status='UNKNOWN',updated_at=? WHERE operation_key=?",

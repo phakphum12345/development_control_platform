@@ -1,5 +1,5 @@
 """Gateway policy, budget, lifecycle, idempotency, and HTTP contract tests."""
-import json,tempfile,threading,unittest
+import hashlib,hmac,json,tempfile,threading,time,unittest,uuid
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from urllib.request import Request,urlopen
@@ -7,6 +7,8 @@ from urllib.error import HTTPError
 from tools.cloud_gateway.policy import GatewaySettings,PolicyDenied,PROFILES,validate_runner_request
 from tools.cloud_gateway.service import GatewayService
 from tools.cloud_gateway.server import make_handler
+from tools.document_workflow.gateway import DocumentWorkflowStore
+from tools.local_runner_agent.local_project import LocalProjectRegistry
 from tools.cloud_gateway.store import LifecycleConflict,RunnerStore
 from tools.runner_backend.provider import RunnerInstance
 
@@ -106,4 +108,90 @@ class HTTPTests(unittest.TestCase):
   with urlopen(req) as r: self.assertEqual(r.status,202); first=json.loads(r.read())
   with urlopen(req) as r: self.assertEqual(r.status,200); second=json.loads(r.read())
   self.assertEqual(first["id"],second["id"])
+
+class DocumentWorkflowHTTPTests(unittest.TestCase):
+ def setUp(self):
+  self.tmp=tempfile.TemporaryDirectory(); self.base=Path(self.tmp.name)
+  approved=self.base/"approved"; project=approved/"sample"; (project/"docs").mkdir(parents=True)
+  self.registry=LocalProjectRegistry(self.base/"registry"/"projects.json")
+  root=self.registry.enroll_root(approved)
+  registered=self.registry.register_project(root["root_id"],project)
+  self.project_id=registered["project_id"]
+  self.workflow=DocumentWorkflowStore(self.base/"state"/"workflow.sqlite3",self.registry)
+  self.service=GatewayService(settings(),RunnerStore(str(self.base/"gateway.sqlite3")),FakeProvider())
+  self.service.local_project_registry=self.registry
+  self.service.document_workflow_store=self.workflow
+  self.secret="proxy-secret-for-document-workflow-tests-32"
+  self.origin="https://dcp.example.test"
+  self.server=ThreadingHTTPServer(("127.0.0.1",0),make_handler(
+   self.service,"test-secret",proxy_secret=self.secret,public_origin=self.origin
+  ))
+  self.thread=threading.Thread(target=self.server.serve_forever,daemon=True); self.thread.start()
+  self.url=f"http://127.0.0.1:{self.server.server_port}"
+ def tearDown(self):
+  self.server.shutdown(); self.server.server_close(); self.thread.join(timeout=2); self.tmp.cleanup()
+ def headers(self,method,path,role="owner",csrf=True):
+  subject="owner@example.test"; session="session-id-0123456789"; timestamp=str(int(time.time())); nonce=uuid.uuid4().hex
+  canonical="\n".join((method,path,subject,role,session,timestamp,nonce)).encode()
+  signature=hmac.new(self.secret.encode(),canonical,hashlib.sha256).hexdigest()
+  headers={
+   "Origin":self.origin,"X-DCP-User":subject,"X-DCP-Role":role,
+   "X-DCP-Session":session,"X-DCP-Auth-Timestamp":timestamp,
+   "X-DCP-Auth-Nonce":nonce,"X-DCP-Auth-Signature":signature,
+   "Accept":"application/json",
+  }
+  if csrf:
+   message="csrf\n"+subject+"\n"+session
+   headers["X-CSRF-Token"]=hmac.new(self.secret.encode(),message.encode(),hashlib.sha256).hexdigest()
+  return headers
+ def request(self,method,path,payload=None,role="owner",csrf=True,extra=None):
+  headers=self.headers(method,path.split("?",1)[0],role,csrf)
+  if extra: headers.update(extra)
+  data=json.dumps(payload).encode() if payload is not None else None
+  if data is not None: headers["Content-Type"]="application/json"
+  req=Request(self.url+path,data=data,method=method,headers=headers)
+  try:
+   with urlopen(req) as response: return response.status,json.loads(response.read())
+  except HTTPError as error:
+   try: return error.code,json.loads(error.read())
+   finally: error.close()
+ def test_owner_scope_proposal_approval_and_readback(self):
+  status,data=self.request("POST","/api/document-workflow/grants",{
+   "project_id":self.project_id,"allowed_paths":["docs"],
+   "confirmation":"GRANT DOCUMENT WRITE SCOPE",
+  })
+  self.assertEqual(status,201); self.assertEqual(data["grant"]["status"],"ACTIVE")
+  status,data=self.request("GET","/api/document-workflow/target?project_id="+self.project_id+"&path=docs/ROADMAP.md")
+  self.assertEqual(status,200); self.assertEqual(data["target"]["write_scope"],"PASS")
+  content="# Gateway Roadmap\n"
+  key="gateway-document-operation-0001"
+  status,data=self.request("POST","/api/document-workflow/proposals",{
+   "project_id":self.project_id,"relative_path":"docs/ROADMAP.md",
+   "content":content,"expected_sha256":None,
+  },extra={"Idempotency-Key":key})
+  self.assertEqual(status,201); proposal=data["proposal"]
+  self.assertEqual(proposal["status"],"PENDING")
+  status,data=self.request("POST","/api/document-workflow/proposals/"+proposal["proposal_id"]+"/approve",{
+   "content_sha256":proposal["content_sha256"],"confirmation":"WRITE DOCUMENT",
+  })
+  self.assertEqual(status,200); self.assertEqual(data["write"]["status"],"PASS")
+  self.assertTrue(data["write"]["read_back_verified"])
+  self.assertEqual((self.base/"approved"/"sample"/"docs"/"ROADMAP.md").read_text(),content)
+  status,data=self.request("GET","/api/document-workflow/proposals/"+proposal["proposal_id"])
+  self.assertEqual(status,200); self.assertEqual(data["proposal"]["status"],"APPLIED")
+ def test_document_write_api_requires_owner_same_origin_and_csrf(self):
+  status,_=self.request("POST","/api/document-workflow/grants",{
+   "project_id":self.project_id,"allowed_paths":["docs"],
+   "confirmation":"GRANT DOCUMENT WRITE SCOPE",
+  },role="operator")
+  self.assertEqual(status,403)
+  status,_=self.request("POST","/api/document-workflow/grants",{
+   "project_id":self.project_id,"allowed_paths":["docs"],
+   "confirmation":"GRANT DOCUMENT WRITE SCOPE",
+  },csrf=False)
+  self.assertEqual(status,403)
+ def test_write_scope_is_empty_by_default(self):
+  status,data=self.request("GET","/api/document-workflow/target?project_id="+self.project_id+"&path=docs/ROADMAP.md")
+  self.assertEqual(status,200); self.assertEqual(data["target"]["write_scope"],"FAIL")
+
 if __name__=="__main__": unittest.main()
