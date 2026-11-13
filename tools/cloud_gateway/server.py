@@ -813,6 +813,10 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                     r"[A-Za-z0-9._:-]{8,200}", client_idempotency_key
                 ):
                     return self.send_json(400, {"error": "valid Idempotency-Key is required"})
+                identity_scope = str(identity.get("subject", "")) + "\\n" + str(identity.get("session_id", ""))
+                idempotency_key = "terminal-" + hashlib.sha256(
+                    (identity_scope + "\\n" + client_idempotency_key).encode("utf-8")
+                ).hexdigest()
                 try:
                     contract = validate_terminal_request(self.body(max_bytes=8192))
                     if not contract["execution_enabled"]:
