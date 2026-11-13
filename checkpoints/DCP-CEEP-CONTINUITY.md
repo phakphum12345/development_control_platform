@@ -32,8 +32,11 @@
 
 - Branch: `fix/terminal-execution-git-hardening-20261114`
 - Base SHA: `e008844d8c6e6b15c71b7bf36f00f42e66233387`
-- Branch tip before this ledger update: `12a090772b990c464a2298df82cbbd0713d20686`
-- State: IN_PROGRESS; no PR created yet; exact-head CI not run yet.
+- PR: [#114](https://github.com/phakphum12345/development_control_platform/pull/114), OPEN, non-draft, mergeable TRUE at last metadata check; no reviews or review threads observed.
+- Exact PR head before this ledger update: `d1481b3ffe840b5c326b1906cd6a0e6bff0fbfee`; base SHA: `e008844d8c6e6b15c71b7bf36f00f42e66233387`.
+- Changed files: 12; additions/deletions are recorded by PR #114.
+- Exact-head CI at `d1481b3ffe840b5c326b1906cd6a0e6bff0fbfee`: Local-first Minimal Emulator run 43507202156, Validate Control Plane run 43507202406, and Cross-platform Recovery Acceptance run 43507202149 were IN_PROGRESS at last check. No workflow is counted as PASS yet. The Windows runner acceptance sub-job is SKIPPED and is not a PASS.
+- State: IN_PROGRESS; merge authorization NOT GRANTED.
 - Changes prepared:
   - Disable repository-configured Git fsmonitor, external diff and pager helpers through a clean Runner environment.
   - Disable Git textconv and external diff for `diff` / `show`.
@@ -56,13 +59,12 @@
 
 ## Next exact actions
 
-1. Fetch the latest branch tip after the ledger commit; record the exact SHA and changed-file list.
-2. Run focused Terminal executor and Dashboard contract tests through exact-head CI.
-3. Inspect workflow jobs and failures; do not count missing, skipped or stale-SHA results as PASS.
-4. Review the Git helper/config isolation against repository-controlled fsmonitor, external diff, textconv and pager settings.
-5. Complete remaining OS-isolation research and platform acceptance without enabling any catalog template.
-6. Reconcile this ledger again after CI and review.
-7. Create/maintain a PR for WP-17; do not merge it without current exact-head gates and explicit user authorization.
+1. Fetch the latest PR #114 head after this ledger commit; record the exact SHA and changed-file list.
+2. Wait for and inspect all three exact-head CI workflows; do not count missing, skipped or stale-SHA results as PASS.
+3. Review the Git helper/config isolation against repository-controlled fsmonitor, external diff, textconv and pager settings.
+4. Complete remaining OS-isolation research and platform acceptance without enabling any catalog template.
+5. Reconcile this ledger again after CI and review.
+6. Do not merge PR #114 without current exact-head gates and explicit user authorization.
 
 ## Resume rule
 
