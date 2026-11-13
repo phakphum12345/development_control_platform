@@ -385,8 +385,11 @@ class JobStore:
             row = db.execute("SELECT state FROM jobs WHERE id=?", (job_id,)).fetchone()
             if row is None:
                 raise JobNotFound(job_id)
-            if row["state"] == "queued":
-                db.execute("UPDATE jobs SET state='cancelled',updated_at=? WHERE id=?", (utcnow().isoformat(), job_id))
+            if row["state"] in ("queued", "retry_wait"):
+                db.execute(
+                    "UPDATE jobs SET state='cancelled',retry_after=NULL,updated_at=? WHERE id=?",
+                    (utcnow().isoformat(), job_id),
+                )
                 self._event(db, job_id, "cancelled")
             elif row["state"] == "running":
                 timestamp = utcnow().isoformat()
