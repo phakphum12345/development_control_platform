@@ -1,8 +1,8 @@
-# Document Generator and Local Write Workflow
+# Document Generator and Owner-Approved Local Write Workflow
 
-**Status:** Local document writer implemented; dashboard generator is export-only until an authenticated local/server adapter is integrated.
+**Status:** Dashboard-to-Gateway local document write API implemented on this feature branch; CI and deployment verification are pending. GitHub repository writes remain out of scope.
 
-## Dashboard one-click generator
+## Dashboard generator
 
 Open `dashboard/index.html` and select **Document Generator**.
 
@@ -11,50 +11,65 @@ Supported outputs:
 - Roadmap: `-ROADMAP.md`
 - Plain text: `.txt`
 
-The generator assembles a complete structured artifact from the entered project, purpose, verified context, milestones, and risks/acceptance criteria. Missing information is explicitly marked `TBD` or `UNKNOWN`. It performs a basic credential-pattern check, produces a preview, computes SHA-256 where Web Crypto is available, and requests a browser download from the same click.
+The generator builds a structured artifact from project, purpose, verified context, milestones, risks, dependencies, and acceptance criteria. Missing facts remain `TBD` or `UNKNOWN`. It performs basic credential-pattern screening, shows a preview, computes SHA-256, and can request a browser download.
 
-**Important:** Static browser downloads cannot confirm that the user saved the file, read it back from disk, or wrote it into a Git repository. Those states remain `UNKNOWN`. Do not treat the generated hash as proof of repository persistence.
+Browser download remains an export action only. It does not prove that a file was saved or read back from disk.
 
-## Local scoped writer
+## Enable the Gateway adapter
 
-The Python library is `tools.document_workflow.writer.write_document`. It:
-- accepts only `.md` and `.txt` paths;
-- requires an explicit project ID and granted path prefixes;
-- rejects absolute paths, traversal, symlinks, unsupported extensions, and paths outside scope;
-- requires the expected current SHA-256 to replace an existing file;
-- stores operation state in an SQLite journal outside the workspace;
-- uses an idempotency key and SQLite write lock to serialize writers;
-- stages content in the target directory, atomically replaces the target, then reads it back and compares SHA-256;
-- reconciles a retry when the desired content reached disk but the process stopped before the journal commit.
+The adapter is opt-in. Configure absolute paths on the Gateway host:
 
-Example:
+- `DCP_LOCAL_PROJECT_REGISTRY`: the existing Local Project Registry JSON path.
+- `DCP_DOCUMENT_WORKFLOW_DATABASE`: a persistent SQLite path outside every registered project.
+- `DCP_DOCUMENT_WORKFLOW_JOURNAL`: optional separate writer-journal path, also outside every registered project. If omitted, the adapter uses the workflow database path plus `.writer`.
 
-```python
-from tools.document_workflow import write_document
+If the document database variable is absent, document write routes return `503` and no write capability is exposed. A Local Project must already be explicitly enrolled and registered through the existing local registry. Browser requests identify a project by its registry ID; they never submit an absolute host path.
 
-result = write_document(
-    workspace_root="/approved/workspace",
-    journal_path="/var/lib/dcp/document-operations.sqlite3",
-    project_id="project-alpha",
-    relative_path="docs/ROADMAP.md",
-    content="# Roadmap\n\n- Status: UNKNOWN\n",
-    operation_key="roadmap-run-20261113-0001",
-    allowed_paths=["docs"],
-    expected_sha256=None,  # New file only; updates require the current file SHA-256.
-)
-print(result)
-```
+## Owner-approved workflow
 
-For an existing file, fetch and verify its current SHA-256 and pass that exact digest as `expected_sha256`. A stale digest is rejected. Reusing an operation key with different content or target is rejected.
+1. Sign in through the same-origin DCP authentication proxy.
+2. Refresh the Local Project catalog and select a registered project.
+3. Select an existing project-relative directory and explicitly grant it. The grant is stored server-side, scoped to that project, and expires after 30 days. No grant exists by default.
+4. Generate the document and review the preview.
+5. Select the exact relative `.md` or `.txt` target. The Gateway target preflight returns whether an active server-side grant covers it, whether it exists, and its current SHA-256.
+6. Create a proposal. The server stores the exact content, content SHA-256, expected base SHA-256, project ID, relative path, grant ID, owner, expiry, and idempotency key. Proposals expire after 30 minutes.
+7. Review the proposal's project, path, base SHA, and content SHA. A separate explicit approval action is required before the server writes.
+8. The server rechecks the grant and target, calls the local writer, and only reports `PASS` when post-write read-back SHA-256 matches the proposed content. The result and lifecycle event are persisted.
 
-The operation journal must be outside the approved workspace so it cannot be accidentally committed with generated documents. Parent directories must already exist. The local writer does not create Git commits, push branches, open/close/merge PRs, run repository code, or expose a network listener.
+The Dashboard uses owner-authenticated same-origin requests with a server-issued CSRF token. The Gateway independently enforces the signed proxy identity, owner role, Origin, CSRF, persisted grant, project identity, path containment, expected base SHA, exact proposal digest, and explicit confirmation.
 
-## Timeout and connection behavior
+## API contract
 
-Dashboard GitHub API calls are read-only GET requests. They use a 12-second per-attempt timeout and up to three attempts for network errors, timeouts, HTTP 429, and HTTP 5xx, with bounded backoff and Retry-After handling. Non-retryable permission/validation errors fail immediately. A lost response is never interpreted as success.
+All routes are same-origin through the authenticated DCP proxy:
 
-The local writer is synchronous and local. Its SQLite journal and idempotency key support safe retry/reconciliation around interrupted writes. A server-side queue, heartbeats, cancellation, cross-process worker lease, and authenticated reconnect/resume API are not yet implemented.
+- `GET /api/document-workflow/grants?project_id={uuid}`: list grants and their ACTIVE / EXPIRED / REVOKED state.
+- `POST /api/document-workflow/grants`: grant an existing project-relative directory. Required fields: `project_id`, `allowed_paths`, `confirmation="GRANT DOCUMENT WRITE SCOPE"`.
+- `POST /api/document-workflow/grants/{grant_id}/revoke`: revoke with `confirmation="REVOKE DOCUMENT WRITE SCOPE"`.
+- `GET /api/document-workflow/target?project_id={uuid}&path={relative-path}`: inspect the current base digest and scope state without reading file content.
+- `POST /api/document-workflow/proposals`: propose exact content with `project_id`, `relative_path`, `content`, and `expected_sha256`; include a unique `Idempotency-Key` header.
+- `GET /api/document-workflow/proposals/{proposal_id}`: inspect a proposal after reconnecting.
+- `POST /api/document-workflow/proposals/{proposal_id}/approve`: approve only the exact `content_sha256` with `confirmation="WRITE DOCUMENT"`.
 
-## Verification boundary
+Request bodies for document content are capped at 600 KiB including JSON overhead; document UTF-8 content is capped at 512 KiB. Only `.md` and `.txt` files are supported. Hidden directories and protected areas such as `.git`, `.github`, credentials, secrets, tool configuration, dependency, and build directories are denied. Scope prefixes must be existing directories; parent directories are not created implicitly.
 
-A local writer result of `PASS` means that the exact local target was read back and its SHA-256 matched the intended bytes. It does not prove GitHub persistence or PR/CI/merge status. The dashboard export path remains `UNKNOWN` for disk read-back. Remote PR lifecycle checkpoints must be implemented in a provider adapter before they can be automated.
+## Timeout, retry, and recovery
+
+- Read-only GitHub GET calls use bounded 12-second attempts and retry transient network errors, HTTP 429, and HTTP 5xx.
+- Document writes are never blindly retried by the Dashboard. The server uses a stable proposal ID and a separate writer idempotency journal.
+- If an approval response is lost, the Dashboard performs a read-only GET of that proposal. If the proposal is `APPLIED` and its stored result includes `read_back_verified=true`, the UI reconciles to PASS. Otherwise the outcome remains UNKNOWN and the user must inspect the proposal before taking further action.
+- The workflow database transaction holds the grant lock through the write, preventing a concurrent scope revocation from racing an approved write.
+- The writer uses atomic replacement, streamed SHA-256 verification, a durable SQLite journal, and recovery when file replacement succeeded before the journal/proposal status was committed.
+- Audit events record scope grant/revoke, proposal creation, and applied writes without storing document contents in the event table.
+
+## Security and capability boundaries
+
+- Scope grants are stored server-side; the Dashboard cannot supply effective `allowed_paths` to the writer.
+- Scope defaults to empty. Owner role, same-origin, CSRF, signed proxy identity, and explicit confirmation are required.
+- Project roots are refreshed through the Local Project Registry before operations; project and path checks fail closed.
+- The Gateway writes only to the selected registered local project. It does not commit, push, or change GitHub files, and it does not open, close, or merge PRs.
+- No shell, repository code execution, deployment, or remote write API is introduced.
+- The workflow database and writer journal must be protected as local application state and backed up according to the host's data-retention policy.
+
+## Verification boundary and remaining work
+
+A `PASS` write result means the local target was read back and its bytes matched the approved content digest. It does not prove GitHub persistence, a Git commit, CI, PR review, merge, or deployment. The feature still requires exact-head CI, browser integration tests through the real local auth proxy, Windows/Linux filesystem validation, and deployment configuration verification before being called fully E2E complete.
