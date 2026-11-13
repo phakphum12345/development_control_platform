@@ -125,7 +125,7 @@ The feature branch now contains a backend execution path through the existing Ga
 
 The Runner resolves the selected registered Project Workspace directly from its local registry after checking project/workspace identity and the current snapshot fingerprint. This is the user's actual registered project directory, not an arbitrary path supplied by the browser. The fixed executor is intentionally restricted to catalog templates marked read-only and network-denied. This policy is not an OS-level sandbox: the process still runs under the Runner service account and inherits that account's operating-system access. Do not describe the Workspace Manager or template metadata as kernel-enforced isolation.
 
-Terminal output is read incrementally within a strict byte limit. Complete lines are redacted before they are appended to the existing durable Job logs, including credentials split across reader chunks and multi-line private-key blocks. The backend log stream is incremental, but the Dashboard does not yet display it live; there is no PTY or separate Terminal session manager. Existing Job status, log, cancel, lease and recovery primitives are reused; there is no PTY or separate Terminal session manager.
+Terminal output is captured within a strict byte limit, redacted as a complete bounded stream (including credentials split across reader chunks and multi-line private-key blocks), then split into bounded messages and appended to the existing durable Job logs. This is not live streaming while the process is running; there is no PTY or separate Terminal session manager. Existing Job status, log, cancel, lease and recovery primitives are reused; there is no PTY or separate Terminal session manager.
 
 ## Implementation status — 2026-11-13
 
