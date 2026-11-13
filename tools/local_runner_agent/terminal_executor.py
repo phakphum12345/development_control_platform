@@ -108,16 +108,34 @@ class TerminalScriptExecutor:
         return resolved
 
     @staticmethod
-    def _environment(template: dict, job_home: Path) -> dict[str, str]:
+    def _safe_path(workspace: Path) -> str:
+        entries = []
+        for raw_entry in os.environ.get("PATH", "").split(os.pathsep):
+            if not raw_entry:
+                continue
+            try:
+                candidate = Path(raw_entry).expanduser().resolve(strict=True)
+                if not candidate.is_dir():
+                    continue
+                candidate.relative_to(workspace)
+                continue
+            except ValueError:
+                pass
+            except (OSError, RuntimeError):
+                continue
+            entries.append(str(candidate))
+        return os.pathsep.join(entries)
+
+    @staticmethod
+    def _environment(template: dict, job_home: Path, safe_path: str) -> dict[str, str]:
         allowed = set(template.get("environment_allowlist", []))
         if not allowed.issubset({"PATH", "HOME", "USERPROFILE", "SYSTEMROOT"}):
             raise TerminalExecutionError("Terminal template requests an unsupported environment variable")
         env: dict[str, str] = {}
         for name in allowed:
             if name == "PATH":
-                value = os.environ.get("PATH", "")
-                if value:
-                    env[name] = value
+                if safe_path:
+                    env[name] = safe_path
             elif name in ("HOME", "USERPROFILE"):
                 env[name] = str(job_home)
             elif name == "SYSTEMROOT":
@@ -189,9 +207,18 @@ class TerminalScriptExecutor:
         if (executable not in _EXECUTABLES or not isinstance(argv, list)
                 or len(argv) > 32 or any(not isinstance(arg, str) or "\x00" in arg for arg in argv)):
             raise TerminalExecutionError("Terminal template resolved an unsafe command")
-        resolved = shutil.which(executable)
-        if not resolved or not Path(resolved).is_file():
+        resolved = shutil.which(executable, path=safe_path)
+        if not resolved:
             raise TerminalExecutionError("Required Terminal executable is unavailable")
+        resolved_path = Path(resolved).resolve(strict=True)
+        if (not resolved_path.is_file() or resolved_path.suffix.lower() in (".bat", ".cmd")):
+            raise TerminalExecutionError("Terminal executable is not a trusted native binary")
+        try:
+            resolved_path.relative_to(workspace)
+            raise TerminalExecutionError("Terminal executable cannot be loaded from the Project Workspace")
+        except ValueError:
+            pass
+        resolved = str(resolved_path)
         job_home = Path(tempfile.mkdtemp(prefix="dcp-terminal-home-"))
         try:
             if os.name == "posix":
@@ -199,7 +226,8 @@ class TerminalScriptExecutor:
         except OSError:
             shutil.rmtree(job_home, ignore_errors=True)
             raise TerminalExecutionError("Temporary Terminal environment could not be secured") from None
-        env = self._environment(template, job_home)
+        safe_path = self._safe_path(workspace)
+        env = self._environment(template, job_home, safe_path)
         timeout = min(int(template["timeout_seconds"]), self.timeout_ceiling_seconds)
         output_limit = min(int(template["max_output_bytes"]), self.output_ceiling_bytes)
         command = [resolved, *argv]
