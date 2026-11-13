@@ -378,26 +378,13 @@ class TerminalScriptExecutor:
                 self._terminate_tree(process)
                 return_code = process.wait(timeout=5)
             reader.join(timeout=2)
-            safe_output = redact_terminal_output(
+            safe_text = redact_terminal_output(
                 raw_output.decode("utf-8", errors="replace")
-            ).encode("utf-8")
-            # Gateway log messages are capped at 8192 bytes. Emit bounded UTF-8
-            # chunks only after whole-stream redaction has removed split secrets.
-            offset = 0
-            while offset < len(safe_output):
-                end = min(offset + 4096, len(safe_output))
-                while end > offset:
-                    try:
-                        message = safe_output[offset:end].decode("utf-8")
-                        break
-                    except UnicodeDecodeError:
-                        end -= 1
-                if end == offset:
-                    message = safe_output[offset:offset + 1].decode("utf-8", errors="replace")
-                    end = offset + 1
-                if message:
-                    self.log("stdout", message)
-                offset = end
+            )
+            # Redact the complete bounded output first, then split only for the
+            # Gateway's per-message byte limit.
+            for message in self._log_chunks(safe_text, max_bytes=4096):
+                self.log("stdout", message)
             duration = round(time.monotonic() - started, 3)
             if cancelled:
                 outcome, error = "cancelled", "TERMINAL_CANCELLED"
