@@ -110,6 +110,7 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
         self.assertEqual(status, 200)
         row = projects["projects"][0]
         self.assertEqual(row["project_id"], self.project["project_id"])
+        self.assertEqual(row["workspace_id"], self.project["workspace_id"])
         self.assertEqual(row["relative_path"], "demo")
         self.assertEqual(row["snapshot_sha256"], self.project["snapshot_sha256"])
         self.assertNotIn("path", row)
