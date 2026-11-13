@@ -274,6 +274,7 @@ class TerminalScriptExecutor:
         if (executable not in _EXECUTABLES or not isinstance(argv, list)
                 or len(argv) > 32 or any(not isinstance(arg, str) or "\x00" in arg for arg in argv)):
             raise TerminalExecutionError("Terminal template resolved an unsafe command")
+        safe_path = self._safe_path(workspace)
         resolved = shutil.which(executable, path=safe_path)
         if not resolved:
             raise TerminalExecutionError("Required Terminal executable is unavailable")
@@ -303,7 +304,6 @@ class TerminalScriptExecutor:
         except OSError:
             shutil.rmtree(job_home, ignore_errors=True)
             raise TerminalExecutionError("Temporary Terminal environment could not be secured") from None
-        safe_path = self._safe_path(workspace)
         env = self._environment(template, job_home, safe_path)
         timeout = min(int(template["timeout_seconds"]), self.timeout_ceiling_seconds)
         output_limit = min(int(template["max_output_bytes"]), self.output_ceiling_bytes)
