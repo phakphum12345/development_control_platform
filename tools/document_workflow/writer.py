@@ -247,7 +247,7 @@ def write_document(
             "project_id": project_id,
             "path": rel_key,
             "size_bytes": len(payload),
-            "line_count": content.count("\\n") + 1,
+            "line_count": content.count("\n") + 1,
             "sha256": desired_sha,
             "read_back_verified": True,
             "idempotent_replay": False,
