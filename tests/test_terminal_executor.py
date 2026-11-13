@@ -154,10 +154,17 @@ class TerminalScriptExecutorTests(unittest.TestCase):
 
         # The same Runner boundary must also suppress a clean filter on Git path conversion.
         template["argv"] = ["hash-object", "--path=README.md", "README.md"]
-        filter_result = executor.run(
-            str(uuid.uuid4()), "runner-local", self.workspace,
-            "git_status", {}, "f" * 64,
-        )
+        with patch(
+            "tools.local_runner_agent.terminal_executor.preview_template",
+            return_value=template,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.template_version_digest",
+            return_value="f" * 64,
+        ):
+            filter_result = executor.run(
+                str(uuid.uuid4()), "runner-local", self.workspace,
+                "git_status", {}, "f" * 64,
+            )
         self.assertEqual(filter_result.outcome, "succeeded")
         self.assertFalse(filter_marker.exists(), "repository-controlled clean filter was invoked")
 
