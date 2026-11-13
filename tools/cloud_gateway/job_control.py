@@ -98,7 +98,7 @@ class JobStore:
             (job_id, event, json.dumps(detail or {}, sort_keys=True), utcnow().isoformat()),
         )
 
-    def create(self, payload, idempotency_key):
+    def create(self, payload, idempotency_key, *, job_id=None):
         if not isinstance(idempotency_key, str) or not re.fullmatch(r"[A-Za-z0-9._:-]{8,200}", idempotency_key):
             raise ValueError("Invalid Idempotency-Key")
         if not isinstance(payload, dict):
@@ -211,7 +211,16 @@ class JobStore:
         else:
             raise ValueError("Unsupported job source type")
         fingerprint = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
-        job_id, timestamp = str(uuid.uuid4()), utcnow().isoformat()
+        if job_id is None:
+            job_id = str(uuid.uuid4())
+        else:
+            try:
+                parsed_job_id = uuid.UUID(job_id)
+            except (ValueError, TypeError, AttributeError):
+                raise ValueError("Invalid supplied Job ID") from None
+            if str(parsed_job_id) != job_id:
+                raise ValueError("Supplied Job ID must use canonical lowercase UUID form")
+        timestamp = utcnow().isoformat()
         with self.lock, self.db() as db:
             db.execute("BEGIN IMMEDIATE")
             old = db.execute("SELECT * FROM jobs WHERE idem=?", (idempotency_key,)).fetchone()
@@ -228,6 +237,15 @@ class JobStore:
             self._event(db, job_id, "queued", {"source_type": normalized["source_type"]})
             db.execute("COMMIT")
         return self.get(job_id), True
+
+    def get_by_idempotency_key(self, idempotency_key):
+        """Return the existing durable Job for a validated idempotency key, if any."""
+        if not isinstance(idempotency_key, str) or not re.fullmatch(r"[A-Za-z0-9._:-]{8,200}", idempotency_key):
+            raise ValueError("Invalid Idempotency-Key")
+        with self.lock, self.db() as db:
+            return self._decode(
+                db.execute("SELECT * FROM jobs WHERE idem=?", (idempotency_key,)).fetchone()
+            )
 
     def get(self, job_id):
         with self.lock, self.db() as db:
