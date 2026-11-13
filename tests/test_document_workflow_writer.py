@@ -40,6 +40,15 @@ class DocumentWriterTests(unittest.TestCase):
         self.assertEqual(hashlib.sha256(target.read_bytes()).hexdigest(), result["sha256"])
         self.assertEqual(result["line_count"], 4)
 
+    def test_reconcile_file_written_before_journal_commit(self):
+        content = "# Recovered\\n"
+        target = self.workspace / "docs" / "PLAN.md"
+        target.write_text(content, encoding="utf-8")
+        result = self.write(content=content, operation_key="operation-recovery-01")
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["operation"], "DOCUMENT_WRITE_RECOVERED")
+        self.assertTrue(result["read_back_verified"])
+
     def test_idempotent_retry_does_not_create_duplicate_operation(self):
         first = self.write()
         second = self.write()
