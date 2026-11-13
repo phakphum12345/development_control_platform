@@ -69,6 +69,51 @@ class TerminalScriptExecutorTests(unittest.TestCase):
                     "python_version", {}, "0" * 64,
                 )
 
+    def _run_test_command(self, argv, *, timeout=5, output=4096, cancel_requested=None):
+        template = dict(preview_template("python_version", {}))
+        template.update({
+            "execution_enabled": True,
+            "executable": "python",
+            "argv": argv,
+            "timeout_seconds": timeout,
+            "max_output_bytes": output,
+        })
+        executor = TerminalScriptExecutor(
+            enabled=True, timeout_ceiling_seconds=timeout,
+            output_ceiling_bytes=max(1024, output),
+        )
+        with patch(
+            "tools.local_runner_agent.terminal_executor.preview_template",
+            return_value=template,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.template_version_digest",
+            return_value="e" * 64,
+        ):
+            return executor.run(
+                str(uuid.uuid4()), "runner-local", self.workspace,
+                "python_version", {}, "e" * 64,
+                cancel_requested=cancel_requested,
+            )
+
+    def test_timeout_terminates_terminal_process(self):
+        result = self._run_test_command(["-c", "import time; time.sleep(5)"], timeout=1)
+        self.assertEqual(result.outcome, "failed")
+        self.assertEqual(result.error_code, "TERMINAL_TIMEOUT")
+
+    def test_output_limit_terminates_terminal_process(self):
+        result = self._run_test_command(["-c", "print('x' * 10000)"], output=1024)
+        self.assertEqual(result.outcome, "failed")
+        self.assertEqual(result.error_code, "TERMINAL_OUTPUT_LIMIT")
+        self.assertEqual(result.output_bytes, 1024)
+
+    def test_cancellation_terminates_terminal_process(self):
+        result = self._run_test_command(
+            ["-c", "import time; time.sleep(5)"],
+            cancel_requested=lambda: True,
+        )
+        self.assertEqual(result.outcome, "cancelled")
+        self.assertEqual(result.error_code, "TERMINAL_CANCELLED")
+
     def test_project_workspace_symlink_is_rejected(self):
         link = Path(self.temp.name) / "project-link"
         try:
