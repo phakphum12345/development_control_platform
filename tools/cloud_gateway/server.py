@@ -1251,6 +1251,45 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                     if len(parts) != 2 or not re.fullmatch(r"[0-9a-f-]{36}", parts[0]):
                         return self.send_json(404, {"error": "not found"})
                     job_id, action = parts
+                    if action == "terminal-grant":
+                        payload = self.body()
+                        if set(payload) != {"authorization_id"}:
+                            return self.send_json(400, {"error": "Terminal grant verification fields are invalid"})
+                        job = jobs.get(job_id)
+                        now_iso = __import__("datetime").datetime.now(
+                            __import__("datetime").timezone.utc
+                        ).isoformat()
+                        if (not job or job.get("state") != "running"
+                                or job.get("worker") != worker
+                                or not job.get("lease_until")
+                                or job["lease_until"] <= now_iso):
+                            return self.send_json(409, {"error": "active Runner Job lease required"})
+                        job_payload = job.get("payload") if isinstance(job.get("payload"), dict) else {}
+                        if (job.get("target") != "terminal_script"
+                                or job_payload.get("source_type") != "terminal_script"):
+                            return self.send_json(409, {"error": "Job is not a Terminal execution job"})
+                        grant_id = payload.get("authorization_id")
+                        if grant_id != job_payload.get("authorization_id"):
+                            return self.send_json(403, {"error": "grant reference does not match the queued Job"})
+                        grants = self.terminal_grant_store()
+                        if grants is None:
+                            return self.send_json(503, {"error": "Terminal grant storage unavailable"})
+                        try:
+                            result = grants.consume_for_job(
+                                grant_id, job_id=job_id, worker_id=worker,
+                                project_id=job_payload.get("project_id"),
+                                workspace_id=job_payload.get("workspace_id"),
+                                snapshot_sha256=job_payload.get("snapshot_sha256"),
+                                template_id=job_payload.get("template_id"),
+                                template_digest=job_payload.get("template_digest"),
+                                parameters_sha256=job_payload.get("parameters_sha256"),
+                                action="terminal.read_only",
+                            )
+                            return self.send_json(200, {"grant": result})
+                        except TerminalGrantError as exc:
+                            return self.send_json(403, {"error": str(exc)})
+                        except ValueError as exc:
+                            return self.send_json(400, {"error": str(exc)})
                     if action == "artifacts":
                         artifacts = self.artifact_store()
                         if artifacts is None:
