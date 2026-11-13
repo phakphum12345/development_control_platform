@@ -274,6 +274,21 @@ class JobStoreTests(unittest.TestCase):
             self.store.resume_unknown(job["id"], "owner@example.test")
         self.assertEqual(self.store.get(job["id"])["state"], "unknown")
 
+    def test_nonterminal_checkpoint_is_not_automatically_replayed(self):
+        job, _ = self.create("job-nonterminal-checkpoint-01")
+        self.store.claim("nonterminal-worker")
+        self.store.checkpoint(
+            job["id"], "nonterminal-worker", 1,
+            {"version": 1, "step": "source-materialized", "safe_to_resume": True,
+             "data": {"source_sha256": "a" * 64}},
+        )
+        with self.store.db() as db:
+            db.execute("UPDATE jobs SET lease_until=? WHERE id=?",
+                       ("2000-01-01T00:00:00+00:00", job["id"]))
+        recovered = self.store.recover_expired_leases()
+        self.assertEqual(recovered[0]["state"], "unknown")
+        self.assertEqual(self.store.get(job["id"])["error_code"], "OUTCOME_UNKNOWN")
+
     def test_checkpoint_rejects_wrong_worker_and_expired_lease(self):
         job, _ = self.create("job-checkpoint-fence-01")
         self.store.claim("right-worker")
