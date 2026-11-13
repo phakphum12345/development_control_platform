@@ -273,6 +273,7 @@ Historical gate for PR #71: its Chromium sandbox launch failure applied to that 
 ## WP-18 — OS-level Terminal isolation (in progress)
 
 - Added a fail-closed platform isolation contract and explicit acceptance document in branch feat/wp18-os-isolation-contract.
+- Integrated require_verified_isolation() into TerminalScriptExecutor before workspace resolution/process launch. Default host assessment cannot return VERIFIED; unaccepted platforms fail closed.
 - Windows candidate: native AppContainer/LPAC launcher with explicit filesystem capabilities and no network capability, plus Job Object process-tree lifecycle.
 - Linux candidate: bubblewrap with explicit mount, user, PID, IPC, UTS and network namespaces and a reviewed seccomp profile.
 - macOS candidate: signed App Sandbox helper with explicit file and network entitlements.
