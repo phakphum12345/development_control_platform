@@ -23,6 +23,7 @@ from tools.local_runner_agent.workspace import WorkspaceManager
 from tools.local_runner_agent.local_project import LocalProjectRegistry
 from tools.local_runner_agent.checkout import LocalProjectCheckout
 from tools.local_runner_agent.terminal_executor import TerminalScriptExecutor
+from tools.local_runner_agent.terminal_isolation import IsolationAssessment
 
 
 TOKEN = "runner-pipeline-e2e-token-which-is-long-enough"
@@ -579,8 +580,22 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
             trusted_local_projects=frozenset({project["project_id"]}),
             terminal_executor=TerminalScriptExecutor(enabled=True),
         )
+        # This test validates the authorization/grant/workspace pipeline, not an OS
+        # sandbox. Inject a test-only verifier result so it can exercise the process
+        # path without weakening the production fail-closed isolation assessment.
+        test_verified_isolation = IsolationAssessment(
+            platform="linux" if os.name != "nt" else "windows",
+            backend="test-only-injected-verifier",
+            state="VERIFIED",
+            available=True,
+            network_isolated=True,
+            filesystem_isolated=True,
+            process_tree_contained=True,
+            reason="test-only fixture; not production isolation evidence",
+        )
         with patch("tools.local_runner_agent.terminal_executor.preview_template", return_value=template), \
-             patch("tools.cloud_gateway.terminal_execution_contract.preview_template", return_value=template):
+             patch("tools.cloud_gateway.terminal_execution_contract.preview_template", return_value=template), \
+             patch("tools.local_runner_agent.terminal_executor.assess_isolation_backend", return_value=test_verified_isolation):
             result = pipeline.run_once()
 
         self.assertEqual(result["outcome"], "succeeded", result)
