@@ -10,6 +10,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .sqlite_security import prepare_private_sqlite_file
+from .terminal_catalog import preview_template
+from .terminal_execution_contract import template_version_digest
+from .terminal_grants import TerminalGrantStore
 
 class JobConflict(RuntimeError):
     pass
@@ -103,7 +106,7 @@ class JobStore:
         source_type = payload.get("source_type", "github")
         target = payload.get("target", "test")
         if target not in ("test", "build", "package", "build_android", "build_web", "build_windows",
-                          "build_linux", "build_macos", "build_ios", "build_static_web", "build_vite", "build_next", "build_angular", "test_static_web"):
+                          "build_linux", "build_macos", "build_ios", "build_static_web", "build_vite", "build_next", "build_angular", "test_static_web", "terminal_script"):
             raise ValueError("Unsupported target")
         if source_type == "github":
             if not set(payload).issubset({"source_type", "repository", "commit_sha", "target"}):
@@ -137,6 +140,71 @@ class JobStore:
                 "source_type": "local_folder", "source_id": project_id,
                 "source_sha256": snapshot_sha, "repository": repository,
                 "commit_sha": sha, "target": target,
+            }
+        elif source_type == "terminal_script":
+            required = {
+                "source_type", "project_id", "workspace_id", "snapshot_sha256",
+                "target", "template_id", "parameters", "authorization_id",
+                "template_digest", "parameters_sha256",
+            }
+            if set(payload) != required or target != "terminal_script":
+                raise ValueError("Terminal jobs require only the typed, app-authorized execution fields")
+            identifiers = ("project_id", "workspace_id", "authorization_id")
+            for field in identifiers:
+                try:
+                    parsed = uuid.UUID(payload[field])
+                except (ValueError, TypeError, AttributeError):
+                    raise ValueError(f"Invalid Terminal {field}") from None
+                if str(parsed) != payload[field]:
+                    raise ValueError(f"Terminal {field} must use canonical lowercase UUID form")
+            project_id = payload["project_id"]
+            workspace_id = payload["workspace_id"]
+            snapshot_sha = payload["snapshot_sha256"]
+            if not isinstance(snapshot_sha, str) or not re.fullmatch(r"[0-9a-f]{64}", snapshot_sha):
+                raise ValueError("Invalid Terminal workspace snapshot SHA-256")
+            template_id = payload["template_id"]
+            if not isinstance(template_id, str) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", template_id):
+                raise ValueError("Invalid Terminal template ID")
+            parameters = payload["parameters"]
+            if not isinstance(parameters, dict) or len(parameters) > 16:
+                raise ValueError("Terminal parameters must be a bounded object")
+            try:
+                preview = preview_template(template_id, parameters)
+            except (ValueError, TypeError) as exc:
+                raise ValueError(f"Invalid Terminal template parameters: {exc}") from None
+            if (preview.get("execution_enabled") is not True
+                    or preview.get("mutation_class") != "read-only"
+                    or preview.get("network") != "denied"
+                    or preview.get("approval_required") is not False):
+                raise ValueError("Terminal execution is disabled or outside the read-only MVP policy")
+            normalized_parameters = preview.get("parameter_values")
+            if not isinstance(normalized_parameters, dict):
+                raise ValueError("Terminal template parameter normalization failed")
+            expected_template_digest = template_version_digest(template_id, parameters)
+            expected_parameters_digest = TerminalGrantStore.parameters_digest(normalized_parameters)
+            if payload["template_digest"] != expected_template_digest:
+                raise ValueError("Terminal template version digest does not match the trusted catalog")
+            if payload["parameters_sha256"] != expected_parameters_digest:
+                raise ValueError("Terminal parameter digest does not match normalized parameters")
+            repository = "local-terminal/" + project_id
+            sha = hashlib.sha1(
+                ("dcp-terminal:" + project_id + ":" + workspace_id + ":" + snapshot_sha).encode("utf-8")
+            ).hexdigest()
+            normalized = {
+                "source_type": "terminal_script",
+                "source_id": project_id,
+                "source_sha256": snapshot_sha,
+                "repository": repository,
+                "commit_sha": sha,
+                "target": "terminal_script",
+                "project_id": project_id,
+                "workspace_id": workspace_id,
+                "snapshot_sha256": snapshot_sha,
+                "template_id": template_id,
+                "parameters": normalized_parameters,
+                "authorization_id": payload["authorization_id"],
+                "template_digest": expected_template_digest,
+                "parameters_sha256": expected_parameters_digest,
             }
         else:
             raise ValueError("Unsupported job source type")
