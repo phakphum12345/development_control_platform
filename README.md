@@ -31,6 +31,10 @@ reads secret values, or installs software. The Gateway supports
 Cloud provisioning stays disabled by default; Azure/Orka mock tests do not
 claim live VM or runner acceptance.
 
+## Selective Code Monitor & Editor
+
+The project-scoped code monitor/editor separates explicit read scopes from separately approved write scopes. Its security model, project-isolation rules, staged delivery, and acceptance criteria are documented in [docs/selective-code-monitor-editor.md](docs/selective-code-monitor-editor.md). See [Document Generator and Local Write Workflow](docs/document-generator-operations.md) for supported outputs, recovery behavior, and current integration limits. The Pull Request Review view also provides read-only before/after PR lifecycle checkpoints; it does not perform PR mutations. The dashboard now includes a one-click Markdown/Roadmap/TXT generator that previews, hashes, and downloads complete artifacts; browser download is not a repository write or proof of disk persistence. A separate local writer library supports scoped .md/.txt writes with an external SQLite operation journal, idempotency, atomic replacement, and read-back SHA-256 verification; it is not yet exposed through an authenticated dashboard API or connected to GitHub. PR lifecycle verification and remote write/merge actions remain unavailable until their server-side authorization and evidence adapters are implemented.
+
 ## Interactive dashboard toolkit
 
 Open dashboard/index.html in a modern browser. Current tools:

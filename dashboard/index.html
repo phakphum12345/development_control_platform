@@ -169,15 +169,15 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
   <button type="button" data-quick-tab="pr" data-tone="violet">◇ Pull Request Review</button>
   <button type="button" data-quick-tab="evidence" data-tone="teal">✓ SHA & Evidence</button>
   <button type="button" data-quick-tab="gates" data-tone="green">▣ Quality Gates</button>
-  <button type="button" data-quick-tab="audit" data-tone="amber">◎ Audit & Safety</button>
+  <button type="button" data-quick-tab="document-generator" data-tone="blue">▤ Document Generator</button><button type="button" data-quick-tab="audit" data-tone="amber">◎ Audit & Safety</button>
  </div>
- <div class="control-center-meta"><span>Navigation: <strong id="dcp-nav-count">20 tools</strong></span><span>Write actions: <strong>0 · Disabled</strong></span><span>Evidence default: <strong>UNKNOWN</strong></span><span>Mode: <strong>READ-ONLY</strong></span></div>
+ <div class="control-center-meta"><span>Navigation: <strong id="dcp-nav-count">21 tools</strong></span><span>Write actions: <strong>0 · Disabled</strong></span><span>Evidence default: <strong>UNKNOWN</strong></span><span>Mode: <strong>READ-ONLY</strong></span></div>
  <div class="dcp-selfcheck" id="dcp-selfcheck" data-status="UNKNOWN" role="status" aria-live="polite">UI self-check: UNKNOWN — ยังไม่ได้ตรวจสอบเมนู</div>
  <div class="quick-actions"><button type="button" id="dcp-selfcheck-run" class="primary">Run UI self-check</button><button type="button" id="dcp-nav-reset">Clear search / Reset menu</button></div>
 </section>
 
 <div class="layout"><nav class="nav" aria-label="Tools">
-<button class="active" data-tab="home">Overview</button> <button data-tab="account">Password Login</button> <button data-tab="project-import">Project Import</button> <button data-tab="terminal-studio">Terminal Studio</button> <button data-tab="code-navigator">Code Navigator</button><button data-tab="cloud-runners">Cloud Runner Control</button> <button data-tab="infrastructure">Infrastructure Manager</button> <button data-tab="dev-tools">Emulators & VS Code</button> <button data-tab="ui-routes">UI Route Manager</button><button data-tab="ui-simulator">UI Simulator</button><button data-tab="route-colors">Route Color Manager</button><button data-tab="github-api">Research OS API</button><button data-tab="repo-selector">Account & Repo</button><button data-tab="repo">Repository Explorer</button><button data-tab="pr">Pull Request Review</button><button data-tab="user">User Explorer</button><button data-tab="workspace">GitHub Workspace</button><button data-tab="evidence">SHA & Evidence</button><button data-tab="gates">Quality Gate Planner</button><button data-tab="checkpoint">Checkpoint Builder</button><button data-tab="audit">Audit & Safety</button>
+<button class="active" data-tab="home">Overview</button> <button data-tab="account">Password Login</button> <button data-tab="project-import">Project Import</button> <button data-tab="terminal-studio">Terminal Studio</button> <button data-tab="code-navigator">Code Navigator</button><button data-tab="cloud-runners">Cloud Runner Control</button> <button data-tab="infrastructure">Infrastructure Manager</button> <button data-tab="dev-tools">Emulators & VS Code</button> <button data-tab="ui-routes">UI Route Manager</button><button data-tab="ui-simulator">UI Simulator</button><button data-tab="route-colors">Route Color Manager</button><button data-tab="github-api">Research OS API</button><button data-tab="repo-selector">Account & Repo</button><button data-tab="repo">Repository Explorer</button><button data-tab="pr">Pull Request Review</button><button data-tab="user">User Explorer</button><button data-tab="workspace">GitHub Workspace</button><button data-tab="evidence">SHA & Evidence</button><button data-tab="gates">Quality Gate Planner</button><button data-tab="checkpoint">Checkpoint Builder</button><button data-tab="document-generator">Document Generator</button><button data-tab="audit">Audit & Safety</button>
 </nav><div>
 <section class="view" id="dev-tools">
 <div class="panel"><h2>Emulators & VS Code</h2><p>This page provides local commands and readiness guidance. A browser cannot inspect or launch processes on your computer; run these tasks from the repository in VS Code. Results from local checks are not automatically uploaded or treated as CI evidence.</p><div class="warn"><b>Safety:</b> emulator launch is explicit and local. The helper never installs SDKs, changes PATH, edits Android/iOS projects, or launches an app without an app-specific project being present.</div></div>
@@ -356,7 +356,17 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
 <section class="view" id="github-api"><div class="panel"><h2>Research OS API Integration</h2><p>เชื่อมต่อ API ผ่าน Google sign-in และ one-time OAuth handoff; session token เก็บในหน่วยความจำของแท็บนี้เท่านั้น ไม่บันทึกลง localStorage หรือ URL</p><div class="warn">สิทธิ์ฝั่งเซิร์ฟเวอร์เป็นตัวตัดสิน: ต้องเป็น Research OS owner และ repository ต้องอยู่ใน allowlist ของ Backend เท่านั้น การเชื่อมต่อเป็น read-only ไม่มีคำสั่ง push/merge/deploy</div><div class="output" id="ros-api-local-guidance"><strong>ใช้งาน Dashboard บนเครื่อง (Windows)</strong><p>เปิด repository ในเครื่อง แล้วเรียก <code>Open-DCP-Dashboard.cmd</code> เพื่อเปิดหน้าเว็บบน 127.0.0.1 โดยเลือกพอร์ตว่างอัตโนมัติ</p><div class="actions"><button type="button" data-copy-command="Open-DCP-Dashboard.cmd">Copy local launch command</button></div><p>โหมด Local ใช้เครื่องมืออ่าน Public GitHub, PR review, SHA/evidence และ quality gates ได้โดยไม่ต้อง sign-in ผ่าน Research OS API. หากต้องการ Google sign-in ให้เปิด backend แยกในเครื่องและให้รองรับ API contract นี้ก่อน: GET <code>/health</code> (JSON health check), POST <code>/v1/auth/google/start</code>, POST <code>/v1/auth/google/handoff</code>, และ GET <code>/v1/github/dashboard</code>. Dashboard นี้เปิดเฉพาะ UI และไม่ได้สร้าง backend หรือ OAuth secrets ให้. ค่าเริ่มต้นคือ <code>http://127.0.0.1:8788</code>; หาก backend ใช้พอร์ตอื่นให้แก้ URL แล้วกด Check local API. HTTP อนุญาตเฉพาะ loopback; OAuth authorization ต้องเป็น HTTPS บน accounts.google.com และ session อยู่ในหน่วยความจำแท็บนี้เท่านั้น. Health check สำเร็จเป็นเพียงหลักฐานว่า endpoint ตอบกลับ ไม่ได้พิสูจน์ว่า OAuth หรือ owner authorization ผ่าน</p></div><div class="grid"><div class="field"><label for="ros-api-base">Research OS API base URL</label><input id="ros-api-base" type="url" value="http://127.0.0.1:8788" autocomplete="url"></div><div class="field"><label for="ros-api-repository">Repository allowlisted on server</label><input id="ros-api-repository" value="phakphoum38-stack/ENTERPRISE_API_ARCHITECTURE_LOGIC_TH" autocomplete="off"></div></div><div class="actions"><button id="ros-api-health">Check local API</button><button class="primary" id="ros-api-connect">Connect with Google</button><button id="ros-api-sync">Sync Google OAuth</button><button id="ros-api-load" disabled>Load GitHub dashboard</button><button id="ros-api-disconnect" disabled>Disconnect</button><a href="https://dashboard.render.com/web/srv-db2jv449v7es738cejm0/env" target="_blank" rel="noopener noreferrer">Render environment</a></div><div id="ros-api-status" class="output" aria-live="polite">Not connected. API status is UNKNOWN until authenticated.</div><div id="ros-api-result" class="empty" aria-live="polite">No API data loaded.</div></div></section>
 <section class="view" id="repo-selector"><div class="panel"><h2>Shared GitHub Account & Repository Selector</h2><p>เลือก public GitHub account/organization ก่อน แล้วโหลด repository เพื่อใช้เป็นค่าเริ่มต้นร่วมกันในเครื่องมืออื่น</p><div class="warn"><b>ข้อจำกัด:</b> ตัวเลือกนี้อ่าน public GitHub API โดยไม่ sign-in และไม่สลับ linked GitHub connector account, ไม่แสดง private repositories และไม่ยืนยันสิทธิ์เข้าถึง การยืนยันตัวตนต้องทำผ่าน backend OAuth/GitHub App แยกต่างหาก</div><div class="grid"><div class="field"><label for="shared-owner">GitHub account / organization</label><select id="shared-owner"><option value="phakphum12345">phakphum12345</option><option value="phakphoum38-stack">phakphoum38-stack</option><option value="__custom__">Other account / organization…</option></select><input id="shared-owner-custom" placeholder="Enter GitHub username or organization" autocomplete="off" hidden></div><div class="field"><label for="shared-repo">Repository</label><select id="shared-repo" disabled><option value="">Load account repositories first</option></select></div></div><div class="actions"><button class="primary" id="shared-load">Load public repositories</button><button id="shared-apply" disabled>Apply selection to tools</button><button id="shared-clear">Clear selection</button></div><div id="shared-status" class="output" aria-live="polite">No shared account or repository selected. Permission: UNKNOWN.</div></div></section>
 <section class="view" id="repo"><div class="panel"><h2>Repository Explorer</h2><p>Public repositories only. Enter owner/repository.</p><div class="grid"><div class="field"><label for="repo-name">Repository</label><input id="repo-name" placeholder="octocat/Hello-World"></div><div class="field"><label for="branch-name">Branch filter (optional)</label><input id="branch-name" placeholder="main"></div></div><div class="actions"><button class="primary" id="repo-load">Load repository</button><button id="repo-clear">Clear</button></div><div id="repo-msg" class="output">No repository loaded.</div><div id="repo-data" class="empty">Repository details appear here.</div><h3>Open pull requests</h3><div id="repo-prs" class="empty">Load a repository first.</div></div></section>
-<section class="view" id="pr"><div class="panel"><h2>Pull Request Review</h2><div class="grid"><div class="field"><label for="pr-repo">Public repository</label><input id="pr-repo" placeholder="owner/repository"></div><div class="field"><label for="pr-num">PR number</label><input id="pr-num" type="number" min="1" placeholder="123"></div></div><div class="actions"><button class="primary" id="pr-load">Inspect PR</button><button id="pr-clear">Clear</button></div><div id="pr-msg" class="output">No PR loaded.</div><div id="pr-data" class="empty">Enter repository and PR number.</div><h3>Changed files</h3><div id="pr-files" class="empty">No files loaded.</div><h3>Reviews</h3><div id="pr-reviews" class="empty">No reviews loaded.</div><h3>Checks for exact head SHA</h3><div id="pr-checks" class="empty">No checks loaded; readiness UNKNOWN.</div></div></section>
+<section class="view" id="pr"><div class="panel"><h2>Pull Request Review</h2><div class="grid"><div class="field"><label for="pr-repo">Public repository</label><input id="pr-repo" placeholder="owner/repository"></div><div class="field"><label for="pr-num">PR number</label><input id="pr-num" type="number" min="1" placeholder="123"></div></div><div class="actions"><button class="primary" id="pr-load">Inspect PR</button><button id="pr-clear">Clear</button></div><div id="pr-msg" class="output">No PR loaded.</div><div id="pr-data" class="empty">Enter repository and PR number.</div><h3>Changed files</h3><div id="pr-files" class="empty">No files loaded.</div><h3>Reviews</h3><div id="pr-reviews" class="empty">No reviews loaded.</div><h3>Checks for exact head SHA</h3><div id="pr-checks" class="empty">No checks loaded; readiness UNKNOWN.</div></div><div class="panel" id="pr-lifecycle-panel">
+ <h3>PR Lifecycle Checkpoints</h3>
+ <p class="small muted">Read-only verifier. Run the matching checkpoint before and after each PR transition. This panel does not open, merge, or close PRs.</p>
+ <div class="grid">
+  <div class="field"><label for="pr-lifecycle-stage">Lifecycle stage</label><select id="pr-lifecycle-stage"><option value="before-open">Before opening PR</option><option value="after-open">After opening PR</option><option value="before-merge">Before merging PR</option><option value="after-merge">After merging PR</option><option value="before-close">Before closing PR</option><option value="after-close">After closing PR without merge</option></select></div>
+  <div class="field"><label for="pr-lifecycle-head">Head branch (before opening)</label><input id="pr-lifecycle-head" placeholder="feature/branch"></div>
+  <div class="field"><label for="pr-lifecycle-base">Base branch (before opening)</label><input id="pr-lifecycle-base" value="main" placeholder="main"></div>
+ </div>
+ <div class="actions"><button class="primary" id="pr-lifecycle-verify" type="button">Verify lifecycle checkpoint</button></div>
+ <div id="pr-lifecycle-result" class="output" role="status" aria-live="polite">UNKNOWN — no lifecycle checkpoint verified.</div>
+</div></section>
 <section class="view" id="user"><div class="panel"><h2>User Explorer</h2><p>Public profile only. This does not establish team membership, roles or repository permissions.</p><div class="field"><label for="user-name">GitHub username</label><input id="user-name" placeholder="octocat"></div><div class="actions"><button class="primary" id="user-load">Load profile</button><button id="user-clear">Clear</button></div><div id="user-msg" class="output">No user loaded.</div><div id="user-data" class="empty">Profile details appear here.</div></div></section>
 
 <section class="view" id="workspace"><div class="panel"><h2>GitHub Workspace Selector</h2><p>เลือกบัญชี/Owner, Repository และ Branch สำหรับเตรียม workspace ได้จากรายการสาธารณะ</p><div class="warn"><b>ขอบเขตความปลอดภัย:</b> หน้านี้อ่านข้อมูล public API เท่านั้น ยังไม่ใช่ OAuth/GitHub App authorization และไม่สามารถให้สิทธิ์หรือเข้าถึง private repositories ได้ สถานะสิทธิ์จริงจะแสดง UNKNOWN จนกว่าจะมี backend ที่ตรวจสิทธิ์จาก GitHub อย่างปลอดภัย</div><div class="grid"><div class="field"><label for="ws-owner">GitHub account / organization</label><input id="ws-owner" value="phakphum12345" autocomplete="off" placeholder="owner-or-organization"></div><div class="field"><label for="ws-repo">Repository</label><select id="ws-repo" disabled><option value="">Load account repositories first</option></select></div><div class="field"><label for="ws-branch">Branch</label><select id="ws-branch" disabled><option value="">Select a repository first</option></select></div><div class="field"><label>Effective permission</label><div id="ws-permission" class="output" aria-live="polite">UNKNOWN — no authenticated permission check.</div></div></div><div class="actions"><button class="primary" id="ws-load">Load public repositories</button><button id="ws-branches" disabled>Load branches</button><button id="ws-reset">Reset</button><a href="https://github.com/settings/installations" target="_blank" rel="noopener noreferrer">Manage GitHub App installations</a></div><div id="ws-msg" class="output" aria-live="polite">No account/repository loaded.</div><div id="ws-details" class="empty">Select a public repository to inspect its public metadata.</div><p class="small muted">No token is requested or stored in this browser. Granting access requires an explicitly installed GitHub App or OAuth integration plus server-side permission enforcement.</p></div></section>
@@ -364,6 +374,26 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
 <div class="field"><label for="ev-repo">Repository</label><input id="ev-repo" placeholder="owner/repository"></div><div class="grid"><div class="field"><label for="ev-branch">Branch</label><input id="ev-branch" placeholder="feature/example"></div><div class="field"><label for="ev-sha">Full commit SHA (40 hex)</label><input id="ev-sha" maxlength="40" placeholder="40-character SHA"></div></div><div class="grid"><div class="field"><label for="ev-gate">Gate name</label><input id="ev-gate" placeholder="unit-tests"></div><div class="field"><label for="ev-status">Status</label><select id="ev-status"><option>unknown</option><option>pending</option><option>not_run</option><option>fail</option><option>pass</option></select></div></div><div class="grid"><div class="field"><label for="ev-time">Observed at (ISO date/time)</label><input id="ev-time" placeholder="2026-10-22T10:00:00Z"></div><div class="field"><label for="ev-url">Evidence URL (HTTPS)</label><input id="ev-url" placeholder="https://github.com/owner/repo/actions/runs/..."></div></div><div class="actions"><button class="primary" id="ev-check">Validate</button><button id="ev-copy">Copy JSON</button><button id="ev-clear">Clear</button></div><div id="ev-output" class="output">No record validated. Status UNKNOWN.</div></div></section>
 <section class="view" id="gates"><div class="panel"><h2>Quality Gate Planner</h2><div class="field"><label for="gate-sha">Target full commit SHA</label><input id="gate-sha" maxlength="40" placeholder="40-character SHA"></div><div id="gate-list"></div><div class="actions"><button class="primary" id="gate-eval">Evaluate readiness</button><button id="gate-reset">Reset</button><button id="gate-export">Export JSON</button></div><div id="gate-output" class="output">Readiness UNKNOWN — no gate results verified.</div></div></section>
 <section class="view" id="checkpoint"><div class="panel"><h2>Checkpoint Builder</h2><p>Creates a Markdown handoff note; does not write into the repository.</p><div class="grid"><div class="field"><label for="cp-repo">Repository</label><input id="cp-repo" placeholder="owner/repository"></div><div class="field"><label for="cp-branch">Branch</label><input id="cp-branch" placeholder="feature/branch"></div></div><div class="field"><label for="cp-sha">Full commit SHA</label><input id="cp-sha" maxlength="40" placeholder="40-character SHA"></div><div class="field"><label for="cp-goal">Goal</label><textarea id="cp-goal" rows="2"></textarea></div><div class="field"><label for="cp-done">Completed work</label><textarea id="cp-done" rows="3"></textarea></div><div class="field"><label for="cp-pending">Remaining work / blockers</label><textarea id="cp-pending" rows="3"></textarea></div><div class="field"><label for="cp-tests">Tests and evidence URLs</label><textarea id="cp-tests" rows="3"></textarea></div><div class="actions"><button class="primary" id="cp-build">Build checkpoint</button><button id="cp-copy">Copy Markdown</button><button id="cp-download">Download .md</button></div><textarea id="cp-output" class="output" rows="16" aria-label="Generated checkpoint"></textarea></div></section>
+<section class="view" id="document-generator">
+<div class="panel">
+ <div class="row"><div><h2>Document Generator</h2><p>สร้างเอกสาร Markdown, Roadmap และ TXT ให้ครบตามข้อมูลที่ระบุ พร้อมตรวจโครงสร้างและสร้าง SHA-256 ก่อนส่งออก</p></div><span class="pill">GENERATE · EXPORT</span></div>
+ <div class="warn"><b>ขอบเขตปัจจุบัน:</b> Dashboard เป็น Static UI จึงสร้างและดาวน์โหลดไฟล์ได้ แต่ยังเขียนกลับ GitHub Repository โดยตรงไม่ได้ การดาวน์โหลดไม่ใช่หลักฐานว่าไฟล์ถูกบันทึกลงดิสก์หรือ Repository แล้ว สถานะดังกล่าวจะแสดง UNKNOWN จนกว่าจะมี Local/Server Write Adapter ที่ผ่านการอนุมัติ</div>
+ <div class="grid">
+  <div class="field"><label for="doc-type">Document type</label><select id="doc-type"><option value="markdown">Markdown (.md)</option><option value="roadmap">Roadmap (.md)</option><option value="text">Plain text (.txt)</option></select></div>
+  <div class="field"><label for="doc-project">Project / Repository</label><input id="doc-project" placeholder="owner/repository or project name"></div>
+  <div class="field"><label for="doc-title">Document title</label><input id="doc-title" placeholder="Project implementation plan"></div>
+  <div class="field"><label for="doc-version">Version / Date</label><input id="doc-version" placeholder="Draft / YYYY-MM-DD"></div>
+ </div>
+ <div class="field"><label for="doc-purpose">Purpose and scope</label><textarea id="doc-purpose" rows="3" placeholder="Describe the goal, scope, constraints, and intended readers."></textarea></div>
+ <div class="field"><label for="doc-source">Verified context / current implementation</label><textarea id="doc-source" rows="5" placeholder="Paste verified facts, existing components, decisions, source links, and current status. Unknown facts should remain UNKNOWN."></textarea></div>
+ <div class="field"><label for="doc-milestones">Milestones / tasks (one per line)</label><textarea id="doc-milestones" rows="5" placeholder="WP-01 — Inventory — UNKNOWN — acceptance criteria&#10;WP-02 — Implementation — BLOCKED — dependency"></textarea></div>
+ <div class="field"><label for="doc-risks">Risks, dependencies, and acceptance criteria</label><textarea id="doc-risks" rows="4" placeholder="List known risks, dependencies, measurable acceptance criteria, and verification evidence."></textarea></div>
+ <div class="actions"><button class="primary" id="doc-generate" type="button">Generate & Download complete file</button><button id="doc-copy" type="button">Copy</button><button id="doc-download" type="button" disabled>Download file</button></div>
+ <div id="doc-status" class="output" role="status" aria-live="polite">No document generated. Missing facts will be marked TBD / UNKNOWN, not invented.</div>
+ <div class="field"><label for="doc-output">Generated document preview</label><textarea id="doc-output" class="output" rows="22" spellcheck="false" aria-label="Generated document preview"></textarea></div>
+ <div id="doc-integrity" class="output" role="status" aria-live="polite">Integrity: UNKNOWN — generate a document first.</div>
+</div>
+</section>
 <section class="view" id="terminal-studio">
  <div class="panel">
   <div class="row"><div><h2>Terminal Studio</h2><p>Command Library สำหรับตรวจสอบ Git และ Toolchain พร้อมดูคำสั่งแบบ argv ก่อนใช้งาน</p></div><span class="pill" id="terminal-studio-state">PREVIEW ONLY</span></div>
@@ -425,7 +455,33 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
 const $=id=>document.getElementById(id),esc=v=>String(v==null?"":v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])),isRepo=v=>/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(v.trim())&&!v.includes(".."),isSha=v=>/^[a-f0-9]{40}$/i.test(v.trim());
 const state={repo:null,pr:null,user:null,evidence:null,gates:null,audit:null};
 function msg(id,s){$(id).textContent=s}function link(url,label){return '<a target="_blank" rel="noopener noreferrer" href="'+esc(url)+'">'+esc(label||url)+'</a>'}
-async function api(path){const r=await fetch("https://api.github.com"+path,{headers:{Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"}});if(!r.ok){let m="HTTP "+r.status;try{m=(await r.json()).message||m}catch(_){}throw Error(m+(r.status===403||r.status===429?" (rate limit/permission restriction)":""))}return r.json()}
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+async function api(path){
+ for(let attempt=0;attempt<3;attempt++){
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
+  let response;
+  try{
+   response=await fetch("https://api.github.com"+path,{headers:{Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"},signal:controller.signal});
+  }catch(error){
+   clearTimeout(timer);
+   const transient=error.name==="AbortError"||error instanceof TypeError;
+   if(transient&&attempt<2){await sleep(500*Math.pow(2,attempt));continue}
+   throw Error((error.name==="AbortError"?"Request timed out after 12 seconds. ":"Network connection failed. ")+"Remote outcome is UNKNOWN; retry manually after checking current state.");
+  }
+  clearTimeout(timer);
+  if(response.ok)return response.json();
+  let message="HTTP "+response.status;
+  try{message=(await response.json()).message||message}catch(_){}
+  const retryable=response.status===429||response.status>=500;
+  if(retryable&&attempt<2){
+   const retryAfter=Number(response.headers.get("Retry-After")||0);
+   await sleep(Math.min(10000,Math.max(retryAfter*1000,500*Math.pow(2,attempt))));
+   continue;
+  }
+  throw Error(message+(response.status===403||response.status===429?" (rate limit/permission restriction)":""));
+ }
+ throw Error("Request status UNKNOWN.");
+}
 function table(head,rows){return rows.length?'<table><thead><tr>'+head.map(x=>'<th>'+esc(x)+'</th>').join("")+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(x=>'<td>'+x+'</td>').join("")+'</tr>').join("")+'</tbody></table>':'<div class="empty">No records returned.</div>'}
 function tab(name){document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id===name));document.querySelectorAll("[data-tab]").forEach(x=>x.classList.toggle("active",x.dataset.tab===name))}
 document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>tab(b.dataset.tab));
@@ -433,6 +489,90 @@ $("repo-load").onclick=async()=>{let n=$("repo-name").value.trim();if(!isRepo(n)
 $("repo-clear").onclick=()=>{$("repo-name").value="";$("branch-name").value="";state.repo=null;$("selected").textContent="—";msg("repo-msg","Cleared.");$("repo-data").innerHTML='<div class="empty">Repository details appear here.</div>';$("repo-prs").innerHTML=""};
 $("pr-load").onclick=async()=>{let n=$("pr-repo").value.trim(),num=$("pr-num").value.trim();if(!isRepo(n)||!/^[1-9]\d*$/.test(num)){msg("pr-msg","Enter valid owner/repository and positive PR number.");return}msg("pr-msg","Loading PR, files, reviews and checks…");try{let [p,f,r]=await Promise.all([api("/repos/"+n+"/pulls/"+num),api("/repos/"+n+"/pulls/"+num+"/files?per_page=100"),api("/repos/"+n+"/pulls/"+num+"/reviews?per_page=100")]);let c=null,ce="";try{c=await api("/repos/"+n+"/commits/"+p.head.sha+"/check-runs?per_page=100")}catch(e){ce=e.message}state.pr={p,f,r,c};msg("pr-msg","Loaded public PR. Head SHA: "+p.head.sha);$("pr-data").innerHTML='<h3>'+esc(p.title)+'</h3>'+link(p.html_url,"Open PR")+table(["Property","Value"],[["State",esc(p.state)],["Draft",esc(p.draft)],["Author",esc(p.user.login)],["Base",esc(p.base.ref)],["Head",esc(p.head.ref)],["Full head SHA",'<code>'+esc(p.head.sha)+'</code>'],["Mergeable",esc(p.mergeable===null?"unknown":p.mergeable)],["Files",esc(p.changed_files)],["Additions / deletions",esc(p.additions+" / "+p.deletions)]]);$("pr-files").innerHTML=table(["File","Status","+ / -"],f.map(x=>[link(x.blob_url,x.filename),esc(x.status),esc("+"+x.additions+" / -"+x.deletions)]));$("pr-reviews").innerHTML=table(["Reviewer","State","Submitted"],r.map(x=>[esc(x.user.login),esc(x.state),esc(x.submitted_at||"pending")]));$("pr-checks").innerHTML=c?table(["Check","Status","Conclusion","Link"],c.check_runs.map(x=>[esc(x.name),esc(x.status),esc(x.conclusion||"UNKNOWN"),x.html_url?link(x.html_url,"Open run"):"—"])):'<div class="empty">Checks unavailable: '+esc(ce)+'. Readiness UNKNOWN.</div>';if(c&&!c.check_runs.length)$("pr-checks").innerHTML='<div class="empty">No checks returned; readiness UNKNOWN.</div>'}catch(e){state.pr=null;msg("pr-msg","Could not inspect PR: "+e.message)}};
 $("pr-clear").onclick=()=>{$("pr-repo").value="";$("pr-num").value="";state.pr=null;msg("pr-msg","Cleared.");["pr-data","pr-files","pr-reviews","pr-checks"].forEach(x=>$(x).innerHTML='<div class="empty">No data loaded.</div>')};
+async function lifecycleSnapshot(repoName,number){
+ const p=await api("/repos/"+repoName+"/pulls/"+number);
+ const results=await Promise.allSettled([
+  api("/repos/"+repoName+"/pulls/"+number+"/files?per_page=100"),
+  api("/repos/"+repoName+"/pulls/"+number+"/reviews?per_page=100"),
+  api("/repos/"+repoName+"/commits/"+p.head.sha+"/check-runs?per_page=100"),
+  api("/repos/"+repoName+"/commits/"+p.head.sha+"/status"),
+  api("/repos/"+repoName+"/branches/"+encodeURIComponent(p.base.ref)+"/protection")
+ ]);
+ return {p,files:results[0].status==="fulfilled"?results[0].value:null,reviews:results[1].status==="fulfilled"?results[1].value:null,checks:results[2].status==="fulfilled"?results[2].value:null,status:results[3].status==="fulfilled"?results[3].value:null,protection:results[4].status==="fulfilled"?results[4].value:null,errors:results.map((x,i)=>x.status==="rejected"?["files","reviews","check-runs","commit-status","branch-protection"][i]+": "+x.reason.message:null).filter(Boolean)};
+}
+function lifecycleEvidence(snapshot){
+ const {p,files,reviews,checks,status,errors}=snapshot;
+ const checksList=checks?.check_runs||[];
+ const contexts=status?.statuses||[];
+ const checksKnown=!!checks&&!!status&&(checksList.length+contexts.length)>0;
+ const checksPass=checksKnown&&checksList.every(x=>x.status==="completed"&&x.conclusion==="success")&&contexts.every(x=>x.state==="success")&&(contexts.length===0||status.state==="success");
+ const checksFail=(checksList.some(x=>x.status==="completed"&&x.conclusion&&x.conclusion!=="success")||contexts.some(x=>x.state==="failure"||x.state==="error")||status?.state==="failure");
+ const removed=Array.isArray(files)&&files.some(x=>x.status==="removed");
+ const protection=snapshot.protection;
+ const requiredStatus=protection?.required_status_checks;
+ const requiredContexts=requiredStatus===null?[]:Array.isArray(requiredStatus?.contexts)?requiredStatus.contexts:Array.isArray(requiredStatus?.checks)?requiredStatus.checks.map(x=>x.context):null;
+ const requiredChecksKnown=!!protection&&requiredContexts!==null;
+ const requiredChecksPass=requiredChecksKnown&&requiredContexts.every(name=>checksList.some(x=>x.name===name&&x.status==="completed"&&x.conclusion==="success")||contexts.some(x=>x.context===name&&x.state==="success"));
+ const latestByReviewer={};
+ (reviews||[]).forEach(x=>{if(x.user?.login)latestByReviewer[x.user.login]=x});
+ const approvals=Object.values(latestByReviewer).filter(x=>x.state==="APPROVED").length;
+ return {p,files,reviews,checks,status,protection,errors,checksKnown,checksPass,checksFail,requiredChecksKnown,requiredChecksPass,removed,approvals};
+}
+$("pr-lifecycle-verify").onclick=async()=>{
+ const repoName=$("pr-repo").value.trim(),number=$("pr-num").value.trim(),stage=$("pr-lifecycle-stage").value;
+ const out=$("pr-lifecycle-result");
+ if(!isRepo(repoName)){out.textContent="FAIL — enter a valid owner/repository in Pull Request Review.";return}
+ out.textContent="Checking "+stage+"…";
+ try{
+  if(stage==="before-open"){
+   const head=$("pr-lifecycle-head").value.trim(),base=$("pr-lifecycle-base").value.trim()||"main";
+   if(!head||!base||head===base)throw Error("Provide distinct head and base branch names.");
+   const [h,b]=await Promise.all([api("/repos/"+repoName+"/branches/"+encodeURIComponent(head)),api("/repos/"+repoName+"/branches/"+encodeURIComponent(base))]);
+   const [compare,duplicates]=await Promise.all([api("/repos/"+repoName+"/compare/"+b.commit.sha+"..."+h.commit.sha),api("/repos/"+repoName+"/pulls?state=open&head="+encodeURIComponent(repoName.split("/")[0]+":"+head)+"&base="+encodeURIComponent(base))]);
+   const deleted=(compare.files||[]).some(x=>x.status==="removed");
+   const result={stage,status:"UNKNOWN",head_branch:head,base_branch:base,head_sha:h.commit.sha,base_sha:b.commit.sha,compare_status:compare.status,ahead_by:compare.ahead_by,behind_by:compare.behind_by,deleted_files:deleted,existing_open_prs:duplicates.length,reason:"Branch identity, base-to-head comparison, deletion scan, and duplicate-PR lookup are checked. CI/review policy and write authorization remain UNKNOWN in this static read-only checkpoint."};
+   out.textContent=JSON.stringify(result,null,2);return;
+  }
+  if(!/^[1-9]\\d*$/.test(number))throw Error("Enter a positive PR number in Pull Request Review.");
+  const snap=lifecycleEvidence(await lifecycleSnapshot(repoName,number)),p=snap.p;
+  let statusLabel="UNKNOWN",notes=[];
+  if(stage==="after-open"){
+   statusLabel=p.state==="open"&&p.merged===false&&p.head?.sha&&p.base?.ref?"PASS":"FAIL";
+   notes.push("PR existence/state/head/base metadata re-fetched after opening.");
+  }else if(stage==="before-close"){
+   statusLabel=p.state==="open"&&!p.merged?"PASS":"FAIL";
+   notes.push("PR is open and not merged; this verifies state only, not human authorization to close.");
+  }else if(stage==="after-close"){
+   statusLabel=p.state==="closed"&&!p.merged?"PASS":p.merged?"FAIL":"UNKNOWN";
+   notes.push("Expected closed=true and merged=false for a close-without-merge operation.");
+  }else if(stage==="before-merge"){
+   const basic=p.state==="open"&&p.merged===false&&p.mergeable===true&&snap.files&&!snap.removed&&snap.approvals>0&&snap.protection;
+   statusLabel=basic&&snap.checksPass&&snap.requiredChecksKnown&&snap.requiredChecksPass?"PASS":snap.checksFail||p.mergeable===false||snap.removed?"FAIL":"UNKNOWN";
+   notes.push("Checks current head SHA "+p.head.sha+".");
+   notes.push("Latest reviewer states with at least one approval: "+snap.approvals+".");
+   notes.push("Branch protection evidence: "+(snap.protection?"retrieved":"UNKNOWN")+"; inaccessible protection rules block a PASS.");
+   notes.push("This verifier does not perform or authorize a merge; user approval and server-side policy enforcement remain separate.");
+  }else if(stage==="after-merge"){
+   if(p.merged&&p.merge_commit_sha){
+    const [baseRef,mergeChecks]=await Promise.allSettled([
+     api("/repos/"+repoName+"/branches/"+encodeURIComponent(p.base.ref)),
+     api("/repos/"+repoName+"/commits/"+p.merge_commit_sha+"/check-runs?per_page=100")
+    ]);
+    const baseSha=baseRef.status==="fulfilled"?baseRef.value.commit.sha:null;
+    const compare=baseSha?await api("/repos/"+repoName+"/compare/"+p.merge_commit_sha+"..."+baseSha):null;
+    const postRuns=mergeChecks.status==="fulfilled"?mergeChecks.value.check_runs||[]:null;
+    statusLabel=compare&&(compare.status==="ahead"||compare.status==="identical")&&postRuns&&postRuns.length&&postRuns.every(x=>x.status==="completed"&&x.conclusion==="success")?"PASS":"UNKNOWN";
+    notes.push("Merged commit: "+p.merge_commit_sha);
+    notes.push("Base branch contains merge commit: "+(compare?(compare.status==="ahead"||compare.status==="identical"):"UNKNOWN"));
+    notes.push("Post-merge checks are bound to merge commit SHA; unavailable or incomplete checks remain UNKNOWN.");
+   }else statusLabel=p.merged?"UNKNOWN":"FAIL";
+  }
+  if(snap.errors.length)notes.push("Evidence retrieval limitations: "+snap.errors.join(" | "));
+  if(!snap.checksKnown&&["before-merge","after-merge"].includes(stage))notes.push("No complete check-run and commit-status evidence returned.");
+  out.textContent=JSON.stringify({stage,status:statusLabel,repository:repoName,pr_number:p.number,url:p.html_url,state:p.state,merged:p.merged,head_branch:p.head.ref,head_sha:p.head.sha,base_branch:p.base.ref,base_sha:p.base.sha,mergeable:p.mergeable,merge_commit_sha:p.merge_commit_sha,changed_files:p.changed_files,deleted_files:snap.removed,latest_approvals:snap.approvals,branch_protection_verified:!!snap.protection,required_checks_known:snap.requiredChecksKnown,required_checks_pass:snap.requiredChecksPass,head_checks_pass:snap.checksPass,head_checks_fail:snap.checksFail,notes},null,2);
+ }catch(error){out.textContent="UNKNOWN — lifecycle verification incomplete. "+error.message}
+};
+
 $("user-load").onclick=async()=>{let n=$("user-name").value.trim();if(!/^[A-Za-z0-9-]{1,39}$/.test(n)){msg("user-msg","Enter a valid GitHub username.");return}msg("user-msg","Loading profile…");try{let u=await api("/users/"+encodeURIComponent(n));state.user=u;msg("user-msg","Public profile loaded; this does not prove membership or permissions.");$("user-data").innerHTML='<h3>'+esc(u.name||u.login)+'</h3>'+link(u.html_url,"Open profile")+table(["Property","Value"],[["Username",esc(u.login)],["Bio",esc(u.bio||"—")],["Public repositories",esc(u.public_repos)],["Followers",esc(u.followers)],["Following",esc(u.following)],["Created",esc(u.created_at)]])}catch(e){state.user=null;msg("user-msg","Could not load profile: "+e.message)}};
 $("user-clear").onclick=()=>{$("user-name").value="";state.user=null;msg("user-msg","Cleared.");$("user-data").innerHTML='<div class="empty">Profile details appear here.</div>'};
 
@@ -461,6 +601,53 @@ function gateResult(){let sha=$("gate-sha").value.trim(),g=[];document.querySele
 $("gate-eval").onclick=()=>{state.gates=gateResult();msg("gate-output",(state.gates.ready?"All selected gates reported PASS locally; source verification still required.":"BLOCKED / UNKNOWN — required gates are not all passing.")+"\n"+state.gates.errors.join("\n")+"\n"+JSON.stringify(state.gates,null,2))};$("gate-reset").onclick=()=>{document.querySelectorAll("[data-g]").forEach(x=>x.value="unknown");state.gates=null;msg("gate-output","Readiness UNKNOWN — results reset.")};$("gate-export").onclick=()=>download("quality-gates.json",JSON.stringify(state.gates||gateResult(),null,2),"application/json");
 function checkpoint(){let v=id=>$(id).value.trim();return "# Development Checkpoint\n\n## Target\n- Repository: "+(v("cp-repo")||"Not specified")+"\n- Branch: "+(v("cp-branch")||"Not specified")+"\n- Commit SHA: "+(v("cp-sha")||"UNKNOWN")+"\n- Created: "+new Date().toISOString()+"\n\n## Goal\n"+(v("cp-goal")||"Not specified")+"\n\n## Completed\n"+(v("cp-done")||"- None recorded")+"\n\n## Remaining / blockers\n"+(v("cp-pending")||"- None recorded")+"\n\n## Tests and evidence\n"+(v("cp-tests")||"- No test evidence; UNKNOWN.")+"\n\n## Safety\n- No force-push or history rewrite.\n- Required gates must pass on the exact full SHA.\n- Missing, stale, mismatched or unverifiable evidence is UNKNOWN.\n- This checkpoint is not proof of successful tests.\n"}
 $("cp-build").onclick=()=>$("cp-output").value=checkpoint();$("cp-copy").onclick=()=>copy($("cp-output").value||checkpoint());$("cp-download").onclick=()=>download("CHECKPOINT.md",$("cp-output").value||checkpoint(),"text/markdown");
+const documentState={content:"",filename:"",digest:"",generated:false,downloadRequested:false};
+function docSafeName(value){return (value||"project-document").trim().replace(/[^A-Za-z0-9._-]+/g,"-").replace(/^-+|-+$/g,"").slice(0,90)||"project-document"}
+function docLines(value){return (value||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean)}
+function docBuild(){
+ const type=$("doc-type").value,project=$("doc-project").value.trim()||"TBD",title=$("doc-title").value.trim()||"Untitled document",version=$("doc-version").value.trim()||"UNKNOWN",purpose=$("doc-purpose").value.trim(),source=$("doc-source").value.trim(),milestones=docLines($("doc-milestones").value),risks=$("doc-risks").value.trim();
+ const missing=[];if(!purpose)missing.push("purpose/scope");if(!source)missing.push("verified context");if(type==="roadmap"&&!milestones.length)missing.push("milestones");
+ let content="";
+ if(type==="text"){
+  content=[title,"=".repeat(Math.min(80,title.length)),"Project: "+project,"Version / Date: "+version,"","PURPOSE AND SCOPE",purpose||"TBD — input required","","VERIFIED CONTEXT",source||"UNKNOWN — no verified context supplied","","MILESTONES / TASKS",...(milestones.length?milestones.map((x,i)=>(i+1)+". "+x):["UNKNOWN — no milestones supplied"]),"","RISKS / DEPENDENCIES / ACCEPTANCE",risks||"TBD — input required","","COMPLETENESS",missing.length?"INCOMPLETE — "+missing.join(", "):"INPUT FIELDS PRESENT — independent factual review still required",""].join("\n");
+ }else if(type==="roadmap"){
+  content=["# "+title,"","- Project: "+project,"- Version / Date: "+version,"- Overall status: UNKNOWN until verified against repository and CI evidence","","## Objective",purpose||"TBD — input required","","## Current verified baseline",source||"UNKNOWN — no verified context supplied","","## Milestones",milestones.length?milestones.map((x,i)=>(i+1)+". "+x).join("\n"):"- TBD — milestones not supplied","","## Dependencies and risks",risks||"TBD — dependencies and risks require review","","## Acceptance criteria","- Each milestone has an owner, measurable completion criteria, and evidence source.","- CI results are bound to the exact full commit SHA.","- Missing, skipped, pending, stale, or inaccessible evidence is UNKNOWN, not PASS.","- Project boundaries and write permissions are independently enforced.","","## Next actions","1. Verify the baseline against the selected repository and exact commit SHA.","2. Resolve TBD / UNKNOWN inputs before marking milestones complete.","3. Record test, review, and post-merge evidence.","","## Status policy","Use PASS / FAIL / SKIPPED / UNKNOWN. Do not infer completion from a plan or generated document.",""].join("\n");
+ }else{
+  content=["# "+title,"","**Project:** "+project+"  ","**Version / Date:** "+version,"","## 1. Purpose and scope",purpose||"TBD — input required","","## 2. Verified context and current state",source||"UNKNOWN — no verified context supplied","","## 3. Requirements and milestones",...(milestones.length?milestones.map((x,i)=>(i+1)+". "+x):["- TBD — requirements and milestones not supplied"]),"","## 4. Risks, dependencies, and acceptance criteria",risks||"TBD — input required","","## 5. Validation and evidence","- Verify implementation against the selected repository and exact commit SHA.","- Record test results with source URLs and timestamps.","- Missing, skipped, pending, stale, or inaccessible evidence remains UNKNOWN.","","## 6. Next steps","1. Review all TBD / UNKNOWN fields.","2. Validate references and acceptance criteria.","3. Update status only after inspecting evidence.","","## 7. Document completeness",missing.length?"INCOMPLETE — missing: "+missing.join(", "):"INPUT FIELDS PRESENT — factual and technical review is still required.",""].join("\n");
+ }
+ const sensitive=/(gh[pousr]_[A-Za-z0-9_]{20,}|-----BEGIN (?:RSA |OPENSSH |EC )?PRIVATE KEY-----|AKIA[0-9A-Z]{16})/.test(content);
+ if(sensitive)throw Error("Potential credential/private-key pattern detected. Remove sensitive content before generating.");
+ return {content,missing,project,title,type,sensitive};
+}
+async function docDigest(content){
+ if(!globalThis.crypto?.subtle||!globalThis.TextEncoder)return "UNAVAILABLE";
+ const bytes=new TextEncoder().encode(content),hash=await crypto.subtle.digest("SHA-256",bytes);
+ return [...new Uint8Array(hash)].map(x=>x.toString(16).padStart(2,"0")).join("");
+}
+$("doc-generate").onclick=async()=>{
+ try{
+  const built=docBuild();
+  documentState.content=built.content;
+  documentState.filename=docSafeName(built.title)+(built.type==="text"?".txt":built.type==="roadmap"?"-ROADMAP.md":".md");
+  documentState.generated=true;documentState.downloadRequested=false;
+  $("doc-output").value=built.content;$("doc-download").disabled=false;
+  // Start the download synchronously within the user's click gesture.
+  download(documentState.filename,documentState.content,documentState.filename.endsWith(".md")?"text/markdown;charset=utf-8":"text/plain;charset=utf-8");
+  documentState.downloadRequested=true;
+  documentState.digest=await docDigest(built.content);
+  const status=built.missing.length?"GENERATED · INCOMPLETE INPUTS":"GENERATED · REVIEW REQUIRED";
+  msg("doc-status",status+"\\nDownload requested: "+documentState.filename+".\\nThe browser cannot confirm disk persistence; repository write/read-back remains UNKNOWN.");
+  msg("doc-integrity","Generated artifact SHA-256: "+documentState.digest+"\\nCharacters: "+built.content.length+" · UTF-8 bytes: "+new TextEncoder().encode(built.content).length+"\\nRepository write/read-back: UNKNOWN — no authorized write adapter is connected.");
+ }catch(error){documentState.generated=false;$("doc-download").disabled=true;msg("doc-status","FAIL — "+error.message);msg("doc-integrity","Integrity: UNKNOWN");}
+};
+$("doc-copy").onclick=()=>{if(!documentState.generated){msg("doc-status","Generate the document first.");return}copy(documentState.content)};
+$("doc-download").onclick=()=>{
+ if(!documentState.generated){msg("doc-status","Generate the document first.");return}
+ download(documentState.filename,documentState.content,documentState.filename.endsWith(".md")?"text/markdown;charset=utf-8":"text/plain;charset=utf-8");
+ documentState.downloadRequested=true;
+ msg("doc-status","DOWNLOAD REQUESTED · "+documentState.filename+"\nThe browser does not confirm disk persistence. File read-back and repository write status remain UNKNOWN.");
+};
+
 const audits=[["a-target","Target repository, branch and full SHA verified."],["a-scope","Diff and changed-file scope reviewed."],["a-secret","No secrets or private data added."],["a-tests","Required tests and security scans have real results."],["a-evidence","Evidence is fresh and bound to the exact SHA."],["a-history","No force-push, history rewrite or direct main edit."],["a-auth","Write scope has explicit approval and server enforcement."]];
 $("audit-list").innerHTML=audits.map(([id,t])=>'<div class="check"><input type="checkbox" id="'+id+'"><label for="'+id+'">'+t+'</label></div>').join("");
 function auditResult(){let items=audits.map(([id,t])=>({item:t,checked:$(id).checked}));return {items,complete:items.every(x=>x.checked),missing:items.filter(x=>!x.checked).map(x=>x.item),note:"Browser checklist only, not a durable audit log."}}
@@ -1850,7 +2037,7 @@ document.querySelector('[data-tab="infrastructure"]')?.addEventListener("click",
   'dev-tools':'DEVELOPMENT','terminal-studio':'DEVELOPMENT','ui-routes':'DESIGN & SIMULATION','ui-simulator':'DESIGN & SIMULATION',
   'route-colors':'DESIGN & SIMULATION','github-api':'INTEGRATIONS','repo-selector':'GITHUB',
   repo:'GITHUB',pr:'GITHUB',user:'GITHUB',workspace:'GITHUB',
-  evidence:'ASSURANCE','gates':'ASSURANCE','checkpoint':'ASSURANCE',audit:'ASSURANCE'
+  evidence:'ASSURANCE','gates':'ASSURANCE','checkpoint':'ASSURANCE','document-generator':'ASSURANCE',audit:'ASSURANCE'
  };
  let lastGroup='';
  tabs.forEach(btn=>{
