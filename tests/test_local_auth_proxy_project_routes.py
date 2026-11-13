@@ -346,6 +346,28 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
         self.assertEqual(status, 404)
         self.assertEqual(len(self.gateway_requests), 0)
 
+    def test_forwards_owner_job_cancellation_through_authenticated_proxy(self):
+        job_id = "123e4567-e89b-42d3-a456-426614174000"
+        path = "/api/jobs/" + job_id + "/cancel"
+        status, _ = self.post(path, {})
+        self.assertEqual(status, 200)
+        self.assertEqual(self.gateway_requests[-1], path)
+        self.assertEqual(self.gateway_methods[-1], "POST")
+        self.assertEqual(json.loads(self.gateway_bodies[-1]), {})
+
+    def test_job_cancellation_requires_session_csrf_and_exact_empty_request(self):
+        job_id = "123e4567-e89b-42d3-a456-426614174000"
+        path = "/api/jobs/" + job_id + "/cancel"
+        status, _ = self.post(path, {}, authenticated=False)
+        self.assertEqual(status, 403)
+        status, _ = self.post(path, {}, valid_csrf=False)
+        self.assertEqual(status, 403)
+        status, _ = self.post(path, {"force": True})
+        self.assertEqual(status, 400)
+        status, _ = self.post(path + "?unexpected=1", {})
+        self.assertEqual(status, 404)
+        self.assertEqual(len(self.gateway_requests), 0)
+
     def test_forwards_csrf_protected_terminal_studio_actions(self):
         requests = (
             ("/api/terminal/commands/preview", {"template_id": "git.status", "parameters": {}}),
