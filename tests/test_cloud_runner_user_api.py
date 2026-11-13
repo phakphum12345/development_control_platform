@@ -419,6 +419,17 @@ class AuthenticatedControlAPITests(unittest.TestCase):
             claimed = json.loads(response.read())["job"]
         self.assertEqual(claimed["id"], job["id"])
         self.assertEqual(claimed["worker"], "worker-test-01")
+        checkpoint = {
+            "version": 1, "step": "source-materialized",
+            "safe_to_resume": True, "data": {"source_sha256": "c" * 64},
+        }
+        with urlopen(runner_request(
+            "/v1/runner/" + job["id"] + "/checkpoint",
+            {"sequence": 1, "checkpoint": checkpoint},
+        )) as response:
+            saved = json.loads(response.read())
+            self.assertEqual(saved["checkpoint_seq"], 1)
+            self.assertEqual(saved["checkpoint"], checkpoint)
         with urlopen(runner_request("/v1/runner/" + job["id"] + "/heartbeat", {})) as response:
             self.assertEqual(json.loads(response.read())["state"], "running")
         with urlopen(runner_request("/v1/runner/" + job["id"] + "/logs",
@@ -456,6 +467,16 @@ class AuthenticatedControlAPITests(unittest.TestCase):
         self.assertEqual(first["worker"], "worker-test-01")
         self.assertEqual(first["attempt_count"], 1)
         self.assertEqual(first["max_attempts"], 3)
+        checkpoint = {
+            "version": 1, "step": "build-inputs-ready",
+            "safe_to_resume": True, "data": {"input_sha256": "f" * 64},
+        }
+        with urlopen(runner_request(
+            self.runner_token, "/v1/runner/" + job["id"] + "/checkpoint",
+            {"sequence": 1, "checkpoint": checkpoint},
+        )) as response:
+            saved = json.loads(response.read())
+            self.assertEqual(saved["checkpoint_seq"], 1)
 
         with self.job_store.db() as db:
             db.execute(
@@ -463,6 +484,11 @@ class AuthenticatedControlAPITests(unittest.TestCase):
                 ("2000-01-01T00:00:00+00:00", job["id"]),
             )
 
+        self.assertEqual(self.job_store.recover_expired_leases()[0]["state"], "retry_wait")
+        self.assertIsNone(self.job_store.claim("worker-test-02", 60, ["test"]))
+        with self.job_store.db() as db:
+            db.execute("UPDATE jobs SET retry_after=? WHERE id=?",
+                       ("2000-01-01T00:00:00+00:00", job["id"]))
         with urlopen(runner_request(
             self.runner_token_2, "/v1/runner/claim", {"lease_seconds": 60}
         )) as response:
@@ -471,6 +497,8 @@ class AuthenticatedControlAPITests(unittest.TestCase):
         self.assertEqual(second["worker"], "worker-test-02")
         self.assertEqual(second["last_worker"], "worker-test-01")
         self.assertEqual(second["attempt_count"], 2)
+        self.assertEqual(second["checkpoint_seq"], 1)
+        self.assertEqual(second["checkpoint"], checkpoint)
 
         stale_heartbeat = runner_request(
             self.runner_token, "/v1/runner/" + job["id"] + "/heartbeat", {}
@@ -493,7 +521,7 @@ class AuthenticatedControlAPITests(unittest.TestCase):
 
         recovery_event = next(
             event for event in self.job_store.events(job["id"])
-            if event["event"] == "lease_expired_requeued"
+            if event["event"] == "lease_expired_retry_wait"
         )
         self.assertEqual(recovery_event["detail"]["worker"], "worker-test-01")
         self.assertEqual(recovery_event["detail"]["attempt_count"], 1)
@@ -765,6 +793,54 @@ class AuthenticatedControlAPITests(unittest.TestCase):
             self.assertEqual(json.loads(response.read())["runner"]["state"], "online")
         claimed = client.claim(lease_seconds=60)
         self.assertEqual(claimed["id"], job["id"])
+
+    def test_expired_job_without_safe_checkpoint_is_unknown_until_owner_resume(self):
+        job, _ = self.job_store.create(
+            {"repository": "example/private-app", "commit_sha": "e" * 40, "target": "test"},
+            "runner-unknown-reconcile-01",
+        )
+        def runner_request(token, path, body):
+            return Request(self.base + path, data=json.dumps(body).encode(), method="POST",
+                           headers={"Authorization": "Bearer " + token,
+                                    "Content-Type": "application/json"})
+        for token in (self.runner_token, self.runner_token_2):
+            with urlopen(runner_request(token, "/v1/runner/register", {
+                "host_os": "linux", "capabilities": ["flutter", "linux"],
+            })):
+                pass
+        with urlopen(runner_request(self.runner_token, "/v1/runner/claim", {"lease_seconds": 60})):
+            pass
+        with self.job_store.db() as db:
+            db.execute("UPDATE jobs SET lease_until=? WHERE id=?",
+                       ("2000-01-01T00:00:00+00:00", job["id"]))
+        with urlopen(runner_request(self.runner_token_2, "/v1/runner/claim", {"lease_seconds": 60})) as response:
+            self.assertIsNone(json.loads(response.read())["job"])
+        self.assertEqual(self.job_store.get(job["id"])["state"], "unknown")
+
+        csrf = self._csrf("nonce_job_resume_session_01")
+        operator_resume = self._dashboard_post(
+            "/api/jobs/" + job["id"] + "/resume", "nonce_job_resume_operator_01",
+            {"confirmation": "RESUME UNKNOWN JOB"}, role="operator", csrf=csrf,
+        )
+        with self.assertRaises(HTTPError) as error:
+            urlopen(operator_resume)
+        try:
+            self.assertEqual(error.exception.code, 403)
+        finally:
+            error.exception.close()
+
+        owner_resume = self._dashboard_post(
+            "/api/jobs/" + job["id"] + "/resume", "nonce_job_resume_owner_0001",
+            {"confirmation": "RESUME UNKNOWN JOB"}, role="owner", csrf=csrf,
+        )
+        with urlopen(owner_resume) as response:
+            resumed = json.loads(response.read())
+            self.assertEqual(resumed["state"], "queued")
+        with urlopen(runner_request(self.runner_token_2, "/v1/runner/claim", {"lease_seconds": 60})) as response:
+            claimed = json.loads(response.read())["job"]
+            self.assertEqual(claimed["id"], job["id"])
+            self.assertEqual(claimed["attempt_count"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()
