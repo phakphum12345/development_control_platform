@@ -1,14 +1,14 @@
 # Terminal Studio — App-Controlled Workspace Execution
 
-Status: WP-02 implementation contract (in progress)
-Branch: feat/terminal-studio-authorized-workspace-execution
-Base: a34281ffc837ac171508df009ff504b4d4dd22b1
+Status: Implementation merged via PR #112; execution remains fail-closed pending isolation gates
+PR #112 merge commit: b0a2cd0d542491886a529666909024af1fb64ced
+Current main baseline at this checkpoint: e008844d8c6e6b15c71b7bf36f00f42e66233387
 
 ## Product outcome
 
-An authenticated user selects a Project, a Project Workspace, and a catalogued Script in Dashboard. The app authorizes that exact operation and submits a typed job. A trusted Runner independently verifies the job and executes the server-resolved template inside the assigned workspace. Output, cancellation, timeout, result, and audit evidence return to Dashboard.
+Target behavior: an authenticated user selects a Project, a Project Workspace, and a catalogued Script in Dashboard. The app authorizes that exact operation and submits a typed job. A trusted Runner independently verifies the job and executes the server-resolved template inside the assigned workspace. Output, cancellation, timeout, result, and audit evidence return to Dashboard.
 
-This is an execution-capable project tool, not a preview-only command list and not an arbitrary browser shell.
+PR #112 merged the Dashboard grant/confirm/queue workflow, typed Job API, Runner grant binding/consumption, bounded redacted output, and reuse of the existing Job status/log/cancel lifecycle. The code path is present, but all built-in templates remain disabled; therefore the target execution behavior is not currently enabled. This is not an arbitrary browser shell.
 
 ## Non-negotiable trust boundary
 
@@ -153,8 +153,10 @@ Terminal output is captured within a strict byte limit, redacted as a complete b
 - All built-in catalog templates still have execution_enabled: false. The API and Runner therefore fail closed by default; this branch does not authorize production execution merely because the code path exists.
 - Imported command packs remain inert. Approval/review does not make an imported template executable.
 - The Project Registry and browser-facing Local Project API are Owner-only. There is no per-user Project ACL/capability model yet; do not broaden access beyond the existing Owner boundary.
-- The Runner executes read-only built-ins in the actual registered Project Workspace, but no OS sandbox or kernel-level network isolation is claimed.
-- The Dashboard Run flow, real-time output streaming, terminal-specific history and interactive PTY are not implemented.
+- The Runner execution code path resolves only fixed read-only built-ins in the actual registered Project Workspace, but every built-in template remains `execution_enabled=false`; no Terminal process can currently be started from the catalog.
+- No OS sandbox or kernel-level network isolation is claimed. Workspace binding, a temporary HOME, sanitized PATH, fixed argv and process-tree termination are defense-in-depth controls, not an isolation boundary.
+- The Dashboard Run flow, separate grant confirmation, idempotent queue submission, Job status/log polling, and cancellation controls are implemented through the existing Job Control Plane. Interactive PTY and independent terminal-specific history remain out of scope.
+- Before any template is enabled, complete OS-isolation design and acceptance, Git helper/config hardening, adversarial tests, process-tree cleanup verification, and real supported-host acceptance. Git read-only commands must not invoke repository-configured fsmonitor hooks, external diff helpers, textconv filters or pagers.
 - CI must be evaluated against the exact latest PR head. Pending, skipped, missing or cancelled workflows are not PASS.
 - No PR merge, deployment or template enablement is implied by these implementation commits.
 

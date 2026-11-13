@@ -3,7 +3,7 @@
 ## Universal Continuous Execution & Evidence Protocol
 
 **Protocol Type:** Universal Work Orchestration, Research, Execution & Verification  
-**Status:** Proposed Master Standard — Pending Repository Integration  
+**Status:** Integrated into main as a proposal via PR #113 — NOT ADOPTED; DCP-CEEP v1.0 remains the operational standard  
 **Scope:** All projects, repositories, applications, research and operational workflows
 
 ---

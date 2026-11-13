@@ -147,8 +147,8 @@ Historical gate for PR #71: its Chromium sandbox launch failure applied to that 
 
 ## 2026-11-12 verified phase status after PR #88
 
-- Phase 3 — Terminal Studio foundations: PARTIAL. Dashboard catalog, exact argv preview, inert JSON import, private SQLite persistence, source-hash-bound Owner review and audit history are merged. Visual Command Builder, project/workspace binding, Terminal job API, Local Agent execution broker, cancellation and redacted process logs remain outstanding.
-- Terminal execution remains BLOCKED by design until a verified OS isolation approach is available. Per-job workspace separation is not equivalent to an OS sandbox.
+- Phase 3 — Terminal Studio foundations: PARTIAL. Dashboard catalog, typed parameter builder, exact argv preview, inert JSON import, private SQLite persistence, source-hash-bound Owner review/audit, Project Workspace binding, app-authorized one-time grants, separately confirmed idempotent Job submission, Runner lease-bound grant consumption, bounded/redacted logs, Job status polling and cancellation are merged via PR #112. Interactive PTY remains out of scope.
+- Terminal execution remains BLOCKED by design: every built-in catalog template has execution_enabled=false. Do not enable any template until OS isolation, Git helper/config hardening, adversarial tests, process-tree cleanup verification and supported-host acceptance pass. Per-job workspace separation is not an OS sandbox.
 - Phase 4 — Runtime/Preview: static runtime and authenticated preview lifecycle are implemented for supported static output; arbitrary app servers and HMR/WebSocket remain unsupported.
 - Phase 5 — Testing: real Chromium static-project acceptance is implemented in CI. Broader framework coverage, cross-browser and visual regression remain outstanding.
 
@@ -237,3 +237,27 @@ Historical gate for PR #71: its Chromium sandbox launch failure applied to that 
 - PASS, FAIL, SKIPPED, UNKNOWN and IN_PROGRESS remain distinct. Missing or skipped evidence is never promoted to PASS.
 - Every new PR and every changed head SHA requires a fresh baseline and exact-head CI verification. Merge remains blocked until all required gates pass and user authorization is present.
 - Protocol adoption does not waive existing operational acceptance requirements or convert CI evidence into real-host evidence.
+
+
+## 2026-11-14 verified main checkpoint — PRs #110–#113 merged
+
+- PR #110 — Flutter executor cross-platform acceptance — merged as `b2656749749b788b627e0d1ae004b11b69d2a4e1`.
+- PR #111 — DCP-CEEP v1.0 central operating protocol — merged as `4633b692399745796a9da7b0f18a30481bed88b2`.
+- PR #112 — app-authorized Terminal grants, Project Workspace binding and Dashboard Job workflow — merged as `b0a2cd0d542491886a529666909024af1fb64ced`.
+- PR #113 — DCP-CEEP v2.0 universal protocol and migration package — merged as `e008844d8c6e6b15c71b7bf36f00f42e66233387`. The v2.0 document remains Proposed; merging the draft package does not adopt v2.0 as the operational standard. DCP-CEEP v1.0 remains the adopted protocol.
+- Exact current `main` SHA: `e008844d8c6e6b15c71b7bf36f00f42e66233387`. The `Local-first Minimal Emulator` and `Validate Control Plane` push workflows completed successfully on this SHA. No current PRs were open at the baseline check.
+- M16 cross-platform CI acceptance is complete on the merged PR #110 head. Real user-host Flutter SDK/build acceptance and independent process-tree cleanup remain UNKNOWN.
+
+## WP-17 — Terminal execution safety hardening (in progress)
+
+**Objective:** close unsafe Git helper/config execution paths and make Dashboard grant retry handling reliable without enabling any command template.
+
+- Force safe Git configuration for read-only inspection: disable repository-configured fsmonitor, external diff helpers, pagers and all configured clean/smudge/process filters; disable textconv for diff/show; retain a fresh temporary HOME, sanitized PATH, `shell=false`, and bounded process controls.
+- Preserve HTTP response status on Dashboard API errors so 400/403 grant rejection clears the stale grant while uncertain transport/server failures retry only with the same idempotency key.
+- Add focused unit and Dashboard contract tests.
+- Reconcile Terminal API, architecture, Studio, backlog and continuity documentation with merged PR #112 behavior.
+- Keep every built-in template disabled. This work does not prove OS isolation, enable execution, or substitute for real-host acceptance.
+
+**PR #114:** [security(terminal): harden Git helpers and grant retry handling](https://github.com/phakphum12345/development_control_platform/pull/114), OPEN, non-draft. The latest test/code head before the continuity-ledger refresh is `28d32c96d05561181de1aab7c5c749fe29ee4637`; PR #114 has 12 changed files. The test exercises repository-local fsmonitor and clean-filter hooks, including Windows-safe executable paths; configured filter-driver names remain case-sensitive. Exact-head CI must be rechecked after the next checkpoint commit.
+
+**Remaining gates:** exact-head CI; security review of the Git invocation path; adversarial tests for repository-controlled helper configuration; supported Windows/Linux host acceptance; independent process-tree termination and workspace cleanup evidence; then a separate reviewed decision before any catalog template is enabled. PR #114 has not been approved for merge.

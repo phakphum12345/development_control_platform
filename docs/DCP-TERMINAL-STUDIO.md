@@ -83,23 +83,28 @@ A bounded, schema-driven Visual Command Builder is now implemented for the curat
 - All built-in commands remain read-only, network-denied and preview-only. No shell, PTY or process execution is introduced.
 
 
-## App-authorized backend execution checkpoint — 2026-11-13
+## App-authorized execution workflow — merged PR #112
 
-The feature branch now implements the backend path for a future Dashboard Run action:
+PR #112 was merged to `main` as `b0a2cd0d542491886a529666909024af1fb64ced`. The merged implementation includes:
 
-- Owner-only POST /api/terminal/authorize issues a short-lived, one-time grant bound to the authenticated subject/session, project, workspace, current snapshot, trusted template version and normalized parameter digest. Same-origin and CSRF checks are mandatory.
-- Owner-only POST /api/terminal/jobs accepts only typed project/workspace identifiers, snapshot digest, trusted template ID, typed parameters and the opaque grant reference. It reserves the grant to a deterministic Job ID before the Job becomes visible to Runner polling and scopes idempotency to the authenticated session.
-- The existing durable Job Store and capability-aware Runner Scheduler carry the terminal_script target. Only a registered Runner that explicitly advertises the terminal capability can claim it.
-- The Runner verifies the active Job lease through its credential-authenticated Gateway endpoint. The grant is bound to that Runner and atomically consumed once.
-- The Runner resolves the registered Project Workspace from its own Local Project Registry and checks the project/workspace pairing and current snapshot. It invokes only the fixed catalog template with a trusted native executable, server-derived argv and shell=false.
-- Terminal output is bounded and redacted before being appended to existing durable Job logs. Timeout, cancellation polling, process-tree termination and scratch-workspace cleanup use the existing Runner/Job primitives.
+- Owner-only `POST /api/terminal/authorize` issues a short-lived, one-time grant bound to the authenticated subject/session, project, workspace, current snapshot, trusted template version and normalized parameter digest. Same-origin and CSRF checks are mandatory.
+- Owner-only `POST /api/terminal/jobs` accepts typed project/workspace identifiers, snapshot digest, trusted template ID, typed parameters and the opaque grant reference. It reserves the grant to a deterministic Job ID before the Job becomes visible to Runner polling and scopes idempotency to the authenticated session.
+- The durable Job Store and capability-aware Runner Scheduler carry the `terminal_script` target. Only a registered Runner advertising the terminal capability can claim it.
+- The Runner verifies the active Job lease using its credential-authenticated Gateway endpoint. The grant is bound to that Runner and atomically consumed once.
+- The Runner resolves the registered Project Workspace from its own Local Project Registry and checks the project/workspace pairing and current snapshot. It invokes only the fixed catalog template with a trusted native executable, server-derived argv and `shell=false`.
+- Terminal output is bounded and redacted before it is appended to durable Job logs. Existing Job status, incremental logs, cancellation, lease and recovery routes are reused.
+- Dashboard Terminal Studio includes Project Workspace selection, typed parameter forms, exact preview, app authorization, a separate confirmation before queueing, idempotent submission, Job history/status/log polling and cancellation.
 
-### Current release gate
+### Current release gate — execution remains BLOCKED
 
-- Every built-in template remains execution_enabled=false. The new backend API therefore fails closed by default; Runner opt-in does not override catalog policy.
+- Every built-in template remains `execution_enabled=false`. Authorization and Job submission therefore fail closed; the current catalog cannot start a Terminal process. Runner opt-in does not override catalog policy.
 - Imported templates remain inert even after Owner review. No imported script is runnable.
-- The Dashboard still has only catalog, preview, import and review controls. The Run button, Project/Workspace selector, grant confirmation view and Terminal job output panel are not implemented yet.
-- The Runner captures output within the byte ceiling, redacts the complete bounded stream, then appends bounded messages to durable Job logs. The Dashboard does not yet display those logs live; the Run panel and live log view remain outstanding. Interactive PTY is out of scope.
-- Project discovery and authorization remain Owner-only. There is no per-user Project ACL model yet.
-- The Runner executes the read-only fixed templates in the actual registered project directory, but this is not an OS sandbox and does not provide kernel-enforced network isolation. Processes retain the Runner service account's OS permissions.
-- The implementation and acceptance tests are on a draft PR. Do not mark the work complete until all required workflows pass for the exact latest PR head and the Dashboard Run workflow is implemented and verified.
+- Browser requests contain only identifiers, typed parameters and the opaque grant. The browser never supplies executable paths, raw argv, cwd, environment, shell text or Runner credentials.
+- The Runner uses fixed argv, a trusted executable lookup, a temporary HOME, a sanitized PATH, bounded time/output, redaction and process-tree cleanup. These are defense-in-depth controls, not an OS sandbox or kernel-enforced network isolation; processes retain the Runner service account's OS permissions.
+- The Project Registry and browser-facing Local Project API remain Owner-only; a per-user Project ACL model is not implemented.
+- Interactive PTY and arbitrary shell remain out of scope.
+- Real supported-host execution, independent process-tree termination/workspace cleanup evidence, and the Dashboard → Local Auth Proxy → Gateway live acceptance remain UNKNOWN until directly tested.
+
+### Next hardening work
+
+Before any built-in template is enabled, harden Git read-only commands against repository-controlled `core.fsmonitor`, external diff helpers, textconv filters and pagers; verify rejected HTTP grant responses preserve their status so the Dashboard can distinguish a rejected grant from an uncertain submission; add adversarial tests; and complete OS-isolation and host-acceptance gates.

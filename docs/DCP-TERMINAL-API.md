@@ -34,22 +34,26 @@ The initial catalog contains read-only Git status/diff/log and Python/Node versi
 - The fixed-template executor uses a trusted executable registry and argv arrays with `shell=false`. Browser-supplied executable, argv, cwd, environment, shell, runner, role, approval or permission fields are rejected. Imported templates remain inert and cannot be selected for execution.
 - **Current default state:** every built-in catalog entry remains `execution_enabled=false`; authorization and Job submission therefore return a fail-closed response until an explicit reviewed catalog opt-in and the corresponding acceptance gates are completed. Runner-side opt-in alone does not enable execution.
 
-The Dashboard currently displays catalog and preview metadata and supports inert template import/review. A Dashboard Run control and end-to-end UI flow are not yet implemented; the API does not imply that the user-facing feature is complete.
+The Dashboard Run workflow is implemented in the merged Terminal Studio view. It supports registered Project Workspace selection, typed template parameters, exact preview, one-time app authorization, a separate confirmation before queueing, idempotent Job submission, Job status/log polling, and cancellation through the existing Job Control Plane APIs.
 
-## Proposed, not implemented
+The workflow is deliberately not available for execution today: every built-in template remains `execution_enabled=false`, so the authorization/queue gates fail closed and no Terminal Job can be started from the current catalog. Imported templates remain inert even after Owner review. The presence of the UI and API path is not proof of an enabled execution capability or an OS sandbox.
 
-The following remain design targets and must not be treated as available endpoints:
-- GET /api/terminal/jobs/{id} — status and bounded output metadata.
-- POST /api/terminal/jobs/{id}/cancel — owner-authorized process-tree cancellation.
-- GET /api/terminal/jobs/{id}/logs — paginated redacted logs.
-- GET /api/terminal/history — project-scoped execution history.
+## Shared Job lifecycle endpoints used by Terminal Studio
 
-Before any execution feature is enabled, enforce owner authorization, project/workspace scope, CSRF, server-side template resolution, policy approval, idempotency, request limits, bounded logs, secret redaction, audit and verified process-tree cleanup. Arbitrary browser-supplied shell commands remain prohibited.
+These are the existing generic Job Control Plane routes; Terminal Studio filters and validates the `terminal_script` target rather than introducing separate terminal-only status endpoints:
 
+- `GET /api/jobs?limit=50` — recent Job history, filtered by the Dashboard to Terminal Jobs.
+- `GET /api/jobs/{id}` — current state for the selected Job.
+- `GET /api/jobs/{id}/logs?after_id={cursor}&limit={n}` — bounded incremental log retrieval.
+- `POST /api/jobs/{id}/cancel` — request cancellation through the existing owner-authorized Job lifecycle.
+
+Before enabling any built-in template, require a reviewed OS-isolation design, project/workspace scope, same-origin and CSRF enforcement, server-side template resolution, one-time grant/lease binding, idempotency, bounded output, secret redaction, audit, verified process-tree cleanup, adversarial tests and supported-host acceptance. Arbitrary browser-supplied shell commands remain prohibited.
 
 ## Dashboard integration
 
-The Dashboard Terminal Studio view calls the implemented catalog and preview endpoints through same-origin requests with the authenticated session cookie and server-issued CSRF token. It renders returned preview metadata as text. It does not execute commands or expose a shell.
+The Dashboard Terminal Studio view uses same-origin requests with the authenticated session cookie and server-issued CSRF token. The browser sends only project/workspace identifiers, a trusted template ID, typed parameters and the opaque one-time authorization grant; it never supplies an executable, raw argv, cwd, environment, shell text or Runner credentials. The Owner reviews the exact workspace/template/snapshot and confirms separately before the Gateway queues a durable typed Job.
+
+The Dashboard polls the shared Job status and bounded log APIs, retries interrupted polling with bounded backoff, and requests cancellation through the shared Job lifecycle. HTTP status codes are preserved on request errors so the queue handler can distinguish rejected grants (400/403) from uncertain network/server outcomes and safely reuse the same idempotency key.
 
 
 The Dashboard integration also includes an owner-session JSON import form for `POST /api/terminal/templates/import`. It sends the parsed JSON object through a same-origin request with the server-issued CSRF token, displays the returned source SHA-256, reloads the catalog and selects the first imported template. Imported templates remain pending review and cannot be executed.

@@ -197,6 +197,24 @@ class TerminalScriptExecutor:
             env["GIT_OPTIONAL_LOCKS"] = "0"
             env["GIT_TERMINAL_PROMPT"] = "0"
             env["GIT_CONFIG_NOSYSTEM"] = "1"
+            env["GIT_ATTR_NOSYSTEM"] = "1"
+            env["GIT_PAGER"] = "cat"
+            env["PAGER"] = "cat"
+            # Environment config is applied after repository-local config. This
+            # prevents a project-controlled fsmonitor hook or external diff/pager
+            # helper from running during otherwise read-only Git inspection.
+            git_config = (
+                ("core.fsmonitor", "false"),
+                ("diff.external", ""),
+                ("core.pager", "cat"),
+                ("pager.diff", "false"),
+                ("pager.log", "false"),
+                ("pager.show", "false"),
+            )
+            env["GIT_CONFIG_COUNT"] = str(len(git_config))
+            for index, (key, value) in enumerate(git_config):
+                env[f"GIT_CONFIG_KEY_{index}"] = key
+                env[f"GIT_CONFIG_VALUE_{index}"] = value
         system_root = os.environ.get("SYSTEMROOT") or os.environ.get("SystemRoot")
         if system_root:
             env["SYSTEMROOT"] = system_root
@@ -204,6 +222,66 @@ class TerminalScriptExecutor:
         env["PYTHONDONTWRITEBYTECODE"] = "1"
         env["PYTHONNOUSERSITE"] = "1"
         return env
+
+    @staticmethod
+    def _build_command(resolved: str, executable: str, argv: list[str]) -> list[str]:
+        """Build fixed argv while disabling external diff and textconv helpers."""
+        if executable != "git":
+            return [resolved, *argv]
+        if not argv:
+            raise TerminalExecutionError("Git template did not provide a subcommand")
+        command_args = list(argv)
+        if command_args[0] in {"diff", "show"}:
+            command_args = [
+                command_args[0], "--no-ext-diff", "--no-textconv",
+                *(arg for arg in command_args[1:] if arg not in {"--no-ext-diff", "--no-textconv"}),
+            ]
+        return [resolved, *command_args]
+
+    @staticmethod
+    def _disable_repository_filters(
+        resolved: str, workspace: Path, env: dict[str, str]
+    ) -> None:
+        """Disable repository-defined clean/smudge/process filters before Git inspection."""
+        try:
+            result = subprocess.run(
+                [resolved, "config", "--name-only", "--null", "--list"],
+                cwd=str(workspace), env=env, stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                shell=False, close_fds=True, timeout=5, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            raise TerminalExecutionError(
+                "Git repository filter configuration could not be inspected safely"
+            ) from None
+        if result.returncode != 0:
+            raise TerminalExecutionError(
+                "Git repository filter configuration could not be inspected safely"
+            )
+
+        drivers: dict[str, str] = {}
+        for raw_key in result.stdout.split(b"\0"):
+            if not raw_key:
+                continue
+            key = raw_key.decode("utf-8", "replace")
+            section, separator, setting = key.rpartition(".")
+            if not separator or setting.casefold() not in {"clean", "smudge", "process", "required"}:
+                continue
+            if not section.casefold().startswith("filter."):
+                continue
+            driver = section[len("filter."):]
+            if driver:
+                drivers.setdefault(driver, driver)
+
+        index = int(env.get("GIT_CONFIG_COUNT", "0"))
+        for driver in drivers.values():
+            for setting, value in (
+                ("clean", ""), ("smudge", ""), ("process", ""), ("required", "false")
+            ):
+                env[f"GIT_CONFIG_KEY_{index}"] = f"filter.{driver}.{setting}"
+                env[f"GIT_CONFIG_VALUE_{index}"] = value
+                index += 1
+        env["GIT_CONFIG_COUNT"] = str(index)
 
     @staticmethod
     def _log_chunks(value: str, max_bytes: int = 7000):
@@ -306,9 +384,15 @@ class TerminalScriptExecutor:
             shutil.rmtree(job_home, ignore_errors=True)
             raise TerminalExecutionError("Temporary Terminal environment could not be secured") from None
         env = self._environment(template, job_home, safe_path)
+        if executable == "git":
+            try:
+                self._disable_repository_filters(resolved, workspace, env)
+            except TerminalExecutionError:
+                shutil.rmtree(job_home, ignore_errors=True)
+                raise
         timeout = min(int(template["timeout_seconds"]), self.timeout_ceiling_seconds)
         output_limit = min(int(template["max_output_bytes"]), self.output_ceiling_bytes)
-        command = [resolved, *argv]
+        command = self._build_command(resolved, executable, argv)
         creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
         started = time.monotonic()
         try:

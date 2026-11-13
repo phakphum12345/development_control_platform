@@ -153,6 +153,7 @@ class DashboardContractTests(unittest.TestCase):
             '"/api/terminal/templates/import"',
             '"/api/terminal/commands/preview"',
             'Idempotency-Key',
+            'error.status=response.status;',
             'credentials:"same-origin"',
             '"X-CSRF-Token"',
             'execution_enabled:data.execution_enabled',
