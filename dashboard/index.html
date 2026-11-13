@@ -495,22 +495,23 @@ async function lifecycleSnapshot(repoName,number){
   api("/repos/"+repoName+"/pulls/"+number+"/files?per_page=100"),
   api("/repos/"+repoName+"/pulls/"+number+"/reviews?per_page=100"),
   api("/repos/"+repoName+"/commits/"+p.head.sha+"/check-runs?per_page=100"),
-  api("/repos/"+repoName+"/commits/"+p.head.sha+"/status")
+  api("/repos/"+repoName+"/commits/"+p.head.sha+"/status"),
+  api("/repos/"+repoName+"/branches/"+encodeURIComponent(p.base.ref)+"/protection")
  ]);
- return {p,files:results[0].status==="fulfilled"?results[0].value:null,reviews:results[1].status==="fulfilled"?results[1].value:null,checks:results[2].status==="fulfilled"?results[2].value:null,status:results[3].status==="fulfilled"?results[3].value:null,errors:results.map((x,i)=>x.status==="rejected"?["files","reviews","check-runs","commit-status"][i]+": "+x.reason.message:null).filter(Boolean)};
+ return {p,files:results[0].status==="fulfilled"?results[0].value:null,reviews:results[1].status==="fulfilled"?results[1].value:null,checks:results[2].status==="fulfilled"?results[2].value:null,status:results[3].status==="fulfilled"?results[3].value:null,protection:results[4].status==="fulfilled"?results[4].value:null,errors:results.map((x,i)=>x.status==="rejected"?["files","reviews","check-runs","commit-status","branch-protection"][i]+": "+x.reason.message:null).filter(Boolean)};
 }
 function lifecycleEvidence(snapshot){
  const {p,files,reviews,checks,status,errors}=snapshot;
  const checksList=checks?.check_runs||[];
  const contexts=status?.statuses||[];
  const checksKnown=!!checks&&!!status&&(checksList.length+contexts.length)>0;
- const checksPass=checksKnown&&checksList.every(x=>x.status==="completed"&&x.conclusion==="success")&&contexts.every(x=>x.state==="success")&&status.state==="success";
+ const checksPass=checksKnown&&checksList.every(x=>x.status==="completed"&&x.conclusion==="success")&&contexts.every(x=>x.state==="success")&&(contexts.length===0||status.state==="success");
  const checksFail=(checksList.some(x=>x.status==="completed"&&x.conclusion&&x.conclusion!=="success")||contexts.some(x=>x.state==="failure"||x.state==="error")||status?.state==="failure");
  const removed=Array.isArray(files)&&files.some(x=>x.status==="removed");
  const latestByReviewer={};
  (reviews||[]).forEach(x=>{if(x.user?.login)latestByReviewer[x.user.login]=x});
  const approvals=Object.values(latestByReviewer).filter(x=>x.state==="APPROVED").length;
- return {p,files,reviews,checks,status,errors,checksKnown,checksPass,checksFail,removed,approvals};
+ return {p,files,reviews,checks,status,protection:snapshot.protection,errors,checksKnown,checksPass,checksFail,removed,approvals};
 }
 $("pr-lifecycle-verify").onclick=async()=>{
  const repoName=$("pr-repo").value.trim(),number=$("pr-num").value.trim(),stage=$("pr-lifecycle-stage").value;
@@ -522,8 +523,9 @@ $("pr-lifecycle-verify").onclick=async()=>{
    const head=$("pr-lifecycle-head").value.trim(),base=$("pr-lifecycle-base").value.trim()||"main";
    if(!head||!base||head===base)throw Error("Provide distinct head and base branch names.");
    const [h,b]=await Promise.all([api("/repos/"+repoName+"/branches/"+encodeURIComponent(head)),api("/repos/"+repoName+"/branches/"+encodeURIComponent(base))]);
-   const compare=await api("/repos/"+repoName+"/compare/"+h.commit.sha+"..."+b.commit.sha);
-   const result={stage,status:"UNKNOWN",head_branch:head,base_branch:base,head_sha:h.commit.sha,base_sha:b.commit.sha,compare_status:compare.status,ahead_by:compare.ahead_by,behind_by:compare.behind_by,reason:"Branch identity and diff base are verified. CI/review policy and duplicate PR lookup are not fully verified by this static read-only checkpoint."};
+   const [compare,duplicates]=await Promise.all([api("/repos/"+repoName+"/compare/"+b.commit.sha+"..."+h.commit.sha),api("/repos/"+repoName+"/pulls?state=open&head="+encodeURIComponent(repoName.split("/")[0]+":"+head)+"&base="+encodeURIComponent(base))]);
+   const deleted=(compare.files||[]).some(x=>x.status==="removed");
+   const result={stage,status:"UNKNOWN",head_branch:head,base_branch:base,head_sha:h.commit.sha,base_sha:b.commit.sha,compare_status:compare.status,ahead_by:compare.ahead_by,behind_by:compare.behind_by,deleted_files:deleted,existing_open_prs:duplicates.length,reason:"Branch identity, base-to-head comparison, deletion scan, and duplicate-PR lookup are checked. CI/review policy and write authorization remain UNKNOWN in this static read-only checkpoint."};
    out.textContent=JSON.stringify(result,null,2);return;
   }
   if(!/^[1-9]\\d*$/.test(number))throw Error("Enter a positive PR number in Pull Request Review.");
@@ -539,11 +541,12 @@ $("pr-lifecycle-verify").onclick=async()=>{
    statusLabel=p.state==="closed"&&!p.merged?"PASS":p.merged?"FAIL":"UNKNOWN";
    notes.push("Expected closed=true and merged=false for a close-without-merge operation.");
   }else if(stage==="before-merge"){
-   const basic=p.state==="open"&&p.merged===false&&p.mergeable===true&&snap.files&&!snap.removed&&snap.approvals>0;
+   const basic=p.state==="open"&&p.merged===false&&p.mergeable===true&&snap.files&&!snap.removed&&snap.approvals>0&&snap.protection;
    statusLabel=basic&&snap.checksPass?"PASS":snap.checksFail||p.mergeable===false||snap.removed?"FAIL":"UNKNOWN";
    notes.push("Checks current head SHA "+p.head.sha+".");
    notes.push("Latest reviewer states with at least one approval: "+snap.approvals+".");
-   notes.push("Branch protection/required-review policy is not independently available in this static public dashboard; do not treat PASS here as merge authorization.");
+   notes.push("Branch protection evidence: "+(snap.protection?"retrieved":"UNKNOWN")+"; inaccessible protection rules block a PASS.");
+   notes.push("This verifier does not perform or authorize a merge; user approval and server-side policy enforcement remain separate.");
   }else if(stage==="after-merge"){
    if(p.merged&&p.merge_commit_sha){
     const [baseRef,mergeChecks]=await Promise.allSettled([
@@ -561,7 +564,7 @@ $("pr-lifecycle-verify").onclick=async()=>{
   }
   if(snap.errors.length)notes.push("Evidence retrieval limitations: "+snap.errors.join(" | "));
   if(!snap.checksKnown&&["before-merge","after-merge"].includes(stage))notes.push("No complete check-run and commit-status evidence returned.");
-  out.textContent=JSON.stringify({stage,status:statusLabel,repository:repoName,pr_number:p.number,url:p.html_url,state:p.state,merged:p.merged,head_branch:p.head.ref,head_sha:p.head.sha,base_branch:p.base.ref,base_sha:p.base.sha,mergeable:p.mergeable,merge_commit_sha:p.merge_commit_sha,changed_files:p.changed_files,deleted_files:snap.removed,latest_approvals:snap.approvals,head_checks_pass:snap.checksPass,head_checks_fail:snap.checksFail,notes},null,2);
+  out.textContent=JSON.stringify({stage,status:statusLabel,repository:repoName,pr_number:p.number,url:p.html_url,state:p.state,merged:p.merged,head_branch:p.head.ref,head_sha:p.head.sha,base_branch:p.base.ref,base_sha:p.base.sha,mergeable:p.mergeable,merge_commit_sha:p.merge_commit_sha,changed_files:p.changed_files,deleted_files:snap.removed,latest_approvals:snap.approvals,branch_protection_verified:!!snap.protection,head_checks_pass:snap.checksPass,head_checks_fail:snap.checksFail,notes},null,2);
  }catch(error){out.textContent="UNKNOWN — lifecycle verification incomplete. "+error.message}
 };
 
