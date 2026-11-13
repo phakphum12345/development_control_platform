@@ -7,6 +7,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError
@@ -19,6 +20,8 @@ from tools.cloud_gateway.server import make_handler
 from tools.cloud_gateway.service import GatewayService
 from tools.cloud_gateway.store import RunnerStore
 from tools.cloud_gateway.terminal_grants import TerminalGrantStore
+from tools.cloud_gateway.terminal_catalog import preview_template
+from tools.cloud_gateway.terminal_execution_contract import template_version_digest
 from tools.local_runner_agent.local_project import LocalProjectRegistry
 
 
@@ -127,6 +130,98 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
         self.assertEqual(row["framework_detection"]["project_type"], "web")
         self.assertNotIn("workspace", row)
         self.assertNotIn("path", row)
+
+    def _issue_terminal_test_grant(self, *, session="local_project_session_123"):
+        parameters = {}
+        template = preview_template("git_status", parameters)
+        template["execution_enabled"] = True
+        digest = template_version_digest("git_status", parameters)
+        grant = self.service.terminal_grant_store.issue(
+            subject="dcp-owner@example.test", session_id=session,
+            project_id=self.project["project_id"],
+            workspace_id=self.project["workspace_id"],
+            snapshot_sha256=self.project["snapshot_sha256"],
+            template_id="git_status", template_digest=digest,
+            parameters_sha256=self.service.terminal_grant_store.parameters_digest(
+                template["parameter_values"]
+            ),
+        )
+        return grant, template, digest
+
+    def test_terminal_job_is_created_only_with_matching_app_grant(self):
+        grant, enabled_template, digest = self._issue_terminal_test_grant()
+        payload = {
+            "project_id": self.project["project_id"],
+            "workspace_id": self.project["workspace_id"],
+            "snapshot_sha256": self.project["snapshot_sha256"],
+            "template_id": "git_status",
+            "parameters": {},
+            "authorization_id": grant["authorization_id"],
+        }
+        with patch("tools.cloud_gateway.terminal_execution_contract.preview_template", return_value=enabled_template), \
+             patch("tools.cloud_gateway.job_control.preview_template", return_value=enabled_template):
+            status, job = self.request(
+                "/api/terminal/jobs", method="POST", payload=payload,
+                idempotency_key="terminal-job-created-0001",
+            )
+        self.assertEqual(status, 202)
+        self.assertEqual(job["source_type"], "terminal_script")
+        self.assertEqual(job["target"], "terminal_script")
+        self.assertEqual(job["terminal"]["project_id"], self.project["project_id"])
+        self.assertEqual(job["terminal"]["workspace_id"], self.project["workspace_id"])
+        self.assertEqual(job["terminal"]["template_id"], "git_status")
+        self.assertEqual(job["terminal"]["authorization_id"], grant["authorization_id"])
+        with self.service.terminal_grant_store.db() as db:
+            row = db.execute(
+                "SELECT job_id,worker_id FROM terminal_grants WHERE grant_id=?",
+                (grant["authorization_id"],),
+            ).fetchone()
+        self.assertEqual(row["job_id"], job["id"])
+        self.assertIsNone(row["worker_id"])
+
+    def test_terminal_job_rejects_grant_from_another_session(self):
+        grant, enabled_template, _ = self._issue_terminal_test_grant(session="another_session_token_123")
+        payload = {
+            "project_id": self.project["project_id"],
+            "workspace_id": self.project["workspace_id"],
+            "snapshot_sha256": self.project["snapshot_sha256"],
+            "template_id": "git_status",
+            "parameters": {},
+            "authorization_id": grant["authorization_id"],
+        }
+        with patch("tools.cloud_gateway.terminal_execution_contract.preview_template", return_value=enabled_template), \
+             patch("tools.cloud_gateway.job_control.preview_template", return_value=enabled_template):
+            status, result = self.request(
+                "/api/terminal/jobs", method="POST", payload=payload,
+                idempotency_key="terminal-job-session-mismatch",
+            )
+        self.assertEqual(status, 403)
+        self.assertIn("scope", result["error"])
+
+    def test_terminal_grant_cannot_be_reserved_to_two_different_jobs(self):
+        grant, enabled_template, _ = self._issue_terminal_test_grant()
+        payload = {
+            "project_id": self.project["project_id"],
+            "workspace_id": self.project["workspace_id"],
+            "snapshot_sha256": self.project["snapshot_sha256"],
+            "template_id": "git_status",
+            "parameters": {},
+            "authorization_id": grant["authorization_id"],
+        }
+        with patch("tools.cloud_gateway.terminal_execution_contract.preview_template", return_value=enabled_template), \
+             patch("tools.cloud_gateway.job_control.preview_template", return_value=enabled_template):
+            first_status, first = self.request(
+                "/api/terminal/jobs", method="POST", payload=payload,
+                idempotency_key="terminal-job-reserve-first",
+            )
+            second_status, second = self.request(
+                "/api/terminal/jobs", method="POST", payload=payload,
+                idempotency_key="terminal-job-reserve-second",
+            )
+        self.assertEqual(first_status, 202)
+        self.assertEqual(second_status, 403)
+        self.assertNotEqual(first["id"], second.get("id"))
+        self.assertEqual(self.service.job_store.get(second["id"])["state"], "cancelled")
 
     def test_terminal_authorization_endpoint_fails_closed_while_templates_are_disabled(self):
         payload = {
