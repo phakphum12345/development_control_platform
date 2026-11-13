@@ -32,6 +32,7 @@ class LocalProjectRegistryTests(unittest.TestCase):
     def test_enrolls_root_and_registers_project_without_executing_source(self):
         registered = self.registry.register_project(self.root["root_id"], self.project)
         self.assertEqual(registered["relative_path"], "web-app")
+        self.assertEqual(len(registered["workspace_id"]), 36)
         self.assertEqual(registered["file_count"], 2)
         self.assertEqual(registered["total_bytes"], len(
             (self.project / "index.html").read_bytes()
@@ -46,6 +47,7 @@ class LocalProjectRegistryTests(unittest.TestCase):
         first = self.registry.register_project(self.root["root_id"], self.project)
         second = self.registry.register_project(self.root["root_id"], self.project)
         self.assertEqual(first["project_id"], second["project_id"])
+        self.assertEqual(first["workspace_id"], second["workspace_id"])
 
     def test_registry_persists_roots_and_projects(self):
         project = self.registry.register_project(self.root["root_id"], self.project)
@@ -71,6 +73,7 @@ class LocalProjectRegistryTests(unittest.TestCase):
         (self.project / "index.html").write_text("<h1>changed</h1>\n", encoding="utf-8")
         refreshed = self.registry.refresh_project(first["project_id"])
         self.assertEqual(refreshed["project_id"], first["project_id"])
+        self.assertEqual(refreshed["workspace_id"], first["workspace_id"])
         self.assertNotEqual(refreshed["snapshot_sha256"], first["snapshot_sha256"])
 
     def test_ignores_known_generated_directories(self):
