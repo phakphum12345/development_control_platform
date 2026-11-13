@@ -33,14 +33,14 @@
 - Branch: `fix/terminal-execution-git-hardening-20261114`
 - Base SHA: `e008844d8c6e6b15c71b7bf36f00f42e66233387`
 - PR: [#114](https://github.com/phakphum12345/development_control_platform/pull/114), OPEN, non-draft, mergeable TRUE at last metadata check; no reviews or review threads observed.
-- Exact PR head before this ledger update: `7da610191d36eecf97fcddbef098cd465c37fd1f`; base SHA: `e008844d8c6e6b15c71b7bf36f00f42e66233387`.
+- Exact PR head before this ledger update: `ee94c486f203364c94d1d5b75e44e7ccbbc717c1`; base SHA: `e008844d8c6e6b15c71b7bf36f00f42e66233387`.
 - Changed files: 12; additions/deletions are recorded by PR #114.
-- Exact-head CI at `d1481b3ffe840b5c326b1906cd6a0e6bff0fbfee`: Local-first Minimal Emulator run 43507277748, Validate Control Plane run 43507277635, and Cross-platform Recovery Acceptance run 43507277610 were IN_PROGRESS at last check. No workflow is counted as PASS yet. The Windows runner acceptance sub-job is SKIPPED and is not a PASS.
+- Exact-head CI at `d1481b3ffe840b5c326b1906cd6a0e6bff0fbfee`: Local-first Minimal Emulator run 43507435506, Validate Control Plane run 43507435484, and Cross-platform Recovery Acceptance run 43507435421 were QUEUED / PENDING at last check. No workflow is counted as PASS yet. The Windows runner acceptance sub-job is SKIPPED and is not a PASS.
 - State: IN_PROGRESS; merge authorization NOT GRANTED.
 - Changes prepared:
   - Disable repository-configured Git fsmonitor, external diff and pager helpers through a clean Runner environment.
   - Disable Git textconv and external diff for `diff` / `show`.
-  - Add unit tests for Git config isolation and fixed argv behavior.
+  - Add unit tests for Git config isolation and fixed argv behavior, plus an integration test proving a repository-local fsmonitor hook runs without the Runner override but is not invoked by the Runner Git status command (Git 2.36+).
   - Preserve HTTP response status on Dashboard API errors so rejected grants (400/403) are handled separately from uncertain submissions and retry with the same idempotency key.
   - Update Dashboard Code Navigator mapping and add a contract assertion.
   - Reconcile Terminal API, execution architecture, Terminal Studio, feature backlog, roadmap and v2.0 proposal status with the merged implementation.
