@@ -41,6 +41,7 @@ from tools.local_runner_agent.runtime import RuntimeManager
 from .preview import AuthenticatedPreviewManager, PreviewError
 from .terminal_catalog import (list_templates as list_terminal_templates, preview_template as preview_terminal_template, validate_preview_payload)
 from .terminal_templates import (TerminalTemplateConflict, TerminalTemplateError, TerminalTemplateNotFound, TerminalTemplateStore)
+from .terminal_grants import TerminalGrantStore, TerminalGrantError
 
 
 class DisabledProvider:
@@ -1529,6 +1530,9 @@ def main():
     )
     service.terminal_template_store = TerminalTemplateStore(
         os.getenv("DCP_GATEWAY_TERMINAL_DATABASE", database_path + ".terminal")
+    )
+    service.terminal_grant_store = TerminalGrantStore(
+        os.getenv("DCP_GATEWAY_TERMINAL_GRANTS_DATABASE", database_path + ".terminal-grants")
     )
     registry_path = os.getenv("DCP_LOCAL_PROJECT_REGISTRY", "").strip()
     service.local_project_registry = None
