@@ -34,6 +34,7 @@ from .infrastructure_gates import (
 from tools.local_runner_agent.local_project import (
     LocalProjectError, LocalProjectRegistry,
 )
+from tools.document_workflow.gateway import DocumentWorkflowError, DocumentWorkflowStore
 from tools.project_intelligence import DiscoveryError, discover_project
 from tools.local_runner_agent.workspace import WorkspaceManager
 from tools.local_runner_agent.runtime import RuntimeManager
@@ -201,6 +202,9 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
         def local_project_registry(self):
             return getattr(service, "local_project_registry", None)
 
+        def document_workflow_store(self):
+            return getattr(service, "document_workflow_store", None)
+
         def terminal_template_store(self):
             return getattr(service, "terminal_template_store", None)
 
@@ -286,13 +290,13 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
             origin = self.headers.get("Origin", "")
             return bool(public_origin) and origin == public_origin
 
-        def body(self):
+        def body(self, max_bytes=32768):
             try:
                 size = int(self.headers.get("Content-Length", "0"))
             except ValueError:
                 raise PolicyDenied("Invalid Content-Length", 400)
-            if not 1 <= size <= 32768:
-                raise PolicyDenied("Body size must be 1..32768 bytes", 413)
+            if not 1 <= size <= max_bytes:
+                raise PolicyDenied(f"Body size must be 1..{max_bytes} bytes", 413)
             try:
                 value = json.loads(self.rfile.read(size).decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
@@ -308,6 +312,28 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                     "status": "ok",
                     "provisioning_enabled": service.settings.provisioning_enabled,
                 })
+            proposal_match = re.fullmatch(
+                r"/api/document-workflow/proposals/([0-9a-f-]{36})", path
+            )
+            if path == "/api/document-workflow/grants" or proposal_match:
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if identity.get("role") != "owner":
+                    return self.send_json(403, {"error": "owner role required"})
+                workflow = self.document_workflow_store()
+                if workflow is None:
+                    return self.send_json(503, {"error": "Document Workflow is not configured"})
+                try:
+                    if path == "/api/document-workflow/grants":
+                        query = parse_qs(urlparse(self.path).query)
+                        project_id = query.get("project_id", [None])[0]
+                        return self.send_json(200, {"grants": workflow.list_grants(project_id)})
+                    return self.send_json(200, {"proposal": workflow.get_proposal(proposal_match.group(1))})
+                except DocumentWorkflowError as exc:
+                    return self.send_json(exc.status_code, {"error": str(exc)})
+                except Exception:
+                    return self.send_json(503, {"error": "Document Workflow read failed"})
             if path == "/api/local-projects" or path.startswith("/api/local-projects/"):
                 identity = self.proxy_identity()
                 if not identity:
@@ -743,6 +769,75 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
 
         def do_POST(self):
             path = urlparse(self.path).path
+            document_grant = path == "/api/document-workflow/grants"
+            document_revoke = re.fullmatch(
+                r"/api/document-workflow/grants/([0-9a-f-]{36})/revoke", path
+            )
+            document_proposal = path == "/api/document-workflow/proposals"
+            document_approve = re.fullmatch(
+                r"/api/document-workflow/proposals/([0-9a-f-]{36})/approve", path
+            )
+            if document_grant or document_revoke or document_proposal or document_approve:
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if identity.get("role") != "owner":
+                    return self.send_json(403, {"error": "owner role required"})
+                if not self.same_origin():
+                    return self.send_json(403, {"error": "same-origin request required"})
+                if not self.csrf_valid(identity):
+                    return self.send_json(403, {"error": "CSRF validation failed"})
+                workflow = self.document_workflow_store()
+                if workflow is None:
+                    return self.send_json(503, {"error": "Document Workflow is not configured"})
+                actor = identity.get("subject", "")
+                try:
+                    if document_grant:
+                        payload = self.body()
+                        if set(payload) != {"project_id", "allowed_paths", "confirmation"}:
+                            return self.send_json(400, {"error": "write grant fields are invalid"})
+                        result = workflow.grant_scope(
+                            payload["project_id"], payload["allowed_paths"], actor,
+                            payload["confirmation"],
+                        )
+                        return self.send_json(201, {"grant": result})
+                    if document_revoke:
+                        payload = self.body()
+                        if set(payload) != {"confirmation"}:
+                            return self.send_json(400, {"error": "grant revocation fields are invalid"})
+                        result = workflow.revoke_grant(
+                            document_revoke.group(1), actor, payload["confirmation"]
+                        )
+                        return self.send_json(200, {"grant": result})
+                    if document_proposal:
+                        payload = self.body(max_bytes=600 * 1024)
+                        if set(payload) != {"project_id", "relative_path", "content", "expected_sha256"}:
+                            return self.send_json(400, {"error": "document proposal fields are invalid"})
+                        result = workflow.propose(
+                            project_id=payload["project_id"],
+                            relative_path=payload["relative_path"],
+                            content=payload["content"],
+                            expected_sha256=payload["expected_sha256"],
+                            idempotency_key=self.headers.get("Idempotency-Key", ""),
+                            actor=actor,
+                        )
+                        return self.send_json(201, {"proposal": result})
+                    payload = self.body()
+                    if set(payload) != {"content_sha256", "confirmation"}:
+                        return self.send_json(400, {"error": "document approval fields are invalid"})
+                    result = workflow.approve(
+                        document_approve.group(1),
+                        content_sha256=payload["content_sha256"],
+                        actor=actor,
+                        confirmation=payload["confirmation"],
+                    )
+                    return self.send_json(200, {"write": result})
+                except DocumentWorkflowError as exc:
+                    return self.send_json(exc.status_code, {"error": str(exc)})
+                except PolicyDenied as exc:
+                    return self.send_json(exc.status_code, {"error": str(exc)})
+                except Exception:
+                    return self.send_json(503, {"error": "Document Workflow operation failed"})
             gate_match = re.fullmatch(r"/api/infrastructure/gates/([a-z_]+)", path)
             if gate_match:
                 identity = self.proxy_identity()
@@ -1417,6 +1512,18 @@ def main():
             service.local_project_registry = LocalProjectRegistry(registry_path)
         except (ValueError, OSError, LocalProjectError) as exc:
             raise SystemExit("DCP Local Project Registry configuration is invalid") from exc
+    service.document_workflow_store = None
+    document_database = os.getenv("DCP_DOCUMENT_WORKFLOW_DATABASE", "").strip()
+    if document_database:
+        if service.local_project_registry is None:
+            raise SystemExit("DCP Document Workflow requires DCP_LOCAL_PROJECT_REGISTRY")
+        try:
+            service.document_workflow_store = DocumentWorkflowStore(
+                document_database, service.local_project_registry,
+                os.getenv("DCP_DOCUMENT_WORKFLOW_JOURNAL", "").strip() or None,
+            )
+        except (ValueError, OSError, RuntimeError) as exc:
+            raise SystemExit("DCP Document Workflow configuration is invalid") from exc
     service.job_store = jobs_store
     service.preview_manager = None
     workspace_root = os.getenv("DCP_RUNNER_WORKSPACE_ROOT", "").strip()
