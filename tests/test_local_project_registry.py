@@ -3,6 +3,7 @@ import json
 import os
 import tempfile
 import unittest
+import uuid
 from pathlib import Path
 
 from tools.local_runner_agent.local_project import (
@@ -86,7 +87,7 @@ class LocalProjectRegistryTests(unittest.TestCase):
         project = self.registry.register_project(self.root["root_id"], self.project)
         with self.assertRaisesRegex(LocalProjectError, "does not belong"):
             self.registry.resolve_workspace(
-                project["project_id"], str(__import__("uuid").uuid4()), project["snapshot_sha256"]
+                project["project_id"], str(uuid.uuid4()), project["snapshot_sha256"]
             )
         (self.project / "index.html").write_text("<h1>changed</h1>\n", encoding="utf-8")
         with self.assertRaisesRegex(LocalProjectError, "snapshot changed"):
