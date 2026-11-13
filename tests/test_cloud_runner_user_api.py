@@ -820,7 +820,7 @@ class AuthenticatedControlAPITests(unittest.TestCase):
         csrf = self._csrf("nonce_job_resume_session_01")
         operator_resume = self._dashboard_post(
             "/api/jobs/" + job["id"] + "/resume", "nonce_job_resume_operator_01",
-            {"confirmation": "RESUME UNKNOWN JOB"}, role="operator", csrf=csrf,
+            {"confirmation": "RESUME UNKNOWN JOB AFTER WORKER STOPPED AND WORKSPACE CLEANED"}, role="operator", csrf=csrf,
         )
         with self.assertRaises(HTTPError) as error:
             urlopen(operator_resume)
@@ -831,7 +831,7 @@ class AuthenticatedControlAPITests(unittest.TestCase):
 
         owner_resume = self._dashboard_post(
             "/api/jobs/" + job["id"] + "/resume", "nonce_job_resume_owner_0001",
-            {"confirmation": "RESUME UNKNOWN JOB"}, role="owner", csrf=csrf,
+            {"confirmation": "RESUME UNKNOWN JOB AFTER WORKER STOPPED AND WORKSPACE CLEANED"}, role="owner", csrf=csrf,
         )
         with urlopen(owner_resume) as response:
             resumed = json.loads(response.read())
