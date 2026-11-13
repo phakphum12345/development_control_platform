@@ -138,6 +138,12 @@ class TerminalScriptExecutorTests(unittest.TestCase):
         self.assertNotIn("A" * 40, combined)
         self.assertIn("[REDACTED TOKEN]", combined)
 
+    def test_log_chunks_respect_gateway_utf8_byte_limit(self):
+        value = "ก" * 6000
+        chunks = list(TerminalScriptExecutor._log_chunks(value, max_bytes=7000))
+        self.assertEqual("".join(chunks), value)
+        self.assertTrue(all(len(chunk.encode("utf-8")) <= 7000 for chunk in chunks))
+
     def test_streaming_redactor_handles_tokens_and_private_keys_split_across_chunks(self):
         redactor = TerminalOutputRedactor()
         first = redactor.feed("API_KEY=super-secret-value\nBearer abcdefghijkl")
