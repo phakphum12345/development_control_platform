@@ -109,6 +109,8 @@ class JobStore:
                           "build_linux", "build_macos", "build_ios", "build_static_web", "build_vite", "build_next", "build_angular", "test_static_web", "terminal_script"):
             raise ValueError("Unsupported target")
         if source_type == "github":
+            if target == "terminal_script":
+                raise ValueError("Terminal script jobs require an app-authorized local project workspace")
             if not set(payload).issubset({"source_type", "repository", "commit_sha", "target"}):
                 raise ValueError("Unsupported GitHub job payload fields")
             repository, sha = payload.get("repository"), payload.get("commit_sha")
