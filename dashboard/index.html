@@ -435,6 +435,7 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
   </div>
   <div class="actions"><button class="primary" id="terminal-authorize-run" type="button" disabled>Request App Authorization</button></div>
   <div id="terminal-execution-gate" class="output" role="status" aria-live="polite">Execution is disabled until a trusted catalog template is explicitly enabled.</div>
+  <div id="terminal-runner-status" class="output" role="status" aria-live="polite">Terminal Runner availability has not been checked.</div>
   <div class="panel" id="terminal-grant-confirmation" hidden>
    <h4>Confirm authorized execution</h4>
    <p class="small muted">ตรวจสอบ Project, Workspace, Template และเวลาหมดอายุ ก่อนยืนยันส่ง Job. Grant ใช้ได้ครั้งเดียวและยกเลิกได้ก่อน Runner ใช้งาน.</p>
@@ -1487,6 +1488,17 @@ async function terminalStudioLoadProjects(){
  select.disabled=terminalStudioState.projects.length===0;
  terminalStudioRenderExecutionGate();
 }
+async function terminalStudioLoadRunners(){
+ const data=await terminalStudioRequest("/api/runners");
+ if(!Array.isArray(data.runners))throw new Error("Runner registry response is invalid.");
+ const terminalRunners=data.runners.filter(row=>row&&Array.isArray(row.capabilities)&&row.capabilities.includes("terminal"));
+ const online=terminalRunners.filter(row=>row.state==="online");
+ if(online.length){
+  $("terminal-runner-status").textContent="Online Terminal-capable Runner(s): "+online.map(row=>row.worker_id+" ("+row.host_os+")").join(", ")+". Local project allowlists are still enforced by each Runner.";
+ }else{
+  $("terminal-runner-status").textContent="No online Terminal-capable Runner. Jobs may remain queued until the local Runner is started with DCP_RUNNER_EXECUTION_ENABLED=1, DCP_RUNNER_TERMINAL_ENABLED=1 and the selected Project ID in DCP_RUNNER_TRUSTED_LOCAL_PROJECTS.";
+ }
+}
 async function terminalStudioLoadRecentJobs(){
  const data=await terminalStudioRequest("/api/jobs?limit=50");
  if(!Array.isArray(data.jobs))throw new Error("Job history response is invalid.");
@@ -1518,6 +1530,7 @@ async function terminalStudioLoad(){
   $("terminal-import-pack").disabled=false;
   $("terminal-import-status").textContent="Owner session connected. Imported templates remain inert and non-executable.";
   try{await terminalStudioLoadProjects();}catch(error){terminalStudioState.projects=[];$("terminal-project-select").replaceChildren(new Option("Project Registry unavailable",""));$("terminal-project-select").disabled=true;$("terminal-workspace-summary").textContent=error.message;}
+  try{await terminalStudioLoadRunners();}catch(error){$("terminal-runner-status").textContent="Runner registry unavailable: "+error.message;}
   try{await terminalStudioLoadRecentJobs();}catch(error){$("terminal-job-status").textContent="Job history unavailable: "+error.message;}
   const activeJob=terminalStudioState.jobHistory.find(job=>["queued","running","cancel_requested"].includes(job.state));
   if(activeJob)terminalStudioShowJob(activeJob);
