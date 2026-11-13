@@ -691,6 +691,33 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                     idempotency_key=self.headers.get("Idempotency-Key", ""),
                 )
                 return self.send_bytes(status, data)
+            job_resume = None if parsed.query else re.fullmatch(r"/api/jobs/([0-9a-f-]{36})/resume", path)
+            if job_resume:
+                if not session or not session["authenticated"] or not self.csrf_ok(session):
+                    return self.send_json(403, {"error": "authenticated session and CSRF token required"})
+                try:
+                    _, raw = self.body()
+                except Exception:
+                    return self.send_json(400, {"error": "invalid JSON body"})
+                status, data = app.gateway_request(
+                    "POST", path, session, raw, self.headers.get("X-CSRF-Token", "")
+                )
+                return self.send_bytes(status, data)
+            job_cancel = None if parsed.query else re.fullmatch(r"/api/jobs/([0-9a-f-]{36})/cancel", path)
+            if job_cancel:
+                if not session or not session["authenticated"] or not self.csrf_ok(session):
+                    return self.send_json(403, {"error": "authenticated session and CSRF token required"})
+                try:
+                    _, raw = self.body()
+                    payload = json.loads(raw.decode("utf-8"))
+                except Exception:
+                    return self.send_json(400, {"error": "invalid JSON body"})
+                if payload != {}:
+                    return self.send_json(400, {"error": "job cancellation accepts an empty object only"})
+                status, data = app.gateway_request(
+                    "POST", path, session, raw, self.headers.get("X-CSRF-Token", "")
+                )
+                return self.send_bytes(status, data)
             preview_start = re.fullmatch(r"/api/jobs/([0-9a-f-]{36})/previews", path)
             if preview_start:
                 if not session or not session["authenticated"] or not self.csrf_ok(session):

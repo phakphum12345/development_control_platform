@@ -53,6 +53,15 @@ class FakeGatewayHandler(BaseHTTPRequestHandler):
             }})
         if self.path == "/v1/runner/claim":
             return self._send(200, {"job": {"id": JOB_ID, "state": "running"}})
+        if self.path.endswith("/checkpoint"):
+            self.server.checkpoint_requests += 1
+            if self.server.checkpoint_requests == 1:
+                return self._send(503, {"error": "temporary"})
+            return self._send(200, {
+                "id": JOB_ID, "state": "running",
+                "checkpoint_seq": payload.get("sequence"),
+                "checkpoint": payload.get("checkpoint"),
+            })
         if self.path.endswith("/logs"):
             return self._send(202, {"accepted": True})
         return self._send(200, {"id": JOB_ID, "state": "running"})
@@ -62,6 +71,7 @@ class RunnerAgentTests(unittest.TestCase):
     def setUp(self):
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), FakeGatewayHandler)
         self.server.requests = []
+        self.server.checkpoint_requests = 0
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.config = RunnerAgentConfig(
@@ -114,6 +124,14 @@ class RunnerAgentTests(unittest.TestCase):
         self.assertEqual(job["id"], JOB_ID)
         heartbeat = self.client.heartbeat(JOB_ID, lease_seconds=45)
         self.assertEqual(heartbeat["state"], "running")
+        checkpoint = {
+            "version": 1, "step": "workspace-ready",
+            "safe_to_resume": True, "data": {"source_sha256": "a" * 64},
+        }
+        saved = self.client.checkpoint(JOB_ID, 1, checkpoint)
+        self.assertEqual(saved["checkpoint_seq"], 1)
+        self.assertEqual(saved["checkpoint"], checkpoint)
+        self.assertEqual(self.server.checkpoint_requests, 2)
         logged = self.client.append_log(JOB_ID, "agent connected", "system")
         self.assertTrue(logged["accepted"])
         finished = self.client.finish(
@@ -128,6 +146,10 @@ class RunnerAgentTests(unittest.TestCase):
             self.client.heartbeat("../job", 30)
         with self.assertRaises(ValueError):
             self.client.claim(lease_seconds=True)
+        with self.assertRaises(ValueError):
+            self.client.checkpoint(JOB_ID, 0, {})
+        with self.assertRaises(ValueError):
+            self.client.checkpoint("../job", 1, {})
         with self.assertRaises(ValueError):
             self.client.append_log(JOB_ID, "")
         with self.assertRaises(ValueError):

@@ -96,7 +96,11 @@ class GatewayClient:
         self.config = config
         self.base_url = config.gateway_url.rstrip("/")
 
-    def _request(self, method: str, path: str, payload=None, authenticated=True):
+    def _request(self, method: str, path: str, payload=None, authenticated=True,
+                 max_response_bytes: int = 32768):
+        if (isinstance(max_response_bytes, bool) or not isinstance(max_response_bytes, int)
+                or not 1024 <= max_response_bytes <= 65536):
+            raise ValueError("max_response_bytes must be between 1 KiB and 64 KiB")
         headers = {"Accept": "application/json"}
         data = None
         if payload is not None:
@@ -109,9 +113,9 @@ class GatewayClient:
             with build_opener(_NoRedirect).open(
                 request, timeout=self.config.timeout_seconds
             ) as response:
-                raw = response.read(32769)
-                if len(raw) > 32768:
-                    raise RunnerGatewayError("Gateway response exceeded the 32 KiB limit")
+                raw = response.read(max_response_bytes + 1)
+                if len(raw) > max_response_bytes:
+                    raise RunnerGatewayError("Gateway response exceeded the configured size limit")
         except HTTPError as exc:
             raise RunnerGatewayError(
                 "Gateway rejected the Runner Agent request", status_code=exc.code
@@ -171,7 +175,8 @@ class GatewayClient:
     def claim(self, lease_seconds: int = 30) -> dict | None:
         self._validate_lease(lease_seconds)
         result = self._request(
-            "POST", "/v1/runner/claim", {"lease_seconds": lease_seconds}
+            "POST", "/v1/runner/claim", {"lease_seconds": lease_seconds},
+            max_response_bytes=40 * 1024,
         )
         job = result.get("job")
         if job is not None and not isinstance(job, dict):
@@ -185,6 +190,35 @@ class GatewayClient:
             "POST", f"/v1/runner/{job_id}/heartbeat",
             {"lease_seconds": lease_seconds},
         )
+
+    def checkpoint(self, job_id: str, sequence: int, checkpoint: dict) -> dict:
+        """Persist one monotonic, lease-bound resume checkpoint."""
+        self._validate_job_id(job_id)
+        if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence < 1:
+            raise ValueError("sequence must be a positive integer")
+        if not isinstance(checkpoint, dict):
+            raise ValueError("checkpoint must be an object")
+        payload = {"sequence": sequence, "checkpoint": checkpoint}
+        try:
+            job = self._request(
+                "POST", f"/v1/runner/{job_id}/checkpoint", payload,
+                max_response_bytes=40 * 1024,
+            )
+        except RunnerGatewayError as exc:
+            retryable = exc.status_code in (429, 500, 502, 503, 504)
+            retryable = retryable or (
+                exc.status_code is None and str(exc) == "Gateway connection failed"
+            )
+            if not retryable:
+                raise
+            # Same sequence + same canonical digest is idempotent at the Gateway.
+            job = self._request(
+                "POST", f"/v1/runner/{job_id}/checkpoint", payload,
+                max_response_bytes=40 * 1024,
+            )
+        if job.get("checkpoint_seq") != sequence:
+            raise RunnerGatewayError("Gateway returned an invalid checkpoint acknowledgement")
+        return job
 
     def append_log(self, job_id: str, message: str, stream: str = "system") -> dict:
         self._validate_job_id(job_id)

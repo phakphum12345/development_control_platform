@@ -87,6 +87,25 @@ class DashboardContractTests(unittest.TestCase):
         self.assertIn("Disabled", HTML)
 
 
+    def test_job_queue_exposes_checkpoint_status_and_owner_unknown_reconciliation(self):
+        for expected in (
+            'data-job-resume=',
+            'async function buildJobResume(jobId)',
+            'async function buildJobCancel(jobId)',
+            'data-job-cancel=',
+            'POST /api/jobs/{id}/cancel',
+            'RESUME UNKNOWN JOB AFTER WORKER STOPPED AND WORKSPACE CLEANED',
+            'previous Runner process',
+            'clean its job workspace',
+            'job.checkpoint_seq',
+            'job.checkpoint_sha256',
+            'job.retry_after',
+            'POST /api/jobs/{id}/resume',
+            'Owner reconcile / resume',
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, HTML)
+
     def test_dashboard_exposes_supported_next_and_angular_build_targets(self):
         self.assertIn('<option value="build_next">Next.js (preinstalled dependencies)</option>', HTML)
         self.assertIn('<option value="build_angular">Angular (preinstalled dependencies)</option>', HTML)

@@ -12,6 +12,7 @@ Dashboard routes use the existing trusted-proxy HMAC session. Reads require an o
 - `GET /api/jobs/{id}/events` — lifecycle events.
 - `GET /api/jobs/{id}/logs?after_id=0&limit=500` — paginated logs.
 - `POST /api/jobs/{id}/cancel` — owner-only cancellation.
+- `POST /api/jobs/{id}/resume` — owner-only recovery from `unknown`; requires the exact confirmation `RESUME UNKNOWN JOB AFTER WORKER STOPPED AND WORKSPACE CLEANED`. This is an owner attestation, not an OS-level process inspection.
 
 ## Runner API
 
@@ -21,6 +22,7 @@ Runner routes use credentials separate from the gateway's internal API token and
 - `POST /v1/runner/ping` — refresh fleet liveness.
 - `POST /v1/runner/claim` — optional `lease_seconds` (5–300); only jobs supported by the registered Runner capabilities are claimable.
 - `POST /v1/runner/{id}/heartbeat` — renew the authenticated worker's active lease.
+- `POST /v1/runner/{id}/checkpoint` — persist a monotonic, lease-bound checkpoint (sequence, version, step, safe-to-resume flag, and bounded data).
 - `POST /v1/runner/{id}/logs` — append a bounded stdout/stderr/system log message.
 - `POST /v1/runner/{id}/finish` — report `succeeded|failed|cancelled`; only the current lease owner can finish.
 - `POST /v1/runner/{id}/artifacts` — upload one bounded `application/octet-stream` artifact while the authenticated worker owns the active lease.
@@ -263,27 +265,32 @@ Playwright uses a fixed DCP-owned test plan, Chromium sandboxing, exact loopback
 
 The test evidence includes three viewport screenshots, a JSON report, a bounded ZIP artifact, and separate authenticated Preview Proxy browser fixture acceptance across Chromium, Firefox and WebKit (PR #96, merged to `main`). It still does not include traces, visual baselines, full WCAG conformance, or application-specific cross-browser compatibility. See `docs/DCP-PLAYWRIGHT-TESTING.md` and `docs/DCP-ACCEPTANCE-TEST-PLAN.md`.
 
-## Lease retry and worker-crash policy
+## Durable checkpoints, retry backoff, and unknown outcomes
 
-Every new job starts with attempt_count=0 and max_attempts=3. A successful
-claim increments attempt_count inside the same SQLite transaction that moves
-the job to running. The retry limit is server-owned; clients cannot raise it.
+Every new job starts with `attempt_count=0` and server-owned `max_attempts=3`. A successful claim increments the attempt count in the same SQLite transaction that assigns the worker lease. Client payloads cannot raise the attempt budget.
 
-- An expired running lease is requeued while attempts remain.
-- When the third claimed attempt expires, the job becomes failed with
-  error_code LEASE_EXPIRED instead of returning to the queue forever.
-- An expired cancel_requested lease becomes cancelled and is never retried.
-- Lease recovery preserves last_worker provenance and emits an audit event
-  containing worker ID and attempt counters.
-- Old workers remain fenced: heartbeat, log, or finish calls after lease expiry
-  cannot mutate the recovered job.
-- Claims use SQLite BEGIN IMMEDIATE and a conditional state transition so two
-  independent Gateway/Store instances cannot own the same queued job.
+A checkpoint must contain exactly:
+- `version: 1`
+- `step`: a bounded identifier
+- `safe_to_resume`: explicit boolean
+- `data`: JSON object no larger than 32 KiB
 
-The Dashboard job API returns attempt_count and max_attempts as operational
-metadata. This is retry accounting, not a guarantee that an interrupted
-workspace was cleaned; workspace reconciliation remains a separate acceptance
-requirement before treating Runner crash recovery as fully production-ready.
+Checkpoint sequences must advance by exactly one. Repeating the same sequence and identical digest is idempotent; reusing a sequence for different content, skipping a sequence, using an expired lease, or submitting a checkpoint as another worker is rejected. The Runner client retries a checkpoint at most once after a transient connection failure, HTTP 429, or HTTP 5xx, and only with the exact same sequence and payload digest. Claims and terminal finish calls are not blindly retried. Credential-like field names (secret, password, token, credential, authorization, private key) are rejected recursively. Do not store secrets or raw credentials in checkpoint data.
+
+Lease recovery is deliberately fail-closed:
+- An expired `cancel_requested` job becomes `cancelled` and is never retried.
+- An expired job with no checkpoint, or a checkpoint with `safe_to_resume=false`, becomes `unknown` with `OUTCOME_UNKNOWN`. It is not automatically claimed again.
+- Automatic replay is currently allowlisted only for a `ready-to-finish` checkpoint whose payload contains a valid terminal outcome and result. A generic checkpoint or a `safe_to_resume=true` checkpoint at any other step is not sufficient.
+- An expired job with that exact terminal checkpoint and remaining attempts enters `retry_wait`. The retry schedule uses capped exponential backoff (5 seconds, 10 seconds, then capped at 300 seconds) plus deterministic per-job jitter. Claims filter by registered Runner capabilities and honor `retry_after`.
+- When the maximum attempt count is reached, the job becomes `failed` with `LEASE_EXPIRED`.
+- Old workers remain fenced: heartbeat, checkpoint, log, artifact upload, or finish calls after lease expiry cannot mutate the recovered job.
+- Claims and recovery use SQLite write transactions; the lease owner and attempt count are changed atomically.
+
+The supported Runner pipeline saves a non-resumable source-materialized checkpoint during work. Only after workspace cleanup and completion-result preparation does it save a `ready-to-finish` checkpoint marked safe to resume. If that final response is lost and the lease expires, the next worker can replay the stored terminal result without repeating the build. Jobs that retain a preview workspace or fail workspace cleanup are explicitly marked non-resumable; their expired lease becomes `unknown`.
+
+An `unknown` job requires owner reconciliation. The owner must independently stop the previous worker and clean its job workspace before confirming the resume request. The Gateway enforces the explicit confirmation string and records the actor, but it cannot independently prove that an external process was terminated or a host workspace was deleted. If that cleanup cannot be verified, do not resume the job; keep it UNKNOWN and create a new job only after reviewing the prior outcome.
+
+The Dashboard job API exposes attempt count, retry-after, checkpoint sequence/digest, and the `unknown`/`retry_wait` state. It does not expose checkpoint data to ordinary Dashboard reads; the authenticated Runner receives the checkpoint in its claim response. Missing checkpoints or missing evidence are never interpreted as PASS.
 
 
 ## HTTP lease-recovery acceptance

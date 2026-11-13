@@ -35,7 +35,11 @@ class JobStore:
                     updated_at TEXT NOT NULL, worker TEXT, last_worker TEXT, lease_until TEXT,
                     cancel_at TEXT, result TEXT, error_code TEXT,
                     attempt_count INTEGER NOT NULL DEFAULT 0,
-                    max_attempts INTEGER NOT NULL DEFAULT 3
+                    max_attempts INTEGER NOT NULL DEFAULT 3,
+                    checkpoint_json TEXT,
+                    checkpoint_seq INTEGER NOT NULL DEFAULT 0,
+                    checkpoint_sha256 TEXT,
+                    retry_after TEXT
                 );
                 CREATE INDEX IF NOT EXISTS jobs_queue_idx ON jobs(state, created_at);
                 CREATE TABLE IF NOT EXISTS job_events (
@@ -55,6 +59,15 @@ class JobStore:
                 db.execute("ALTER TABLE jobs ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0")
             if "max_attempts" not in columns:
                 db.execute("ALTER TABLE jobs ADD COLUMN max_attempts INTEGER NOT NULL DEFAULT 3")
+            if "checkpoint_json" not in columns:
+                db.execute("ALTER TABLE jobs ADD COLUMN checkpoint_json TEXT")
+            if "checkpoint_seq" not in columns:
+                db.execute("ALTER TABLE jobs ADD COLUMN checkpoint_seq INTEGER NOT NULL DEFAULT 0")
+            if "checkpoint_sha256" not in columns:
+                db.execute("ALTER TABLE jobs ADD COLUMN checkpoint_sha256 TEXT")
+            if "retry_after" not in columns:
+                db.execute("ALTER TABLE jobs ADD COLUMN retry_after TEXT")
+            db.execute("CREATE INDEX IF NOT EXISTS jobs_retry_idx ON jobs(state,retry_after,created_at)")
 
     @contextmanager
     def db(self):
@@ -72,6 +85,7 @@ class JobStore:
         item = dict(row)
         for key in ("payload", "result"):
             item[key] = json.loads(item[key]) if item[key] else None
+        item["checkpoint"] = json.loads(item.pop("checkpoint_json")) if item.get("checkpoint_json") else None
         return item
 
     @staticmethod
@@ -156,34 +170,64 @@ class JobStore:
             rows = db.execute("SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?", (limit,))
             return [self._decode(row) for row in rows]
 
+    @staticmethod
+    def _retry_delay_seconds(job_id, attempt_count):
+        base = min(300, 5 * (2 ** max(0, attempt_count - 1)))
+        jitter_byte = hashlib.sha256(f"{job_id}:{attempt_count}".encode("utf-8")).digest()[0]
+        return min(300, base + (jitter_byte / 255.0) * 2.0)
+
     def recover_expired_leases(self):
-        """Requeue abandoned work, or finalize abandoned cancellation requests."""
-        current = utcnow().isoformat()
+        """Recover only from a declared safe checkpoint; otherwise preserve UNKNOWN."""
+        current_dt = utcnow()
+        current = current_dt.isoformat()
         recovered = []
         with self.lock, self.db() as db:
             db.execute("BEGIN IMMEDIATE")
             rows = db.execute(
-                "SELECT id,state,worker,attempt_count,max_attempts FROM jobs WHERE state IN ('running','cancel_requested') "
+                "SELECT id,state,worker,attempt_count,max_attempts,checkpoint_json,checkpoint_seq "
+                "FROM jobs WHERE state IN ('running','cancel_requested') "
                 "AND lease_until IS NOT NULL AND lease_until<=? ORDER BY lease_until,id",
                 (current,),
             ).fetchall()
             for row in rows:
+                retry_after = None
                 if row["state"] == "cancel_requested":
                     state, event, error_code = "cancelled", "cancelled_after_lease_expiry", None
                 elif row["attempt_count"] >= row["max_attempts"]:
                     state, event, error_code = "failed", "lease_expired_failed", "LEASE_EXPIRED"
                 else:
-                    state, event, error_code = "queued", "lease_expired_requeued", None
+                    checkpoint = json.loads(row["checkpoint_json"]) if row["checkpoint_json"] else None
+                    replay_data = checkpoint.get("data") if isinstance(checkpoint, dict) else None
+                    replayable = (
+                        checkpoint
+                        and checkpoint.get("safe_to_resume") is True
+                        and checkpoint.get("step") == "ready-to-finish"
+                        and isinstance(replay_data, dict)
+                        and replay_data.get("outcome") in ("succeeded", "failed", "cancelled")
+                        and isinstance(replay_data.get("result"), dict)
+                    )
+                    if replayable:
+                        state, event, error_code = "retry_wait", "lease_expired_retry_wait", None
+                        retry_after = (
+                            current_dt + timedelta(
+                                seconds=self._retry_delay_seconds(row["id"], row["attempt_count"])
+                            )
+                        ).isoformat()
+                    else:
+                        state, event, error_code = "unknown", "lease_expired_unknown", "OUTCOME_UNKNOWN"
                 db.execute(
-                    "UPDATE jobs SET state=?,last_worker=worker,worker=NULL,lease_until=NULL,updated_at=?,error_code=? WHERE id=?",
-                    (state, current, error_code, row["id"]),
+                    "UPDATE jobs SET state=?,last_worker=worker,worker=NULL,lease_until=NULL,"
+                    "retry_after=?,updated_at=?,error_code=? WHERE id=?",
+                    (state, retry_after, current, error_code, row["id"]),
                 )
                 self._event(db, row["id"], event, {
                     "worker": row["worker"],
                     "attempt_count": row["attempt_count"],
                     "max_attempts": row["max_attempts"],
+                    "checkpoint_seq": row["checkpoint_seq"],
+                    "retry_after": retry_after,
                 })
-                recovered.append({"id": row["id"], "state": state})
+                recovered.append({"id": row["id"], "state": state, "retry_after": retry_after})
             db.execute("COMMIT")
         return recovered
 
@@ -207,18 +251,24 @@ class JobStore:
         with self.lock, self.db() as db:
             db.execute("BEGIN IMMEDIATE")
             if allowed_targets is None:
-                row = db.execute("SELECT * FROM jobs WHERE state='queued' ORDER BY created_at,id LIMIT 1").fetchone()
+                row = db.execute(
+                    "SELECT * FROM jobs WHERE state IN ('queued','retry_wait') "
+                    "AND (retry_after IS NULL OR retry_after<=?) ORDER BY created_at,id LIMIT 1",
+                    (current.isoformat(),),
+                ).fetchone()
             else:
                 placeholders = ",".join("?" for _ in allowed_targets)
                 row = db.execute(
-                    f"SELECT * FROM jobs WHERE state='queued' AND target IN ({placeholders}) ORDER BY created_at,id LIMIT 1",
-                    tuple(allowed_targets),
+                    f"SELECT * FROM jobs WHERE state IN ('queued','retry_wait') AND target IN ({placeholders}) "
+                    "AND (retry_after IS NULL OR retry_after<=?) ORDER BY created_at,id LIMIT 1",
+                    (*allowed_targets, current.isoformat()),
                 ).fetchone()
             if row is None:
                 db.execute("COMMIT")
                 return None
             changed = db.execute(
-                "UPDATE jobs SET state='running',worker=?,lease_until=?,updated_at=?,attempt_count=attempt_count+1 WHERE id=? AND state='queued'",
+                "UPDATE jobs SET state='running',worker=?,lease_until=?,updated_at=?,attempt_count=attempt_count+1,"
+                "retry_after=NULL WHERE id=? AND state IN ('queued','retry_wait')",
                 (worker, expiry, current.isoformat(), row["id"]),
             ).rowcount
             if changed != 1:
@@ -231,6 +281,91 @@ class JobStore:
             })
             db.execute("COMMIT")
         return self.get(row["id"])
+
+    def checkpoint(self, job_id, worker, sequence, checkpoint):
+        if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence < 1:
+            raise ValueError("Checkpoint sequence must be a positive integer")
+        if not isinstance(checkpoint, dict) or set(checkpoint) != {"version", "step", "safe_to_resume", "data"}:
+            raise ValueError("Checkpoint must contain version, step, safe_to_resume, and data only")
+        if checkpoint.get("version") != 1 or isinstance(checkpoint.get("version"), bool):
+            raise ValueError("Unsupported checkpoint version")
+        step = checkpoint.get("step")
+        if not isinstance(step, str) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,80}", step):
+            raise ValueError("Invalid checkpoint step")
+        if not isinstance(checkpoint.get("safe_to_resume"), bool) or not isinstance(checkpoint.get("data"), dict):
+            raise ValueError("Invalid checkpoint safety flag or data")
+        def reject_sensitive_keys(value):
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    if not isinstance(key, str) or re.search(
+                        r"(?:secret|password|token|credential|authorization|private.?key)", key, re.I
+                    ):
+                        raise ValueError("Checkpoint contains a prohibited sensitive field")
+                    reject_sensitive_keys(child)
+            elif isinstance(value, list):
+                for child in value:
+                    reject_sensitive_keys(child)
+        reject_sensitive_keys(checkpoint)
+        encoded = json.dumps(checkpoint, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        if len(encoded.encode("utf-8")) > 32768:
+            raise ValueError("Checkpoint exceeds the 32 KiB limit")
+        digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+        current = utcnow().isoformat()
+        with self.lock, self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute(
+                "SELECT state,worker,lease_until,checkpoint_seq,checkpoint_sha256 FROM jobs WHERE id=?",
+                (job_id,),
+            ).fetchone()
+            if row is None:
+                raise JobNotFound(job_id)
+            if (row["state"] not in ("running", "cancel_requested") or row["worker"] != worker
+                    or not row["lease_until"] or row["lease_until"] <= current):
+                raise JobConflict("Worker does not own an active job lease")
+            if row["state"] == "cancel_requested" and checkpoint["safe_to_resume"]:
+                raise JobConflict("A cancellation-requested job cannot be checkpointed as resumable")
+            current_seq = row["checkpoint_seq"]
+            if sequence == current_seq and row["checkpoint_sha256"] == digest:
+                db.execute("COMMIT")
+                return self.get(job_id)
+            if sequence != current_seq + 1:
+                raise JobConflict("Checkpoint sequence must advance by exactly one")
+            db.execute(
+                "UPDATE jobs SET checkpoint_json=?,checkpoint_seq=?,checkpoint_sha256=?,updated_at=? WHERE id=?",
+                (encoded, sequence, digest, current, job_id),
+            )
+            self._event(db, job_id, "checkpoint_saved", {
+                "sequence": sequence, "sha256": digest,
+                "step": step, "safe_to_resume": checkpoint["safe_to_resume"],
+            })
+            db.execute("COMMIT")
+        return self.get(job_id)
+
+    def resume_unknown(self, job_id, actor):
+        if (not isinstance(actor, str) or not actor or len(actor) > 200
+                or any(ord(char) < 32 for char in actor)):
+            raise ValueError("Invalid resume actor")
+        with self.lock, self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT state,attempt_count,max_attempts FROM jobs WHERE id=?", (job_id,)).fetchone()
+            if row is None:
+                raise JobNotFound(job_id)
+            if row["state"] != "unknown":
+                raise JobConflict("Only UNKNOWN jobs can be explicitly resumed")
+            if row["attempt_count"] >= row["max_attempts"]:
+                raise JobConflict("Job exhausted its maximum attempt count")
+            db.execute(
+                "UPDATE jobs SET state='queued',retry_after=NULL,error_code=NULL,updated_at=? WHERE id=?",
+                (utcnow().isoformat(), job_id),
+            )
+            self._event(db, job_id, "owner_resumed_unknown", {
+                "actor": actor, "attempt_count": row["attempt_count"],
+                "checkpoint_seq": db.execute(
+                    "SELECT checkpoint_seq FROM jobs WHERE id=?", (job_id,)
+                ).fetchone()["checkpoint_seq"],
+            })
+            db.execute("COMMIT")
+        return self.get(job_id)
 
     def heartbeat(self, job_id, worker, lease_seconds=30):
         if isinstance(lease_seconds, bool) or not isinstance(lease_seconds, int) or not 5 <= lease_seconds <= 300:
@@ -252,8 +387,11 @@ class JobStore:
             row = db.execute("SELECT state FROM jobs WHERE id=?", (job_id,)).fetchone()
             if row is None:
                 raise JobNotFound(job_id)
-            if row["state"] == "queued":
-                db.execute("UPDATE jobs SET state='cancelled',updated_at=? WHERE id=?", (utcnow().isoformat(), job_id))
+            if row["state"] in ("queued", "retry_wait"):
+                db.execute(
+                    "UPDATE jobs SET state='cancelled',retry_after=NULL,updated_at=? WHERE id=?",
+                    (utcnow().isoformat(), job_id),
+                )
                 self._event(db, job_id, "cancelled")
             elif row["state"] == "running":
                 timestamp = utcnow().isoformat()
