@@ -1,6 +1,6 @@
 # Selective Code Monitor & Editor
 
-**Status:** DRAFT — design baseline only; implementation and security acceptance are pending.  
+**Status:** PARTIALLY IMPLEMENTED — dashboard document export and a scoped local .md/.txt writer exist; authenticated dashboard-to-writer integration, remote PR lifecycle control, and full recovery service remain pending.  
 **Repository:** `phakphum12345/development_control_platform`  
 **Scope boundary:** DCP owns the tool. Each enrolled project remains an independent repository with its own source, branches, CI, permissions, and evidence.
 
@@ -193,4 +193,4 @@ The existing static public-GitHub dashboard and local read-only MCP engine are n
 
 ## 11. Current limitations / non-claims
 
-This document is a design baseline, not an implemented capability. The current DCP dashboard describes itself as read-only and does not provide Git write actions. The existing local MCP engine exposes bounded read/inspect/diff/copy-preview operations only. No claim is made that document generation, resumable jobs, server-side authorization, durable audit, PR lifecycle automation, or private-repository write access currently exists.
+The dashboard now has a one-click Markdown/Roadmap/TXT generator that previews, checks for a small set of credential patterns, computes a content digest, and requests a browser download. Browser download is not repository persistence and cannot prove disk read-back. A separate local Python writer supports .md/.txt files inside one explicitly approved workspace, path-prefix grants, expected-base SHA checks, an external SQLite operation journal, idempotency, atomic replacement, and post-write read-back digest verification. It does not expose a network endpoint or GitHub write actions. Dashboard-to-local-writer integration, authenticated server-side policy, durable distributed job coordination, automatic PR open/merge/close lifecycle checks, remote write access, and end-to-end recovery tests remain unimplemented. The existing MCP adapter remains read-only.
