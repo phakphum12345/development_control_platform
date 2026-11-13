@@ -161,8 +161,6 @@ class TerminalGrantStore:
             raise TerminalGrantError("grant not found")
         if row["revoked_at"] or row["consumed_at"] or row["expires_at"] <= current:
             raise TerminalGrantError("grant is not active")
-        if row["job_id"] is not None:
-            raise TerminalGrantError("grant is already reserved for a Job")
         if any(row[key] != value for key, value in expected.items()):
             raise TerminalGrantError("grant scope does not match the authorized request")
         return {"authorization_id": grant_id, "expires_at": row["expires_at"], "action": action}
