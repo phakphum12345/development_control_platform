@@ -60,7 +60,7 @@ class TerminalScriptExecutorTests(unittest.TestCase):
         self.assertEqual(env["HOME"], str(job_home))
         self.assertEqual(env["USERPROFILE"], str(job_home))
 
-    def test_repository_fsmonitor_and_clean_filters_are_not_invoked_by_git_status(self):
+    def test_repository_fsmonitor_and_clean_filters_are_not_invoked_by_runner_git_commands(self):
         git = shutil.which("git")
         if not git:
             self.skipTest("Git is unavailable on this test host")
@@ -116,8 +116,8 @@ class TerminalScriptExecutorTests(unittest.TestCase):
         future_mtime = time.time() + 2
         os.utime(readme, (future_mtime, future_mtime))
 
-        # Prove the repository-local clean filter is active without the Runner overrides.
-        git_run("-c", "core.fsmonitor=false", "status", "--short")
+        # Prove the repository-local clean filter is active on an explicit path conversion.
+        git_run("hash-object", "--path=README.md", "README.md")
         self.assertTrue(filter_marker.is_file())
         filter_marker.unlink()
 
@@ -151,6 +151,14 @@ class TerminalScriptExecutorTests(unittest.TestCase):
 
         self.assertEqual(result.outcome, "succeeded")
         self.assertFalse(fsmonitor_marker.exists(), "repository-controlled fsmonitor hook was invoked")
+
+        # The same Runner boundary must also suppress a clean filter on Git path conversion.
+        template["argv"] = ["hash-object", "--path=README.md", "README.md"]
+        filter_result = executor.run(
+            str(uuid.uuid4()), "runner-local", self.workspace,
+            "git_status", {}, "f" * 64,
+        )
+        self.assertEqual(filter_result.outcome, "succeeded")
         self.assertFalse(filter_marker.exists(), "repository-controlled clean filter was invoked")
 
     def test_repository_filter_driver_names_are_case_sensitive(self):
