@@ -1197,7 +1197,7 @@ function projectImportStatus(text,state){
 async function projectImportApi(path){
  const response=await fetch("."+path,{method:"GET",credentials:"same-origin",cache:"no-store",headers:{Accept:"application/json"}});
  let data={};try{data=await response.json()}catch(_){}
- if(!response.ok)throw new Error((data&&data.error)||("HTTP "+response.status));
+ if(!response.ok){const error=new Error((data&&data.error)||("HTTP "+response.status));error.status=response.status;throw error;}
  if(!data||typeof data!=="object"||Array.isArray(data))throw new Error("Invalid API response");
  return data;
 }
@@ -1680,9 +1680,16 @@ async function terminalStudioConfirmRun(){
   terminalStudioStatus("Terminal Job accepted by the durable queue. Runner execution is separately authorized and lease-bound.","queued");
   terminalStudioShowJob(job);
  }catch(error){
-  button.disabled=false;button.textContent="Retry Queue Request (same Idempotency-Key)";
-  $("terminal-grant-details").textContent+="\n\nSubmission result is uncertain. Retry uses the same Idempotency-Key; do not request a second grant.";
-  terminalStudioStatus("Job submission needs retry: "+error.message,"error");
+  if(error.status===400||error.status===403){
+   terminalStudioState.pendingGrant=null;terminalStudioState.pendingSubmission=null;
+   $("terminal-grant-confirmation").hidden=true;
+   terminalStudioLockSubmission(false);
+   terminalStudioStatus("Gateway rejected this grant or request. Preview again and request a fresh app authorization: "+error.message,"error");
+  }else{
+   button.disabled=false;button.textContent="Retry Queue Request (same Idempotency-Key)";
+   $("terminal-grant-details").textContent+="\\n\\nSubmission result is uncertain. Retry uses the same Idempotency-Key; do not request a second grant.";
+   terminalStudioStatus("Job submission needs retry: "+error.message,"error");
+  }
  }finally{
   if(!terminalStudioState.pendingSubmission)button.disabled=false;
  }
