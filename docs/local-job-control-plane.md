@@ -280,7 +280,8 @@ Checkpoint sequences must advance by exactly one. Repeating the same sequence an
 Lease recovery is deliberately fail-closed:
 - An expired `cancel_requested` job becomes `cancelled` and is never retried.
 - An expired job with no checkpoint, or a checkpoint with `safe_to_resume=false`, becomes `unknown` with `OUTCOME_UNKNOWN`. It is not automatically claimed again.
-- An expired job with an explicit `safe_to_resume=true` checkpoint and remaining attempts enters `retry_wait`. The retry schedule uses capped exponential backoff (5 seconds, 10 seconds, then capped at 300 seconds) plus deterministic per-job jitter. Claims filter by registered Runner capabilities and honor `retry_after`.
+- Automatic replay is currently allowlisted only for a `ready-to-finish` checkpoint whose payload contains a valid terminal outcome and result. A generic checkpoint or a `safe_to_resume=true` checkpoint at any other step is not sufficient.
+- An expired job with that exact terminal checkpoint and remaining attempts enters `retry_wait`. The retry schedule uses capped exponential backoff (5 seconds, 10 seconds, then capped at 300 seconds) plus deterministic per-job jitter. Claims filter by registered Runner capabilities and honor `retry_after`.
 - When the maximum attempt count is reached, the job becomes `failed` with `LEASE_EXPIRED`.
 - Old workers remain fenced: heartbeat, checkpoint, log, artifact upload, or finish calls after lease expiry cannot mutate the recovered job.
 - Claims and recovery use SQLite write transactions; the lease owner and attempt count are changed atomically.
