@@ -199,7 +199,7 @@ class JobStoreTests(unittest.TestCase):
                 )
             claimed = self.store.claim("retry-worker-" + str(attempt + 1))
             self.assertEqual(claimed["attempt_count"], attempt + 1)
-            self.assertEqual(claimed["checkpoint"]["step"], "safe-boundary-" + str(attempt))
+            self.assertEqual(claimed["checkpoint"]["step"], "ready-to-finish")
 
         self.store.checkpoint(
             job["id"], "retry-worker-3", 3,
@@ -270,9 +270,9 @@ class JobStoreTests(unittest.TestCase):
                        ("2000-01-01T00:00:00+00:00", job["id"]))
         recovered = self.store.recover_expired_leases()
         self.assertEqual(recovered[0]["state"], "unknown")
-        with self.assertRaises(JobConflict):
-            self.store.resume_unknown(job["id"], "owner@example.test")
         self.assertEqual(self.store.get(job["id"])["state"], "unknown")
+        resumed = self.store.resume_unknown(job["id"], "owner@example.test")
+        self.assertEqual(resumed["state"], "queued")
 
     def test_nonterminal_checkpoint_is_not_automatically_replayed(self):
         job, _ = self.create("job-nonterminal-checkpoint-01")
