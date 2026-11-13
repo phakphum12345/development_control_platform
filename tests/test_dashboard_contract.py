@@ -91,6 +91,9 @@ class DashboardContractTests(unittest.TestCase):
         for expected in (
             'data-job-resume=',
             'async function buildJobResume(jobId)',
+            'async function buildJobCancel(jobId)',
+            'data-job-cancel=',
+            'POST /api/jobs/{id}/cancel',
             'RESUME UNKNOWN JOB AFTER WORKER STOPPED AND WORKSPACE CLEANED',
             'previous Runner process',
             'workspace is cleaned',
