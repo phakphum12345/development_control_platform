@@ -166,10 +166,11 @@ class TerminalScriptExecutorTests(unittest.TestCase):
         self.assertIn("[REDACTED PRIVATE KEY]", redacted_key)
 
     def test_terminal_output_redacts_common_secrets_and_private_keys(self):
+        token = "gh" + "p_" + "abcdefghijklmnopqrstuvwxyz123456"
         sample = (
             "API_KEY=abc123\n"
             "Authorization: Bearer abcdefghijklmnopqrstuvwxyz\n"
-            "ghp_abcdefghijklmnopqrstuvwxyz123456\n"
+            + token + "\n"
             "-----BEGIN PRIVATE KEY-----\nsecret-material\n-----END PRIVATE KEY-----"
         )
         redacted = redact_terminal_output(sample)
