@@ -275,7 +275,7 @@ A checkpoint must contain exactly:
 - `safe_to_resume`: explicit boolean
 - `data`: JSON object no larger than 32 KiB
 
-Checkpoint sequences must advance by exactly one. Repeating the same sequence and identical digest is idempotent; reusing a sequence for different content, skipping a sequence, using an expired lease, or submitting a checkpoint as another worker is rejected. Credential-like field names (secret, password, token, credential, authorization, private key) are rejected recursively. Do not store secrets or raw credentials in checkpoint data.
+Checkpoint sequences must advance by exactly one. Repeating the same sequence and identical digest is idempotent; reusing a sequence for different content, skipping a sequence, using an expired lease, or submitting a checkpoint as another worker is rejected. The Runner client retries a checkpoint at most once after a transient connection failure, HTTP 429, or HTTP 5xx, and only with the exact same sequence and payload digest. Claims and terminal finish calls are not blindly retried. Credential-like field names (secret, password, token, credential, authorization, private key) are rejected recursively. Do not store secrets or raw credentials in checkpoint data.
 
 Lease recovery is deliberately fail-closed:
 - An expired `cancel_requested` job becomes `cancelled` and is never retried.
