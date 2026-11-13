@@ -43,6 +43,7 @@ from .preview import AuthenticatedPreviewManager, PreviewError
 from .terminal_catalog import (list_templates as list_terminal_templates, preview_template as preview_terminal_template, validate_preview_payload)
 from .terminal_templates import (TerminalTemplateConflict, TerminalTemplateError, TerminalTemplateNotFound, TerminalTemplateStore)
 from .terminal_grants import TerminalGrantStore, TerminalGrantError
+from .terminal_execution_contract import TerminalContractError, validate_terminal_request
 from .terminal_authorization import TerminalAuthorizationError, issue_terminal_grant
 
 
@@ -791,6 +792,79 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
 
         def do_POST(self):
             path = urlparse(self.path).path
+            if path == "/api/terminal/jobs":
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if identity.get("role") != "owner":
+                    return self.send_json(403, {"error": "owner role required"})
+                if not self.same_origin():
+                    return self.send_json(403, {"error": "same-origin request required"})
+                if not self.csrf_valid(identity):
+                    return self.send_json(403, {"error": "CSRF validation failed"})
+                jobs = self.job_store()
+                grants = self.terminal_grant_store()
+                registry = self.local_project_registry()
+                if jobs is None or grants is None or registry is None:
+                    return self.send_json(503, {"error": "Terminal job services unavailable"})
+                idempotency_key = self.headers.get("Idempotency-Key")
+                if not idempotency_key:
+                    return self.send_json(400, {"error": "Idempotency-Key is required"})
+                try:
+                    contract = validate_terminal_request(self.body(max_bytes=8192))
+                    if not contract["execution_enabled"]:
+                        return self.send_json(409, {"error": "Terminal template execution is disabled"})
+                    request = contract["request"]
+                    workspace = registry.resolve_workspace(
+                        request["project_id"], request["workspace_id"], request["snapshot_sha256"]
+                    )
+                    parameters_sha256 = grants.parameters_digest(request["parameters"])
+                    grants.validate_pending(
+                        request["authorization_id"],
+                        subject=identity.get("subject"),
+                        session_id=identity.get("session_id"),
+                        project_id=workspace["project_id"],
+                        workspace_id=workspace["workspace_id"],
+                        snapshot_sha256=workspace["snapshot_sha256"],
+                        template_id=request["template_id"],
+                        template_digest=contract["template_version_digest"],
+                        parameters_sha256=parameters_sha256,
+                        action="terminal.read_only",
+                    )
+                    job_payload = {
+                        "source_type": "terminal_script",
+                        "project_id": workspace["project_id"],
+                        "workspace_id": workspace["workspace_id"],
+                        "snapshot_sha256": workspace["snapshot_sha256"],
+                        "target": "terminal_script",
+                        "template_id": request["template_id"],
+                        "parameters": request["parameters"],
+                        "authorization_id": request["authorization_id"],
+                        "template_digest": contract["template_version_digest"],
+                        "parameters_sha256": parameters_sha256,
+                    }
+                    job, created = jobs.create(job_payload, idempotency_key)
+                    try:
+                        grants.reserve_job(request["authorization_id"], job_id=job["id"])
+                    except TerminalGrantError:
+                        if created:
+                            jobs.cancel(job["id"])
+                        raise
+                    return self.send_json(202, {
+                        **self.public_job(job), "created": created,
+                    })
+                except TerminalContractError as exc:
+                    return self.send_json(400, {"error": str(exc)})
+                except TerminalGrantError as exc:
+                    return self.send_json(403, {"error": str(exc)})
+                except LocalProjectError as exc:
+                    return self.send_json(409, {"error": str(exc)})
+                except JobConflict as exc:
+                    return self.send_json(409, {"error": str(exc)})
+                except ValueError as exc:
+                    return self.send_json(400, {"error": str(exc)})
+                except Exception:
+                    return self.send_json(503, {"error": "Terminal Job creation failed closed"})
             if path == "/api/terminal/authorize":
                 identity = self.proxy_identity()
                 if not identity:
