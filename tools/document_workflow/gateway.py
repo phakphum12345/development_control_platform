@@ -6,6 +6,7 @@ scope, but the writer always reloads and enforces the persisted grant.
 from __future__ import annotations
 
 import hashlib
+from contextlib import contextmanager
 import json
 import os
 import re
@@ -67,7 +68,7 @@ class DocumentWorkflowStore:
         if not self.journal_path.is_absolute():
             raise ValueError("document workflow journal path must be absolute")
         self.registry = registry
-        with self._connect() as db:
+        with self._db() as db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS document_write_grants (
                     grant_id TEXT PRIMARY KEY,
@@ -106,6 +107,20 @@ class DocumentWorkflowStore:
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA journal_mode=WAL")
         return db
+
+    @contextmanager
+    def _db(self):
+        db = self._connect()
+        try:
+            yield db
+            if db.in_transaction:
+                db.commit()
+        except Exception:
+            if db.in_transaction:
+                db.rollback()
+            raise
+        finally:
+            db.close()
 
     def _project(self, project_id: str) -> Path:
         if not isinstance(project_id, str) or not _PROJECT_ID.fullmatch(project_id):
@@ -167,7 +182,7 @@ class DocumentWorkflowStore:
             raise DocumentWorkflowError("Duplicate write-scope paths are not allowed.")
         now = time.time()
         grant_id = str(uuid.uuid4())
-        with self._connect() as db:
+        with self._db() as db:
             db.execute(
                 """INSERT INTO document_write_grants
                 (grant_id,project_id,prefixes_json,granted_by,created_at,expires_at)
@@ -183,7 +198,7 @@ class DocumentWorkflowStore:
 
     def list_grants(self, project_id: str | None = None) -> list[dict]:
         now = time.time()
-        with self._connect() as db:
+        with self._db() as db:
             if project_id:
                 rows = db.execute(
                     "SELECT * FROM document_write_grants WHERE project_id=? ORDER BY created_at DESC",
@@ -202,7 +217,7 @@ class DocumentWorkflowStore:
     def revoke_grant(self, grant_id: str, actor: str, confirmation: str) -> dict:
         if confirmation != "REVOKE DOCUMENT WRITE SCOPE":
             raise DocumentWorkflowError("Explicit revocation confirmation is required.", 403)
-        with self._connect() as db:
+        with self._db() as db:
             cursor = db.execute(
                 "UPDATE document_write_grants SET revoked_at=? WHERE grant_id=? AND revoked_at IS NULL",
                 (time.time(), grant_id),
@@ -229,7 +244,7 @@ class DocumentWorkflowStore:
         if actual != expected_sha256:
             raise DocumentWorkflowError("Target base SHA changed; refresh before proposing.", 409)
         now = time.time()
-        with self._connect() as db:
+        with self._db() as db:
             prior = db.execute(
                 "SELECT * FROM document_write_proposals WHERE idempotency_key=?",
                 (idempotency_key,),
@@ -278,7 +293,7 @@ class DocumentWorkflowStore:
         }
 
     def get_proposal(self, proposal_id: str) -> dict:
-        with self._connect() as db:
+        with self._db() as db:
             row = db.execute(
                 "SELECT * FROM document_write_proposals WHERE proposal_id=?", (proposal_id,)
             ).fetchone()
@@ -291,7 +306,7 @@ class DocumentWorkflowStore:
             raise DocumentWorkflowError("Explicit write confirmation is required.", 403)
         if not isinstance(content_sha256, str) or not _SHA256.fullmatch(content_sha256):
             raise DocumentWorkflowError("A full content SHA-256 is required.")
-        with self._connect() as db:
+        with self._db() as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute(
                 "SELECT * FROM document_write_proposals WHERE proposal_id=?", (proposal_id,)
@@ -332,7 +347,7 @@ class DocumentWorkflowStore:
         if result.get("status") != "PASS" or result.get("read_back_verified") is not True:
             raise DocumentWorkflowError("Post-write verification did not return PASS.", 503)
         result = {**result, "proposal_id": proposal_id, "approved_by": actor, "status": "PASS"}
-        with self._connect() as db:
+        with self._db() as db:
             db.execute(
                 "UPDATE document_write_proposals SET status='APPLIED',result_json=? WHERE proposal_id=?",
                 (json.dumps(result, sort_keys=True), proposal_id),
