@@ -356,7 +356,17 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
 <section class="view" id="github-api"><div class="panel"><h2>Research OS API Integration</h2><p>เชื่อมต่อ API ผ่าน Google sign-in และ one-time OAuth handoff; session token เก็บในหน่วยความจำของแท็บนี้เท่านั้น ไม่บันทึกลง localStorage หรือ URL</p><div class="warn">สิทธิ์ฝั่งเซิร์ฟเวอร์เป็นตัวตัดสิน: ต้องเป็น Research OS owner และ repository ต้องอยู่ใน allowlist ของ Backend เท่านั้น การเชื่อมต่อเป็น read-only ไม่มีคำสั่ง push/merge/deploy</div><div class="output" id="ros-api-local-guidance"><strong>ใช้งาน Dashboard บนเครื่อง (Windows)</strong><p>เปิด repository ในเครื่อง แล้วเรียก <code>Open-DCP-Dashboard.cmd</code> เพื่อเปิดหน้าเว็บบน 127.0.0.1 โดยเลือกพอร์ตว่างอัตโนมัติ</p><div class="actions"><button type="button" data-copy-command="Open-DCP-Dashboard.cmd">Copy local launch command</button></div><p>โหมด Local ใช้เครื่องมืออ่าน Public GitHub, PR review, SHA/evidence และ quality gates ได้โดยไม่ต้อง sign-in ผ่าน Research OS API. หากต้องการ Google sign-in ให้เปิด backend แยกในเครื่องและให้รองรับ API contract นี้ก่อน: GET <code>/health</code> (JSON health check), POST <code>/v1/auth/google/start</code>, POST <code>/v1/auth/google/handoff</code>, และ GET <code>/v1/github/dashboard</code>. Dashboard นี้เปิดเฉพาะ UI และไม่ได้สร้าง backend หรือ OAuth secrets ให้. ค่าเริ่มต้นคือ <code>http://127.0.0.1:8788</code>; หาก backend ใช้พอร์ตอื่นให้แก้ URL แล้วกด Check local API. HTTP อนุญาตเฉพาะ loopback; OAuth authorization ต้องเป็น HTTPS บน accounts.google.com และ session อยู่ในหน่วยความจำแท็บนี้เท่านั้น. Health check สำเร็จเป็นเพียงหลักฐานว่า endpoint ตอบกลับ ไม่ได้พิสูจน์ว่า OAuth หรือ owner authorization ผ่าน</p></div><div class="grid"><div class="field"><label for="ros-api-base">Research OS API base URL</label><input id="ros-api-base" type="url" value="http://127.0.0.1:8788" autocomplete="url"></div><div class="field"><label for="ros-api-repository">Repository allowlisted on server</label><input id="ros-api-repository" value="phakphoum38-stack/ENTERPRISE_API_ARCHITECTURE_LOGIC_TH" autocomplete="off"></div></div><div class="actions"><button id="ros-api-health">Check local API</button><button class="primary" id="ros-api-connect">Connect with Google</button><button id="ros-api-sync">Sync Google OAuth</button><button id="ros-api-load" disabled>Load GitHub dashboard</button><button id="ros-api-disconnect" disabled>Disconnect</button><a href="https://dashboard.render.com/web/srv-db2jv449v7es738cejm0/env" target="_blank" rel="noopener noreferrer">Render environment</a></div><div id="ros-api-status" class="output" aria-live="polite">Not connected. API status is UNKNOWN until authenticated.</div><div id="ros-api-result" class="empty" aria-live="polite">No API data loaded.</div></div></section>
 <section class="view" id="repo-selector"><div class="panel"><h2>Shared GitHub Account & Repository Selector</h2><p>เลือก public GitHub account/organization ก่อน แล้วโหลด repository เพื่อใช้เป็นค่าเริ่มต้นร่วมกันในเครื่องมืออื่น</p><div class="warn"><b>ข้อจำกัด:</b> ตัวเลือกนี้อ่าน public GitHub API โดยไม่ sign-in และไม่สลับ linked GitHub connector account, ไม่แสดง private repositories และไม่ยืนยันสิทธิ์เข้าถึง การยืนยันตัวตนต้องทำผ่าน backend OAuth/GitHub App แยกต่างหาก</div><div class="grid"><div class="field"><label for="shared-owner">GitHub account / organization</label><select id="shared-owner"><option value="phakphum12345">phakphum12345</option><option value="phakphoum38-stack">phakphoum38-stack</option><option value="__custom__">Other account / organization…</option></select><input id="shared-owner-custom" placeholder="Enter GitHub username or organization" autocomplete="off" hidden></div><div class="field"><label for="shared-repo">Repository</label><select id="shared-repo" disabled><option value="">Load account repositories first</option></select></div></div><div class="actions"><button class="primary" id="shared-load">Load public repositories</button><button id="shared-apply" disabled>Apply selection to tools</button><button id="shared-clear">Clear selection</button></div><div id="shared-status" class="output" aria-live="polite">No shared account or repository selected. Permission: UNKNOWN.</div></div></section>
 <section class="view" id="repo"><div class="panel"><h2>Repository Explorer</h2><p>Public repositories only. Enter owner/repository.</p><div class="grid"><div class="field"><label for="repo-name">Repository</label><input id="repo-name" placeholder="octocat/Hello-World"></div><div class="field"><label for="branch-name">Branch filter (optional)</label><input id="branch-name" placeholder="main"></div></div><div class="actions"><button class="primary" id="repo-load">Load repository</button><button id="repo-clear">Clear</button></div><div id="repo-msg" class="output">No repository loaded.</div><div id="repo-data" class="empty">Repository details appear here.</div><h3>Open pull requests</h3><div id="repo-prs" class="empty">Load a repository first.</div></div></section>
-<section class="view" id="pr"><div class="panel"><h2>Pull Request Review</h2><div class="grid"><div class="field"><label for="pr-repo">Public repository</label><input id="pr-repo" placeholder="owner/repository"></div><div class="field"><label for="pr-num">PR number</label><input id="pr-num" type="number" min="1" placeholder="123"></div></div><div class="actions"><button class="primary" id="pr-load">Inspect PR</button><button id="pr-clear">Clear</button></div><div id="pr-msg" class="output">No PR loaded.</div><div id="pr-data" class="empty">Enter repository and PR number.</div><h3>Changed files</h3><div id="pr-files" class="empty">No files loaded.</div><h3>Reviews</h3><div id="pr-reviews" class="empty">No reviews loaded.</div><h3>Checks for exact head SHA</h3><div id="pr-checks" class="empty">No checks loaded; readiness UNKNOWN.</div></div></section>
+<section class="view" id="pr"><div class="panel"><h2>Pull Request Review</h2><div class="grid"><div class="field"><label for="pr-repo">Public repository</label><input id="pr-repo" placeholder="owner/repository"></div><div class="field"><label for="pr-num">PR number</label><input id="pr-num" type="number" min="1" placeholder="123"></div></div><div class="actions"><button class="primary" id="pr-load">Inspect PR</button><button id="pr-clear">Clear</button></div><div id="pr-msg" class="output">No PR loaded.</div><div id="pr-data" class="empty">Enter repository and PR number.</div><h3>Changed files</h3><div id="pr-files" class="empty">No files loaded.</div><h3>Reviews</h3><div id="pr-reviews" class="empty">No reviews loaded.</div><h3>Checks for exact head SHA</h3><div id="pr-checks" class="empty">No checks loaded; readiness UNKNOWN.</div></div><div class="panel" id="pr-lifecycle-panel">
+ <h3>PR Lifecycle Checkpoints</h3>
+ <p class="small muted">Read-only verifier. Run the matching checkpoint before and after each PR transition. This panel does not open, merge, or close PRs.</p>
+ <div class="grid">
+  <div class="field"><label for="pr-lifecycle-stage">Lifecycle stage</label><select id="pr-lifecycle-stage"><option value="before-open">Before opening PR</option><option value="after-open">After opening PR</option><option value="before-merge">Before merging PR</option><option value="after-merge">After merging PR</option><option value="before-close">Before closing PR</option><option value="after-close">After closing PR without merge</option></select></div>
+  <div class="field"><label for="pr-lifecycle-head">Head branch (before opening)</label><input id="pr-lifecycle-head" placeholder="feature/branch"></div>
+  <div class="field"><label for="pr-lifecycle-base">Base branch (before opening)</label><input id="pr-lifecycle-base" value="main" placeholder="main"></div>
+ </div>
+ <div class="actions"><button class="primary" id="pr-lifecycle-verify" type="button">Verify lifecycle checkpoint</button></div>
+ <div id="pr-lifecycle-result" class="output" role="status" aria-live="polite">UNKNOWN — no lifecycle checkpoint verified.</div>
+</div></section>
 <section class="view" id="user"><div class="panel"><h2>User Explorer</h2><p>Public profile only. This does not establish team membership, roles or repository permissions.</p><div class="field"><label for="user-name">GitHub username</label><input id="user-name" placeholder="octocat"></div><div class="actions"><button class="primary" id="user-load">Load profile</button><button id="user-clear">Clear</button></div><div id="user-msg" class="output">No user loaded.</div><div id="user-data" class="empty">Profile details appear here.</div></div></section>
 
 <section class="view" id="workspace"><div class="panel"><h2>GitHub Workspace Selector</h2><p>เลือกบัญชี/Owner, Repository และ Branch สำหรับเตรียม workspace ได้จากรายการสาธารณะ</p><div class="warn"><b>ขอบเขตความปลอดภัย:</b> หน้านี้อ่านข้อมูล public API เท่านั้น ยังไม่ใช่ OAuth/GitHub App authorization และไม่สามารถให้สิทธิ์หรือเข้าถึง private repositories ได้ สถานะสิทธิ์จริงจะแสดง UNKNOWN จนกว่าจะมี backend ที่ตรวจสิทธิ์จาก GitHub อย่างปลอดภัย</div><div class="grid"><div class="field"><label for="ws-owner">GitHub account / organization</label><input id="ws-owner" value="phakphum12345" autocomplete="off" placeholder="owner-or-organization"></div><div class="field"><label for="ws-repo">Repository</label><select id="ws-repo" disabled><option value="">Load account repositories first</option></select></div><div class="field"><label for="ws-branch">Branch</label><select id="ws-branch" disabled><option value="">Select a repository first</option></select></div><div class="field"><label>Effective permission</label><div id="ws-permission" class="output" aria-live="polite">UNKNOWN — no authenticated permission check.</div></div></div><div class="actions"><button class="primary" id="ws-load">Load public repositories</button><button id="ws-branches" disabled>Load branches</button><button id="ws-reset">Reset</button><a href="https://github.com/settings/installations" target="_blank" rel="noopener noreferrer">Manage GitHub App installations</a></div><div id="ws-msg" class="output" aria-live="polite">No account/repository loaded.</div><div id="ws-details" class="empty">Select a public repository to inspect its public metadata.</div><p class="small muted">No token is requested or stored in this browser. Granting access requires an explicitly installed GitHub App or OAuth integration plus server-side permission enforcement.</p></div></section>
@@ -479,6 +489,82 @@ $("repo-load").onclick=async()=>{let n=$("repo-name").value.trim();if(!isRepo(n)
 $("repo-clear").onclick=()=>{$("repo-name").value="";$("branch-name").value="";state.repo=null;$("selected").textContent="—";msg("repo-msg","Cleared.");$("repo-data").innerHTML='<div class="empty">Repository details appear here.</div>';$("repo-prs").innerHTML=""};
 $("pr-load").onclick=async()=>{let n=$("pr-repo").value.trim(),num=$("pr-num").value.trim();if(!isRepo(n)||!/^[1-9]\d*$/.test(num)){msg("pr-msg","Enter valid owner/repository and positive PR number.");return}msg("pr-msg","Loading PR, files, reviews and checks…");try{let [p,f,r]=await Promise.all([api("/repos/"+n+"/pulls/"+num),api("/repos/"+n+"/pulls/"+num+"/files?per_page=100"),api("/repos/"+n+"/pulls/"+num+"/reviews?per_page=100")]);let c=null,ce="";try{c=await api("/repos/"+n+"/commits/"+p.head.sha+"/check-runs?per_page=100")}catch(e){ce=e.message}state.pr={p,f,r,c};msg("pr-msg","Loaded public PR. Head SHA: "+p.head.sha);$("pr-data").innerHTML='<h3>'+esc(p.title)+'</h3>'+link(p.html_url,"Open PR")+table(["Property","Value"],[["State",esc(p.state)],["Draft",esc(p.draft)],["Author",esc(p.user.login)],["Base",esc(p.base.ref)],["Head",esc(p.head.ref)],["Full head SHA",'<code>'+esc(p.head.sha)+'</code>'],["Mergeable",esc(p.mergeable===null?"unknown":p.mergeable)],["Files",esc(p.changed_files)],["Additions / deletions",esc(p.additions+" / "+p.deletions)]]);$("pr-files").innerHTML=table(["File","Status","+ / -"],f.map(x=>[link(x.blob_url,x.filename),esc(x.status),esc("+"+x.additions+" / -"+x.deletions)]));$("pr-reviews").innerHTML=table(["Reviewer","State","Submitted"],r.map(x=>[esc(x.user.login),esc(x.state),esc(x.submitted_at||"pending")]));$("pr-checks").innerHTML=c?table(["Check","Status","Conclusion","Link"],c.check_runs.map(x=>[esc(x.name),esc(x.status),esc(x.conclusion||"UNKNOWN"),x.html_url?link(x.html_url,"Open run"):"—"])):'<div class="empty">Checks unavailable: '+esc(ce)+'. Readiness UNKNOWN.</div>';if(c&&!c.check_runs.length)$("pr-checks").innerHTML='<div class="empty">No checks returned; readiness UNKNOWN.</div>'}catch(e){state.pr=null;msg("pr-msg","Could not inspect PR: "+e.message)}};
 $("pr-clear").onclick=()=>{$("pr-repo").value="";$("pr-num").value="";state.pr=null;msg("pr-msg","Cleared.");["pr-data","pr-files","pr-reviews","pr-checks"].forEach(x=>$(x).innerHTML='<div class="empty">No data loaded.</div>')};
+async function lifecycleSnapshot(repoName,number){
+ const p=await api("/repos/"+repoName+"/pulls/"+number);
+ const results=await Promise.allSettled([
+  api("/repos/"+repoName+"/pulls/"+number+"/files?per_page=100"),
+  api("/repos/"+repoName+"/pulls/"+number+"/reviews?per_page=100"),
+  api("/repos/"+repoName+"/commits/"+p.head.sha+"/check-runs?per_page=100"),
+  api("/repos/"+repoName+"/commits/"+p.head.sha+"/status")
+ ]);
+ return {p,files:results[0].status==="fulfilled"?results[0].value:null,reviews:results[1].status==="fulfilled"?results[1].value:null,checks:results[2].status==="fulfilled"?results[2].value:null,status:results[3].status==="fulfilled"?results[3].value:null,errors:results.map((x,i)=>x.status==="rejected"?["files","reviews","check-runs","commit-status"][i]+": "+x.reason.message:null).filter(Boolean)};
+}
+function lifecycleEvidence(snapshot){
+ const {p,files,reviews,checks,status,errors}=snapshot;
+ const checksList=checks?.check_runs||[];
+ const contexts=status?.statuses||[];
+ const checksKnown=!!checks&&!!status&&(checksList.length+contexts.length)>0;
+ const checksPass=checksKnown&&checksList.every(x=>x.status==="completed"&&x.conclusion==="success")&&contexts.every(x=>x.state==="success")&&status.state==="success";
+ const checksFail=(checksList.some(x=>x.status==="completed"&&x.conclusion&&x.conclusion!=="success")||contexts.some(x=>x.state==="failure"||x.state==="error")||status?.state==="failure");
+ const removed=Array.isArray(files)&&files.some(x=>x.status==="removed");
+ const latestByReviewer={};
+ (reviews||[]).forEach(x=>{if(x.user?.login)latestByReviewer[x.user.login]=x});
+ const approvals=Object.values(latestByReviewer).filter(x=>x.state==="APPROVED").length;
+ return {p,files,reviews,checks,status,errors,checksKnown,checksPass,checksFail,removed,approvals};
+}
+$("pr-lifecycle-verify").onclick=async()=>{
+ const repoName=$("pr-repo").value.trim(),number=$("pr-num").value.trim(),stage=$("pr-lifecycle-stage").value;
+ const out=$("pr-lifecycle-result");
+ if(!isRepo(repoName)){out.textContent="FAIL — enter a valid owner/repository in Pull Request Review.";return}
+ out.textContent="Checking "+stage+"…";
+ try{
+  if(stage==="before-open"){
+   const head=$("pr-lifecycle-head").value.trim(),base=$("pr-lifecycle-base").value.trim()||"main";
+   if(!head||!base||head===base)throw Error("Provide distinct head and base branch names.");
+   const [h,b]=await Promise.all([api("/repos/"+repoName+"/branches/"+encodeURIComponent(head)),api("/repos/"+repoName+"/branches/"+encodeURIComponent(base))]);
+   const compare=await api("/repos/"+repoName+"/compare/"+h.commit.sha+"..."+b.commit.sha);
+   const result={stage,status:"UNKNOWN",head_branch:head,base_branch:base,head_sha:h.commit.sha,base_sha:b.commit.sha,compare_status:compare.status,ahead_by:compare.ahead_by,behind_by:compare.behind_by,reason:"Branch identity and diff base are verified. CI/review policy and duplicate PR lookup are not fully verified by this static read-only checkpoint."};
+   out.textContent=JSON.stringify(result,null,2);return;
+  }
+  if(!/^[1-9]\\d*$/.test(number))throw Error("Enter a positive PR number in Pull Request Review.");
+  const snap=lifecycleEvidence(await lifecycleSnapshot(repoName,number)),p=snap.p;
+  let statusLabel="UNKNOWN",notes=[];
+  if(stage==="after-open"){
+   statusLabel=p.state==="open"&&p.merged===false&&p.head?.sha&&p.base?.ref?"PASS":"FAIL";
+   notes.push("PR existence/state/head/base metadata re-fetched after opening.");
+  }else if(stage==="before-close"){
+   statusLabel=p.state==="open"&&!p.merged?"PASS":"FAIL";
+   notes.push("PR is open and not merged; this verifies state only, not human authorization to close.");
+  }else if(stage==="after-close"){
+   statusLabel=p.state==="closed"&&!p.merged?"PASS":p.merged?"FAIL":"UNKNOWN";
+   notes.push("Expected closed=true and merged=false for a close-without-merge operation.");
+  }else if(stage==="before-merge"){
+   const basic=p.state==="open"&&p.merged===false&&p.mergeable===true&&snap.files&&!snap.removed&&snap.approvals>0;
+   statusLabel=basic&&snap.checksPass?"PASS":snap.checksFail||p.mergeable===false||snap.removed?"FAIL":"UNKNOWN";
+   notes.push("Checks current head SHA "+p.head.sha+".");
+   notes.push("Latest reviewer states with at least one approval: "+snap.approvals+".");
+   notes.push("Branch protection/required-review policy is not independently available in this static public dashboard; do not treat PASS here as merge authorization.");
+  }else if(stage==="after-merge"){
+   if(p.merged&&p.merge_commit_sha){
+    const [baseRef,mergeChecks]=await Promise.allSettled([
+     api("/repos/"+repoName+"/branches/"+encodeURIComponent(p.base.ref)),
+     api("/repos/"+repoName+"/commits/"+p.merge_commit_sha+"/check-runs?per_page=100")
+    ]);
+    const baseSha=baseRef.status==="fulfilled"?baseRef.value.commit.sha:null;
+    const compare=baseSha?await api("/repos/"+repoName+"/compare/"+p.merge_commit_sha+"..."+baseSha):null;
+    const postRuns=mergeChecks.status==="fulfilled"?mergeChecks.value.check_runs||[]:null;
+    statusLabel=compare&&(compare.status==="ahead"||compare.status==="identical")&&postRuns&&postRuns.length&&postRuns.every(x=>x.status==="completed"&&x.conclusion==="success")?"PASS":"UNKNOWN";
+    notes.push("Merged commit: "+p.merge_commit_sha);
+    notes.push("Base branch contains merge commit: "+(compare?(compare.status==="ahead"||compare.status==="identical"):"UNKNOWN"));
+    notes.push("Post-merge checks are bound to merge commit SHA; unavailable or incomplete checks remain UNKNOWN.");
+   }else statusLabel=p.merged?"UNKNOWN":"FAIL";
+  }
+  if(snap.errors.length)notes.push("Evidence retrieval limitations: "+snap.errors.join(" | "));
+  if(!snap.checksKnown&&["before-merge","after-merge"].includes(stage))notes.push("No complete check-run and commit-status evidence returned.");
+  out.textContent=JSON.stringify({stage,status:statusLabel,repository:repoName,pr_number:p.number,url:p.html_url,state:p.state,merged:p.merged,head_branch:p.head.ref,head_sha:p.head.sha,base_branch:p.base.ref,base_sha:p.base.sha,mergeable:p.mergeable,merge_commit_sha:p.merge_commit_sha,changed_files:p.changed_files,deleted_files:snap.removed,latest_approvals:snap.approvals,head_checks_pass:snap.checksPass,head_checks_fail:snap.checksFail,notes},null,2);
+ }catch(error){out.textContent="UNKNOWN — lifecycle verification incomplete. "+error.message}
+};
+
 $("user-load").onclick=async()=>{let n=$("user-name").value.trim();if(!/^[A-Za-z0-9-]{1,39}$/.test(n)){msg("user-msg","Enter a valid GitHub username.");return}msg("user-msg","Loading profile…");try{let u=await api("/users/"+encodeURIComponent(n));state.user=u;msg("user-msg","Public profile loaded; this does not prove membership or permissions.");$("user-data").innerHTML='<h3>'+esc(u.name||u.login)+'</h3>'+link(u.html_url,"Open profile")+table(["Property","Value"],[["Username",esc(u.login)],["Bio",esc(u.bio||"—")],["Public repositories",esc(u.public_repos)],["Followers",esc(u.followers)],["Following",esc(u.following)],["Created",esc(u.created_at)]])}catch(e){state.user=null;msg("user-msg","Could not load profile: "+e.message)}};
 $("user-clear").onclick=()=>{$("user-name").value="";state.user=null;msg("user-msg","Cleared.");$("user-data").innerHTML='<div class="empty">Profile details appear here.</div>'};
 
