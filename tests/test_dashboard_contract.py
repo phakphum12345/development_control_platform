@@ -159,7 +159,7 @@ class DashboardContractTests(unittest.TestCase):
             'No process was started.',
             'PENDING_REVIEW',
             'Imported template is pending owner review.',
-            'ไม่มี Shell/PTY',
+            'ไม่มีช่อง Shell Command',
         ):
             with self.subTest(expected=expected):
                 self.assertIn(expected, HTML)
@@ -477,7 +477,7 @@ class DashboardControlCenterV2Tests(unittest.TestCase):
             '["integer","commit_sha"].includes(spec.type)',
             'parameters:terminalStudioCollectParameters()',
             'terminalStudioRenderBuilder();$("terminal-preview").disabled',
-            "ไม่มี Shell/PTY",
+            "ไม่มีช่อง Shell Command",
         ):
             with self.subTest(contract=contract):
                 self.assertIn(contract, HTML)
