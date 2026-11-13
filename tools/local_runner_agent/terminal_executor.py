@@ -146,6 +146,9 @@ class TerminalScriptExecutor:
             env["GIT_OPTIONAL_LOCKS"] = "0"
             env["GIT_TERMINAL_PROMPT"] = "0"
             env["GIT_CONFIG_NOSYSTEM"] = "1"
+        system_root = os.environ.get("SYSTEMROOT") or os.environ.get("SystemRoot")
+        if system_root:
+            env["SYSTEMROOT"] = system_root
         env["CI"] = "true"
         env["PYTHONDONTWRITEBYTECODE"] = "1"
         env["PYTHONNOUSERSITE"] = "1"
