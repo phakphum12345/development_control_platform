@@ -319,9 +319,11 @@ class JobStore:
             ).fetchone()
             if row is None:
                 raise JobNotFound(job_id)
-            if (row["state"] != "running" or row["worker"] != worker
+            if (row["state"] not in ("running", "cancel_requested") or row["worker"] != worker
                     or not row["lease_until"] or row["lease_until"] <= current):
                 raise JobConflict("Worker does not own an active job lease")
+            if row["state"] == "cancel_requested" and checkpoint["safe_to_resume"]:
+                raise JobConflict("A cancellation-requested job cannot be checkpointed as resumable")
             current_seq = row["checkpoint_seq"]
             if sequence == current_seq and row["checkpoint_sha256"] == digest:
                 db.execute("COMMIT")
