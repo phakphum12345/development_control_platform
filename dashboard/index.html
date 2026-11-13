@@ -617,6 +617,7 @@ $("gate-eval").onclick=()=>{state.gates=gateResult();msg("gate-output",(state.ga
 function checkpoint(){let v=id=>$(id).value.trim();return "# Development Checkpoint\n\n## Target\n- Repository: "+(v("cp-repo")||"Not specified")+"\n- Branch: "+(v("cp-branch")||"Not specified")+"\n- Commit SHA: "+(v("cp-sha")||"UNKNOWN")+"\n- Created: "+new Date().toISOString()+"\n\n## Goal\n"+(v("cp-goal")||"Not specified")+"\n\n## Completed\n"+(v("cp-done")||"- None recorded")+"\n\n## Remaining / blockers\n"+(v("cp-pending")||"- None recorded")+"\n\n## Tests and evidence\n"+(v("cp-tests")||"- No test evidence; UNKNOWN.")+"\n\n## Safety\n- No force-push or history rewrite.\n- Required gates must pass on the exact full SHA.\n- Missing, stale, mismatched or unverifiable evidence is UNKNOWN.\n- This checkpoint is not proof of successful tests.\n"}
 $("cp-build").onclick=()=>$("cp-output").value=checkpoint();$("cp-copy").onclick=()=>copy($("cp-output").value||checkpoint());$("cp-download").onclick=()=>download("CHECKPOINT.md",$("cp-output").value||checkpoint(),"text/markdown");
 const documentState={content:"",filename:"",digest:"",generated:false,downloadRequested:false};
+const docWorkflowState={proposal:null,idempotencyKey:null,projects:[]};
 function docSafeName(value){return (value||"project-document").trim().replace(/[^A-Za-z0-9._-]+/g,"-").replace(/^-+|-+$/g,"").slice(0,90)||"project-document"}
 function docLines(value){return (value||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean)}
 function docBuild(){
@@ -662,6 +663,108 @@ $("doc-download").onclick=()=>{
  documentState.downloadRequested=true;
  msg("doc-status","DOWNLOAD REQUESTED · "+documentState.filename+"\nThe browser does not confirm disk persistence. File read-back and repository write status remain UNKNOWN.");
 };
+
+
+async function docWorkflowGet(path){
+ const response=await fetch("."+path,{method:"GET",credentials:"same-origin",cache:"no-store",headers:{Accept:"application/json"}});
+ let data={};try{data=await response.json()}catch(_){}
+ if(!response.ok)throw Error(data.error||("HTTP "+response.status));
+ return data;
+}
+async function docWorkflowPost(path,payload,idempotencyKey){
+ const session=await docWorkflowGet("/api/auth/session");
+ if(session.authenticated!==true||typeof session.csrfToken!=="string"||session.csrfToken.length<16)throw Error("Owner sign-in and server-issued CSRF token are required.");
+ const headers={"Content-Type":"application/json",Accept:"application/json","X-CSRF-Token":session.csrfToken};
+ if(idempotencyKey)headers["Idempotency-Key"]=idempotencyKey;
+ const response=await fetch("."+path,{method:"POST",credentials:"same-origin",cache:"no-store",headers,body:JSON.stringify(payload)});
+ let data={};try{data=await response.json()}catch(_){}
+ if(!response.ok)throw Error(data.error||("HTTP "+response.status));
+ return data;
+}
+function docWorkflowMessage(value){msg("doc-local-status",value)}
+async function docWorkflowRefreshProjects(){
+ const button=$("doc-local-refresh");button.disabled=true;
+ try{
+  const data=await docWorkflowGet("/api/local-projects");
+  if(!Array.isArray(data.projects))throw Error("Local Project catalog response is invalid.");
+  docWorkflowState.projects=data.projects;
+  const select=$("doc-local-project"),prior=select.value;
+  select.innerHTML='<option value="">Select a registered Local Project</option>'+data.projects.map(p=>'<option value="'+esc(p.project_id)+'">'+esc(p.relative_path||p.project_id)+'</option>').join("");
+  if(data.projects.some(p=>p.project_id===prior))select.value=prior;
+  docWorkflowMessage("PASS — Loaded "+data.projects.length+" registered Local Project(s). Select one before granting scope or proposing a write.");
+ }catch(error){docWorkflowMessage("UNKNOWN — Local Project list unavailable: "+error.message)}
+ finally{button.disabled=false}
+}
+$("doc-local-refresh").onclick=docWorkflowRefreshProjects;
+$("doc-scope-grant").onclick=async()=>{
+ const projectId=$("doc-local-project").value,prefix=$("doc-scope-prefix").value.trim();
+ if(!projectId||!prefix){docWorkflowMessage("FAIL — Select a Local Project and an existing directory scope.");return}
+ if(!$("doc-scope-confirm").checked){docWorkflowMessage("FAIL — Explicit scope-grant checkbox is required.");return}
+ const button=$("doc-scope-grant");button.disabled=true;
+ try{
+  const data=await docWorkflowPost("/api/document-workflow/grants",{project_id:projectId,allowed_paths:[prefix],confirmation:"GRANT DOCUMENT WRITE SCOPE"});
+  docWorkflowMessage("PASS — Scope granted for "+data.grant.allowed_paths.join(", ")+". Expires: "+new Date(data.grant.expires_at*1000).toISOString()+". Grant ID: "+data.grant.grant_id);
+  $("doc-scope-confirm").checked=false;
+ }catch(error){docWorkflowMessage("FAIL / UNKNOWN — Scope grant request did not confirm success: "+error.message)}
+ finally{button.disabled=false}
+};
+$("doc-propose-write").onclick=async()=>{
+ const projectId=$("doc-local-project").value,path=$("doc-local-path").value.trim();
+ if(!documentState.generated||!documentState.content){docWorkflowMessage("FAIL — Generate the document before creating a write proposal.");return}
+ if(!projectId||!path){docWorkflowMessage("FAIL — Select a Local Project and document path.");return}
+ if(!/^[a-f0-9]{64}$/.test(documentState.digest)){docWorkflowMessage("FAIL — A verified SHA-256 digest is required before proposing a write.");return}
+ const button=$("doc-propose-write");button.disabled=true;docWorkflowState.proposal=null;$("doc-approve-write").disabled=true;
+ try{
+  const query="?project_id="+encodeURIComponent(projectId)+"&path="+encodeURIComponent(path);
+  const targetData=await docWorkflowGet("/api/document-workflow/target"+query),target=targetData.target;
+  if(target.write_scope!=="PASS")throw Error("No active server-side grant covers this path. Grant the directory scope first.");
+  docWorkflowState.idempotencyKey=docWorkflowState.idempotencyKey||("document-operation-"+crypto.randomUUID());
+  const data=await docWorkflowPost("/api/document-workflow/proposals",{
+   project_id:projectId,relative_path:path,content:documentState.content,expected_sha256:target.current_sha256
+  },docWorkflowState.idempotencyKey);
+  docWorkflowState.proposal=data.proposal;
+  $("doc-write-proposal").textContent=JSON.stringify({
+   status:data.proposal.status,project_id:data.proposal.project_id,path:data.proposal.path,
+   expected_base_sha256:data.proposal.expected_sha256,content_sha256:data.proposal.content_sha256,
+   expires_at:new Date(data.proposal.expires_at*1000).toISOString(),
+   note:"No file has been written yet. Approval is a separate action."
+  },null,2);
+  $("doc-approve-write").disabled=false;
+  docWorkflowMessage("PASS — Proposal created. Review the exact project, path, base SHA and content SHA before approving.");
+ }catch(error){
+  docWorkflowMessage("FAIL / UNKNOWN — Proposal was not confirmed: "+error.message+". Do not change the content or reuse a different idempotency key until the proposal state is checked.");
+ }finally{button.disabled=false}
+};
+$("doc-approve-write").onclick=async()=>{
+ const proposal=docWorkflowState.proposal;
+ if(!proposal){docWorkflowMessage("FAIL — No pending proposal to approve.");return}
+ if(!$("doc-write-confirm").checked){docWorkflowMessage("FAIL — Explicit exact-content approval checkbox is required.");return}
+ const button=$("doc-approve-write");button.disabled=true;
+ try{
+  const data=await docWorkflowPost("/api/document-workflow/proposals/"+encodeURIComponent(proposal.proposal_id)+"/approve",{
+   content_sha256:proposal.content_sha256,confirmation:"WRITE DOCUMENT"
+  });
+  $("doc-write-proposal").textContent=JSON.stringify(data.write,null,2);
+  docWorkflowMessage("PASS — File written and read back. SHA-256: "+data.write.sha256+" · "+data.write.path);
+  $("doc-write-confirm").checked=false;
+ }catch(error){
+  try{
+   const current=await docWorkflowGet("/api/document-workflow/proposals/"+encodeURIComponent(proposal.proposal_id));
+   if(current.proposal.status==="APPLIED"&&current.proposal.result&&current.proposal.result.read_back_verified===true){
+    $("doc-write-proposal").textContent=JSON.stringify(current.proposal.result,null,2);
+    docWorkflowMessage("PASS — Reconciled after lost response. The server journal confirms read-back verification.");
+    $("doc-write-confirm").checked=false;
+   }else{
+    docWorkflowMessage("UNKNOWN — Approval response was lost and the proposal is "+current.proposal.status+". No blind retry was sent; inspect the proposal before continuing.");
+   }
+  }catch(reconcileError){
+   docWorkflowMessage("UNKNOWN — Approval outcome and recovery status could not be fetched. Do not retry blindly. Proposal ID: "+proposal.proposal_id);
+  }
+ }finally{button.disabled=false}
+};
+$("doc-local-project").addEventListener("change",()=>{docWorkflowState.proposal=null;docWorkflowState.idempotencyKey=null;$("doc-approve-write").disabled=true;$("doc-write-confirm").checked=false;$("doc-write-proposal").textContent="Project changed. Create a new proposal after reviewing the target path."});
+$("doc-local-path").addEventListener("input",()=>{docWorkflowState.proposal=null;docWorkflowState.idempotencyKey=null;$("doc-approve-write").disabled=true;$("doc-write-confirm").checked=false});
+$("doc-generate").addEventListener("click",()=>{docWorkflowState.proposal=null;docWorkflowState.idempotencyKey=null;$("doc-approve-write").disabled=true;$("doc-write-confirm").checked=false;$("doc-write-proposal").textContent="Document changed. Create a new proposal to bind approval to its current SHA-256."});
 
 const audits=[["a-target","Target repository, branch and full SHA verified."],["a-scope","Diff and changed-file scope reviewed."],["a-secret","No secrets or private data added."],["a-tests","Required tests and security scans have real results."],["a-evidence","Evidence is fresh and bound to the exact SHA."],["a-history","No force-push, history rewrite or direct main edit."],["a-auth","Write scope has explicit approval and server enforcement."]];
 $("audit-list").innerHTML=audits.map(([id,t])=>'<div class="check"><input type="checkbox" id="'+id+'"><label for="'+id+'">'+t+'</label></div>').join("");
