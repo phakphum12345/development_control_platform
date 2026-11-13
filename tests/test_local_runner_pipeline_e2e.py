@@ -193,8 +193,8 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
             os.environ["PATH"] = old_path
         self.assertEqual(result["outcome"], "cancelled")
         self.assertEqual(result["job"]["state"], "cancelled")
-        self.assertEqual(self.jobs.get(job["id"])["checkpoint"]["step"], "ready-to-finish")
-        self.assertTrue(self.jobs.get(job["id"])["checkpoint"]["safe_to_resume"])
+        self.assertEqual(self.jobs.get(job["id"])["checkpoint"]["step"], "cancelled-ready-to-finish")
+        self.assertFalse(self.jobs.get(job["id"])["checkpoint"]["safe_to_resume"])
         self.assertFalse((self.root / "workspaces" / job["id"]).exists())
 
 
