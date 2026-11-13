@@ -1,383 +1,404 @@
 # DCP-CEEP v2.0
+
 ## Universal Continuous Execution & Evidence Protocol
 
-**Protocol ID:** DCP-CEEP  
-**Version:** 2.0.0  
-**Status:** Proposed; adoption requires review and approval  
-**Scope:** Cross-project operating standard for research, engineering, software, hardware, data, documentation, operations, and other supported work  
-**Supersedes:** DCP-CEEP v1.0 after an explicit migration/adoption decision  
-**Operating principle:** One protocol, task-specific workflows, evidence-backed outcomes.
+**Protocol Type:** Universal Work Orchestration, Research, Execution & Verification  
+**Status:** Proposed Master Standard — Pending Repository Integration  
+**Scope:** All projects, repositories, applications, research and operational workflows
 
 ---
 
-## 1. Purpose and governing principles
+# 1. เป้าหมายหลัก
 
-DCP-CEEP defines a repeatable lifecycle from request intake through discovery, research, planning, authorized execution, verification, recovery, and delivery.
+สร้างโปรโตคอลกลางสำหรับควบคุมการทำงานตั้งแต่รับคำสั่งจนถึงส่งมอบผลลัพธ์ที่ตรวจสอบได้
 
-The protocol MUST:
-1. preserve the user's requested outcome and constraints;
-2. inspect existing work before repeating it;
-3. use the least risky method that can achieve the outcome;
-4. distinguish plans, implementation, tests, CI, and real-world acceptance;
-5. preserve evidence and continuity across sessions;
-6. report blockers and waiting states instead of silently stalling;
-7. continue independent work when another task is blocked;
-8. stop at authorization, safety, or information boundaries;
-9. never claim a result that has not been verified.
+เป้าหมาย:
 
-The protocol does not grant permissions. It governs how already-authorized work is performed.
+1. ทำงานแบบ End-to-End โดยไม่หยุดเพียงการวางแผน
+2. ค้นหาข้อมูลภายในและภายนอกอย่างมีประสิทธิภาพ
+3. ตรวจสอบและแก้ไขปัญหาที่ต้นเหตุ
+4. เลือกเครื่องมือและ Package ที่เหมาะสม
+5. ลดงานซ้ำ ลดเวลารอ และจัดงานขนานได้
+6. ป้องกันข้อมูลสูญหายและรองรับการกู้คืน
+7. ตรวจสอบคุณภาพ ความปลอดภัย และความครบถ้วน
+8. เก็บหลักฐานและความต่อเนื่องของงาน
+9. ไม่กล่าวอ้างความสำเร็จเกินกว่าผลตรวจสอบ
+10. รองรับการทำงานหลายโครงการและหลายประเภทภารกิจ
 
-## 2. Universal task classification
+# 2. Universal Command System
 
-At intake, classify the task into one or more profiles. Profiles select relevant methods and acceptance criteria; they do not create separate governance systems.
-
-Supported profiles include:
-- software engineering and repository maintenance;
-- system, platform, infrastructure, and operations engineering;
-- web, API, application, and integration development;
-- hardware, electronics, PCB, IC, sensor, and driver engineering;
-- CAD, 2D/3D modeling, geometry, and simulation;
-- physics, mathematics, numerical methods, and scientific computing;
-- research, technical writing, documentation, and knowledge management;
-- data engineering, analytics, reporting, and visualization;
-- testing, quality assurance, security, and compliance;
-- automation, workflow, and project/program management;
-- education, training, and learning workflows.
-
-A task may use multiple profiles. The selected profile MUST state the deliverable, constraints, and suitable verification method.
-
-## 3. Master command and command registry
-
-The default entry point is:
+ใช้ Master Command เดียว:
 
 `DCP/INTELLIGENT-E2E`
 
-It orchestrates only the stages required for the task and respects every approval gate.
+คำสั่งนี้ทำหน้าที่เลือก Workflow และคำสั่งย่อยที่จำเป็นตามประเภทงาน
 
-### 3.1 Lifecycle commands
+## 2.1 คำสั่งควบคุมหลัก
 
-| Command | Purpose |
+| Command | หน้าที่ |
 |---|---|
-| `DCP/START` | Capture objective, scope, constraints, and authority |
-| `DCP/STATUS` | Report current state, progress, blockers, and next action |
-| `DCP/PLAN` | Create work packages, dependencies, and acceptance criteria |
-| `DCP/SEARCH` | Search repository, files, project records, and supplied evidence |
-| `DCP/WEB-SEARCH` | Research public web sources when useful or required |
-| `DCP/AUDIT` | Inspect implementation, configuration, structure, and gaps |
-| `DCP/TRACE` | Trace requirements, data flow, execution paths, and dependencies |
-| `DCP/IMPLEMENT` | Perform authorized changes |
-| `DCP/TEST` | Run task-appropriate tests |
-| `DCP/VERIFY` | Independently verify results against acceptance criteria |
-| `DCP/CHECKPOINT` | Persist current state and evidence |
-| `DCP/CONTINUE` | Start the next unblocked authorized work package |
-| `DCP/RECOVER` | Resume safely after interruption or failure |
-| `DCP/ROLLBACK` | Restore a known-good state when authorized and appropriate |
-| `DCP/REPORT` | Produce the evidence-backed delivery report |
-| `DCP/STOP` | Stop work safely and record a resumable checkpoint |
+| `DCP/START` | เริ่มภารกิจและกำหนดขอบเขต |
+| `DCP/STATUS` | ตรวจสถานะและความคืบหน้า |
+| `DCP/PLAN` | สร้างแผนและแบ่ง Work Package |
+| `DCP/SEARCH` | ค้นหาข้อมูลภายใน |
+| `DCP/WEB-SEARCH` | ค้นหาข้อมูลจากเว็บไซต์ |
+| `DCP/AUDIT` | ตรวจสอบความครบถ้วนและข้อผิดพลาด |
+| `DCP/TRACE` | ไล่เส้นทางการทำงานและความสัมพันธ์ |
+| `DCP/IMPLEMENT` | ลงมือดำเนินงาน |
+| `DCP/TEST` | ทดสอบ |
+| `DCP/VERIFY` | ตรวจสอบผลลัพธ์ |
+| `DCP/CONTINUE` | ทำงานถัดไปโดยอัตโนมัติตามสิทธิ์ |
+| `DCP/RECOVER` | กู้คืนสถานะและดำเนินงานต่อ |
+| `DCP/REPORT` | สร้างรายงานและหลักฐาน |
+| `DCP/STOP` | หยุดอย่างปลอดภัยและบันทึกสถานะ |
 
-### 3.2 Research and intelligence commands
+# 3. รองรับงานทุกรูปแบบ
 
-| Command | Purpose |
+ระบบต้องจำแนกประเภทงานก่อนเลือกวิธีดำเนินการ
+
+| ประเภทงาน | ความสามารถที่ต้องรองรับ |
 |---|---|
-| `DCP/OFFICIAL-DOCS` | Find and inspect authoritative product/framework documentation |
-| `DCP/SOURCE-RESEARCH` | Inspect official source repositories, issues, discussions, and pull requests |
-| `DCP/PACKAGE-SEARCH` | Discover packages, libraries, SDKs, and tools |
-| `DCP/RELEASE-CHECK` | Check release notes, versions, deprecations, and breaking changes |
-| `DCP/SECURITY-CHECK` | Check advisories, vulnerabilities, and security guidance |
-| `DCP/RESEARCH-VERIFY` | Cross-check claims against primary sources |
-| `DCP/KNOWLEDGE-CACHE` | Reuse prior research when scope and freshness remain valid |
-| `DCP/ALTERNATIVES` | Compare implementation and tooling options |
-| `DCP/COMPATIBILITY` | Check runtime, platform, API, and dependency compatibility |
-| `DCP/SUPPLY-CHAIN` | Assess package provenance, integrity, licensing, and dependency risk |
-| `DCP/INTEGRATION-PLAN` | Plan a safe integration and rollback path |
+| Software Engineering | เขียน แก้ไข Refactor Build Test |
+| Repository Management | ตรวจ Source, Branch, PR, CI และ Release |
+| System Engineering | Architecture, OS, Runtime, Services |
+| Hardware & Electronics | Circuit, IC, PCB, Sensors, Drivers |
+| CAD & 3D Design | Geometry, Modeling, Simulation, Export |
+| Physics & Mathematics | Calculation, Modeling, Solver, Validation |
+| Research & Documentation | ค้นคว้า วิเคราะห์ สรุปและจัดทำเอกสาร |
+| Data & Analytics | Data Quality, Metrics, Charts, Reports |
+| Web & API | Frontend, Backend, Integration, Security |
+| Infrastructure & Operations | Deployment, Monitoring, Recovery |
+| Automation & Workflow | Jobs, Scheduling, Triggers, Notifications |
+| Testing & Quality | Unit, Integration, Acceptance, E2E |
+| Education & Learning | Research, Exercises, Evaluation |
+| Project Management | Roadmap, Dependencies, Progress, Delivery |
 
-### 3.3 Quality and continuity commands
+แต่ละประเภทต้องใช้เกณฑ์ตรวจสอบที่เหมาะสม ไม่บังคับให้ทุกงานใช้ Unit Test หรือ CI แบบเดียวกัน
 
-| Command | Purpose |
+# 4. Internal Discovery
+
+คำสั่ง:
+
+- `DCP/SEARCH`
+- `DCP/AUDIT`
+- `DCP/TRACE`
+- `DCP/COMPLETION-AUDIT`
+
+ข้อกำหนด:
+
+1. สำรวจข้อมูลที่เกี่ยวข้องก่อนลงมือ
+2. ตรวจ Source Code, Documents, Configuration และ Entry Points ตามขอบเขต
+3. ตรวจความสัมพันธ์ระหว่าง Module และ Dependencies
+4. ใช้หลักฐานเดิมได้เมื่อยังตรงกับ Version และ Scope ปัจจุบัน
+5. ค้นเพิ่มเฉพาะจุดที่ข้อมูลยังไม่ครบ
+6. ห้ามคาดเดาความสามารถจากชื่อไฟล์หรือชื่อ Module
+7. ตรวจรายการที่ขาดจาก Requirements และ Traceability
+
+# 5. External Research & Web Intelligence
+
+คำสั่ง:
+
+- `DCP/WEB-SEARCH`
+- `DCP/OFFICIAL-DOCS`
+- `DCP/SOURCE-RESEARCH`
+- `DCP/RELEASE-CHECK`
+- `DCP/SECURITY-CHECK`
+- `DCP/RESEARCH-VERIFY`
+
+แหล่งข้อมูลตามลำดับความสำคัญ:
+
+1. Official Documentation
+2. Official Source Code
+3. Official Release Notes
+4. Package Registry
+5. Security Advisory และ CVE Database
+6. Issue Tracker และ Developer Discussions
+7. Technical Articles และ Community Reports
+
+ข้อกำหนด:
+
+- ตรวจข้อมูลจากหน้าเว็บต้นทาง ไม่ใช้ Search Snippet เพียงอย่างเดียว
+- ตรวจเวอร์ชันและวันที่เผยแพร่
+- แยกข้อเท็จจริง ความเห็น และข้อสันนิษฐาน
+- เปรียบเทียบข้อมูลจากหลายแหล่งเมื่อมีความเสี่ยงสูง
+- บันทึก URL และวันที่ตรวจสอบ
+- ระบุข้อจำกัดของข้อมูลที่ยังยืนยันไม่ได้
+
+# 6. Package & Tool Intelligence
+
+คำสั่ง:
+
+- `DCP/PACKAGE-SEARCH`
+- `DCP/ALTERNATIVES`
+- `DCP/COMPATIBILITY`
+- `DCP/SUPPLY-CHAIN`
+- `DCP/INTEGRATION-PLAN`
+
+ก่อนเลือก Package ต้องตรวจ:
+
+1. ความสามารถและความเหมาะสมกับงาน
+2. Runtime และ Platform Compatibility
+3. Version และ Maintenance Status
+4. Dependencies และ Transitive Dependencies
+5. License
+6. Known Vulnerabilities
+7. Package Provenance และ Integrity
+8. Performance และ Resource Usage
+9. Migration และ Rollback
+10. ทางเลือกที่ไม่ต้องเพิ่ม Dependency
+
+ห้ามติดตั้งหรือรัน Package โดยอัตโนมัติเพียงเพราะค้นพบ
+
+ให้เลือกแนวทางที่เหมาะสมที่สุดระหว่าง:
+
+- ใช้เครื่องมือที่มีอยู่
+- ใช้ Standard Library
+- เพิ่ม Package
+- พัฒนาเอง
+- ปรับ Architecture
+
+ให้ความสำคัญกับ Local-first และการหลีกเลี่ยงค่าใช้จ่ายที่ไม่จำเป็น
+
+# 7. Root Cause & Problem Solving
+
+คำสั่ง:
+
+- `DCP/ROOT-CAUSE`
+- `DCP/ALTERNATIVES`
+- `DCP/IMPLEMENT`
+- `DCP/VERIFY`
+
+เมื่อพบปัญหา:
+
+1. เก็บ Error และ Evidence
+2. จำแนกสาเหตุ
+3. ตรวจสอบจุดที่ทำให้เกิดปัญหา
+4. ค้นเอกสารหรือแหล่งข้อมูลภายนอกเมื่อจำเป็น
+5. เปรียบเทียบวิธีแก้
+6. เลือกวิธีแก้ที่มีผลกระทบน้อยและแก้ต้นเหตุ
+7. ทดสอบการแก้ไข
+8. ตรวจ Regression
+9. บันทึกผลและสาเหตุที่พบ
+
+ห้ามปิด Test, ลด Security Gate หรือซ่อน Error เพื่อให้ระบบผ่าน
+
+# 8. Planning & Dependency Graph
+
+คำสั่ง:
+
+- `DCP/PLAN`
+- `DCP/PARALLELIZE`
+- `DCP/CONTINUE`
+
+ทุกโครงการต้องแบ่งเป็น Work Packages:
+
+- WP ID
+- Objective
+- Scope
+- Dependencies
+- Implementation Tasks
+- Acceptance Criteria
+- Test Requirements
+- Evidence
+- Status
+- Next Action
+
+อนุญาตให้ทำงานขนานเมื่อไม่มี Dependency ที่ขัดแย้งกัน
+
+ห้ามแก้ไฟล์เดียวกันพร้อมกันโดยไม่มีการควบคุม Conflict
+
+เมื่อ WP ผ่าน ให้เริ่ม WP ถัดไปทันทีหากไม่มี Approval Gate หรือ Dependency ที่ยังไม่ผ่าน
+
+# 9. Execution & Tool Governance
+
+เครื่องมือที่ใช้ต้องเลือกตามภารกิจ เช่น:
+
+- Repository และ Source Control Tools
+- Web Research Tools
+- Package Managers
+- IDE และ Development Tools
+- Test Runners
+- CAD และ Simulation Tools
+- Data Analysis Tools
+- Document Generation Tools
+- Operating System Services
+- Approved Automation Tools
+
+ทุกการทำงานต้องตรวจสอบสิทธิ์ก่อนใช้เครื่องมือ
+
+ห้าม:
+
+- ใช้สิทธิ์เกินกว่าที่ได้รับ
+- ส่งคำสั่งอิสระจาก Browser ไปยัง Shell
+- เปิดเผย Secrets
+- รันไฟล์ที่ไม่ผ่านการตรวจสอบ
+- ใช้บริการเสียเงินโดยไม่ได้รับอนุมัติ
+- แก้ไขหรือลบข้อมูลสำคัญโดยไม่มีสิทธิ์
+
+การอนุญาตจาก Application ต้องตรวจสอบโดยระบบฝั่งที่มีอำนาจจริง ไม่ใช่เชื่อค่าที่ Browser ส่งมา
+
+# 10. Timebox & Progress Intelligence
+
+คำสั่ง:
+
+- `DCP/STATUS`
+- `DCP/CHECKPOINT`
+- `DCP/RECOVER`
+
+แนวทาง:
+
+- Discovery รอบแรก เป้าหมายไม่เกิน 5 นาที
+- Root Cause เป้าหมายไม่เกิน 10 นาที
+- หากเกินกรอบ ให้รายงานผลที่มีและเหตุผลที่ต้องใช้เวลาเพิ่ม
+- งานที่ไม่ขึ้นต่อกันสามารถทำต่อระหว่างรอ CI หรือ Network
+- ไม่รอเงียบโดยไม่มี Progress Update
+- ห้ามทำซ้ำโดยไม่ตรวจสอบหลักฐานและสถานะเดิมก่อน
+
+เวลาเป็นเป้าหมายในการบริหารงาน ไม่ใช่ข้ออ้างให้ลดคุณภาพ
+
+# 11. Knowledge Cache & Evidence Continuity
+
+คำสั่ง:
+
+- `DCP/KNOWLEDGE-CACHE`
+- `DCP/CHECKPOINT`
+- `DCP/REPORT`
+
+จัดเก็บ:
+
+- Project Identity
+- Repository / Branch / Version
+- Base SHA / Head SHA
+- Research Sources
+- Package Versions
+- Architecture Decisions
+- Files Changed
+- Test Results
+- CI Run IDs
+- Errors and Resolutions
+- Pending Tasks
+- Next Actions
+
+Evidence ต้องมีวันเวลาและขอบเขตที่ชัดเจน
+
+ข้อมูลเก่าต้องถูกตรวจสอบความสดใหม่ก่อนนำมาใช้ซ้ำ
+
+# 12. Quality Assurance & Completion Audit
+
+คำสั่ง:
+
+- `DCP/TEST`
+- `DCP/VERIFY`
+- `DCP/COMPLETION-AUDIT`
+
+เลือกการตรวจตามลักษณะงาน:
+
+- Functional Correctness
+- Integration
+- Security
+- Performance
+- Compatibility
+- Reliability
+- Recovery
+- Documentation
+- User Acceptance
+- End-to-End Behavior
+
+การตรวจผ่านบางส่วนไม่สามารถใช้แทนการตรวจทั้งระบบ
+
+CI ผ่านไม่ได้แปลว่าใช้งานจริงผ่าน
+
+การสร้างเอกสารเสร็จไม่ได้แปลว่า Implementation เสร็จ
+
+# 13. Recovery & Rollback
+
+คำสั่ง:
+
+- `DCP/RECOVER`
+- `DCP/ROLLBACK`
+- `DCP/STOP`
+
+ข้อกำหนด:
+
+1. บันทึกสถานะก่อนเปลี่ยนแปลง
+2. ตรวจ Diff ก่อน Commit
+3. เก็บหลักฐานก่อนและหลังแก้ไข
+4. กำหนด Rollback Strategy สำหรับการเปลี่ยนแปลงที่มีความเสี่ยง
+5. กู้คืนเมื่อพบความเสียหาย
+6. ตรวจสอบสถานะหลัง Recovery
+7. ห้ามลบข้อมูลเดิมเพื่อแก้ปัญหาโดยไม่มีอนุมัติ
+
+# 14. Approval & Safety Gates
+
+ต้องแยกการอนุญาตแต่ละประเภท:
+
+| Action | Requirement |
 |---|---|
-| `DCP/ROOT-CAUSE` | Determine the supported underlying cause of a failure |
-| `DCP/PARALLELIZE` | Identify independent work that can safely run concurrently |
-| `DCP/COMPLETION-AUDIT` | Check requirements and deliverables for omissions |
-| `DCP/EVIDENCE-AUDIT` | Check that claims have current, relevant evidence |
-| `DCP/DEPENDENCY-AUDIT` | Check internal and external dependency relationships |
-| `DCP/PROGRESS-UPDATE` | Publish a meaningful progress checkpoint |
-| `DCP/DECISION-RECORD` | Record important decisions, alternatives, and rationale |
+| Read / Search / Audit | สิทธิ์อ่าน |
+| Local Analysis | สิทธิ์ใช้งานเครื่องมือ |
+| Code Modification | ขอบเขตการแก้ไขที่อนุญาต |
+| Package Installation | ตรวจสอบและอนุมัติเมื่อจำเป็น |
+| Push | อนุมัติให้ส่งการเปลี่ยนแปลง |
+| Merge | อนุมัติ Merge อย่างชัดเจน |
+| Deploy | อนุมัติ Deployment |
+| Delete | อนุมัติการลบโดยเฉพาะ |
+| Paid Services | อนุมัติค่าใช้จ่าย |
 
-Commands are protocol labels, not assertions that a particular automation tool exists. The operator MUST use only tools actually available and authorized in the current environment.
+การอนุมัติหนึ่งประเภทไม่ถือว่าอนุมัติอีกประเภทโดยอัตโนมัติ
 
-## 4. Intake and scope control
+# 15. Universal Evidence Status
 
-Every task MUST record:
-- requested outcome and deliverable;
-- project/repository/system identity;
-- in-scope and out-of-scope work;
-- user constraints and preferences;
-- available permissions and approval boundaries;
-- relevant deadlines or time expectations;
-- acceptance criteria and evidence required.
+ใช้สถานะมาตรฐาน:
 
-If an essential fact is missing, ask one focused question. Do not block on optional preferences.
-
-Scope changes MUST be recorded. Do not silently expand work into unrelated projects or destructive operations.
-
-## 5. Internal discovery and audit
-
-Use repository and project evidence before external research when the question concerns existing implementation.
-
-Discovery MUST:
-1. identify the authoritative repository, branch, version, and current revision;
-2. inspect relevant files, entry points, configuration, tests, and documentation;
-3. trace the actual execution or data path where behavior matters;
-4. identify existing tools and dependencies before proposing replacements;
-5. record files and areas inspected;
-6. reuse earlier audit evidence only when its revision and scope still match.
-
-A filename, README statement, type declaration, or UI label alone does not prove runtime behavior. For behavior claims, inspect implementation and tests, then execute an appropriate verification where possible.
-
-## 6. External research and web intelligence
-
-External research SHOULD be used when current or authoritative information materially improves correctness, including:
-- undocumented or unclear errors;
-- changing APIs, frameworks, runtimes, and platform behavior;
-- compatibility and deprecation questions;
-- missing capabilities or possible replacement tools;
-- security advisories and known vulnerabilities;
-- performance or reliability issues with evidence outside the repository.
-
-### 6.1 Source priority
-
-Prefer:
-1. official documentation and vendor manuals;
-2. official source repositories and maintainers' issue trackers;
-3. official release notes and changelogs;
-4. authoritative package registries and security databases;
-5. standards bodies and recognized technical specifications;
-6. reputable technical publications;
-7. community discussions as supplementary evidence.
-
-### 6.2 Research rules
-
-For each material external claim, record URL, source owner, access/release date when available, applicable version, and the claim supported.
-
-Inspect the source page rather than relying only on search snippets. Distinguish facts, maintainer guidance, community opinion, and inference. For high-risk decisions, corroborate with another authoritative source where feasible.
-
-Do not transmit secrets, private source code, personal data, or credentials to public search services.
-
-## 7. Package, tool, and supply-chain evaluation
-
-Before adding a dependency or external tool, evaluate:
-- whether it solves a demonstrated requirement;
-- whether existing code or standard-library functionality is sufficient;
-- supported language, runtime, operating system, and architecture;
-- release cadence, maintenance status, and known end-of-life dates;
-- direct and transitive dependencies;
-- license obligations and compatibility;
-- security advisories and malware reports;
-- package provenance, publisher identity, integrity, and signatures where available;
-- performance, size, operational burden, and upgrade path;
-- removal and rollback strategy.
-
-Prefer reuse of maintained existing dependencies or standard tools when they meet the need. Do not choose solely by stars, downloads, ranking, or search position.
-
-Discovery does not authorize installation. Installation, script execution, binary execution, or lockfile changes require the applicable project permission and approval. Never run an unreviewed install script or downloaded executable.
-
-## 8. Root-cause analysis and problem resolution
-
-For each material failure:
-1. capture the error, revision, environment, and reproducible context;
-2. classify likely domain: code, design, configuration, dependency, permissions, data, platform, network, service, or external provider;
-3. identify and test the causal hypothesis;
-4. consult official documentation or external sources when internal evidence is insufficient;
-5. compare low-risk alternatives;
-6. implement the smallest justified correction;
-7. run targeted tests and relevant regression tests;
-8. record the root cause, correction, and residual risk.
-
-Do not hide failures, weaken security controls, remove tests, or change acceptance criteria merely to obtain a passing status.
-
-## 9. Planning, work packages, and dependency graph
-
-Break substantial work into traceable Work Packages (WPs). Each WP MUST define:
-- unique ID and objective;
-- scope and expected outputs;
-- prerequisites and dependencies;
-- files/systems affected;
-- risk and required approval;
-- acceptance criteria;
-- verification method;
-- evidence location;
-- owner/operator and next action;
-- status.
-
-Parallelize only independent work. Shared-file edits, migrations, ordered deployments, and other conflicting work MUST be serialized or coordinated. Re-check dependencies before starting a downstream WP.
-
-When a WP passes, continue to the next unblocked WP that is within the authorized scope.
-
-## 10. Execution and tool governance
-
-Use the least-privileged available tool that can perform the task. Verify tool identity, scope, and permission before invoking it.
-
-For application-to-runner workflows:
-- the application/backend, not the browser, is the authority for authorization;
-- browser input MUST be typed and allowlisted;
-- never accept arbitrary browser-supplied shell commands, executable paths, argv, working directories, environment variables, identities, or approval flags;
-- the trusted execution service MUST independently validate authorization, resource binding, expiry/revocation, and job ownership;
-- derive paths and executable arguments from trusted server-side registries;
-- record execution and results in an auditable way.
-
-For other domains, apply equivalent controls: approved instruments, trusted data sources, scoped credentials, change windows, and human review for high-impact operations.
-
-## 11. Security, privacy, and safety
-
-Always:
-- protect secrets and redact them from logs and reports;
-- minimize data collection and external disclosure;
-- use least privilege and explicit resource scope;
-- validate untrusted input and external artifacts;
-- preserve audit records without exposing sensitive content;
-- use safe defaults and fail closed when authorization cannot be established;
-- distinguish a process boundary from a true OS or hardware security boundary.
-
-Do not claim sandboxing, isolation, compliance, or security certification without evidence of the actual enforcement mechanism and its limits.
-
-## 12. Timebox, progress, and no-silent-waiting
-
-Timeboxes are planning targets, not permission to skip verification.
-
-- Begin with a bounded discovery pass and report what is known.
-- If discovery or diagnosis exceeds its target, publish findings, unknowns, and the reason for further work.
-- During CI, network, or external-service waits, perform independent authorized work where possible.
-- Never report a wait as progress or leave a blocker unexplained.
-- Provide a checkpoint after meaningful milestones, failures, recovery, or a long-running operation.
-- Do not repeatedly rescan unchanged files or rerun unchanged tests without a reason.
-
-A progress update MUST state completed work, current activity, blockers/waits, evidence revision, and next action.
-
-## 13. Knowledge cache and evidence continuity
-
-A cached result is reusable only if its source, scope, version, and freshness remain valid.
-
-Record:
-- project and task identity;
-- repository, branch, commit/revision, or artifact version;
-- audit scope and inspected paths;
-- external research URLs and checked versions;
-- package versions and relevant lockfile state;
-- decisions and rationale;
-- files changed and change identifiers;
-- test commands, environment, and results;
-- CI run/job identifiers and exact revision;
-- outstanding risks, blockers, and next actions.
-
-Invalidate or re-check evidence when relevant source files, configuration, dependencies, environment, or revision change.
-
-## 14. Verification and acceptance
-
-Choose verification methods appropriate to the task. They may include:
-- static inspection and schema validation;
-- unit, integration, contract, regression, and end-to-end tests;
-- build, packaging, and reproducibility checks;
-- security, dependency, and license checks;
-- performance, load, and resource checks;
-- simulation, calibration, physical measurement, or bench testing;
-- data reconciliation and independent calculation;
-- documentation review and user acceptance.
-
-Define acceptance criteria before implementation when practical. Verify against the exact resulting revision or artifact. CI success is not equivalent to real-world acceptance. A document describing a feature is not proof that the feature exists.
-
-## 15. Recovery and rollback
-
-Before risky changes, identify a recoverable baseline and a rollback approach.
-
-On interruption or failure:
-1. stop unsafe or duplicate work;
-2. identify the last confirmed checkpoint and exact revision;
-3. inspect remote and local state before retrying;
-4. determine whether an operation already completed;
-5. resume idempotently where possible;
-6. roll back only when authorized and technically safe;
-7. verify the recovered state and record the incident.
-
-Never delete user data or overwrite unreviewed work as a recovery shortcut.
-
-## 16. Approval gates and protected actions
-
-The following permissions are distinct and MUST NOT be inferred from one another:
-
-| Action | Required control |
+| Status | ความหมาย |
 |---|---|
-| Read, search, audit | Authorized read access |
-| Local analysis or tests | Authorized environment and resource scope |
-| Modify files | Explicit task scope and write access |
-| Install dependencies or run downloaded tools | Dependency/security review and applicable approval |
-| Push changes | Explicit push authorization |
-| Merge a PR | Explicit merge authorization for the intended PR/revision |
-| Deploy or publish | Explicit deployment/publishing authorization |
-| Delete or irreversibly migrate data | Specific approval and recovery plan |
-| Create paid resources or incur charges | Explicit cost approval |
-| Access external accounts or sensitive data | Authorized connector/account scope and purpose |
+| PASS | มีหลักฐานผ่านเกณฑ์ |
+| FAIL | มีหลักฐานไม่ผ่าน |
+| SKIPPED | ไม่ได้ดำเนินการ |
+| UNKNOWN | ไม่มีหลักฐานเพียงพอ |
+| IN_PROGRESS | กำลังดำเนินการ |
+| BLOCKED | ติดเงื่อนไขหรือสิทธิ์ |
 
-Passing tests or CI does not grant permission to push, merge, deploy, publish, or delete.
+ห้ามแปลง SKIPPED, UNKNOWN หรือ BLOCKED เป็น PASS
 
-## 17. Universal evidence statuses
+# 16. Universal Execution Lifecycle
 
-Use these statuses consistently:
+วงจรการทำงานมาตรฐาน:
 
-| Status | Meaning |
-|---|---|
-| PASS | Acceptance criterion met with relevant evidence |
-| FAIL | Evidence shows the criterion is not met |
-| SKIPPED | Check was intentionally or conditionally not run |
-| UNKNOWN | Evidence is unavailable or insufficient |
-| IN_PROGRESS | Work or verification is underway |
-| BLOCKED | Progress requires a missing dependency, permission, decision, or external condition |
+`START → DISCOVER → RESEARCH → AUDIT → PLAN → AUTHORIZE → IMPLEMENT → TEST → VERIFY → REPORT → CONTINUE`
 
-SKIPPED, UNKNOWN, IN_PROGRESS, and BLOCKED MUST NOT be counted as PASS. Report partial success at the criterion level rather than assigning a misleading overall PASS.
+ไม่จำเป็นต้องเรียกทุกขั้นตอนในทุกภารกิจ แต่ต้องเลือกขั้นตอนที่เหมาะสมและไม่ข้าม Gate ที่จำเป็น
 
-## 18. Delivery and completion audit
+# 17. Final Delivery Requirements
 
-Before declaring completion, run `DCP/COMPLETION-AUDIT`:
-- map every requirement to implementation/output and evidence;
-- confirm all in-scope work packages have a final status;
-- identify skipped and unknown checks;
-- confirm the final revision/artifact identity;
-- verify documentation matches actual behavior;
-- record residual risks and unsupported claims;
-- confirm protected actions were not performed without approval.
+ทุกภารกิจต้องส่งมอบ:
 
-The final report MUST include:
-1. requested outcome and scope;
-2. work completed and files/artifacts changed;
-3. research sources and dependency decisions, if applicable;
-4. tests and verification results;
-5. exact revision or artifact identifier;
-6. PASS/FAIL/SKIPPED/UNKNOWN/IN_PROGRESS/BLOCKED summary;
-7. remaining gaps, risks, and blockers;
-8. next authorized action.
+1. เป้าหมายและขอบเขต
+2. ผลการสำรวจ
+3. สิ่งที่ดำเนินการ
+4. เอกสารหรือไฟล์ที่สร้างและแก้ไข
+5. ผลการค้นคว้าภายนอกเมื่อมี
+6. ผลทดสอบและหลักฐาน
+7. ปัญหาที่ยังเหลือ
+8. สถานะความสำเร็จ
+9. Next Action
+10. ข้อจำกัดที่ยังไม่ได้ตรวจสอบ
 
-## 19. Universal lifecycle
+# 18. Master Operating Principle
 
-The default lifecycle is:
+**One Protocol. Multiple Workflows. Verified Outcomes.**
 
-`START → DISCOVER → RESEARCH (as needed) → AUDIT → PLAN → AUTHORIZE → IMPLEMENT → TEST → VERIFY → CHECKPOINT → REPORT → CONTINUE`
+โปรโตคอลเดียวสามารถควบคุมงานได้หลายประเภท โดยเลือกเครื่องมือ ขั้นตอน และเกณฑ์ตรวจสอบตามภารกิจจริง
 
-Not every task requires every stage. The operator MUST document omitted stages when they are material to acceptance. Approval gates cannot be skipped.
+ทำงานต่อเนื่องเมื่อมีสิทธิ์และหลักฐานเพียงพอ
 
-## 20. Adoption and versioning
+หยุดเฉพาะเมื่อจำเป็นต้องอนุมัติ มีความเสี่ยง หรือไม่สามารถดำเนินงานอย่างปลอดภัยได้
 
-This document is a proposed standard until reviewed and adopted by the project owner.
+ห้ามรายงานความสำเร็จโดยไม่มีหลักฐานรองรับ
 
-Adoption MUST include:
-- review against the existing DCP-CEEP v1.0 document and continuity checkpoint;
-- a migration note identifying retained, changed, and added requirements;
-- a command reference and task-profile templates;
-- README and roadmap links after the relevant base documentation is available;
-- traceability from v2.0 requirements to repository documentation and, where implemented, automation;
-- an explicit decision on whether v1.0 is superseded or retained for compatibility.
+---
 
-Version changes:
-- PATCH: editorial corrections that do not change meaning;
-- MINOR: backward-compatible additions;
-- MAJOR: changes to lifecycle, governance, status semantics, or approval requirements.
-
-**End of DCP-CEEP v2.0**
+**Version:** 2.0  
+**Protocol Name:** DCP-CEEP Universal  
+**Integration Status:** Proposed — Not Yet Committed to Repository  
+**Change Policy:** Versioned, reviewed, traceable and backward-compatible where practical
