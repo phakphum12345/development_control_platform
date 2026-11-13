@@ -262,6 +262,16 @@ class TerminalScriptExecutor:
         resolved = str(resolved_path)
         job_home = Path(tempfile.mkdtemp(prefix="dcp-terminal-home-"))
         try:
+            job_home = job_home.resolve(strict=True)
+            try:
+                job_home.relative_to(workspace)
+            except ValueError:
+                pass
+            else:
+                shutil.rmtree(job_home, ignore_errors=True)
+                raise TerminalExecutionError(
+                    "Temporary Terminal HOME must be outside the Project Workspace"
+                )
             if os.name == "posix":
                 os.chmod(job_home, 0o700)
         except OSError:
