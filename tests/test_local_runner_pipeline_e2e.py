@@ -580,7 +580,6 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
             terminal_executor=TerminalScriptExecutor(enabled=True),
         )
         with patch("tools.local_runner_agent.terminal_executor.preview_template", return_value=template), \
-             patch("tools.cloud_runner_agent.terminal_executor.preview_template", return_value=template), \
              patch("tools.cloud_gateway.terminal_execution_contract.preview_template", return_value=template):
             result = pipeline.run_once()
 
