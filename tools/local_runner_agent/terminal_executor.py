@@ -225,7 +225,7 @@ class TerminalScriptExecutor:
 
     @staticmethod
     def _build_command(resolved: str, executable: str, argv: list[str]) -> list[str]:
-        """Build argv while disabling Git hooks/helpers that can execute project config."""
+        """Build fixed argv while disabling external diff and textconv helpers."""
         if executable != "git":
             return [resolved, *argv]
         if not argv:
