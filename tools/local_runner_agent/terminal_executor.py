@@ -192,9 +192,14 @@ class TerminalScriptExecutor:
         resolved = shutil.which(executable)
         if not resolved or not Path(resolved).is_file():
             raise TerminalExecutionError("Required Terminal executable is unavailable")
-        home = Path(job_home := (workspace / ".dcp-terminal-home"))
-        home.mkdir(mode=0o700, parents=True, exist_ok=True)
-        env = self._environment(template, home)
+        job_home = Path(tempfile.mkdtemp(prefix="dcp-terminal-home-"))
+        try:
+            if os.name == "posix":
+                os.chmod(job_home, 0o700)
+        except OSError:
+            shutil.rmtree(job_home, ignore_errors=True)
+            raise TerminalExecutionError("Temporary Terminal environment could not be secured") from None
+        env = self._environment(template, job_home)
         timeout = min(int(template["timeout_seconds"]), self.timeout_ceiling_seconds)
         output_limit = min(int(template["max_output_bytes"]), self.output_ceiling_bytes)
         command = [resolved, *argv]
@@ -208,6 +213,7 @@ class TerminalScriptExecutor:
                 creationflags=creationflags, bufsize=0,
             )
         except OSError:
+            shutil.rmtree(job_home, ignore_errors=True)
             raise TerminalExecutionError("Terminal executable could not be started") from None
 
         chunks: queue.Queue[bytes | None] = queue.Queue(maxsize=8)
