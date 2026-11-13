@@ -149,6 +149,29 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
         )
         return grant, template, digest
 
+    def test_terminal_catalog_and_preview_report_enabled_gate_from_trusted_template(self):
+        enabled = preview_template("git_status", {})
+        enabled["execution_enabled"] = True
+        with patch(
+            "tools.cloud_gateway.server.list_terminal_templates",
+            return_value=[enabled],
+        ):
+            status, catalog = self.request("/api/terminal/templates")
+        self.assertEqual(status, 200)
+        self.assertTrue(catalog["execution_enabled"])
+
+        with patch(
+            "tools.cloud_gateway.server.preview_terminal_template",
+            return_value=enabled,
+        ):
+            status, preview = self.request(
+                "/api/terminal/commands/preview", method="POST",
+                payload={"template_id": "git_status", "parameters": {}},
+            )
+        self.assertEqual(status, 200)
+        self.assertTrue(preview["execution_enabled"])
+        self.assertEqual(preview["preview"]["status"], "EXECUTION_ENABLED")
+
     def test_unused_terminal_grant_can_be_revoked_through_owner_api(self):
         grant, _, _ = self._issue_terminal_test_grant()
         status, result = self.request(
