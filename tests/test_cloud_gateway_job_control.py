@@ -2,6 +2,7 @@
 import json
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from tools.cloud_gateway.job_control import JobConflict, JobNotFound, JobStore
 
@@ -113,7 +114,7 @@ class JobStoreTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "legacy-jobs.sqlite3"
-            with sqlite3.connect(path) as db:
+            with closing(sqlite3.connect(path)) as db, db:
                 db.execute("""
                     CREATE TABLE jobs (
                         id TEXT PRIMARY KEY, idem TEXT UNIQUE NOT NULL,
