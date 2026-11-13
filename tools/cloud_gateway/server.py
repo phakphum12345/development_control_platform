@@ -41,7 +41,7 @@ from tools.local_runner_agent.runtime import RuntimeManager
 from .preview import AuthenticatedPreviewManager, PreviewError
 from .terminal_catalog import (list_templates as list_terminal_templates, preview_template as preview_terminal_template, validate_preview_payload)
 from .terminal_templates import (TerminalTemplateConflict, TerminalTemplateError, TerminalTemplateNotFound, TerminalTemplateStore)
-from .terminal_grants import TerminalGrantStore, TerminalGrantError
+from .terminal_grants import TerminalGrantStore
 
 
 class DisabledProvider:
