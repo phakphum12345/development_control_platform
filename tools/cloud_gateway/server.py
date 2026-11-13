@@ -1282,6 +1282,7 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                         if grants is None:
                             return self.send_json(503, {"error": "Terminal grant storage unavailable"})
                         try:
+                            grants.bind_job(grant_id, job_id=job_id, worker_id=worker)
                             result = grants.consume_for_job(
                                 grant_id, job_id=job_id, worker_id=worker,
                                 project_id=job_payload.get("project_id"),
