@@ -13,6 +13,7 @@ import os
 import re
 import threading
 import time
+import uuid
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
@@ -807,9 +808,11 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                 registry = self.local_project_registry()
                 if jobs is None or grants is None or registry is None:
                     return self.send_json(503, {"error": "Terminal job services unavailable"})
-                idempotency_key = self.headers.get("Idempotency-Key")
-                if not idempotency_key:
-                    return self.send_json(400, {"error": "Idempotency-Key is required"})
+                client_idempotency_key = self.headers.get("Idempotency-Key", "")
+                if not isinstance(client_idempotency_key, str) or not re.fullmatch(
+                    r"[A-Za-z0-9._:-]{8,200}", client_idempotency_key
+                ):
+                    return self.send_json(400, {"error": "valid Idempotency-Key is required"})
                 try:
                     contract = validate_terminal_request(self.body(max_bytes=8192))
                     if not contract["execution_enabled"]:
@@ -819,18 +822,6 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                         request["project_id"], request["workspace_id"], request["snapshot_sha256"]
                     )
                     parameters_sha256 = grants.parameters_digest(request["parameters"])
-                    grants.validate_pending(
-                        request["authorization_id"],
-                        subject=identity.get("subject"),
-                        session_id=identity.get("session_id"),
-                        project_id=workspace["project_id"],
-                        workspace_id=workspace["workspace_id"],
-                        snapshot_sha256=workspace["snapshot_sha256"],
-                        template_id=request["template_id"],
-                        template_digest=contract["template_version_digest"],
-                        parameters_sha256=parameters_sha256,
-                        action="terminal.read_only",
-                    )
                     job_payload = {
                         "source_type": "terminal_script",
                         "project_id": workspace["project_id"],
@@ -843,14 +834,49 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                         "template_digest": contract["template_version_digest"],
                         "parameters_sha256": parameters_sha256,
                     }
-                    job, created = jobs.create(job_payload, idempotency_key)
+                    # Scope idempotency to the authenticated app session. A browser
+                    # cannot collide with another user's Job by reusing its key.
+                    scoped_key = hashlib.sha256(
+                        (identity["subject"] + "\n" + identity["session_id"] + "\n"
+                         + client_idempotency_key).encode("utf-8")
+                    ).hexdigest()
+                    existing = jobs.get_by_idempotency_key(scoped_key)
+                    if existing is not None:
+                        existing_payload = existing.get("payload") or {}
+                        expected_fields = (
+                            "source_type", "project_id", "workspace_id", "snapshot_sha256",
+                            "target", "template_id", "parameters", "authorization_id",
+                            "template_digest", "parameters_sha256",
+                        )
+                        if any(existing_payload.get(key) != job_payload.get(key) for key in expected_fields):
+                            return self.send_json(409, {"error": "Idempotency-Key conflicts with an existing Terminal Job"})
+                        return self.send_json(200, {
+                            **self.public_job(existing), "created": False,
+                        })
+                    grants.validate_pending(
+                        request["authorization_id"],
+                        subject=identity.get("subject"),
+                        session_id=identity.get("session_id"),
+                        project_id=workspace["project_id"],
+                        workspace_id=workspace["workspace_id"],
+                        snapshot_sha256=workspace["snapshot_sha256"],
+                        template_id=request["template_id"],
+                        template_digest=contract["template_version_digest"],
+                        parameters_sha256=parameters_sha256,
+                        action="terminal.read_only",
+                    )
+                    # Reserve the grant before the Job becomes visible to Runner
+                    # polling. The deterministic ID also makes a retried request safe.
+                    job_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "dcp-terminal-job:" + scoped_key))
+                    grants.reserve_job(request["authorization_id"], job_id=job_id)
                     try:
-                        grants.reserve_job(request["authorization_id"], job_id=job["id"])
-                    except TerminalGrantError:
-                        if created:
-                            jobs.cancel(job["id"])
+                        job, created = jobs.create(
+                            job_payload, scoped_key, job_id=job_id
+                        )
+                    except Exception:
+                        grants.revoke(request["authorization_id"])
                         raise
-                    return self.send_json(202, {
+                    return self.send_json(202 if created else 200, {
                         **self.public_job(job), "created": created,
                     })
                 except TerminalContractError as exc:
