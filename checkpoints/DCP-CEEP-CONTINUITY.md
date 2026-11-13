@@ -1,88 +1,69 @@
 # DCP-CEEP Continuity Ledger
 
-**Captured:** 2026-11-13 (time not recorded)  
+**Captured:** 2026-11-14  
 **Repository:** `phakphum12345/development_control_platform`  
-**Protocol:** [DCP-CEEP v1.0](../docs/DCP-CEEP-PROTOCOL.md)
+**Operational protocol:** [DCP-CEEP v1.0](../docs/DCP-CEEP-PROTOCOL.md) — adopted  
+**v2.0 status:** Integrated as a proposal by PR #113; NOT adopted. v1.0 remains operational.
 
-## Last completed Work Package
+## Current repository baseline
 
-- **DCP-CEEP v1.0 documentation package:** implementation prepared on branch `docs/dcp-ceep-v1-central-protocol`.
-- Protocol document: `docs/DCP-CEEP-PROTOCOL.md`.
-- README links to the protocol; existing README content retained.
-- Roadmap records adoption and the PR #110 verification boundary.
-- Pull request: [#111](https://github.com/phakphum12345/development_control_platform/pull/111).
+- Default branch: `main`
+- Main SHA: `e008844d8c6e6b15c71b7bf36f00f42e66233387`
+- PRs #110, #111, #112 and #113: CLOSED / MERGED.
+- No open PRs were returned by the repository PR listing at this baseline.
+- Main SHA workflow evidence:
+  - Local-first Minimal Emulator — PASS, run [43451126256](https://github.com/phakphum12345/development_control_platform/actions/runs/43451126256).
+  - Validate Control Plane — PASS, run [43451126351](https://github.com/phakphum12345/development_control_platform/actions/runs/43451126351).
+  - Commit status endpoint returned no status contexts; no additional status contexts are inferred.
+- No deployment was performed as part of this checkpoint.
 
-## Current Work Packages
+## Completed work packages
 
 | Work Package | State | Evidence / boundary |
 |---|---|---|
-| WP-PROTOCOL — central protocol documentation | IN_PROGRESS | PR #111 open; CI results below; merge authorization pending |
-| WP-M16 — Flutter executor cross-platform acceptance | IN_PROGRESS | PR #110 open; all three exact-head workflows passed; merge authorization pending |
-| Windows host operational acceptance | UNKNOWN | Requires direct evidence from the user's actual Windows host |
-| Independent process-tree termination and workspace cleanup | UNKNOWN | CI does not establish host-level cleanup; independent evidence required |
+| WP-M16 — Flutter executor cross-platform CI acceptance | PASS | PR #110 merged as `b2656749749b788b627e0d1ae004b11b69d2a4e1`; all 3 exact-head workflows passed on head `76b830fc2cd55fd3b27fa1a5279b471499b1ace0`. GitHub-hosted Ubuntu/Windows CI only; not proof of the user's local Flutter SDK/build or host process cleanup. |
+| WP-PROTOCOL — DCP-CEEP v1.0 adoption | PASS | PR #111 merged as `4633b692399745796a9da7b0f18a30481bed88b2`; Local-first Minimal Emulator and Validate Control Plane passed on exact head `203ac8589868c042f95fe111d6896d5a1e4ad8c9`. |
+| WP-TERMINAL-AUTH — app-authorized Terminal workflow | IMPLEMENTED / EXECUTION BLOCKED | PR #112 merged as `b0a2cd0d542491886a529666909024af1fb64ced`; all 3 exact-head workflows passed on head `1753a2bce2cb0308dc811af6fb6f11228552a055`. Dashboard grant/confirm/queue and shared Job status/log/cancel UI are implemented. Every built-in template remains `execution_enabled=false`; no Terminal command can currently be started. No OS sandbox is claimed. |
+| WP-CEEP-V2-PROPOSAL — universal protocol proposal | PASS (proposal integrated) | PR #113 merged as `e008844d8c6e6b15c71b7bf36f00f42e66233387`; 2 exact-head workflows passed on head `0d4d451d667206f847a4430958ebe304a016e040`. The v2.0 proposal is not adopted; v1.0 remains the operational standard. |
 
-## Repository and PR baselines
+## Current work package
 
-### PR #111 — central protocol
+### WP-17 — Terminal execution safety hardening
 
-- Base branch: `main`
-- Base SHA: `a34281ffc837ac171508df009ff504b4d4dd22b1`
-- Head branch: `docs/dcp-ceep-v1-central-protocol`
-- Last verified head SHA before this ledger addition: `22228bd45752f1db9fede3057ce983de87425863`
-- PR state: OPEN; mergeable: TRUE
-- Changed files before ledger addition: 3; additions: 194; deletions: 0
-- Reviews: none observed; review threads: none observed
-- Merge authorization: NOT GRANTED
+- Branch: `fix/terminal-execution-git-hardening-20261114`
+- Base SHA: `e008844d8c6e6b15c71b7bf36f00f42e66233387`
+- Branch tip before this ledger update: `12a090772b990c464a2298df82cbbd0713d20686`
+- State: IN_PROGRESS; no PR created yet; exact-head CI not run yet.
+- Changes prepared:
+  - Disable repository-configured Git fsmonitor, external diff and pager helpers through a clean Runner environment.
+  - Disable Git textconv and external diff for `diff` / `show`.
+  - Add unit tests for Git config isolation and fixed argv behavior.
+  - Preserve HTTP response status on Dashboard API errors so rejected grants (400/403) are handled separately from uncertain submissions and retry with the same idempotency key.
+  - Update Dashboard Code Navigator mapping and add a contract assertion.
+  - Reconcile Terminal API, execution architecture, Terminal Studio, feature backlog, roadmap and v2.0 proposal status with the merged implementation.
+- Validation state: implementation and documentation writes completed on the branch; tests and exact-head CI remain NOT RUN / UNKNOWN.
+- Merge authorization: NOT GRANTED for this new work package.
 
-### PR #110 — Flutter executor acceptance
+## Outstanding operational gates
 
-- Base branch: `main`
-- Base SHA: `a34281ffc837ac171508df009ff504b4d4dd22b1`
-- Head branch: `ci/m16-flutter-executor-acceptance`
-- Head SHA: `76b830fc2cd55fd3b27fa1a5279b471499b1ace0`
-- PR state: OPEN; mergeable: TRUE
-- Reviews: none observed; review threads: none observed
-- Merge authorization: NOT GRANTED
-
-## Last verified CI evidence
-
-### PR #110 exact head `76b830fc2cd55fd3b27fa1a5279b471499b1ace0`
-
-| Workflow / run | Result | Evidence |
+| Gate | State | Required evidence |
 |---|---|---|
-| Cross-platform Recovery Acceptance — run 43412285929 | PASS | https://github.com/phakphum12345/development_control_platform/actions/runs/43412285929 |
-| Local-first Minimal Emulator — run 43412285928 | PASS | https://github.com/phakphum12345/development_control_platform/actions/runs/43412285928 |
-| Validate Control Plane — run 43412285939 | PASS | https://github.com/phakphum12345/development_control_platform/actions/runs/43412285939 |
-
-Both Ubuntu and Windows recovery jobs completed successfully. The Flutter executor acceptance step passed on both. This is GitHub-hosted CI evidence, not proof of a real local Windows Flutter SDK build or independent host process cleanup.
-
-### PR #111 exact head `22228bd45752f1db9fede3057ce983de87425863`
-
-| Workflow / run | Result | Evidence |
-|---|---|---|
-| Local-first Minimal Emulator — run 43413246998 | PASS | https://github.com/phakphum12345/development_control_platform/actions/runs/43413246998 |
-| Validate Control Plane — run 43413247074 | PASS | https://github.com/phakphum12345/development_control_platform/actions/runs/43413247074 |
-| Cross-platform Recovery Acceptance | SKIPPED / NOT TRIGGERED | Documentation-only path did not trigger this workflow; not counted as PASS |
-
-The Local-first workflow passed Linux and Windows jobs. Validate Control Plane passed its Linux validation and Windows dynamic-port launcher integration jobs. A self-hosted Windows Runner acceptance job was skipped and is not counted as a pass.
-
-## Outstanding blockers and approvals
-
-1. Explicit user merge authorization is pending for PR #110 and PR #111.
-2. Real Windows-host operational acceptance is UNKNOWN.
-3. Independent process-tree termination and workspace cleanup evidence is UNKNOWN.
-4. Do not resume UNKNOWN jobs based only on owner attestation.
-5. Do not claim repository completion while roadmap work remains.
+| Actual Windows-host acceptance of supported launcher and Dashboard → Local Auth Proxy → Gateway owner flow | UNKNOWN | Direct run on the user's supported Windows host with captured results |
+| Independent process-tree termination | UNKNOWN | OS-level evidence that descendants are terminated after timeout/cancel |
+| Workspace cleanup after interruption | UNKNOWN | Independent filesystem inspection and recovery evidence |
+| Terminal OS isolation / network restriction | BLOCKED | Verified platform-specific isolation design and adversarial acceptance; workspace binding alone is insufficient |
+| Terminal built-in template enablement | BLOCKED | Keep all built-ins disabled until all security and host gates pass |
 
 ## Next exact actions
 
-1. Re-read PR #111 after this ledger commit; verify new exact head SHA, diff, mergeability, reviews, threads and fresh CI.
-2. Keep PR #110 and #111 unmerged until explicit user authorization.
-3. After authorized merges, verify each merge commit and the resulting `main` SHA.
-4. Obtain and inspect actual Windows-host acceptance evidence for the supported launcher and Dashboard → Local Auth Proxy → Gateway owner flow.
-5. Independently verify process-tree termination and workspace cleanup before allowing UNKNOWN jobs to resume.
-6. Continue roadmap inventory and gap analysis under DCP-CEEP v1.0; update this ledger at every completed execution round.
+1. Fetch the latest branch tip after the ledger commit; record the exact SHA and changed-file list.
+2. Run focused Terminal executor and Dashboard contract tests through exact-head CI.
+3. Inspect workflow jobs and failures; do not count missing, skipped or stale-SHA results as PASS.
+4. Review the Git helper/config isolation against repository-controlled fsmonitor, external diff, textconv and pager settings.
+5. Complete remaining OS-isolation research and platform acceptance without enabling any catalog template.
+6. Reconcile this ledger again after CI and review.
+7. Create/maintain a PR for WP-17; do not merge it without current exact-head gates and explicit user authorization.
 
 ## Resume rule
 
-Never infer PASS from missing, skipped, stale, or different-SHA evidence. Re-check the repository and exact current head before resuming after interruption. No merge without the required evidence and explicit user authorization.
+Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-check the repository and exact current head before resuming after interruption. Preserve all branches and files; no deletion or deployment is authorized by this checkpoint.
