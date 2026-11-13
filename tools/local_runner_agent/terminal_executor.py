@@ -6,6 +6,7 @@ Runner's LocalProjectRegistry after workspace/snapshot verification.
 """
 from __future__ import annotations
 
+import codecs
 import os
 import queue
 import re
@@ -336,7 +337,8 @@ class TerminalScriptExecutor:
         reader = threading.Thread(target=read_output, name="dcp-terminal-output", daemon=True)
         reader.start()
         output_bytes = 0
-        raw_output = bytearray()
+        decoder = codecs.getincrementaldecoder("utf-8")()
+        redactor = TerminalOutputRedactor()
         output_exceeded = False
         timed_out = False
         cancelled = False
@@ -366,9 +368,13 @@ class TerminalScriptExecutor:
                 accepted = chunk[:remaining]
                 output_bytes += len(accepted)
                 if accepted:
-                    # Redact the complete bounded output rather than individual
-                    # reader chunks; credentials may straddle a 4096-byte boundary.
-                    raw_output.extend(accepted)
+                    # The decoder preserves UTF-8 across pipe chunks. The redactor
+                    # buffers incomplete lines/private-key blocks before emitting
+                    # safe text, so credentials split across chunks are never logged.
+                    decoded = decoder.decode(accepted, final=False)
+                    safe_text = redactor.feed(decoded)
+                    for message in self._log_chunks(safe_text, max_bytes=4096):
+                        self.log("stdout", message)
                 if len(accepted) != len(chunk):
                     output_exceeded = True
                     self._terminate_tree(process)
@@ -378,12 +384,9 @@ class TerminalScriptExecutor:
                 self._terminate_tree(process)
                 return_code = process.wait(timeout=5)
             reader.join(timeout=2)
-            safe_text = redact_terminal_output(
-                raw_output.decode("utf-8", errors="replace")
-            )
-            # Redact the complete bounded output first, then split only for the
-            # Gateway's per-message byte limit.
-            for message in self._log_chunks(safe_text, max_bytes=4096):
+            decoded_tail = decoder.decode(b"", final=True)
+            safe_tail = redactor.feed(decoded_tail, final=True)
+            for message in self._log_chunks(safe_tail, max_bytes=4096):
                 self.log("stdout", message)
             duration = round(time.monotonic() - started, 3)
             if cancelled:
