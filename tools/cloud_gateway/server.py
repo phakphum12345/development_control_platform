@@ -280,9 +280,17 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
             public["source_type"] = payload.get("source_type", "github")
             public["source_id"] = payload.get("source_id", row.get("repository"))
             public["source_sha256"] = payload.get("source_sha256")
-            if public["source_type"] == "local_folder":
+            if public["source_type"] in ("local_folder", "terminal_script"):
                 public["repository"] = None
                 public["commit_sha"] = None
+            if public["source_type"] == "terminal_script":
+                public["terminal"] = {
+                    key: payload.get(key) for key in (
+                        "project_id", "workspace_id", "snapshot_sha256",
+                        "template_id", "parameters", "authorization_id",
+                        "template_digest", "parameters_sha256",
+                    )
+                }
             return public
 
         def proxy_identity(self):
