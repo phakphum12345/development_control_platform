@@ -10,6 +10,7 @@ from .artifacts import ArtifactPackageError, FlutterArtifactPackager
 from .checkout import CheckoutError
 from .execution import ExecutionError, FlutterBuildExecutor
 from .terminal_executor import TerminalExecutionError, TerminalScriptExecutor
+from tools.cloud_gateway.terminal_execution_contract import parameters_digest
 from .workspace import WorkspaceError, WorkspaceManager
 from .web_build import WebBuildExecutor, WebArtifactPackager
 from .browser_test import BrowserTestError, StaticWebPlaywrightTester
@@ -151,6 +152,8 @@ class RunnerPipeline:
                     raise ExecutionError("Terminal job contract is incomplete")
                 if not isinstance(terminal_job.get("parameters"), dict):
                     raise ExecutionError("Terminal job parameters are invalid")
+                if parameters_digest(terminal_job["parameters"]) != terminal_job["parameters_sha256"]:
+                    raise TerminalExecutionError("Terminal parameter digest does not match the queued Job")
                 # The Gateway verifies the current Job lease and consumes the app-issued
                 # one-time grant before the Runner resolves or executes the project path.
                 grant = self.client.verify_terminal_grant(job_id, terminal_job["authorization_id"])
