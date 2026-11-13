@@ -150,15 +150,14 @@ class TerminalScriptExecutorTests(unittest.TestCase):
         self.assertIn("[REDACTED PRIVATE KEY]", combined)
 
     def test_terminal_output_redacts_truncated_secret_and_private_key_prefixes(self):
-        sample = (
-            "partial token: ghp_abcd1234\n"
+        redacted_token = redact_terminal_output("partial token: ghp_abcd1234")
+        redacted_key = redact_terminal_output(
             "-----BEGIN PRIVATE KEY-----\npartial-private-material"
         )
-        redacted = redact_terminal_output(sample)
-        self.assertNotIn("ghp_abcd1234", redacted)
-        self.assertNotIn("partial-private-material", redacted)
-        self.assertIn("[REDACTED TOKEN PREFIX]", redacted)
-        self.assertIn("[REDACTED PRIVATE KEY]", redacted)
+        self.assertNotIn("ghp_abcd1234", redacted_token)
+        self.assertNotIn("partial-private-material", redacted_key)
+        self.assertIn("[REDACTED TOKEN PREFIX]", redacted_token)
+        self.assertIn("[REDACTED PRIVATE KEY]", redacted_key)
 
     def test_terminal_output_redacts_common_secrets_and_private_keys(self):
         sample = (
