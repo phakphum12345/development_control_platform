@@ -666,7 +666,7 @@ $("doc-download").onclick=()=>{
 
 
 async function docWorkflowGet(path){
- const response=await fetch("."+path,{method:"GET",credentials:"same-origin",cache:"no-store",headers:{Accept:"application/json"}});
+ const response=await fetch(path,{method:"GET",credentials:"same-origin",cache:"no-store",headers:{Accept:"application/json"}});
  let data={};try{data=await response.json()}catch(_){}
  if(!response.ok)throw Error(data.error||("HTTP "+response.status));
  return data;
@@ -676,7 +676,7 @@ async function docWorkflowPost(path,payload,idempotencyKey){
  if(session.authenticated!==true||typeof session.csrfToken!=="string"||session.csrfToken.length<16)throw Error("Owner sign-in and server-issued CSRF token are required.");
  const headers={"Content-Type":"application/json",Accept:"application/json","X-CSRF-Token":session.csrfToken};
  if(idempotencyKey)headers["Idempotency-Key"]=idempotencyKey;
- const response=await fetch("."+path,{method:"POST",credentials:"same-origin",cache:"no-store",headers,body:JSON.stringify(payload)});
+ const response=await fetch(path,{method:"POST",credentials:"same-origin",cache:"no-store",headers,body:JSON.stringify(payload)});
  let data={};try{data=await response.json()}catch(_){}
  if(!response.ok)throw Error(data.error||("HTTP "+response.status));
  return data;
