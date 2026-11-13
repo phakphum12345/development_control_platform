@@ -271,7 +271,7 @@ class TerminalScriptExecutor:
                 continue
             driver = section[len("filter."):]
             if driver:
-                drivers.setdefault(driver.casefold(), driver)
+                drivers.setdefault(driver, driver)
 
         index = int(env.get("GIT_CONFIG_COUNT", "0"))
         for driver in drivers.values():
