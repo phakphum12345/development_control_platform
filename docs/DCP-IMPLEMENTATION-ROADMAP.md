@@ -258,4 +258,6 @@ Historical gate for PR #71: its Chromium sandbox launch failure applied to that 
 - Reconcile Terminal API, architecture, Studio, backlog and continuity documentation with merged PR #112 behavior.
 - Keep every built-in template disabled. This work does not prove OS isolation, enable execution, or substitute for real-host acceptance.
 
-**Remaining gates:** exact-head CI; security review of the Git invocation path; adversarial tests for repository-controlled helper configuration; supported Windows/Linux host acceptance; independent process-tree termination and workspace cleanup evidence; then a separate reviewed decision before any catalog template is enabled.
+**PR #114:** [security(terminal): harden Git helpers and grant retry handling](https://github.com/phakphum12345/development_control_platform/pull/114), OPEN, non-draft. The last observed head before the latest continuity-ledger update was `d1481b3ffe840b5c326b1906cd6a0e6bff0fbfee`; the PR has 12 changed files. Three exact-head workflows were in progress at the last check; the continuity-ledger commit advances the PR head, so fetch and verify the new SHA before accepting any CI result.
+
+**Remaining gates:** exact-head CI; security review of the Git invocation path; adversarial tests for repository-controlled helper configuration; supported Windows/Linux host acceptance; independent process-tree termination and workspace cleanup evidence; then a separate reviewed decision before any catalog template is enabled. PR #114 has not been approved for merge.
