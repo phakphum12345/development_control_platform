@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import time
 import sys
+from pathlib import Path
 from dataclasses import asdict
 from typing import Protocol
 
