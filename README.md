@@ -33,7 +33,7 @@ claim live VM or runner acceptance.
 
 ## Selective Code Monitor & Editor
 
-The planned project-scoped code monitor/editor separates explicit read scopes from separately approved write scopes. Its security model, project-isolation rules, staged delivery, and acceptance criteria are documented in [docs/selective-code-monitor-editor.md](docs/selective-code-monitor-editor.md). This is a design baseline only; the current dashboard and local MCP engine remain read-only until server-side authorization, isolated patch application, and auditable approval are implemented and tested.
+The project-scoped code monitor/editor separates explicit read scopes from separately approved write scopes. Its security model, project-isolation rules, staged delivery, and acceptance criteria are documented in [docs/selective-code-monitor-editor.md](docs/selective-code-monitor-editor.md). The dashboard now includes a one-click Markdown/Roadmap/TXT generator that previews, hashes, and downloads complete artifacts; browser download is not a repository write or proof of disk persistence. A separate local writer library supports scoped .md/.txt writes with an external SQLite operation journal, idempotency, atomic replacement, and read-back SHA-256 verification; it is not yet exposed through an authenticated dashboard API or connected to GitHub. PR lifecycle verification and remote write/merge actions remain unavailable until their server-side authorization and evidence adapters are implemented.
 
 ## Interactive dashboard toolkit
 
