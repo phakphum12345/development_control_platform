@@ -140,6 +140,60 @@ class TerminalGrantStore:
             db.execute("COMMIT")
         return {"authorization_id": grant_id, "expires_at": expires.isoformat(), "action": action}
 
+    def validate_pending(
+        self, grant_id: str, *, subject: str, session_id: str,
+        project_id: str, workspace_id: str, snapshot_sha256: str,
+        template_id: str, template_digest: str, parameters_sha256: str,
+        action: str = "terminal.read_only", now=None,
+    ) -> dict:
+        """Check that the authenticated app session owns an unexpired, unconsumed grant."""
+        _uuid(grant_id, "grant_id")
+        current = _utc(now).isoformat()
+        expected = {
+            "subject": subject, "session_id": session_id, "project_id": project_id,
+            "workspace_id": workspace_id, "snapshot_sha256": snapshot_sha256,
+            "template_id": template_id, "template_digest": template_digest,
+            "parameters_sha256": parameters_sha256, "action": action,
+        }
+        with self.lock, self.db() as db:
+            row = db.execute("SELECT * FROM terminal_grants WHERE grant_id=?", (grant_id,)).fetchone()
+        if row is None:
+            raise TerminalGrantError("grant not found")
+        if row["revoked_at"] or row["consumed_at"] or row["expires_at"] <= current:
+            raise TerminalGrantError("grant is not active")
+        if row["job_id"] is not None:
+            raise TerminalGrantError("grant is already reserved for a Job")
+        if any(row[key] != value for key, value in expected.items()):
+            raise TerminalGrantError("grant scope does not match the authorized request")
+        return {"authorization_id": grant_id, "expires_at": row["expires_at"], "action": action}
+
+    def reserve_job(self, grant_id: str, *, job_id: str, now=None) -> dict:
+        """Reserve a pending grant to exactly one durable Job before it can be claimed."""
+        _uuid(grant_id, "grant_id")
+        _uuid(job_id, "job_id")
+        current = _utc(now).isoformat()
+        with self.lock, self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT * FROM terminal_grants WHERE grant_id=?", (grant_id,)).fetchone()
+            if row is None:
+                db.execute("ROLLBACK")
+                raise TerminalGrantError("grant not found")
+            if row["revoked_at"] or row["consumed_at"] or row["expires_at"] <= current:
+                db.execute("ROLLBACK")
+                raise TerminalGrantError("grant is not active")
+            if row["job_id"] is not None:
+                if row["job_id"] == job_id:
+                    db.execute("COMMIT")
+                    return {"authorization_id": grant_id, "job_id": job_id, "reserved": True}
+                db.execute("ROLLBACK")
+                raise TerminalGrantError("grant is already reserved for another Job")
+            db.execute(
+                "UPDATE terminal_grants SET job_id=? WHERE grant_id=? AND job_id IS NULL",
+                (job_id, grant_id),
+            )
+            db.execute("COMMIT")
+        return {"authorization_id": grant_id, "job_id": job_id, "reserved": True}
+
     def bind_job(self, grant_id: str, *, job_id: str, worker_id: str, now=None) -> dict:
         """Bind a grant exactly once to the queued job and its assigned Runner."""
         _uuid(grant_id, "grant_id")
@@ -156,12 +210,18 @@ class TerminalGrantStore:
             if row["revoked_at"] or row["consumed_at"] or row["expires_at"] <= current:
                 db.execute("ROLLBACK")
                 raise TerminalGrantError("grant is not active")
-            if row["job_id"] is not None:
+            if row["job_id"] != job_id:
                 db.execute("ROLLBACK")
-                raise TerminalGrantError("grant is already bound")
+                raise TerminalGrantError("grant is not reserved for this Job")
+            if row["worker_id"] is not None:
+                if row["worker_id"] == worker_id:
+                    db.execute("COMMIT")
+                    return {"authorization_id": grant_id, "job_id": job_id, "worker_id": worker_id}
+                db.execute("ROLLBACK")
+                raise TerminalGrantError("grant is already bound to another Runner")
             db.execute(
-                "UPDATE terminal_grants SET job_id=?,worker_id=? WHERE grant_id=? AND job_id IS NULL",
-                (job_id, worker_id, grant_id),
+                "UPDATE terminal_grants SET worker_id=? WHERE grant_id=? AND job_id=? AND worker_id IS NULL",
+                (worker_id, grant_id, job_id),
             )
             db.execute("COMMIT")
         return {"authorization_id": grant_id, "job_id": job_id, "worker_id": worker_id}
