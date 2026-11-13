@@ -331,7 +331,8 @@ class JobStore:
         return self.get(job_id)
 
     def resume_unknown(self, job_id, actor):
-        if not isinstance(actor, str) or not re.fullmatch(r"[A-Za-z0-9_.@:-]{1,120}", actor):
+        if (not isinstance(actor, str) or not actor or len(actor) > 200
+                or any(ord(char) < 32 for char in actor)):
             raise ValueError("Invalid resume actor")
         with self.lock, self.db() as db:
             db.execute("BEGIN IMMEDIATE")
