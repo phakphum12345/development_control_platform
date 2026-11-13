@@ -11,7 +11,6 @@ import queue
 import re
 import shutil
 import tempfile
-import shutil
 import signal
 import subprocess
 import threading
