@@ -1,4 +1,8 @@
 """Tests for the fixed-template Terminal executor; no project scripts are executed."""
+import re
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 import uuid
@@ -53,6 +57,76 @@ class TerminalScriptExecutorTests(unittest.TestCase):
         self.assertEqual(env["PAGER"], "cat")
         self.assertEqual(env["HOME"], str(job_home))
         self.assertEqual(env["USERPROFILE"], str(job_home))
+
+    def test_repository_fsmonitor_hook_is_not_invoked_by_git_status(self):
+        git = shutil.which("git")
+        if not git:
+            self.skipTest("Git is unavailable on this test host")
+        version = subprocess.run(
+            [git, "--version"], check=True, capture_output=True, text=True
+        ).stdout
+        match = re.search(r"([0-9]+)\\.([0-9]+)\\.([0-9]+)", version)
+        if not match or tuple(map(int, match.groups())) < (2, 36, 0):
+            self.skipTest("Git 2.36+ is required for boolean core.fsmonitor=false")
+
+        def git_run(*args):
+            return subprocess.run(
+                [git, "-C", str(self.workspace), *args],
+                check=True, capture_output=True, text=True,
+            )
+
+        git_run("init", "-q")
+        git_run("config", "user.name", "DCP Test")
+        git_run("config", "user.email", "dcp-test@example.invalid")
+        git_run("add", "README.md")
+        git_run("commit", "-m", "test fixture")
+
+        marker = Path(self.temp.name) / "fsmonitor-hook-ran"
+        hook = Path(self.temp.name) / "fsmonitor_hook.py"
+        hook.write_text(
+            "import pathlib\\n"
+            f"pathlib.Path({str(marker)!r}).write_text('called', encoding='utf-8')\\n"
+            "print('token')\\n",
+            encoding="utf-8",
+        )
+        git_run("config", "core.fsmonitor", f'"{sys.executable}" "{hook}"')
+        git_run("config", "core.fsmonitorHookVersion", "2")
+
+        # Prove the repository-local hook is active before testing the Runner override.
+        git_run("status", "--short")
+        self.assertTrue(marker.is_file())
+        marker.unlink()
+
+        template = {
+            "id": "git_status",
+            "executable": "git",
+            "argv": ["status", "--short"],
+            "parameters": [],
+            "parameter_values": {},
+            "execution_enabled": True,
+            "mutation_class": "read-only",
+            "network": "denied",
+            "approval_required": False,
+            "working_directory_policy": "assigned_workspace_required",
+            "environment_allowlist": ["PATH", "HOME", "USERPROFILE", "SYSTEMROOT"],
+            "timeout_seconds": 15,
+            "max_output_bytes": 65536,
+        }
+        executor = TerminalScriptExecutor(enabled=True)
+        with patch(
+            "tools.local_runner_agent.terminal_executor.preview_template",
+            return_value=template,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.template_version_digest",
+            return_value="f" * 64,
+        ):
+            result = executor.run(
+                str(uuid.uuid4()), "runner-local", self.workspace,
+                "git_status", {}, "f" * 64,
+            )
+
+        self.assertEqual(result.outcome, "succeeded")
+        self.assertFalse(marker.exists(), "repository-controlled fsmonitor hook was invoked")
 
     def test_git_diff_and_show_disable_external_diff_and_textconv(self):
         diff = TerminalScriptExecutor._build_command(
