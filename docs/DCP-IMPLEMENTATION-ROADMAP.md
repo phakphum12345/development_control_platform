@@ -261,3 +261,21 @@ Historical gate for PR #71: its Chromium sandbox launch failure applied to that 
 **PR #114:** [security(terminal): harden Git helpers and grant retry handling](https://github.com/phakphum12345/development_control_platform/pull/114), OPEN, non-draft. The latest test/code head before the continuity-ledger refresh is `28d32c96d05561181de1aab7c5c749fe29ee4637`; PR #114 has 12 changed files. The test exercises repository-local fsmonitor and clean-filter hooks, including Windows-safe executable paths; configured filter-driver names remain case-sensitive. Exact-head CI must be rechecked after the next checkpoint commit.
 
 **Remaining gates:** exact-head CI; security review of the Git invocation path; adversarial tests for repository-controlled helper configuration; supported Windows/Linux host acceptance; independent process-tree termination and workspace cleanup evidence; then a separate reviewed decision before any catalog template is enabled. PR #114 has not been approved for merge.
+
+
+## WP-17 — Terminal Git helper and grant retry hardening (merged)
+
+- PR #114 merged to main as ef3bf7e3522119ebbd3a41de693cee254e1ea7cf.
+- Exact PR head 26ca10364cd5991e2225777d769d90836bde6dcb passed Local-first Minimal Emulator, Validate Control Plane and Cross-platform Recovery Acceptance.
+- Read-only Git helper hardening disables repository-controlled fsmonitor, external diff, textconv, pager and configured clean/smudge/process filters; Dashboard grant retry handling preserves HTTP status and idempotency semantics.
+- This does not establish OS isolation and does not enable Terminal templates.
+
+## WP-18 — OS-level Terminal isolation (in progress)
+
+- Added a fail-closed platform isolation contract and explicit acceptance document in branch feat/wp18-os-isolation-contract.
+- Windows candidate: native AppContainer/LPAC launcher with explicit filesystem capabilities and no network capability, plus Job Object process-tree lifecycle.
+- Linux candidate: bubblewrap with explicit mount, user, PID, IPC, UTS and network namespaces and a reviewed seccomp profile.
+- macOS candidate: signed App Sandbox helper with explicit file and network entitlements.
+- Current status for all platforms: BLOCKED pending actual launchers, adversarial host acceptance and independent cleanup evidence. Linux bwrap presence can only become READY_FOR_ACCEPTANCE, never VERIFIED by itself.
+- All seven built-in Terminal templates remain execution_enabled=false. No network/filesystem/process isolation claim is made from workspace binding or Job Objects.
+- Acceptance requires filesystem boundary, network denial (including loopback/LAN/DNS/IPv6/metadata), process-tree termination, credential isolation, adversarial tests and recovery evidence on the actual supported host.
