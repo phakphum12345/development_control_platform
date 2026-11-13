@@ -40,8 +40,10 @@ class TerminalGrantStoreTests(unittest.TestCase):
         return self.store.issue(**claims, ttl_seconds=ttl, now=now)
 
     def bind(self, grant, *, job_id=None, worker="runner-local", now=NOW):
+        selected_job = job_id or self.job
+        self.store.reserve_job(grant["authorization_id"], job_id=selected_job, now=now)
         return self.store.bind_job(
-            grant["authorization_id"], job_id=job_id or self.job,
+            grant["authorization_id"], job_id=selected_job,
             worker_id=worker, now=now,
         )
 
@@ -106,7 +108,7 @@ class TerminalGrantStoreTests(unittest.TestCase):
     def test_grant_cannot_be_bound_to_a_second_job_or_runner(self):
         grant = self.issue()
         self.bind(grant)
-        with self.assertRaisesRegex(TerminalGrantError, "already bound"):
+        with self.assertRaisesRegex(TerminalGrantError, "not reserved"):
             self.bind(grant, job_id=str(uuid.uuid4()), worker="runner-other")
 
     def test_scope_mismatches_are_rejected(self):
