@@ -412,7 +412,7 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
 <section class="view" id="terminal-studio">
  <div class="panel">
   <div class="row"><div><h2>Terminal Studio</h2><p>Command Library สำหรับตรวจสอบ Git และ Toolchain พร้อมดูคำสั่งแบบ argv ก่อนใช้งาน</p></div><span class="pill" id="terminal-studio-state">PREVIEW ONLY</span></div>
-  <div class="warn"><b>Safety:</b> รุ่นนี้แสดง Catalog, Visual Builder และ Preview เท่านั้น ไม่มีการรันคำสั่ง ไม่มี Shell/PTY ไม่มีการติดตั้ง Dependencies และไม่รับคำสั่งอิสระจาก Browser. ค่าพารามิเตอร์ต้องผ่าน Schema ที่ Gateway ตรวจซ้ำ</div>
+  <div class="warn"><b>Safety:</b> อนุญาตเฉพาะ Built-in Template ที่เปิดใช้งานโดยนโยบายเท่านั้น ต้องเลือก Project Workspace และขอสิทธิ์จากแอปก่อนส่ง Job. ไม่มีช่อง Shell Command, ไม่มี argv อิสระ, ไม่มี PTY และไม่รัน Imported Template.</div>
   <div class="actions"><button class="primary" id="terminal-load-templates" type="button">Load Command Library</button><label for="terminal-template-select">Command template</label><select id="terminal-template-select" disabled><option value="">Load templates first</option></select><button id="terminal-preview" type="button" disabled>Preview exact argv</button></div>
   <div id="terminal-status" class="output" role="status" aria-live="polite">Owner session and command catalog have not been checked.</div>
  </div>
@@ -423,8 +423,30 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
  </div>
  <div class="panel">
   <h3>Exact command preview</h3>
-  <p class="small muted">Preview displays the trusted executable, validated parameter values and exact argument array—not a shell command string. This feature never executes the command; workspace binding and execution remain disabled.</p>
+  <p class="small muted">Preview displays the trusted executable, validated parameter values and exact argument array—not a shell command string. Execution is a separate app-authorized action and remains disabled for templates unless the trusted catalog explicitly enables them.</p>
   <pre id="terminal-preview-output" class="output" aria-label="Terminal command preview">No command selected.</pre>
+ </div>
+ <div class="panel" id="terminal-execution-panel">
+  <h3>App-authorized Project Workspace execution</h3>
+  <p class="small muted">เลือก Project Workspace ที่ลงทะเบียนไว้ แล้ว Preview ก่อนขอสิทธิ์จากแอป. ระบบส่งได้เฉพาะ Template ID และ Parameters ที่กำหนดไว้; Browser ไม่สามารถส่ง Shell, Executable, argv, cwd หรือ Environment เองได้.</p>
+  <div class="grid">
+   <div><label for="terminal-project-select">Registered Project Workspace</label><select id="terminal-project-select" disabled><option value="">Load registered projects first</option></select></div>
+   <div><label>Workspace binding</label><div id="terminal-workspace-summary" class="output" role="status">No Project Workspace selected.</div></div>
+  </div>
+  <div class="actions"><button class="primary" id="terminal-authorize-run" type="button" disabled>Request App Authorization</button></div>
+  <div id="terminal-execution-gate" class="output" role="status" aria-live="polite">Execution is disabled until a trusted catalog template is explicitly enabled.</div>
+  <div class="panel" id="terminal-grant-confirmation" hidden>
+   <h4>Confirm authorized execution</h4>
+   <p class="small muted">ตรวจสอบ Project, Workspace, Template และเวลาหมดอายุ ก่อนยืนยันส่ง Job. Grant ใช้ได้ครั้งเดียวและยกเลิกได้ก่อน Runner ใช้งาน.</p>
+   <pre id="terminal-grant-details" class="output">No authorization requested.</pre>
+   <div class="actions"><button class="primary" id="terminal-confirm-run" type="button" disabled>Confirm & Queue Job</button><button id="terminal-discard-grant" type="button">Revoke Grant</button></div>
+  </div>
+  <div class="panel" id="terminal-job-panel" hidden>
+   <h4>Terminal Job History & Output</h4>
+   <div class="actions"><select id="terminal-job-history" aria-label="Recent Terminal Jobs"><option value="">No Terminal Jobs loaded</option></select><button id="terminal-job-open" type="button" disabled>Open Job</button><button id="terminal-job-refresh" type="button" disabled>Refresh</button><button id="terminal-job-cancel" type="button" hidden>Cancel Job</button></div>
+   <div id="terminal-job-status" class="output" role="status" aria-live="polite">No Terminal Job selected.</div>
+   <pre id="terminal-job-output" class="output" aria-label="Terminal Job output">Output will appear here after the Runner starts.</pre>
+  </div>
  </div>
  <div class="panel" id="terminal-review-panel" hidden>
   <h3>Owner review</h3>
