@@ -54,6 +54,9 @@ class FakeGatewayHandler(BaseHTTPRequestHandler):
         if self.path == "/v1/runner/claim":
             return self._send(200, {"job": {"id": JOB_ID, "state": "running"}})
         if self.path.endswith("/checkpoint"):
+            self.server.checkpoint_requests += 1
+            if self.server.checkpoint_requests == 1:
+                return self._send(503, {"error": "temporary"})
             return self._send(200, {
                 "id": JOB_ID, "state": "running",
                 "checkpoint_seq": payload.get("sequence"),
@@ -68,6 +71,7 @@ class RunnerAgentTests(unittest.TestCase):
     def setUp(self):
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), FakeGatewayHandler)
         self.server.requests = []
+        self.server.checkpoint_requests = 0
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.config = RunnerAgentConfig(
@@ -127,6 +131,7 @@ class RunnerAgentTests(unittest.TestCase):
         saved = self.client.checkpoint(JOB_ID, 1, checkpoint)
         self.assertEqual(saved["checkpoint_seq"], 1)
         self.assertEqual(saved["checkpoint"], checkpoint)
+        self.assertEqual(self.server.checkpoint_requests, 2)
         logged = self.client.append_log(JOB_ID, "agent connected", "system")
         self.assertTrue(logged["accepted"])
         finished = self.client.finish(
