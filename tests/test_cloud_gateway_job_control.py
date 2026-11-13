@@ -177,8 +177,9 @@ class JobStoreTests(unittest.TestCase):
 
         for attempt in (1, 2):
             checkpoint = {
-                "version": 1, "step": "safe-boundary-" + str(attempt),
-                "safe_to_resume": True, "data": {"completed_units": attempt},
+                "version": 1, "step": "ready-to-finish",
+                "safe_to_resume": True,
+                "data": {"outcome": "succeeded", "result": {"completed_units": attempt}},
             }
             self.store.checkpoint(job["id"], "retry-worker-" + str(attempt), attempt, checkpoint)
             with self.store.db() as db:
@@ -202,7 +203,8 @@ class JobStoreTests(unittest.TestCase):
 
         self.store.checkpoint(
             job["id"], "retry-worker-3", 3,
-            {"version": 1, "step": "final-safe-boundary", "safe_to_resume": True, "data": {"done": False}},
+            {"version": 1, "step": "ready-to-finish", "safe_to_resume": True,
+             "data": {"outcome": "succeeded", "result": {"done": False}}},
         )
         with self.store.db() as db:
             db.execute(
