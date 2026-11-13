@@ -799,6 +799,8 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                 try:
                     grant = issue_terminal_grant(identity, self.body(max_bytes=8192), registry, grants)
                     return self.send_json(201, {"grant": grant})
+                except PolicyDenied as exc:
+                    return self.send_json(exc.status_code, {"error": str(exc)})
                 except TerminalAuthorizationError as exc:
                     return self.send_json(409, {"error": str(exc)})
                 except ValueError as exc:
