@@ -46,6 +46,7 @@ class TerminalGrantRunnerAPITests(unittest.TestCase):
         }
         self.grants = TerminalGrantStore(base / "grants.sqlite3")
         self.grant = self.grants.issue(**self.claims, ttl_seconds=120)
+        self.grants.reserve_job(self.grant["authorization_id"], job_id=self.job_id)
         self.grants.bind_job(
             self.grant["authorization_id"], job_id=self.job_id,
             worker_id=self.worker,
