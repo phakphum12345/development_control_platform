@@ -261,12 +261,15 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
             return {key: row.get(key) for key in keys}
 
         @staticmethod
-        def public_job(row):
+        def public_job(row, include_checkpoint=False):
             keys = ("id", "repository", "commit_sha", "target", "state",
                     "created_at", "updated_at", "worker", "last_worker",
                     "lease_until", "cancel_at", "result", "error_code",
-                    "attempt_count", "max_attempts")
+                    "attempt_count", "max_attempts", "checkpoint_seq",
+                    "checkpoint_sha256", "retry_after")
             public = {key: row.get(key) for key in keys}
+            if include_checkpoint:
+                public["checkpoint"] = row.get("checkpoint")
             payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
             public["source_type"] = payload.get("source_type", "github")
             public["source_id"] = payload.get("source_id", row.get("repository"))
@@ -1135,6 +1138,15 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                         row, created = jobs.create(payload, self.headers.get("Idempotency-Key", ""))
                         return self.send_json(202 if created else 200, self.public_job(row))
                     suffix = path[len("/api/jobs/"):]
+                    resume_match = re.fullmatch(r"([0-9a-f-]{36})/resume", suffix)
+                    if resume_match:
+                        if identity.get("role") != "owner":
+                            return self.send_json(403, {"error": "owner role required to resume UNKNOWN jobs"})
+                        payload = self.body()
+                        if set(payload) != {"confirmation"} or payload.get("confirmation") != "RESUME UNKNOWN JOB":
+                            return self.send_json(400, {"error": "explicit RESUME UNKNOWN JOB confirmation is required"})
+                        row = jobs.resume_unknown(resume_match.group(1), identity.get("subject", "owner"))
+                        return self.send_json(200, self.public_job(row))
                     if not suffix.endswith("/cancel"):
                         return self.send_json(404, {"error": "not found"})
                     if identity.get("role") != "owner":
@@ -1201,7 +1213,7 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                                 return self.send_json(409, {"error": "Runner is offline or draining"})
                         else:
                             return self.send_json(503, {"error": "Runner Registry unavailable; refusing unfiltered job claim"})
-                        return self.send_json(200, {"job": self.public_job(row) if row else None})
+                        return self.send_json(200, {"job": self.public_job(row, include_checkpoint=True) if row else None})
                     parts = path[len("/v1/runner/"):].split("/")
                     if len(parts) != 2 or not re.fullmatch(r"[0-9a-f-]{36}", parts[0]):
                         return self.send_json(404, {"error": "not found"})
@@ -1231,6 +1243,11 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                     if action == "heartbeat":
                         row = jobs.heartbeat(job_id, worker, payload.get("lease_seconds", 30))
                         return self.send_json(200, self.public_job(row))
+                    if action == "checkpoint":
+                        row = jobs.checkpoint(
+                            job_id, worker, payload.get("sequence"), payload.get("checkpoint")
+                        )
+                        return self.send_json(200, self.public_job(row, include_checkpoint=True))
                     if action == "logs":
                         jobs.append_log(job_id, worker, payload.get("message"), payload.get("stream", "stdout"))
                         return self.send_json(202, {"accepted": True})
