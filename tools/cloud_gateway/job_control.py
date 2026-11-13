@@ -250,8 +250,9 @@ class JobStore:
             else:
                 placeholders = ",".join("?" for _ in allowed_targets)
                 row = db.execute(
-                    f"SELECT * FROM jobs WHERE state='queued' AND target IN ({placeholders}) ORDER BY created_at,id LIMIT 1",
-                    tuple(allowed_targets),
+                    f"SELECT * FROM jobs WHERE state IN ('queued','retry_wait') AND target IN ({placeholders}) "
+                    "AND (retry_after IS NULL OR retry_after<=?) ORDER BY created_at,id LIMIT 1",
+                    (*allowed_targets, current.isoformat()),
                 ).fetchone()
             if row is None:
                 db.execute("COMMIT")
