@@ -293,6 +293,12 @@ class TerminalScriptExecutor:
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 pass
+            while reader.is_alive():
+                try:
+                    chunks.get(timeout=0.05)
+                except queue.Empty:
+                    pass
+            reader.join(timeout=1)
             raise
         finally:
             shutil.rmtree(job_home, ignore_errors=True)
