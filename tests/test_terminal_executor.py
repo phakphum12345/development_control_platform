@@ -78,24 +78,43 @@ class TerminalScriptExecutorTests(unittest.TestCase):
         git_run("init", "-q")
         git_run("config", "user.name", "DCP Test")
         git_run("config", "user.email", "dcp-test@example.invalid")
-        git_run("add", "README.md")
+        attributes = self.workspace / ".gitattributes"
+        attributes.write_text("README.md filter=hostile\n", encoding="utf-8")
+        git_run("add", "README.md", ".gitattributes")
         git_run("commit", "-m", "test fixture")
 
-        marker = Path(self.temp.name) / "fsmonitor-hook-ran"
-        hook = Path(self.temp.name) / "fsmonitor_hook.py"
-        hook.write_text(
+        fsmonitor_marker = Path(self.temp.name) / "fsmonitor-hook-ran"
+        fsmonitor_hook = Path(self.temp.name) / "fsmonitor_hook.py"
+        fsmonitor_hook.write_text(
             "import pathlib\n"
-            f"pathlib.Path({str(marker)!r}).write_text('called', encoding='utf-8')\n"
+            f"pathlib.Path({str(fsmonitor_marker)!r}).write_text('called', encoding='utf-8')\n"
             "print('token')\n",
             encoding="utf-8",
         )
-        git_run("config", "core.fsmonitor", f'"{sys.executable}" "{hook}"')
+        git_run("config", "core.fsmonitor", f'"{sys.executable}" "{fsmonitor_hook}"')
         git_run("config", "core.fsmonitorHookVersion", "2")
 
-        # Prove the repository-local hook is active before testing the Runner override.
+        # Prove the repository-local fsmonitor hook is active before testing the Runner override.
         git_run("status", "--short")
-        self.assertTrue(marker.is_file())
-        marker.unlink()
+        self.assertTrue(fsmonitor_marker.is_file())
+        fsmonitor_marker.unlink()
+
+        filter_marker = Path(self.temp.name) / "clean-filter-ran"
+        filter_hook = Path(self.temp.name) / "clean_filter_hook.py"
+        filter_hook.write_text(
+            "import pathlib,sys\n"
+            f"pathlib.Path({str(filter_marker)!r}).write_text('called', encoding='utf-8')\n"
+            "sys.stdout.buffer.write(sys.stdin.buffer.read())\n",
+            encoding="utf-8",
+        )
+        git_run("config", "filter.hostile.clean", f'"{sys.executable}" "{filter_hook}"')
+        git_run("config", "filter.hostile.required", "true")
+        (self.workspace / "README.md").write_text("modified after commit\n", encoding="utf-8")
+
+        # Prove the repository-local clean filter is active without the Runner overrides.
+        git_run("-c", "core.fsmonitor=false", "status", "--short")
+        self.assertTrue(filter_marker.is_file())
+        filter_marker.unlink()
 
         template = {
             "id": "git_status",
@@ -126,7 +145,8 @@ class TerminalScriptExecutorTests(unittest.TestCase):
             )
 
         self.assertEqual(result.outcome, "succeeded")
-        self.assertFalse(marker.exists(), "repository-controlled fsmonitor hook was invoked")
+        self.assertFalse(fsmonitor_marker.exists(), "repository-controlled fsmonitor hook was invoked")
+        self.assertFalse(filter_marker.exists(), "repository-controlled clean filter was invoked")
 
     def test_git_diff_and_show_disable_external_diff_and_textconv(self):
         diff = TerminalScriptExecutor._build_command(
