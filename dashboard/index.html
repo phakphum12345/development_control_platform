@@ -1843,7 +1843,7 @@ async function terminalStudioImport(){
   $("terminal-template-select").value=first.id;terminalStudioRenderBuilder();
   $("terminal-preview").disabled=false;
   $("terminal-import-status").textContent="Imported "+result.imported.length+" template(s). SHA-256: "+result.source_sha256+"\nAll imported templates are disabled and pending Owner review. No command was executed.";
-  terminalStudioStatus("Command pack imported as inert data. Owner review is required before any future execution feature.","ready");
+  terminalStudioStatus("Command pack imported as inert metadata. Owner review records a decision only; imported templates remain non-executable.","ready");
  }catch(error){
   $("terminal-import-status").textContent="Import rejected: "+error.message;
   terminalStudioStatus("Command pack was not imported: "+error.message,"error");
