@@ -508,10 +508,15 @@ function lifecycleEvidence(snapshot){
  const checksPass=checksKnown&&checksList.every(x=>x.status==="completed"&&x.conclusion==="success")&&contexts.every(x=>x.state==="success")&&(contexts.length===0||status.state==="success");
  const checksFail=(checksList.some(x=>x.status==="completed"&&x.conclusion&&x.conclusion!=="success")||contexts.some(x=>x.state==="failure"||x.state==="error")||status?.state==="failure");
  const removed=Array.isArray(files)&&files.some(x=>x.status==="removed");
+ const protection=snapshot.protection;
+ const requiredStatus=protection?.required_status_checks;
+ const requiredContexts=requiredStatus===null?[]:Array.isArray(requiredStatus?.contexts)?requiredStatus.contexts:Array.isArray(requiredStatus?.checks)?requiredStatus.checks.map(x=>x.context):null;
+ const requiredChecksKnown=!!protection&&requiredContexts!==null;
+ const requiredChecksPass=requiredChecksKnown&&requiredContexts.every(name=>checksList.some(x=>x.name===name&&x.status==="completed"&&x.conclusion==="success")||contexts.some(x=>x.context===name&&x.state==="success"));
  const latestByReviewer={};
  (reviews||[]).forEach(x=>{if(x.user?.login)latestByReviewer[x.user.login]=x});
  const approvals=Object.values(latestByReviewer).filter(x=>x.state==="APPROVED").length;
- return {p,files,reviews,checks,status,protection:snapshot.protection,errors,checksKnown,checksPass,checksFail,removed,approvals};
+ return {p,files,reviews,checks,status,protection,errors,checksKnown,checksPass,checksFail,requiredChecksKnown,requiredChecksPass,removed,approvals};
 }
 $("pr-lifecycle-verify").onclick=async()=>{
  const repoName=$("pr-repo").value.trim(),number=$("pr-num").value.trim(),stage=$("pr-lifecycle-stage").value;
@@ -542,7 +547,7 @@ $("pr-lifecycle-verify").onclick=async()=>{
    notes.push("Expected closed=true and merged=false for a close-without-merge operation.");
   }else if(stage==="before-merge"){
    const basic=p.state==="open"&&p.merged===false&&p.mergeable===true&&snap.files&&!snap.removed&&snap.approvals>0&&snap.protection;
-   statusLabel=basic&&snap.checksPass?"PASS":snap.checksFail||p.mergeable===false||snap.removed?"FAIL":"UNKNOWN";
+   statusLabel=basic&&snap.checksPass&&snap.requiredChecksKnown&&snap.requiredChecksPass?"PASS":snap.checksFail||p.mergeable===false||snap.removed?"FAIL":"UNKNOWN";
    notes.push("Checks current head SHA "+p.head.sha+".");
    notes.push("Latest reviewer states with at least one approval: "+snap.approvals+".");
    notes.push("Branch protection evidence: "+(snap.protection?"retrieved":"UNKNOWN")+"; inaccessible protection rules block a PASS.");
@@ -564,7 +569,7 @@ $("pr-lifecycle-verify").onclick=async()=>{
   }
   if(snap.errors.length)notes.push("Evidence retrieval limitations: "+snap.errors.join(" | "));
   if(!snap.checksKnown&&["before-merge","after-merge"].includes(stage))notes.push("No complete check-run and commit-status evidence returned.");
-  out.textContent=JSON.stringify({stage,status:statusLabel,repository:repoName,pr_number:p.number,url:p.html_url,state:p.state,merged:p.merged,head_branch:p.head.ref,head_sha:p.head.sha,base_branch:p.base.ref,base_sha:p.base.sha,mergeable:p.mergeable,merge_commit_sha:p.merge_commit_sha,changed_files:p.changed_files,deleted_files:snap.removed,latest_approvals:snap.approvals,branch_protection_verified:!!snap.protection,head_checks_pass:snap.checksPass,head_checks_fail:snap.checksFail,notes},null,2);
+  out.textContent=JSON.stringify({stage,status:statusLabel,repository:repoName,pr_number:p.number,url:p.html_url,state:p.state,merged:p.merged,head_branch:p.head.ref,head_sha:p.head.sha,base_branch:p.base.ref,base_sha:p.base.sha,mergeable:p.mergeable,merge_commit_sha:p.merge_commit_sha,changed_files:p.changed_files,deleted_files:snap.removed,latest_approvals:snap.approvals,branch_protection_verified:!!snap.protection,required_checks_known:snap.requiredChecksKnown,required_checks_pass:snap.requiredChecksPass,head_checks_pass:snap.checksPass,head_checks_fail:snap.checksFail,notes},null,2);
  }catch(error){out.textContent="UNKNOWN — lifecycle verification incomplete. "+error.message}
 };
 
