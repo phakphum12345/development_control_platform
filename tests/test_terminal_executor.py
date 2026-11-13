@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 from tools.cloud_gateway.terminal_catalog import preview_template
 from tools.cloud_gateway.terminal_execution_contract import template_version_digest
+from tools.local_runner_agent.terminal_isolation import IsolationAssessment
 from tools.local_runner_agent.terminal_executor import (
     TerminalExecutionError,
     TerminalScriptExecutor,
@@ -23,6 +24,21 @@ from tools.local_runner_agent.terminal_executor import (
 
 class TerminalScriptExecutorTests(unittest.TestCase):
     def setUp(self):
+        self.isolation_patch = patch(
+            "tools.local_runner_agent.terminal_executor.assess_isolation_backend",
+            return_value=IsolationAssessment(
+                platform="linux",
+                backend="test-only-verified-backend",
+                state="VERIFIED",
+                available=True,
+                network_isolated=True,
+                filesystem_isolated=True,
+                process_tree_contained=True,
+                reason="unit-test-only injected verifier",
+            ),
+        )
+        self.isolation_patch.start()
+        self.addCleanup(self.isolation_patch.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.workspace = Path(self.temp.name) / "project"
         self.workspace.mkdir()
@@ -212,6 +228,29 @@ class TerminalScriptExecutorTests(unittest.TestCase):
             TerminalScriptExecutor._build_command("python", "python", ["--version"]),
             ["python", "--version"],
         )
+
+
+    def test_execution_is_blocked_without_verified_os_isolation(self):
+        executor = TerminalScriptExecutor(enabled=True)
+        blocked = IsolationAssessment(
+            platform="linux",
+            backend="bubblewrap-namespaces-seccomp",
+            state="READY_FOR_ACCEPTANCE",
+            available=True,
+            network_isolated=False,
+            filesystem_isolated=False,
+            process_tree_contained=False,
+            reason="backend not accepted",
+        )
+        with patch(
+            "tools.local_runner_agent.terminal_executor.assess_isolation_backend",
+            return_value=blocked,
+        ):
+            with self.assertRaisesRegex(TerminalExecutionError, "verified OS isolation"):
+                executor.run(
+                    str(uuid.uuid4()), "runner-local", self.workspace,
+                    "python_version", {}, template_version_digest("python_version", {}),
+                )
 
     def test_execution_remains_disabled_until_catalog_opt_in(self):
         executor = TerminalScriptExecutor(enabled=True)
