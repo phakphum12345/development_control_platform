@@ -43,7 +43,8 @@
   - executor unit tests use an explicit test-only VERIFIED assessment to retain coverage of process handling; production host verification remains absent;
   - tests assert fail-closed behavior.
 - Not yet implemented: actual OS process launchers, mount/capability policies, native helper signing, seccomp policy, host acceptance and process cleanup verification.
-- No CI has yet been run for this branch. Exact-head CI state is UNKNOWN.
+- CI was triggered on earlier head 8e5180376c3b8ea843903d4755e75fe5063969b7 (runs 43530605448 Validate Control Plane, 43530605527 Cross-platform Recovery Acceptance, 43530605511 Local-first Minimal Emulator). These runs are stale after subsequent executor-gate and documentation commits; they are not current-head evidence.
+- Latest code head before this ledger refresh: d02bfe5e704f8c4e5df946aa3e83cb40658cd349. GitHub returned zero check runs for that exact SHA. Exact-current-head CI state is UNKNOWN.
 - No PR has yet been opened for WP-18.
 
 ## Outstanding operational gates
