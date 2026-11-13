@@ -65,7 +65,7 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
         self.thread.join(timeout=2)
         self.temp.cleanup()
 
-    def request(self, path, role="owner", method="GET", payload=None, idempotency_key=None):
+    def request(self, path, role="owner", method="GET", payload=None, idempotency_key=None, origin=None, csrf=True):
         subject = "dcp-owner@example.test"
         session = "local_project_session_123"
         timestamp = str(int(time.time()))
@@ -81,12 +81,13 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
             "X-DCP-Auth-Signature": signature,
         }
         if method != "GET":
-            headers["Origin"] = self.origin
-            headers["X-CSRF-Token"] = hmac.new(
-                self.secret.encode(),
-                ("csrf\n" + subject + "\n" + session).encode(),
-                hashlib.sha256,
-            ).hexdigest()
+            headers["Origin"] = self.origin if origin is None else origin
+            if csrf:
+                headers["X-CSRF-Token"] = hmac.new(
+                    self.secret.encode(),
+                    ("csrf\n" + subject + "\n" + session).encode(),
+                    hashlib.sha256,
+                ).hexdigest()
         body = json.dumps(payload).encode("utf-8") if payload is not None else None
         if body is not None:
             headers["Content-Type"] = "application/json"
@@ -157,6 +158,26 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
         )
         self.assertEqual(status, 403)
         self.assertEqual(result["error"], "owner role required")
+
+    def test_terminal_authorization_endpoint_requires_same_origin_and_csrf(self):
+        payload = {
+            "project_id": self.project["project_id"],
+            "workspace_id": self.project["workspace_id"],
+            "snapshot_sha256": self.project["snapshot_sha256"],
+            "template_id": "git_status",
+            "parameters": {},
+        }
+        status, result = self.request(
+            "/api/terminal/authorize", method="POST", payload=payload,
+            origin="https://attacker.example.test",
+        )
+        self.assertEqual(status, 403)
+        self.assertIn("same-origin", result["error"])
+        status, result = self.request(
+            "/api/terminal/authorize", method="POST", payload=payload, csrf=False,
+        )
+        self.assertEqual(status, 403)
+        self.assertIn("CSRF", result["error"])
 
     def test_terminal_authorization_endpoint_rejects_browser_shell_fields(self):
         payload = {
