@@ -171,7 +171,7 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
   <button type="button" data-quick-tab="gates" data-tone="green">▣ Quality Gates</button>
   <button type="button" data-quick-tab="document-generator" data-tone="blue">▤ Document Generator</button><button type="button" data-quick-tab="audit" data-tone="amber">◎ Audit & Safety</button>
  </div>
- <div class="control-center-meta"><span>Navigation: <strong id="dcp-nav-count">21 tools</strong></span><span>Write actions: <strong>0 · Disabled</strong></span><span>Evidence default: <strong>UNKNOWN</strong></span><span>Mode: <strong>READ-ONLY</strong></span></div>
+ <div class="control-center-meta"><span>Navigation: <strong id="dcp-nav-count">21 tools</strong></span><span>GitHub write actions: <strong>0 · Disabled</strong></span><span>Evidence default: <strong>UNKNOWN</strong></span><span>Mode: <strong>REPO READ-ONLY · LOCAL DOC WRITE GATED</strong></span></div>
  <div class="dcp-selfcheck" id="dcp-selfcheck" data-status="UNKNOWN" role="status" aria-live="polite">UI self-check: UNKNOWN — ยังไม่ได้ตรวจสอบเมนู</div>
  <div class="quick-actions"><button type="button" id="dcp-selfcheck-run" class="primary">Run UI self-check</button><button type="button" id="dcp-nav-reset">Clear search / Reset menu</button></div>
 </section>
@@ -718,7 +718,8 @@ $("doc-propose-write").onclick=async()=>{
   const query="?project_id="+encodeURIComponent(projectId)+"&path="+encodeURIComponent(path);
   const targetData=await docWorkflowGet("/api/document-workflow/target"+query),target=targetData.target;
   if(target.write_scope!=="PASS")throw Error("No active server-side grant covers this path. Grant the directory scope first.");
-  docWorkflowState.idempotencyKey=docWorkflowState.idempotencyKey||("document-operation-"+crypto.randomUUID());
+  const randomId=crypto.randomUUID?crypto.randomUUID():Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,"0")).join("");
+  docWorkflowState.idempotencyKey=docWorkflowState.idempotencyKey||("document-operation-"+randomId);
   const data=await docWorkflowPost("/api/document-workflow/proposals",{
    project_id:projectId,relative_path:path,content:documentState.content,expected_sha256:target.current_sha256
   },docWorkflowState.idempotencyKey);
