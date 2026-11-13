@@ -31,6 +31,10 @@ reads secret values, or installs software. The Gateway supports
 Cloud provisioning stays disabled by default; Azure/Orka mock tests do not
 claim live VM or runner acceptance.
 
+## Selective Code Monitor & Editor
+
+The planned project-scoped code monitor/editor separates explicit read scopes from separately approved write scopes. Its security model, project-isolation rules, staged delivery, and acceptance criteria are documented in [docs/selective-code-monitor-editor.md](docs/selective-code-monitor-editor.md). This is a design baseline only; the current dashboard and local MCP engine remain read-only until server-side authorization, isolated patch application, and auditable approval are implemented and tested.
+
 ## Interactive dashboard toolkit
 
 Open dashboard/index.html in a modern browser. Current tools:
