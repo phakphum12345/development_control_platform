@@ -1516,14 +1516,24 @@ async function terminalStudioLoad(){
  }catch(error){terminalStudioStatus("Could not load Command Library: "+error.message,"error");}
  finally{button.disabled=false;}
 }
+function terminalStudioInvalidatePreview(){
+ terminalStudioState.lastPreview=null;
+ $("terminal-preview-output").textContent="Preview is stale. Preview the current template and parameters again.";
+ if(terminalStudioState.pendingGrant)void terminalStudioRevokeGrant(true);
+ terminalStudioRenderExecutionGate();
+}
 function terminalStudioRenderBuilder(){
  const host=$("terminal-builder-fields");
  const selected=$("terminal-template-select").value;
  const item=terminalStudioState.templates.find(row=>row&&row.id===selected);
  host.replaceChildren();
- if(!item){host.textContent="Choose a command template to see its typed parameters.";return;}
+ if(!item){host.textContent="Choose a command template to see its typed parameters.";terminalStudioRenderExecutionGate();return;}
  const specs=Array.isArray(item.parameters)?item.parameters:[];
- if(!specs.length){const note=document.createElement("div");note.className="empty";note.textContent="No parameters. This template uses fixed, curated arguments.";host.append(note);return;}
+ if(!specs.length){
+  const note=document.createElement("div");note.className="empty";
+  note.textContent="No parameters. This template uses fixed, curated arguments.";
+  host.append(note);terminalStudioRenderExecutionGate();return;
+ }
  for(const spec of specs){
   if(!spec||typeof spec.name!=="string"||!["integer","commit_sha"].includes(spec.type))continue;
   const field=document.createElement("div");field.className="field";
@@ -1539,8 +1549,10 @@ function terminalStudioRenderBuilder(){
   if(spec.default!==undefined)input.value=String(spec.default);
   if(typeof spec.placeholder==="string")input.placeholder=spec.placeholder;
   label.htmlFor=input.id;label.textContent=spec.label||spec.name;
+  input.addEventListener("input",terminalStudioInvalidatePreview);
   field.append(label,input);host.append(field);
  }
+ terminalStudioRenderExecutionGate();
 }
 function terminalStudioCollectParameters(){
  const values={};
@@ -1553,9 +1565,11 @@ async function terminalStudioPreview(){
  const id=$("terminal-template-select").value;
  if(!id){terminalStudioStatus("Select a command template first.","unknown");return}
  const button=$("terminal-preview");button.disabled=true;
+ terminalStudioState.lastPreview=null;
+ terminalStudioRenderExecutionGate();
  try{
   const data=await terminalStudioRequest("/api/terminal/commands/preview","POST",{template_id:id,parameters:terminalStudioCollectParameters()});
-  if(data.execution_enabled!==false||!data.preview||!["PREVIEW_ONLY","PENDING_REVIEW","APPROVED_NOT_EXECUTABLE","REJECTED"].includes(data.preview.status)||!Array.isArray(data.preview.command_preview))throw new Error("API did not return a safe preview-only result.");
+  if(typeof data.execution_enabled!=="boolean"||!data.preview||data.execution_enabled!==(data.preview.execution_enabled===true)||!["PREVIEW_ONLY","EXECUTION_ENABLED","PENDING_REVIEW","APPROVED_NOT_EXECUTABLE","REJECTED"].includes(data.preview.status)||!Array.isArray(data.preview.command_preview))throw new Error("API did not return a valid trusted-template preview.");
   $("terminal-preview-output").textContent=JSON.stringify({
    name:data.preview.name,
    executable:data.preview.executable,
@@ -1571,7 +1585,7 @@ async function terminalStudioPreview(){
    status:data.preview.status,
    approval_status:data.preview.approval_status||null,
    source_sha256:data.preview.source_sha256||null,
-   execution_enabled:false
+   execution_enabled:data.execution_enabled
   },null,2);
   terminalStudioState.lastPreview=data.preview;
   const imported=data.preview.id&&data.preview.id.startsWith("custom-");
@@ -1579,9 +1593,10 @@ async function terminalStudioPreview(){
   $("terminal-review-approve").hidden=data.preview.status!=="PENDING_REVIEW";
   $("terminal-review-reject").hidden=data.preview.status!=="PENDING_REVIEW";
   if(imported)await terminalStudioLoadEvents(data.preview.id);
-  const message=data.preview.status==="PENDING_REVIEW"?"Imported template is pending owner review. No process was started.":data.preview.status==="APPROVED_NOT_EXECUTABLE"?"Owner approved this template, but execution remains disabled.":data.preview.status==="REJECTED"?"Owner rejected this template. Execution remains disabled.":"Exact argv preview loaded. No process was started.";
-  terminalStudioStatus(message,"ready");
- }catch(error){$("terminal-preview-output").textContent="No verified preview available.";terminalStudioStatus("Preview rejected: "+error.message,"error");}
+  const message=data.preview.status==="PENDING_REVIEW"?"Imported template is pending owner review. No process was started.":data.preview.status==="APPROVED_NOT_EXECUTABLE"?"Owner approved this template, but execution remains disabled.":data.preview.status==="REJECTED"?"Owner rejected this template. Execution remains disabled.":data.execution_enabled?"Trusted template is enabled. App authorization and a separate confirmation are still required.":"Exact argv preview loaded. No process was started; this template is disabled by catalog policy.";
+  terminalStudioStatus(message,data.execution_enabled?"execution-ready":"ready");
+  terminalStudioRenderExecutionGate();
+ }catch(error){$("terminal-preview-output").textContent="No verified preview available.";terminalStudioStatus("Preview rejected: "+error.message,"error");terminalStudioRenderExecutionGate();}
  finally{button.disabled=!$("terminal-template-select").value;}
 }
 async function terminalStudioLoadEvents(id){
