@@ -51,13 +51,24 @@ _PRIVATE_KEY = re.compile(
     r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----",
     re.DOTALL,
 )
+_INCOMPLETE_PRIVATE_KEY = re.compile(
+    r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*\\Z",
+    re.DOTALL,
+)
+_TAIL_SECRET_PREFIX = re.compile(
+    r"(?i)(?:gh[pousr]_[A-Za-z0-9]{0,19}|github_pat_[A-Za-z0-9_]{0,19}|"
+    r"sk-[A-Za-z0-9_-]{0,19}|xox[baprs]-[A-Za-z0-9-]{0,9}|"
+    r"Bearer\\s+[A-Za-z0-9._~+/-]{0,15})$"
+)
 
 
 def redact_terminal_output(value: str) -> str:
-    """Redact common credential formats before any output reaches durable logs."""
+    """Redact complete credentials and partial credential prefixes at bounded EOF."""
     text = _PRIVATE_KEY.sub("[REDACTED PRIVATE KEY]", value)
+    text = _INCOMPLETE_PRIVATE_KEY.sub("[REDACTED PRIVATE KEY]", text)
     text = _SECRET_ASSIGNMENT.sub(lambda match: match.group(1) + match.group(2) + "[REDACTED]", text)
-    return _SECRET_TOKEN.sub("[REDACTED TOKEN]", text)
+    text = _SECRET_TOKEN.sub("[REDACTED TOKEN]", text)
+    return _TAIL_SECRET_PREFIX.sub("[REDACTED TOKEN PREFIX]", text)
 
 
 class TerminalOutputRedactor:
