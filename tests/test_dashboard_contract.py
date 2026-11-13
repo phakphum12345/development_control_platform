@@ -96,7 +96,7 @@ class DashboardContractTests(unittest.TestCase):
             'POST /api/jobs/{id}/cancel',
             'RESUME UNKNOWN JOB AFTER WORKER STOPPED AND WORKSPACE CLEANED',
             'previous Runner process',
-            'workspace is cleaned',
+            'clean its job workspace',
             'job.checkpoint_seq',
             'job.checkpoint_sha256',
             'job.retry_after',
