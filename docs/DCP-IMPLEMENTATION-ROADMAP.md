@@ -212,3 +212,20 @@ Historical gate for PR #71: its Chromium sandbox launch failure applied to that 
 - Extend the same Ubuntu/Windows matrix to run `tests.test_local_auth_proxy` so authenticated Local Auth Proxy and Gateway integration behavior is exercised on both operating systems.
 - Keep the workflow read-only, secret-free, provider-free, and independent of cloud provisioning.
 - Remaining operational acceptance: execute the supported launcher on an actual Windows host, verify the live Dashboard → Local Auth Proxy → Gateway owner flow, and independently inspect process-tree termination and workspace cleanup before allowing any UNKNOWN job to resume.
+
+
+## M15 follow-up — Local Auth Proxy recovery integration (PR #109 merged)
+
+- Added `tests.test_local_auth_proxy` to the dedicated Ubuntu/Windows recovery matrix.
+- Both matrix jobs passed the Local Auth Proxy authentication and recovery integration suite, alongside the existing JobStore, Runner API and Local Runner pipeline suites, on exact head `66a05db8f94187de94779c36911fb0210750b2fd`.
+- PR #109 was squash-merged to `main` as `a34281ffc837ac171508df009ff504b4d4dd22b1`.
+- This remains GitHub-hosted CI evidence only; live Windows-host acceptance and independent process/workspace cleanup evidence remain outstanding.
+
+
+## M16 — Flutter executor cross-platform acceptance (in progress)
+
+- Extend the Ubuntu/Windows recovery matrix to execute `tests.test_local_runner_execution` on both operating systems.
+- Cover fixed Flutter target allowlisting, disabled-by-default execution, Windows batch-shim command quoting, Windows toolchain environment allowlisting, and timeout behavior where supported by the test platform.
+- Windows-only real `cmd.exe` batch-shim acceptance must run on Windows; POSIX process-group timeout fixtures remain explicitly skipped on Windows and must not be counted as Windows coverage.
+- Keep CI read-only, secret-free, provider-free and independent of cloud provisioning.
+- This suite is automated CI acceptance, not proof of a real Flutter SDK build on the user's host or independent OS-level process-tree cleanup. Those remain separate operational gates.
