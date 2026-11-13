@@ -43,11 +43,17 @@ def _relative(value: str, suffixes: set[str] | None = None) -> PurePosixPath:
     if not isinstance(value, str) or not value.strip() or "\x00" in value:
         raise DocumentWorkflowError("A clean relative path is required.")
     normalized = value.replace("\\", "/")
+    raw_parts = normalized.split("/")
     path = PurePosixPath(normalized)
-    if path.is_absolute() or not path.parts or any(p in ("", ".", "..") for p in path.parts):
+    if path.is_absolute() or not path.parts or any(p in ("", ".", "..") for p in raw_parts):
         raise DocumentWorkflowError("Path traversal and absolute paths are not allowed.")
     if ":" in path.parts[0]:
         raise DocumentWorkflowError("Drive-qualified paths are not allowed.")
+    blocked = {".git", ".github", ".ssh", ".aws", ".azure", ".gnupg", ".kube",
+               ".terraform", ".docker", ".config", ".secrets", "secrets",
+               "credentials", "node_modules", ".venv", "venv"}
+    if any(part.startswith(".") or part.lower() in blocked for part in path.parts):
+        raise DocumentWorkflowError("Hidden, credential, and tool-control directories are not writable.")
     if suffixes is not None and path.suffix.lower() not in suffixes:
         raise DocumentWorkflowError("Only .md and .txt documents are supported.")
     return path
@@ -81,6 +87,15 @@ class DocumentWorkflowStore:
                 );
                 CREATE INDEX IF NOT EXISTS idx_document_grants_project
                     ON document_write_grants(project_id, expires_at, revoked_at);
+                CREATE TABLE IF NOT EXISTS document_workflow_events (
+                    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_type TEXT NOT NULL,
+                    project_id TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    target_path TEXT,
+                    content_sha256 TEXT,
+                    created_at REAL NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS document_write_proposals (
                     proposal_id TEXT PRIMARY KEY,
                     idempotency_key TEXT NOT NULL UNIQUE,
@@ -189,6 +204,12 @@ class DocumentWorkflowStore:
                 VALUES(?,?,?,?,?,?)""",
                 (grant_id, project_id, json.dumps(normalized), actor, now, now + 30 * 86400),
             )
+            db.execute(
+                """INSERT INTO document_workflow_events
+                (event_type,project_id,actor,target_path,created_at)
+                VALUES('SCOPE_GRANTED',?,?,?,?)""",
+                (project_id, actor, ",".join(normalized), now),
+            )
         return {
             "grant_id": grant_id, "project_id": project_id,
             "allowed_paths": normalized, "granted_by": actor,
@@ -218,12 +239,22 @@ class DocumentWorkflowStore:
         if confirmation != "REVOKE DOCUMENT WRITE SCOPE":
             raise DocumentWorkflowError("Explicit revocation confirmation is required.", 403)
         with self._db() as db:
+            now = time.time()
             cursor = db.execute(
                 "UPDATE document_write_grants SET revoked_at=? WHERE grant_id=? AND revoked_at IS NULL",
-                (time.time(), grant_id),
+                (now, grant_id),
             )
             if cursor.rowcount != 1:
                 raise DocumentWorkflowError("Active write grant not found.", 404)
+            grant = db.execute(
+                "SELECT project_id FROM document_write_grants WHERE grant_id=?", (grant_id,)
+            ).fetchone()
+            db.execute(
+                """INSERT INTO document_workflow_events
+                (event_type,project_id,actor,created_at)
+                VALUES('SCOPE_REVOKED',?,?,?)""",
+                (grant["project_id"], actor, now),
+            )
         return {"grant_id": grant_id, "revoked_by": actor, "status": "REVOKED"}
 
     def propose(self, *, project_id: str, relative_path: str, content: str,
@@ -280,6 +311,12 @@ class DocumentWorkflowStore:
                  expected_sha256,selected["grant_id"],actor,now,expires),
             )
             row = db.execute("SELECT * FROM document_write_proposals WHERE proposal_id=?", (proposal_id,)).fetchone()
+            db.execute(
+                """INSERT INTO document_workflow_events
+                (event_type,project_id,actor,target_path,content_sha256,created_at)
+                VALUES('WRITE_PROPOSED',?,?,?,?,?)""",
+                (project_id, actor, relative.as_posix(), desired, now),
+            )
         return self._public_proposal(row)
 
     @staticmethod
@@ -351,6 +388,12 @@ class DocumentWorkflowStore:
             db.execute(
                 "UPDATE document_write_proposals SET status='APPLIED',result_json=? WHERE proposal_id=?",
                 (json.dumps(result, sort_keys=True), proposal_id),
+            )
+            db.execute(
+                """INSERT INTO document_workflow_events
+                (event_type,project_id,actor,target_path,content_sha256,created_at)
+                VALUES('WRITE_APPLIED',?,?,?,?,?)""",
+                (row["project_id"], actor, row["relative_path"], row["content_sha256"], time.time()),
             )
         return result
 
