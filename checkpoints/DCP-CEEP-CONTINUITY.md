@@ -33,15 +33,15 @@
 - Branch: `fix/terminal-execution-git-hardening-20261114`
 - Base SHA: `e008844d8c6e6b15c71b7bf36f00f42e66233387`
 - PR: [#114](https://github.com/phakphum12345/development_control_platform/pull/114), OPEN, non-draft, mergeable TRUE at last metadata check; no reviews or review threads observed.
-- Exact PR head before this ledger update: `0429d1bda70faaa7374a776e0e182d38c70bf939`; base SHA: `e008844d8c6e6b15c71b7bf36f00f42e66233387`.
+- Exact PR head before this ledger update: `2bac9ef27d6d611dba237a91e52ae08e98e3a14b`; base SHA: `e008844d8c6e6b15c71b7bf36f00f42e66233387`.
 - Changed files: 12; additions/deletions are recorded by PR #114.
-- Exact-head CI at `d1481b3ffe840b5c326b1906cd6a0e6bff0fbfee`: Exact-head CI for `0429d1bda70faaa7374a776e0e182d38c70bf939` was not yet listed. Two workflows were queued on the prior code/test head `0757400bf282b13c46eac2787e53e3d8d26ec46b` (Local-first Minimal Emulator run 43507869836; Validate Control Plane run 43507869764); these are stale-SHA evidence and are NOT counted as PASS. Cross-platform Recovery Acceptance was not observed on that prior head. No workflow is counted as PASS yet. The Windows runner acceptance sub-job is SKIPPED and is not a PASS.
+- Exact-head CI at `d1481b3ffe840b5c326b1906cd6a0e6bff0fbfee`: Exact-head CI for `2bac9ef27d6d611dba237a91e52ae08e98e3a14b` was not yet listed. Three workflows were queued on the prior code/test head `28d32c96d05561181de1aab7c5c749fe29ee4637` (Local-first Minimal Emulator run 43507958200; Validate Control Plane run 43507958324; Cross-platform Recovery Acceptance run 43507958158); these are stale-SHA evidence and are NOT counted as PASS. No workflow is counted as PASS yet. The Windows runner acceptance sub-job is SKIPPED and is not a PASS.
 - State: IN_PROGRESS; merge authorization NOT GRANTED.
 - Changes prepared:
   - Disable repository-configured Git fsmonitor, external diff and pager helpers through a clean Runner environment.
   - Enumerate repository Git config keys and disable every configured clean/smudge/process filter driver; fail closed if config cannot be inspected.
   - Disable Git textconv and external diff for `diff` / `show`.
-  - Add unit tests for Git config isolation and fixed argv behavior, plus an integration test proving repository-local fsmonitor and clean-filter hooks run without Runner overrides but are not invoked by Runner Git status (Git 2.36+).
+  - Add unit tests for Git config isolation and fixed argv behavior, plus an integration test proving repository-local fsmonitor and clean-filter hooks run without Runner overrides but are not invoked by Runner Git status (Git 2.36+); filter driver names are preserved case-sensitively.
   - Preserve HTTP response status on Dashboard API errors so rejected grants (400/403) are handled separately from uncertain submissions and retry with the same idempotency key.
   - Update Dashboard Code Navigator mapping and add a contract assertion.
   - Reconcile Terminal API, execution architecture, Terminal Studio, feature backlog, roadmap and v2.0 proposal status with the merged implementation.
