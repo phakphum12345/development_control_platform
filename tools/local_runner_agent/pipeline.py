@@ -215,47 +215,74 @@ class RunnerPipeline:
                 last_heartbeat = now
                 return current.get("state") == "cancel_requested"
 
-            build_target = "build_static_web" if job["target"] == "test_static_web" else job["target"]
-            selected_executor = self.web_executor if build_target in WebBuildExecutor.TARGETS else self.executor
-            selected_executor.log = lambda stream, message: self.client.append_log(job_id, message, stream)
-            build = selected_executor.run(
-                job_id, worker_id, build_target,
-                cancel_requested=cancellation_requested,
-            )
-            outcome = build.outcome
-            error_code = build.error_code
-            build_succeeded = outcome == "succeeded"
-            result.update({
-                "command": list(build.command),
-                "return_code": build.return_code,
-                "duration_seconds": build.duration_seconds,
-                "output_bytes": build.output_bytes,
-                "source_directory": str(source.relative_to(self.workspaces.get(job_id, worker_id))),
-            })
-            if build_succeeded and job["target"] == "test_static_web":
-                if self.browser_test_executor is None:
-                    raise BrowserTestError("Playwright test capability is not configured on this Runner")
-                browser_result = self.browser_test_executor.run(job_id, worker_id)
-                browser_test_artifact_path = browser_result.get("artifact_path")
-                result["browser_test"] = {
-                    key: value for key, value in browser_result.items()
-                    if key not in ("artifact_path",)
-                }
+            if source_type == "terminal_script":
+                self.terminal_executor.log = lambda stream, message: self.client.append_log(job_id, message, stream)
+                terminal_result = self.terminal_executor.run(
+                    job_id, worker_id, source,
+                    terminal_job["template_id"], terminal_job["parameters"],
+                    terminal_job["template_digest"],
+                    cancel_requested=cancellation_requested,
+                )
+                outcome = terminal_result.outcome
+                error_code = terminal_result.error_code
+                build_succeeded = outcome == "succeeded"
+                result.update({
+                    "template_id": terminal_job["template_id"],
+                    "return_code": terminal_result.return_code,
+                    "duration_seconds": terminal_result.duration_seconds,
+                    "output_bytes": terminal_result.output_bytes,
+                })
                 self.client.append_log(
                     job_id,
-                    "Playwright static preview tests " + browser_result["status"],
+                    f"Terminal template {terminal_job['template_id']} {outcome}; "
+                    f"exit={terminal_result.return_code}; output={terminal_result.output_bytes} bytes",
                     "system",
                 )
-                if browser_result["status"] != "PASS":
-                    outcome = "failed"
-                    error_code = "WEB_BROWSER_TESTS_FAILED"
-            self.client.append_log(
-                job_id,
-                f"Build execution {outcome}; exit={build.return_code}; "
-                f"duration={build.duration_seconds}s; output={build.output_bytes} bytes",
-                "system",
-            )
-            if build_succeeded:
+                if outcome == "succeeded":
+                    error_code = None
+            else:
+                build_target = "build_static_web" if job["target"] == "test_static_web" else job["target"]
+                selected_executor = self.web_executor if build_target in WebBuildExecutor.TARGETS else self.executor
+                selected_executor.log = lambda stream, message: self.client.append_log(job_id, message, stream)
+                build = selected_executor.run(
+                    job_id, worker_id, build_target,
+                    cancel_requested=cancellation_requested,
+                )
+                outcome = build.outcome
+                error_code = build.error_code
+                build_succeeded = outcome == "succeeded"
+                result.update({
+                    "command": list(build.command),
+                    "return_code": build.return_code,
+                    "duration_seconds": build.duration_seconds,
+                    "output_bytes": build.output_bytes,
+                    "source_directory": str(source.relative_to(self.workspaces.get(job_id, worker_id))),
+                })
+                if build_succeeded and job["target"] == "test_static_web":
+                    if self.browser_test_executor is None:
+                        raise BrowserTestError("Playwright test capability is not configured on this Runner")
+                    browser_result = self.browser_test_executor.run(job_id, worker_id)
+                    browser_test_artifact_path = browser_result.get("artifact_path")
+                    result["browser_test"] = {
+                        key: value for key, value in browser_result.items()
+                        if key not in ("artifact_path",)
+                    }
+                    self.client.append_log(
+                        job_id,
+                        "Playwright static preview tests " + browser_result["status"],
+                        "system",
+                    )
+                    if browser_result["status"] != "PASS":
+                        outcome = "failed"
+                        error_code = "WEB_BROWSER_TESTS_FAILED"
+                self.client.append_log(
+                    job_id,
+                    f"Build execution {outcome}; exit={build.return_code}; "
+                    f"duration={build.duration_seconds}s; output={build.output_bytes} bytes",
+                    "system",
+                )
+
+            if build_succeeded and source_type != "terminal_script":
                 packager = self.web_artifact_packager if build_target in ("build_static_web", "build_vite") else self.artifact_packager
                 artifact = packager.package(job_id, worker_id, build_target)
                 if artifact is not None:
@@ -281,7 +308,7 @@ class RunnerPipeline:
                     result["workspace_retained_for_preview"] = True
                 if outcome == "succeeded":
                     error_code = None
-        except (ArtifactPackageError, BrowserTestError, CheckoutError, ExecutionError, WorkspaceError) as exc:
+        except (ArtifactPackageError, BrowserTestError, CheckoutError, ExecutionError, TerminalExecutionError, WorkspaceError) as exc:
             self.client.append_log(
                 job_id, f"Runner rejected job safely: {type(exc).__name__}", "stderr"
             )
