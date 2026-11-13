@@ -13,6 +13,7 @@ import os
 import re
 import threading
 import time
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -41,7 +42,7 @@ from tools.local_runner_agent.runtime import RuntimeManager
 from .preview import AuthenticatedPreviewManager, PreviewError
 from .terminal_catalog import (list_templates as list_terminal_templates, preview_template as preview_terminal_template, validate_preview_payload)
 from .terminal_templates import (TerminalTemplateConflict, TerminalTemplateError, TerminalTemplateNotFound, TerminalTemplateStore)
-from .terminal_grants import TerminalGrantStore
+from .terminal_grants import TerminalGrantStore, TerminalGrantError
 from .terminal_authorization import TerminalAuthorizationError, issue_terminal_grant
 
 
@@ -1256,9 +1257,7 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                         if set(payload) != {"authorization_id"}:
                             return self.send_json(400, {"error": "Terminal grant verification fields are invalid"})
                         job = jobs.get(job_id)
-                        now_iso = __import__("datetime").datetime.now(
-                            __import__("datetime").timezone.utc
-                        ).isoformat()
+                        now_iso = datetime.now(timezone.utc).isoformat()
                         if (not job or job.get("state") != "running"
                                 or job.get("worker") != worker
                                 or not job.get("lease_until")
