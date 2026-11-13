@@ -39,6 +39,17 @@ def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _file_sha(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while True:
+            chunk = stream.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _relative(value: str, suffixes: set[str] | None = None) -> PurePosixPath:
     if not isinstance(value, str) or not value.strip() or "\x00" in value:
         raise DocumentWorkflowError("A clean relative path is required.")
@@ -142,7 +153,7 @@ class DocumentWorkflowStore:
             raise DocumentWorkflowError("Invalid project ID.")
         try:
             self.registry.reload()
-            row = self.registry.get_project(project_id)
+            row = self.registry.refresh_project(project_id)
             root = Path(row["path"]).resolve(strict=True)
         except (LocalProjectError, KeyError, OSError, TypeError):
             raise DocumentWorkflowError("Registered Local Project is unavailable.", 404) from None
@@ -261,7 +272,7 @@ class DocumentWorkflowStore:
         relative = _relative(relative_path, {".md", ".txt"})
         root = self._project(project_id)
         target = self._target(root, relative)
-        current_sha = _sha(target.read_bytes()) if target.exists() else None
+        current_sha = _file_sha(target) if target.exists() else None
         now = time.time()
         active_grant = None
         with self._db() as db:
