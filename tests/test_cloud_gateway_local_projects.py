@@ -149,6 +149,22 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
         )
         return grant, template, digest
 
+    def test_unused_terminal_grant_can_be_revoked_through_owner_api(self):
+        grant, _, _ = self._issue_terminal_test_grant()
+        status, result = self.request(
+            "/api/terminal/grants/" + grant["authorization_id"] + "/revoke",
+            method="POST",
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(result["revoked"])
+        with self.service.terminal_grant_store.db() as db:
+            row = db.execute(
+                "SELECT revoked_at,consumed_at FROM terminal_grants WHERE grant_id=?",
+                (grant["authorization_id"],),
+            ).fetchone()
+        self.assertIsNotNone(row["revoked_at"])
+        self.assertIsNone(row["consumed_at"])
+
     def test_terminal_job_is_created_only_with_matching_app_grant(self):
         grant, enabled_template, digest = self._issue_terminal_test_grant()
         payload = {
