@@ -171,7 +171,7 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
   <button type="button" data-quick-tab="gates" data-tone="green">▣ Quality Gates</button>
   <button type="button" data-quick-tab="document-generator" data-tone="blue">▤ Document Generator</button><button type="button" data-quick-tab="audit" data-tone="amber">◎ Audit & Safety</button>
  </div>
- <div class="control-center-meta"><span>Navigation: <strong id="dcp-nav-count">20 tools</strong></span><span>Write actions: <strong>0 · Disabled</strong></span><span>Evidence default: <strong>UNKNOWN</strong></span><span>Mode: <strong>READ-ONLY</strong></span></div>
+ <div class="control-center-meta"><span>Navigation: <strong id="dcp-nav-count">21 tools</strong></span><span>Write actions: <strong>0 · Disabled</strong></span><span>Evidence default: <strong>UNKNOWN</strong></span><span>Mode: <strong>READ-ONLY</strong></span></div>
  <div class="dcp-selfcheck" id="dcp-selfcheck" data-status="UNKNOWN" role="status" aria-live="polite">UI self-check: UNKNOWN — ยังไม่ได้ตรวจสอบเมนู</div>
  <div class="quick-actions"><button type="button" id="dcp-selfcheck-run" class="primary">Run UI self-check</button><button type="button" id="dcp-nav-reset">Clear search / Reset menu</button></div>
 </section>
@@ -378,7 +378,7 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
  <div class="field"><label for="doc-source">Verified context / current implementation</label><textarea id="doc-source" rows="5" placeholder="Paste verified facts, existing components, decisions, source links, and current status. Unknown facts should remain UNKNOWN."></textarea></div>
  <div class="field"><label for="doc-milestones">Milestones / tasks (one per line)</label><textarea id="doc-milestones" rows="5" placeholder="WP-01 — Inventory — UNKNOWN — acceptance criteria&#10;WP-02 — Implementation — BLOCKED — dependency"></textarea></div>
  <div class="field"><label for="doc-risks">Risks, dependencies, and acceptance criteria</label><textarea id="doc-risks" rows="4" placeholder="List known risks, dependencies, measurable acceptance criteria, and verification evidence."></textarea></div>
- <div class="actions"><button class="primary" id="doc-generate" type="button">Generate complete document</button><button id="doc-copy" type="button">Copy</button><button id="doc-download" type="button" disabled>Download file</button></div>
+ <div class="actions"><button class="primary" id="doc-generate" type="button">Generate & Download complete file</button><button id="doc-copy" type="button">Copy</button><button id="doc-download" type="button" disabled>Download file</button></div>
  <div id="doc-status" class="output" role="status" aria-live="polite">No document generated. Missing facts will be marked TBD / UNKNOWN, not invented.</div>
  <div class="field"><label for="doc-output">Generated document preview</label><textarea id="doc-output" class="output" rows="22" spellcheck="false" aria-label="Generated document preview"></textarea></div>
  <div id="doc-integrity" class="output" role="status" aria-live="polite">Integrity: UNKNOWN — generate a document first.</div>
@@ -504,7 +504,7 @@ function checkpoint(){let v=id=>$(id).value.trim();return "# Development Checkpo
 $("cp-build").onclick=()=>$("cp-output").value=checkpoint();$("cp-copy").onclick=()=>copy($("cp-output").value||checkpoint());$("cp-download").onclick=()=>download("CHECKPOINT.md",$("cp-output").value||checkpoint(),"text/markdown");
 const documentState={content:"",filename:"",digest:"",generated:false,downloadRequested:false};
 function docSafeName(value){return (value||"project-document").trim().replace(/[^A-Za-z0-9._-]+/g,"-").replace(/^-+|-+$/g,"").slice(0,90)||"project-document"}
-function docLines(value){return (value||"").split(/\\r?\\n/).map(x=>x.trim()).filter(Boolean)}
+function docLines(value){return (value||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean)}
 function docBuild(){
  const type=$("doc-type").value,project=$("doc-project").value.trim()||"TBD",title=$("doc-title").value.trim()||"Untitled document",version=$("doc-version").value.trim()||"UNKNOWN",purpose=$("doc-purpose").value.trim(),source=$("doc-source").value.trim(),milestones=docLines($("doc-milestones").value),risks=$("doc-risks").value.trim();
  const missing=[];if(!purpose)missing.push("purpose/scope");if(!source)missing.push("verified context");if(type==="roadmap"&&!milestones.length)missing.push("milestones");
@@ -527,12 +527,18 @@ async function docDigest(content){
 }
 $("doc-generate").onclick=async()=>{
  try{
-  const built=docBuild();documentState.content=built.content;documentState.filename=docSafeName(built.title)+(built.type==="text"?".txt":built.type==="roadmap"?"-ROADMAP.md":".md");
-  documentState.digest=await docDigest(built.content);documentState.generated=true;documentState.downloadRequested=false;
+  const built=docBuild();
+  documentState.content=built.content;
+  documentState.filename=docSafeName(built.title)+(built.type==="text"?".txt":built.type==="roadmap"?"-ROADMAP.md":".md");
+  documentState.generated=true;documentState.downloadRequested=false;
   $("doc-output").value=built.content;$("doc-download").disabled=false;
+  // Start the download synchronously within the user's click gesture.
+  download(documentState.filename,documentState.content,documentState.filename.endsWith(".md")?"text/markdown;charset=utf-8":"text/plain;charset=utf-8");
+  documentState.downloadRequested=true;
+  documentState.digest=await docDigest(built.content);
   const status=built.missing.length?"GENERATED · INCOMPLETE INPUTS":"GENERATED · REVIEW REQUIRED";
-  msg("doc-status",status+"\nMissing inputs: "+(built.missing.join(", ")||"none detected")+".\nThis checks structure only; it does not prove factual correctness or write to a repository.");
-  msg("doc-integrity","Generated artifact SHA-256: "+documentState.digest+"\nCharacters: "+built.content.length+" · UTF-8 bytes: "+new TextEncoder().encode(built.content).length+"\nRepository write/read-back: UNKNOWN — no authorized write adapter is connected.");
+  msg("doc-status",status+"\\nDownload requested: "+documentState.filename+".\\nThe browser cannot confirm disk persistence; repository write/read-back remains UNKNOWN.");
+  msg("doc-integrity","Generated artifact SHA-256: "+documentState.digest+"\\nCharacters: "+built.content.length+" · UTF-8 bytes: "+new TextEncoder().encode(built.content).length+"\\nRepository write/read-back: UNKNOWN — no authorized write adapter is connected.");
  }catch(error){documentState.generated=false;$("doc-download").disabled=true;msg("doc-status","FAIL — "+error.message);msg("doc-integrity","Integrity: UNKNOWN");}
 };
 $("doc-copy").onclick=()=>{if(!documentState.generated){msg("doc-status","Generate the document first.");return}copy(documentState.content)};
@@ -1932,7 +1938,7 @@ document.querySelector('[data-tab="infrastructure"]')?.addEventListener("click",
   'dev-tools':'DEVELOPMENT','terminal-studio':'DEVELOPMENT','ui-routes':'DESIGN & SIMULATION','ui-simulator':'DESIGN & SIMULATION',
   'route-colors':'DESIGN & SIMULATION','github-api':'INTEGRATIONS','repo-selector':'GITHUB',
   repo:'GITHUB',pr:'GITHUB',user:'GITHUB',workspace:'GITHUB',
-  evidence:'ASSURANCE','gates':'ASSURANCE','checkpoint':'ASSURANCE',audit:'ASSURANCE'
+  evidence:'ASSURANCE','gates':'ASSURANCE','checkpoint':'ASSURANCE','document-generator':'ASSURANCE',audit:'ASSURANCE'
  };
  let lastGroup='';
  tabs.forEach(btn=>{
