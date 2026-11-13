@@ -65,7 +65,7 @@ class TerminalScriptExecutorTests(unittest.TestCase):
         version = subprocess.run(
             [git, "--version"], check=True, capture_output=True, text=True
         ).stdout
-        match = re.search(r"([0-9]+)\\.([0-9]+)\\.([0-9]+)", version)
+        match = re.search(r"([0-9]+)\.([0-9]+)\.([0-9]+)", version)
         if not match or tuple(map(int, match.groups())) < (2, 36, 0):
             self.skipTest("Git 2.36+ is required for boolean core.fsmonitor=false")
 
@@ -84,9 +84,9 @@ class TerminalScriptExecutorTests(unittest.TestCase):
         marker = Path(self.temp.name) / "fsmonitor-hook-ran"
         hook = Path(self.temp.name) / "fsmonitor_hook.py"
         hook.write_text(
-            "import pathlib\\n"
-            f"pathlib.Path({str(marker)!r}).write_text('called', encoding='utf-8')\\n"
-            "print('token')\\n",
+            "import pathlib\n"
+            f"pathlib.Path({str(marker)!r}).write_text('called', encoding='utf-8')\n"
+            "print('token')\n",
             encoding="utf-8",
         )
         git_run("config", "core.fsmonitor", f'"{sys.executable}" "{hook}"')
