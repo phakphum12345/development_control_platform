@@ -25,6 +25,56 @@ class TerminalScriptExecutorTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+    def test_git_environment_overrides_project_controlled_helpers(self):
+        template = {
+            "executable": "git",
+            "environment_allowlist": ["PATH", "HOME", "USERPROFILE"],
+        }
+        job_home = Path(self.temp.name) / "git-home"
+        job_home.mkdir()
+        env = TerminalScriptExecutor._environment(template, job_home, "trusted-path")
+
+        self.assertEqual(env["GIT_CONFIG_NOSYSTEM"], "1")
+        self.assertEqual(env["GIT_ATTR_NOSYSTEM"], "1")
+        self.assertEqual(env["GIT_OPTIONAL_LOCKS"], "0")
+        self.assertEqual(env["GIT_TERMINAL_PROMPT"], "0")
+        self.assertEqual(env["GIT_CONFIG_COUNT"], "6")
+        configured = {
+            env[f"GIT_CONFIG_KEY_{index}"]: env[f"GIT_CONFIG_VALUE_{index}"]
+            for index in range(6)
+        }
+        self.assertEqual(configured["core.fsmonitor"], "false")
+        self.assertEqual(configured["diff.external"], "")
+        self.assertEqual(configured["core.pager"], "cat")
+        self.assertEqual(configured["pager.diff"], "false")
+        self.assertEqual(configured["pager.log"], "false")
+        self.assertEqual(configured["pager.show"], "false")
+        self.assertEqual(env["GIT_PAGER"], "cat")
+        self.assertEqual(env["PAGER"], "cat")
+        self.assertEqual(env["HOME"], str(job_home))
+        self.assertEqual(env["USERPROFILE"], str(job_home))
+
+    def test_git_diff_and_show_disable_external_diff_and_textconv(self):
+        diff = TerminalScriptExecutor._build_command(
+            "git", "git", ["diff", "--no-ext-diff", "--"]
+        )
+        show = TerminalScriptExecutor._build_command(
+            "git", "git", ["show", "--no-ext-diff", "--stat", "--oneline", "a" * 40]
+        )
+        self.assertEqual(
+            diff, ["git", "diff", "--no-ext-diff", "--no-textconv", "--"]
+        )
+        self.assertEqual(
+            show,
+            ["git", "show", "--no-ext-diff", "--no-textconv", "--stat", "--oneline", "a" * 40],
+        )
+
+    def test_non_git_command_builder_preserves_fixed_argv(self):
+        self.assertEqual(
+            TerminalScriptExecutor._build_command("python", "python", ["--version"]),
+            ["python", "--version"],
+        )
+
     def test_execution_remains_disabled_until_catalog_opt_in(self):
         executor = TerminalScriptExecutor(enabled=True)
         with self.assertRaisesRegex(TerminalExecutionError, "not enabled"):
