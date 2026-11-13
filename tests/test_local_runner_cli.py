@@ -59,6 +59,33 @@ class LocalRunnerCliTests(unittest.TestCase):
         with patch.dict(os.environ, self._base_env(), clear=True):
             self.assertEqual(cli.main(["--serve"]), 1)
 
+    @patch.object(cli, "collect_preflight")
+    @patch.object(cli, "resolve_capabilities", return_value=["flutter", "windows"])
+    @patch.object(cli.platform, "system", return_value="Windows")
+    @patch.object(cli, "GatewayClient")
+    def test_terminal_opt_in_requires_an_explicit_trusted_local_project(
+        self, client_type, _host, _capabilities, preflight
+    ):
+        preflight.return_value = {
+            "host_os": "windows",
+            "minimum_agent_prerequisites_met": True,
+            "detected_capabilities": ["flutter", "windows"],
+        }
+        client_type.return_value.health.return_value = {"status": "ok"}
+        with tempfile.TemporaryDirectory() as temp:
+            env = self._base_env()
+            env.update({
+                "DCP_RUNNER_EXECUTION_ENABLED": "1",
+                "DCP_RUNNER_TERMINAL_ENABLED": "1",
+                "DCP_RUNNER_TRUSTED_REPOSITORIES": json.dumps(["owner/repo"]),
+                "DCP_RUNNER_TRUSTED_LOCAL_PROJECTS": "[]",
+                "DCP_RUNNER_WORKSPACE_ROOT": temp,
+            })
+            with patch.dict(os.environ, env, clear=True):
+                self.assertEqual(cli.main(["--serve"]), 1)
+        client_type.return_value.register.assert_not_called()
+        client_type.return_value.claim.assert_not_called()
+
     @patch.object(cli.signal, "getsignal", return_value=None)
     @patch.object(cli.signal, "signal")
     @patch.object(cli, "RunnerAgentService")
