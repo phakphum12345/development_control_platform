@@ -99,7 +99,7 @@ The feature branch now implements the backend path for a future Dashboard Run ac
 - Every built-in template remains execution_enabled=false. The new backend API therefore fails closed by default; Runner opt-in does not override catalog policy.
 - Imported templates remain inert even after Owner review. No imported script is runnable.
 - The Dashboard still has only catalog, preview, import and review controls. The Run button, Project/Workspace selector, grant confirmation view and Terminal job output panel are not implemented yet.
-- The Runner appends complete redacted output lines incrementally to durable Job logs within the byte ceiling. The Dashboard does not yet display those logs live; the Run panel and live log view remain outstanding. Interactive PTY is out of scope.
+- The Runner captures output within the byte ceiling, redacts the complete bounded stream, then appends bounded messages to durable Job logs. The Dashboard does not yet display those logs live; the Run panel and live log view remain outstanding. Interactive PTY is out of scope.
 - Project discovery and authorization remain Owner-only. There is no per-user Project ACL model yet.
 - The Runner executes the read-only fixed templates in the actual registered project directory, but this is not an OS sandbox and does not provide kernel-enforced network isolation. Processes retain the Runner service account's OS permissions.
 - The implementation and acceptance tests are on a draft PR. Do not mark the work complete until all required workflows pass for the exact latest PR head and the Dashboard Run workflow is implemented and verified.
