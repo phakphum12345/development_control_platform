@@ -360,6 +360,23 @@ class JobStoreTests(unittest.TestCase):
         self.assertEqual(recovered, [{"id": job["id"], "state": "cancelled", "retry_after": None}])
         self.assertEqual(self.store.get(job["id"])["state"], "cancelled")
 
+    def test_retry_wait_job_can_be_cancelled_before_next_claim(self):
+        job, _ = self.create("job-cancel-retry-wait-01")
+        self.store.claim("retry-wait-worker")
+        self.store.checkpoint(
+            job["id"], "retry-wait-worker", 1,
+            {"version": 1, "step": "ready-to-finish", "safe_to_resume": True,
+             "data": {"outcome": "succeeded", "result": {}}},
+        )
+        with self.store.db() as db:
+            db.execute("UPDATE jobs SET lease_until=? WHERE id=?",
+                       ("2000-01-01T00:00:00+00:00", job["id"]))
+        self.assertEqual(self.store.recover_expired_leases()[0]["state"], "retry_wait")
+        cancelled = self.store.cancel(job["id"])
+        self.assertEqual(cancelled["state"], "cancelled")
+        self.assertIsNone(cancelled["retry_after"])
+        self.assertIsNone(self.store.claim("retry-wait-worker-2"))
+
     def test_worker_ownership_and_missing_job(self):
         job, _ = self.create()
         self.store.claim("local-worker-1")
