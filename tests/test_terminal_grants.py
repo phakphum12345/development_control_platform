@@ -127,6 +127,7 @@ class TerminalGrantStoreTests(unittest.TestCase):
             with self.subTest(field=field):
                 store = TerminalGrantStore(Path(self.temp.name) / (field + ".sqlite3"))
                 grant = store.issue(**self.claims, ttl_seconds=120, now=NOW)
+                store.reserve_job(grant["authorization_id"], job_id=self.job, now=NOW)
                 store.bind_job(grant["authorization_id"], job_id=self.job,
                                worker_id="runner-local", now=NOW)
                 args = {
