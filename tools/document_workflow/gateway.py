@@ -379,6 +379,8 @@ class DocumentWorkflowStore:
             raise DocumentWorkflowError("Explicit write confirmation is required.", 403)
         if not isinstance(content_sha256, str) or not _SHA256.fullmatch(content_sha256):
             raise DocumentWorkflowError("A full content SHA-256 is required.")
+        # Hold the workflow DB write lock through filesystem write and result
+        # recording. A concurrent scope revocation cannot race an approval.
         with self._db() as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute(
@@ -387,7 +389,6 @@ class DocumentWorkflowStore:
             if row is None:
                 raise DocumentWorkflowError("Document proposal not found.", 404)
             if row["status"] == "APPLIED" and row["result_json"]:
-                db.execute("COMMIT")
                 return json.loads(row["result_json"])
             if row["status"] != "PENDING" or row["expires_at"] <= time.time():
                 raise DocumentWorkflowError("Proposal is not pending or has expired.", 409)
@@ -401,26 +402,26 @@ class DocumentWorkflowStore:
             if grant is None:
                 raise DocumentWorkflowError("Write grant expired or was revoked.", 403)
             prefixes = json.loads(grant["prefixes_json"])
-            db.execute("COMMIT")
-        root = self._project(row["project_id"])
-        relative = _relative(row["relative_path"], {".md", ".txt"})
-        target = self._target(root, relative)
-        actual = _sha(target.read_bytes()) if target.exists() else None
-        if actual != row["expected_sha256"]:
-            raise DocumentWorkflowError("Target changed after proposal; refusing stale write.", 409)
-        try:
-            result = write_document(
-                workspace_root=root, journal_path=self.journal_path,
-                project_id=row["project_id"], relative_path=row["relative_path"],
-                content=row["content"], operation_key="document-proposal-" + proposal_id,
-                allowed_paths=prefixes, expected_sha256=row["expected_sha256"],
-            )
-        except DocumentWriteError as exc:
-            raise DocumentWorkflowError(str(exc), 409) from None
-        if result.get("status") != "PASS" or result.get("read_back_verified") is not True:
-            raise DocumentWorkflowError("Post-write verification did not return PASS.", 503)
-        result = {**result, "proposal_id": proposal_id, "approved_by": actor, "status": "PASS"}
-        with self._db() as db:
+            root = self._project(row["project_id"])
+            relative = _relative(row["relative_path"], {".md", ".txt"})
+            target = self._target(root, relative)
+            actual = _file_sha(target) if target.exists() else None
+            # A matching desired digest is the safe recovery path for a crash
+            # after atomic replacement but before the proposal row was updated.
+            if actual not in (row["expected_sha256"], row["content_sha256"]):
+                raise DocumentWorkflowError("Target changed after proposal; refusing stale write.", 409)
+            try:
+                result = write_document(
+                    workspace_root=root, journal_path=self.journal_path,
+                    project_id=row["project_id"], relative_path=row["relative_path"],
+                    content=row["content"], operation_key="document-proposal-" + proposal_id,
+                    allowed_paths=prefixes, expected_sha256=row["expected_sha256"],
+                )
+            except DocumentWriteError as exc:
+                raise DocumentWorkflowError(str(exc), 409) from None
+            if result.get("status") != "PASS" or result.get("read_back_verified") is not True:
+                raise DocumentWorkflowError("Post-write verification did not return PASS.", 503)
+            result = {**result, "proposal_id": proposal_id, "approved_by": actor, "status": "PASS"}
             db.execute(
                 "UPDATE document_write_proposals SET status='APPLIED',result_json=? WHERE proposal_id=?",
                 (json.dumps(result, sort_keys=True), proposal_id),
@@ -431,7 +432,7 @@ class DocumentWorkflowStore:
                 VALUES('WRITE_APPLIED',?,?,?,?,?)""",
                 (row["project_id"], actor, row["relative_path"], row["content_sha256"], time.time()),
             )
-        return result
+            return result
 
 
 def hmac_compare(left: str, right: str) -> bool:
