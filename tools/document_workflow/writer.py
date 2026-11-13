@@ -100,6 +100,13 @@ def _open_journal(path: Path, root: Path) -> sqlite3.Connection:
     journal.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(journal, timeout=15, isolation_level=None)
     connection.execute("PRAGMA journal_mode=WAL")
+    if os.name != "nt":
+        for candidate in (journal, Path(str(journal) + "-wal"), Path(str(journal) + "-shm")):
+            try:
+                if candidate.exists():
+                    os.chmod(candidate, 0o600)
+            except OSError:
+                pass
     connection.execute(
         """CREATE TABLE IF NOT EXISTS document_operations (
             operation_key TEXT PRIMARY KEY,
