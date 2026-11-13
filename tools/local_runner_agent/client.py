@@ -193,12 +193,11 @@ class GatewayClient:
             raise ValueError("sequence must be a positive integer")
         if not isinstance(checkpoint, dict):
             raise ValueError("checkpoint must be an object")
-        result = self._request(
+        job = self._request(
             "POST", f"/v1/runner/{job_id}/checkpoint",
             {"sequence": sequence, "checkpoint": checkpoint},
         )
-        job = result.get("job")
-        if not isinstance(job, dict) or job.get("checkpoint_seq") != sequence:
+        if job.get("checkpoint_seq") != sequence:
             raise RunnerGatewayError("Gateway returned an invalid checkpoint acknowledgement")
         return job
 
