@@ -33,9 +33,9 @@
 - Branch: `fix/terminal-execution-git-hardening-20261114`
 - Base SHA: `e008844d8c6e6b15c71b7bf36f00f42e66233387`
 - PR: [#114](https://github.com/phakphum12345/development_control_platform/pull/114), OPEN, non-draft, mergeable TRUE at last metadata check; no reviews or review threads observed.
-- Exact PR head before this ledger update: `d1481b3ffe840b5c326b1906cd6a0e6bff0fbfee`; base SHA: `e008844d8c6e6b15c71b7bf36f00f42e66233387`.
+- Exact PR head before this ledger update: `7da610191d36eecf97fcddbef098cd465c37fd1f`; base SHA: `e008844d8c6e6b15c71b7bf36f00f42e66233387`.
 - Changed files: 12; additions/deletions are recorded by PR #114.
-- Exact-head CI at `d1481b3ffe840b5c326b1906cd6a0e6bff0fbfee`: Local-first Minimal Emulator run 43507202156, Validate Control Plane run 43507202406, and Cross-platform Recovery Acceptance run 43507202149 were IN_PROGRESS at last check. No workflow is counted as PASS yet. The Windows runner acceptance sub-job is SKIPPED and is not a PASS.
+- Exact-head CI at `d1481b3ffe840b5c326b1906cd6a0e6bff0fbfee`: Local-first Minimal Emulator run 43507277748, Validate Control Plane run 43507277635, and Cross-platform Recovery Acceptance run 43507277610 were IN_PROGRESS at last check. No workflow is counted as PASS yet. The Windows runner acceptance sub-job is SKIPPED and is not a PASS.
 - State: IN_PROGRESS; merge authorization NOT GRANTED.
 - Changes prepared:
   - Disable repository-configured Git fsmonitor, external diff and pager helpers through a clean Runner environment.
