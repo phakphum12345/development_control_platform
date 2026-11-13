@@ -169,7 +169,7 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
   <button type="button" data-quick-tab="pr" data-tone="violet">◇ Pull Request Review</button>
   <button type="button" data-quick-tab="evidence" data-tone="teal">✓ SHA & Evidence</button>
   <button type="button" data-quick-tab="gates" data-tone="green">▣ Quality Gates</button>
-  <button type="button" data-quick-tab="audit" data-tone="amber">◎ Audit & Safety</button>
+  <button type="button" data-quick-tab="document-generator" data-tone="blue">▤ Document Generator</button><button type="button" data-quick-tab="audit" data-tone="amber">◎ Audit & Safety</button>
  </div>
  <div class="control-center-meta"><span>Navigation: <strong id="dcp-nav-count">20 tools</strong></span><span>Write actions: <strong>0 · Disabled</strong></span><span>Evidence default: <strong>UNKNOWN</strong></span><span>Mode: <strong>READ-ONLY</strong></span></div>
  <div class="dcp-selfcheck" id="dcp-selfcheck" data-status="UNKNOWN" role="status" aria-live="polite">UI self-check: UNKNOWN — ยังไม่ได้ตรวจสอบเมนู</div>
@@ -177,7 +177,7 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
 </section>
 
 <div class="layout"><nav class="nav" aria-label="Tools">
-<button class="active" data-tab="home">Overview</button> <button data-tab="account">Password Login</button> <button data-tab="project-import">Project Import</button> <button data-tab="terminal-studio">Terminal Studio</button> <button data-tab="code-navigator">Code Navigator</button><button data-tab="cloud-runners">Cloud Runner Control</button> <button data-tab="infrastructure">Infrastructure Manager</button> <button data-tab="dev-tools">Emulators & VS Code</button> <button data-tab="ui-routes">UI Route Manager</button><button data-tab="ui-simulator">UI Simulator</button><button data-tab="route-colors">Route Color Manager</button><button data-tab="github-api">Research OS API</button><button data-tab="repo-selector">Account & Repo</button><button data-tab="repo">Repository Explorer</button><button data-tab="pr">Pull Request Review</button><button data-tab="user">User Explorer</button><button data-tab="workspace">GitHub Workspace</button><button data-tab="evidence">SHA & Evidence</button><button data-tab="gates">Quality Gate Planner</button><button data-tab="checkpoint">Checkpoint Builder</button><button data-tab="audit">Audit & Safety</button>
+<button class="active" data-tab="home">Overview</button> <button data-tab="account">Password Login</button> <button data-tab="project-import">Project Import</button> <button data-tab="terminal-studio">Terminal Studio</button> <button data-tab="code-navigator">Code Navigator</button><button data-tab="cloud-runners">Cloud Runner Control</button> <button data-tab="infrastructure">Infrastructure Manager</button> <button data-tab="dev-tools">Emulators & VS Code</button> <button data-tab="ui-routes">UI Route Manager</button><button data-tab="ui-simulator">UI Simulator</button><button data-tab="route-colors">Route Color Manager</button><button data-tab="github-api">Research OS API</button><button data-tab="repo-selector">Account & Repo</button><button data-tab="repo">Repository Explorer</button><button data-tab="pr">Pull Request Review</button><button data-tab="user">User Explorer</button><button data-tab="workspace">GitHub Workspace</button><button data-tab="evidence">SHA & Evidence</button><button data-tab="gates">Quality Gate Planner</button><button data-tab="checkpoint">Checkpoint Builder</button><button data-tab="document-generator">Document Generator</button><button data-tab="audit">Audit & Safety</button>
 </nav><div>
 <section class="view" id="dev-tools">
 <div class="panel"><h2>Emulators & VS Code</h2><p>This page provides local commands and readiness guidance. A browser cannot inspect or launch processes on your computer; run these tasks from the repository in VS Code. Results from local checks are not automatically uploaded or treated as CI evidence.</p><div class="warn"><b>Safety:</b> emulator launch is explicit and local. The helper never installs SDKs, changes PATH, edits Android/iOS projects, or launches an app without an app-specific project being present.</div></div>
@@ -364,6 +364,26 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
 <div class="field"><label for="ev-repo">Repository</label><input id="ev-repo" placeholder="owner/repository"></div><div class="grid"><div class="field"><label for="ev-branch">Branch</label><input id="ev-branch" placeholder="feature/example"></div><div class="field"><label for="ev-sha">Full commit SHA (40 hex)</label><input id="ev-sha" maxlength="40" placeholder="40-character SHA"></div></div><div class="grid"><div class="field"><label for="ev-gate">Gate name</label><input id="ev-gate" placeholder="unit-tests"></div><div class="field"><label for="ev-status">Status</label><select id="ev-status"><option>unknown</option><option>pending</option><option>not_run</option><option>fail</option><option>pass</option></select></div></div><div class="grid"><div class="field"><label for="ev-time">Observed at (ISO date/time)</label><input id="ev-time" placeholder="2026-10-22T10:00:00Z"></div><div class="field"><label for="ev-url">Evidence URL (HTTPS)</label><input id="ev-url" placeholder="https://github.com/owner/repo/actions/runs/..."></div></div><div class="actions"><button class="primary" id="ev-check">Validate</button><button id="ev-copy">Copy JSON</button><button id="ev-clear">Clear</button></div><div id="ev-output" class="output">No record validated. Status UNKNOWN.</div></div></section>
 <section class="view" id="gates"><div class="panel"><h2>Quality Gate Planner</h2><div class="field"><label for="gate-sha">Target full commit SHA</label><input id="gate-sha" maxlength="40" placeholder="40-character SHA"></div><div id="gate-list"></div><div class="actions"><button class="primary" id="gate-eval">Evaluate readiness</button><button id="gate-reset">Reset</button><button id="gate-export">Export JSON</button></div><div id="gate-output" class="output">Readiness UNKNOWN — no gate results verified.</div></div></section>
 <section class="view" id="checkpoint"><div class="panel"><h2>Checkpoint Builder</h2><p>Creates a Markdown handoff note; does not write into the repository.</p><div class="grid"><div class="field"><label for="cp-repo">Repository</label><input id="cp-repo" placeholder="owner/repository"></div><div class="field"><label for="cp-branch">Branch</label><input id="cp-branch" placeholder="feature/branch"></div></div><div class="field"><label for="cp-sha">Full commit SHA</label><input id="cp-sha" maxlength="40" placeholder="40-character SHA"></div><div class="field"><label for="cp-goal">Goal</label><textarea id="cp-goal" rows="2"></textarea></div><div class="field"><label for="cp-done">Completed work</label><textarea id="cp-done" rows="3"></textarea></div><div class="field"><label for="cp-pending">Remaining work / blockers</label><textarea id="cp-pending" rows="3"></textarea></div><div class="field"><label for="cp-tests">Tests and evidence URLs</label><textarea id="cp-tests" rows="3"></textarea></div><div class="actions"><button class="primary" id="cp-build">Build checkpoint</button><button id="cp-copy">Copy Markdown</button><button id="cp-download">Download .md</button></div><textarea id="cp-output" class="output" rows="16" aria-label="Generated checkpoint"></textarea></div></section>
+<section class="view" id="document-generator">
+<div class="panel">
+ <div class="row"><div><h2>Document Generator</h2><p>สร้างเอกสาร Markdown, Roadmap และ TXT ให้ครบตามข้อมูลที่ระบุ พร้อมตรวจโครงสร้างและสร้าง SHA-256 ก่อนส่งออก</p></div><span class="pill">GENERATE · EXPORT</span></div>
+ <div class="warn"><b>ขอบเขตปัจจุบัน:</b> Dashboard เป็น Static UI จึงสร้างและดาวน์โหลดไฟล์ได้ แต่ยังเขียนกลับ GitHub Repository โดยตรงไม่ได้ การดาวน์โหลดไม่ใช่หลักฐานว่าไฟล์ถูกบันทึกลงดิสก์หรือ Repository แล้ว สถานะดังกล่าวจะแสดง UNKNOWN จนกว่าจะมี Local/Server Write Adapter ที่ผ่านการอนุมัติ</div>
+ <div class="grid">
+  <div class="field"><label for="doc-type">Document type</label><select id="doc-type"><option value="markdown">Markdown (.md)</option><option value="roadmap">Roadmap (.md)</option><option value="text">Plain text (.txt)</option></select></div>
+  <div class="field"><label for="doc-project">Project / Repository</label><input id="doc-project" placeholder="owner/repository or project name"></div>
+  <div class="field"><label for="doc-title">Document title</label><input id="doc-title" placeholder="Project implementation plan"></div>
+  <div class="field"><label for="doc-version">Version / Date</label><input id="doc-version" placeholder="Draft / YYYY-MM-DD"></div>
+ </div>
+ <div class="field"><label for="doc-purpose">Purpose and scope</label><textarea id="doc-purpose" rows="3" placeholder="Describe the goal, scope, constraints, and intended readers."></textarea></div>
+ <div class="field"><label for="doc-source">Verified context / current implementation</label><textarea id="doc-source" rows="5" placeholder="Paste verified facts, existing components, decisions, source links, and current status. Unknown facts should remain UNKNOWN."></textarea></div>
+ <div class="field"><label for="doc-milestones">Milestones / tasks (one per line)</label><textarea id="doc-milestones" rows="5" placeholder="WP-01 — Inventory — UNKNOWN — acceptance criteria&#10;WP-02 — Implementation — BLOCKED — dependency"></textarea></div>
+ <div class="field"><label for="doc-risks">Risks, dependencies, and acceptance criteria</label><textarea id="doc-risks" rows="4" placeholder="List known risks, dependencies, measurable acceptance criteria, and verification evidence."></textarea></div>
+ <div class="actions"><button class="primary" id="doc-generate" type="button">Generate complete document</button><button id="doc-copy" type="button">Copy</button><button id="doc-download" type="button" disabled>Download file</button></div>
+ <div id="doc-status" class="output" role="status" aria-live="polite">No document generated. Missing facts will be marked TBD / UNKNOWN, not invented.</div>
+ <div class="field"><label for="doc-output">Generated document preview</label><textarea id="doc-output" class="output" rows="22" spellcheck="false" aria-label="Generated document preview"></textarea></div>
+ <div id="doc-integrity" class="output" role="status" aria-live="polite">Integrity: UNKNOWN — generate a document first.</div>
+</div>
+</section>
 <section class="view" id="terminal-studio">
  <div class="panel">
   <div class="row"><div><h2>Terminal Studio</h2><p>Command Library สำหรับตรวจสอบ Git และ Toolchain พร้อมดูคำสั่งแบบ argv ก่อนใช้งาน</p></div><span class="pill" id="terminal-studio-state">PREVIEW ONLY</span></div>
@@ -425,7 +445,28 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
 const $=id=>document.getElementById(id),esc=v=>String(v==null?"":v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])),isRepo=v=>/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(v.trim())&&!v.includes(".."),isSha=v=>/^[a-f0-9]{40}$/i.test(v.trim());
 const state={repo:null,pr:null,user:null,evidence:null,gates:null,audit:null};
 function msg(id,s){$(id).textContent=s}function link(url,label){return '<a target="_blank" rel="noopener noreferrer" href="'+esc(url)+'">'+esc(label||url)+'</a>'}
-async function api(path){const r=await fetch("https://api.github.com"+path,{headers:{Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"}});if(!r.ok){let m="HTTP "+r.status;try{m=(await r.json()).message||m}catch(_){}throw Error(m+(r.status===403||r.status===429?" (rate limit/permission restriction)":""))}return r.json()}
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+async function api(path){
+ let lastError;
+ for(let attempt=0;attempt<3;attempt++){
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
+  try{
+   const r=await fetch("https://api.github.com"+path,{headers:{Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"},signal:controller.signal});
+   if(r.ok)return await r.json();
+   let m="HTTP "+r.status;try{m=(await r.json()).message||m}catch(_){}
+   const retryable=r.status===429||r.status>=500;
+   if(!retryable||attempt===2)throw Error(m+(r.status===403||r.status===429?" (rate limit/permission restriction)":""));
+   const retryAfter=Number(r.headers.get("Retry-After")||0);
+   await sleep(Math.min(10000,Math.max(retryAfter*1000,500*Math.pow(2,attempt))));
+  }catch(error){
+   lastError=error;
+   const transient=error.name==="AbortError"||error instanceof TypeError;
+   if(!transient||attempt===2)throw Error((error.name==="AbortError"?"Request timed out after 12 seconds: ": "Network request failed: ")+error.message+"; status UNKNOWN.");
+   await sleep(500*Math.pow(2,attempt));
+  }finally{clearTimeout(timer)}
+ }
+ throw lastError||Error("Request status UNKNOWN.");
+}
 function table(head,rows){return rows.length?'<table><thead><tr>'+head.map(x=>'<th>'+esc(x)+'</th>').join("")+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(x=>'<td>'+x+'</td>').join("")+'</tr>').join("")+'</tbody></table>':'<div class="empty">No records returned.</div>'}
 function tab(name){document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id===name));document.querySelectorAll("[data-tab]").forEach(x=>x.classList.toggle("active",x.dataset.tab===name))}
 document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>tab(b.dataset.tab));
@@ -461,6 +502,47 @@ function gateResult(){let sha=$("gate-sha").value.trim(),g=[];document.querySele
 $("gate-eval").onclick=()=>{state.gates=gateResult();msg("gate-output",(state.gates.ready?"All selected gates reported PASS locally; source verification still required.":"BLOCKED / UNKNOWN — required gates are not all passing.")+"\n"+state.gates.errors.join("\n")+"\n"+JSON.stringify(state.gates,null,2))};$("gate-reset").onclick=()=>{document.querySelectorAll("[data-g]").forEach(x=>x.value="unknown");state.gates=null;msg("gate-output","Readiness UNKNOWN — results reset.")};$("gate-export").onclick=()=>download("quality-gates.json",JSON.stringify(state.gates||gateResult(),null,2),"application/json");
 function checkpoint(){let v=id=>$(id).value.trim();return "# Development Checkpoint\n\n## Target\n- Repository: "+(v("cp-repo")||"Not specified")+"\n- Branch: "+(v("cp-branch")||"Not specified")+"\n- Commit SHA: "+(v("cp-sha")||"UNKNOWN")+"\n- Created: "+new Date().toISOString()+"\n\n## Goal\n"+(v("cp-goal")||"Not specified")+"\n\n## Completed\n"+(v("cp-done")||"- None recorded")+"\n\n## Remaining / blockers\n"+(v("cp-pending")||"- None recorded")+"\n\n## Tests and evidence\n"+(v("cp-tests")||"- No test evidence; UNKNOWN.")+"\n\n## Safety\n- No force-push or history rewrite.\n- Required gates must pass on the exact full SHA.\n- Missing, stale, mismatched or unverifiable evidence is UNKNOWN.\n- This checkpoint is not proof of successful tests.\n"}
 $("cp-build").onclick=()=>$("cp-output").value=checkpoint();$("cp-copy").onclick=()=>copy($("cp-output").value||checkpoint());$("cp-download").onclick=()=>download("CHECKPOINT.md",$("cp-output").value||checkpoint(),"text/markdown");
+const documentState={content:"",filename:"",digest:"",generated:false,downloadRequested:false};
+function docSafeName(value){return (value||"project-document").trim().replace(/[^A-Za-z0-9._-]+/g,"-").replace(/^-+|-+$/g,"").slice(0,90)||"project-document"}
+function docLines(value){return (value||"").split(/\\r?\\n/).map(x=>x.trim()).filter(Boolean)}
+function docBuild(){
+ const type=$("doc-type").value,project=$("doc-project").value.trim()||"TBD",title=$("doc-title").value.trim()||"Untitled document",version=$("doc-version").value.trim()||"UNKNOWN",purpose=$("doc-purpose").value.trim(),source=$("doc-source").value.trim(),milestones=docLines($("doc-milestones").value),risks=$("doc-risks").value.trim();
+ const missing=[];if(!purpose)missing.push("purpose/scope");if(!source)missing.push("verified context");if(type==="roadmap"&&!milestones.length)missing.push("milestones");
+ let content="";
+ if(type==="text"){
+  content=[title,"=".repeat(Math.min(80,title.length)),"Project: "+project,"Version / Date: "+version,"","PURPOSE AND SCOPE",purpose||"TBD — input required","","VERIFIED CONTEXT",source||"UNKNOWN — no verified context supplied","","MILESTONES / TASKS",...(milestones.length?milestones.map((x,i)=>(i+1)+". "+x):["UNKNOWN — no milestones supplied"]),"","RISKS / DEPENDENCIES / ACCEPTANCE",risks||"TBD — input required","","COMPLETENESS",missing.length?"INCOMPLETE — "+missing.join(", "):"INPUT FIELDS PRESENT — independent factual review still required",""].join("\\n");
+ }else if(type==="roadmap"){
+  content=["# "+title,"","- Project: "+project,"- Version / Date: "+version,"- Overall status: UNKNOWN until verified against repository and CI evidence","","## Objective",purpose||"TBD — input required","","## Current verified baseline",source||"UNKNOWN — no verified context supplied","","## Milestones",{toString(){return milestones.length?milestones.map((x,i)=>(i+1)+". "+x).join("\\n"):"- TBD — milestones not supplied"}}.toString(),"","## Dependencies and risks",risks||"TBD — dependencies and risks require review","","## Acceptance criteria","- Each milestone has an owner, measurable completion criteria, and evidence source.","- CI results are bound to the exact full commit SHA.","- Missing, skipped, pending, stale, or inaccessible evidence is UNKNOWN, not PASS.","- Project boundaries and write permissions are independently enforced.","","## Next actions","1. Verify the baseline against the selected repository and exact commit SHA.","2. Resolve TBD / UNKNOWN inputs before marking milestones complete.","3. Record test, review, and post-merge evidence.","","## Status policy","Use PASS / FAIL / SKIPPED / UNKNOWN. Do not infer completion from a plan or generated document.",""].join("\\n");
+ }else{
+  content=["# "+title,"","**Project:** "+project+"  ","**Version / Date:** "+version,"","## 1. Purpose and scope",purpose||"TBD — input required","","## 2. Verified context and current state",source||"UNKNOWN — no verified context supplied","","## 3. Requirements and milestones",...(milestones.length?milestones.map((x,i)=>(i+1)+". "+x):["- TBD — requirements and milestones not supplied"]),"","## 4. Risks, dependencies, and acceptance criteria",risks||"TBD — input required","","## 5. Validation and evidence","- Verify implementation against the selected repository and exact commit SHA.","- Record test results with source URLs and timestamps.","- Missing, skipped, pending, stale, or inaccessible evidence remains UNKNOWN.","","## 6. Next steps","1. Review all TBD / UNKNOWN fields.","2. Validate references and acceptance criteria.","3. Update status only after inspecting evidence.","","## 7. Document completeness",missing.length?"INCOMPLETE — missing: "+missing.join(", "):"INPUT FIELDS PRESENT — factual and technical review is still required.",""].join("\\n");
+ }
+ const sensitive=/(gh[pousr]_[A-Za-z0-9_]{20,}|-----BEGIN (?:RSA |OPENSSH |EC )?PRIVATE KEY-----|AKIA[0-9A-Z]{16})/.test(content);
+ if(sensitive)throw Error("Potential credential/private-key pattern detected. Remove sensitive content before generating.");
+ return {content,missing,project,title,type,sensitive};
+}
+async function docDigest(content){
+ if(!globalThis.crypto?.subtle||!globalThis.TextEncoder)return "UNAVAILABLE";
+ const bytes=new TextEncoder().encode(content),hash=await crypto.subtle.digest("SHA-256",bytes);
+ return [...new Uint8Array(hash)].map(x=>x.toString(16).padStart(2,"0")).join("");
+}
+$("doc-generate").onclick=async()=>{
+ try{
+  const built=docBuild();documentState.content=built.content;documentState.filename=docSafeName(built.title)+(built.type==="text"?".txt":built.type==="roadmap"?"-ROADMAP.md":".md");
+  documentState.digest=await docDigest(built.content);documentState.generated=true;documentState.downloadRequested=false;
+  $("doc-output").value=built.content;$("doc-download").disabled=false;
+  const status=built.missing.length?"GENERATED · INCOMPLETE INPUTS":"GENERATED · REVIEW REQUIRED";
+  msg("doc-status",status+"\\nMissing inputs: "+(built.missing.join(", ")||"none detected")+".\\nThis checks structure only; it does not prove factual correctness or write to a repository.");
+  msg("doc-integrity","Generated artifact SHA-256: "+documentState.digest+"\\nCharacters: "+built.content.length+" · UTF-8 bytes: "+new TextEncoder().encode(built.content).length+"\\nRepository write/read-back: UNKNOWN — no authorized write adapter is connected.");
+ }catch(error){documentState.generated=false;$("doc-download").disabled=true;msg("doc-status","FAIL — "+error.message);msg("doc-integrity","Integrity: UNKNOWN");}
+};
+$("doc-copy").onclick=()=>{if(!documentState.generated){msg("doc-status","Generate the document first.");return}copy(documentState.content)};
+$("doc-download").onclick=()=>{
+ if(!documentState.generated){msg("doc-status","Generate the document first.");return}
+ download(documentState.filename,documentState.content,documentState.filename.endsWith(".md")?"text/markdown;charset=utf-8":"text/plain;charset=utf-8");
+ documentState.downloadRequested=true;
+ msg("doc-status","DOWNLOAD REQUESTED · "+documentState.filename+"\\nThe browser does not confirm disk persistence. File read-back and repository write status remain UNKNOWN.");
+};
+
 const audits=[["a-target","Target repository, branch and full SHA verified."],["a-scope","Diff and changed-file scope reviewed."],["a-secret","No secrets or private data added."],["a-tests","Required tests and security scans have real results."],["a-evidence","Evidence is fresh and bound to the exact SHA."],["a-history","No force-push, history rewrite or direct main edit."],["a-auth","Write scope has explicit approval and server enforcement."]];
 $("audit-list").innerHTML=audits.map(([id,t])=>'<div class="check"><input type="checkbox" id="'+id+'"><label for="'+id+'">'+t+'</label></div>').join("");
 function auditResult(){let items=audits.map(([id,t])=>({item:t,checked:$(id).checked}));return {items,complete:items.every(x=>x.checked),missing:items.filter(x=>!x.checked).map(x=>x.item),note:"Browser checklist only, not a durable audit log."}}
