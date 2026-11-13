@@ -131,6 +131,10 @@ class JobStoreTests(unittest.TestCase):
             self.assertIn("last_worker", columns)
             self.assertIn("attempt_count", columns)
             self.assertIn("max_attempts", columns)
+            self.assertIn("checkpoint_json", columns)
+            self.assertIn("checkpoint_seq", columns)
+            self.assertIn("checkpoint_sha256", columns)
+            self.assertIn("retry_after", columns)
 
     def test_cancel_queued_and_running(self):
         queued, _ = self.create()
@@ -154,7 +158,11 @@ class JobStoreTests(unittest.TestCase):
         with self.assertRaises(JobConflict):
             self.store.heartbeat(job["id"], "local-worker-1")
         recovered = self.store.recover_expired_leases()
-        self.assertEqual(recovered, [{"id": job["id"], "state": "queued"}])
+        self.assertEqual(recovered, [{"id": job["id"], "state": "unknown", "retry_after": None}])
+        self.assertEqual(self.store.get(job["id"])["state"], "unknown")
+        self.assertIsNone(self.store.claim("local-worker-2"))
+        resumed = self.store.resume_unknown(job["id"], "owner@example.test")
+        self.assertEqual(resumed["state"], "queued")
         reclaimed = self.store.claim("local-worker-2")
         self.assertEqual(reclaimed["worker"], "local-worker-2")
         with self.assertRaises(JobConflict):
@@ -173,18 +181,37 @@ class JobStoreTests(unittest.TestCase):
                     "UPDATE jobs SET lease_until=? WHERE id=?",
                     ("2000-01-01T00:00:00+00:00", job["id"]),
                 )
+            checkpoint = {
+                "version": 1, "step": "safe-boundary-" + str(attempt),
+                "safe_to_resume": True, "data": {"completed_units": attempt},
+            }
+            self.store.checkpoint(job["id"], "retry-worker-" + str(attempt), attempt, checkpoint)
             recovered = self.store.recover_expired_leases()
-            self.assertEqual(recovered, [{"id": job["id"], "state": "queued"}])
+            self.assertEqual(recovered[0]["id"], job["id"])
+            self.assertEqual(recovered[0]["state"], "retry_wait")
+            self.assertIsNotNone(recovered[0]["retry_after"])
+            self.assertIsNone(self.store.claim("retry-worker-" + str(attempt + 1)))
+            with self.store.db() as db:
+                db.execute(
+                    "UPDATE jobs SET retry_after=? WHERE id=?",
+                    ("2000-01-01T00:00:00+00:00", job["id"]),
+                )
             claimed = self.store.claim("retry-worker-" + str(attempt + 1))
             self.assertEqual(claimed["attempt_count"], attempt + 1)
+            self.assertEqual(claimed["checkpoint"]["step"], "safe-boundary-" + str(attempt))
 
         with self.store.db() as db:
             db.execute(
                 "UPDATE jobs SET lease_until=? WHERE id=?",
                 ("2000-01-01T00:00:00+00:00", job["id"]),
             )
+        self.store.checkpoint(
+            job["id"], "retry-worker-3", 3,
+            {"version": 1, "step": "final-safe-boundary", "safe_to_resume": True, "data": {"done": False}},
+        )
         recovered = self.store.recover_expired_leases()
-        self.assertEqual(recovered, [{"id": job["id"], "state": "failed"}])
+        self.assertEqual(recovered[0]["id"], job["id"])
+        self.assertEqual(recovered[0]["state"], "failed")
         final = self.store.get(job["id"])
         self.assertEqual(final["state"], "failed")
         self.assertEqual(final["error_code"], "LEASE_EXPIRED")
@@ -193,7 +220,7 @@ class JobStoreTests(unittest.TestCase):
         self.assertIsNone(self.store.claim("retry-worker-4"))
         events = self.store.events(job["id"])
         self.assertEqual(
-            [event["event"] for event in events].count("lease_expired_requeued"), 2
+            [event["event"] for event in events].count("lease_expired_retry_wait"), 2
         )
         self.assertEqual(
             [event["event"] for event in events].count("lease_expired_failed"), 1
@@ -201,6 +228,76 @@ class JobStoreTests(unittest.TestCase):
         failed_event = next(event for event in events if event["event"] == "lease_expired_failed")
         self.assertEqual(failed_event["detail"]["worker"], "retry-worker-3")
         self.assertEqual(failed_event["detail"]["attempt_count"], 3)
+
+    def test_checkpoint_is_monotonic_idempotent_and_lease_bound(self):
+        job, _ = self.create("job-checkpoint-0001")
+        self.store.claim("checkpoint-worker")
+        checkpoint = {
+            "version": 1, "step": "inventory-complete",
+            "safe_to_resume": True, "data": {"files_seen": 12},
+        }
+        saved = self.store.checkpoint(job["id"], "checkpoint-worker", 1, checkpoint)
+        self.assertEqual(saved["checkpoint_seq"], 1)
+        self.assertEqual(saved["checkpoint"], checkpoint)
+        replay = self.store.checkpoint(job["id"], "checkpoint-worker", 1, checkpoint)
+        self.assertEqual(replay["checkpoint_sha256"], saved["checkpoint_sha256"])
+        with self.assertRaises(JobConflict):
+            self.store.checkpoint(
+                job["id"], "checkpoint-worker", 1,
+                {**checkpoint, "data": {"files_seen": 13}},
+            )
+        with self.assertRaises(JobConflict):
+            self.store.checkpoint(job["id"], "checkpoint-worker", 3, checkpoint)
+        with self.assertRaises(ValueError):
+            self.store.checkpoint(
+                job["id"], "checkpoint-worker", 2,
+                {"version": 1, "step": "bad", "safe_to_resume": True,
+                 "data": {"api_token": "must-not-be-stored"}},
+            )
+        self.assertEqual(self.store.get(job["id"])["checkpoint_seq"], 1)
+
+    def test_unsafe_or_missing_checkpoint_requires_owner_reconciliation(self):
+        job, _ = self.create("job-unsafe-checkpoint-01")
+        self.store.claim("unsafe-worker")
+        self.store.checkpoint(
+            job["id"], "unsafe-worker", 1,
+            {"version": 1, "step": "external-side-effect", "safe_to_resume": False, "data": {}},
+        )
+        with self.store.db() as db:
+            db.execute("UPDATE jobs SET lease_until=? WHERE id=?",
+                       ("2000-01-01T00:00:00+00:00", job["id"]))
+        recovered = self.store.recover_expired_leases()
+        self.assertEqual(recovered[0]["state"], "unknown")
+        with self.assertRaises(JobConflict):
+            self.store.resume_unknown(job["id"], "owner@example.test")
+        self.assertEqual(self.store.get(job["id"])["state"], "unknown")
+
+    def test_checkpoint_rejects_wrong_worker_and_expired_lease(self):
+        job, _ = self.create("job-checkpoint-fence-01")
+        self.store.claim("right-worker")
+        checkpoint = {"version": 1, "step": "safe", "safe_to_resume": True, "data": {}}
+        with self.assertRaises(JobConflict):
+            self.store.checkpoint(job["id"], "wrong-worker", 1, checkpoint)
+        with self.store.db() as db:
+            db.execute("UPDATE jobs SET lease_until=? WHERE id=?",
+                       ("2000-01-01T00:00:00+00:00", job["id"]))
+        with self.assertRaises(JobConflict):
+            self.store.checkpoint(job["id"], "right-worker", 1, checkpoint)
+
+    def test_resume_unknown_requires_state_and_attempt_budget(self):
+        job, _ = self.create("job-resume-unknown-01")
+        with self.assertRaises(JobConflict):
+            self.store.resume_unknown(job["id"], "owner@example.test")
+        self.store.claim("resume-worker")
+        with self.store.db() as db:
+            db.execute("UPDATE jobs SET lease_until=? WHERE id=?",
+                       ("2000-01-01T00:00:00+00:00", job["id"]))
+        self.store.recover_expired_leases()
+        with self.assertRaises(ValueError):
+            self.store.resume_unknown(job["id"], "../not-owner")
+        resumed = self.store.resume_unknown(job["id"], "owner@example.test")
+        self.assertEqual(resumed["state"], "queued")
+        self.assertIsNone(resumed["retry_after"])
 
     def test_concurrent_workers_cannot_claim_the_same_job(self):
         import threading
