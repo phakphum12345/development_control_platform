@@ -210,6 +210,30 @@ class TerminalGrantStore:
         return {"authorization_id": grant_id, "job_id": job_id, "worker_id": worker_id,
                 "action": action, "consumed_at": current, "authorized": True}
 
+    def consume_for_job(
+        self, grant_id: str, *, job_id: str, worker_id: str,
+        project_id: str, workspace_id: str, snapshot_sha256: str,
+        template_id: str, template_digest: str, parameters_sha256: str,
+        action: str = "terminal.read_only", now=None,
+    ) -> dict:
+        """Consume using app-persisted actor/session claims, not Runner-supplied identity."""
+        _uuid(grant_id, "grant_id")
+        with self.lock, self.db() as db:
+            row = db.execute(
+                "SELECT subject,session_id FROM terminal_grants WHERE grant_id=?",
+                (grant_id,),
+            ).fetchone()
+        if row is None:
+            raise TerminalGrantError("grant not found")
+        return self.consume(
+            grant_id, job_id=job_id, worker_id=worker_id,
+            subject=row["subject"], session_id=row["session_id"],
+            project_id=project_id, workspace_id=workspace_id,
+            snapshot_sha256=snapshot_sha256, template_id=template_id,
+            template_digest=template_digest, parameters_sha256=parameters_sha256,
+            action=action, now=now,
+        )
+
     def revoke(self, grant_id: str, *, now=None) -> bool:
         """Revoke an unused grant. Consumed grants remain consumed and cannot be revived."""
         _uuid(grant_id, "grant_id")
