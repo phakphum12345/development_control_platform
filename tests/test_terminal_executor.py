@@ -91,7 +91,7 @@ class TerminalScriptExecutorTests(unittest.TestCase):
             "print('token')\n",
             encoding="utf-8",
         )
-        git_run("config", "core.fsmonitor", f'"{sys.executable}" "{fsmonitor_hook}"')
+        git_run("config", "core.fsmonitor", f'"{Path(sys.executable).as_posix()}" "{fsmonitor_hook.as_posix()}"')
         git_run("config", "core.fsmonitorHookVersion", "2")
 
         # Prove the repository-local fsmonitor hook is active before testing the Runner override.
@@ -107,7 +107,7 @@ class TerminalScriptExecutorTests(unittest.TestCase):
             "sys.stdout.buffer.write(sys.stdin.buffer.read())\n",
             encoding="utf-8",
         )
-        git_run("config", "filter.hostile.clean", f'"{sys.executable}" "{filter_hook}"')
+        git_run("config", "filter.hostile.clean", f'"{Path(sys.executable).as_posix()}" "{filter_hook.as_posix()}"')
         git_run("config", "filter.hostile.required", "true")
         (self.workspace / "README.md").write_text("modified after commit\n", encoding="utf-8")
 
