@@ -211,7 +211,7 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
         @staticmethod
         def public_local_project(row):
             public = {key: row.get(key) for key in (
-                "project_id", "root_id", "relative_path", "snapshot_sha256",
+                "project_id", "workspace_id", "root_id", "relative_path", "snapshot_sha256",
                 "file_count", "total_bytes",
             )}
             raw_path = row.get("path")
