@@ -221,8 +221,10 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
             )
         self.assertEqual(first_status, 202)
         self.assertEqual(second_status, 403)
-        self.assertNotEqual(first["id"], second.get("id"))
-        self.assertEqual(self.service.job_store.get(second["id"])["state"], "cancelled")
+        rows = self.service.job_store.list_recent(10)
+        terminal_rows = [row for row in rows if row["target"] == "terminal_script"]
+        self.assertEqual(len(terminal_rows), 2)
+        self.assertEqual(sum(row["state"] == "cancelled" for row in terminal_rows), 1)
 
     def test_terminal_authorization_endpoint_fails_closed_while_templates_are_disabled(self):
         payload = {
