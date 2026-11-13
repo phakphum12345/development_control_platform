@@ -146,6 +146,22 @@ class TerminalScriptExecutorTests(unittest.TestCase):
                 )
         self.assertFalse(unsafe_home.exists())
 
+    def test_streaming_redactor_holds_partial_lines_and_private_key_blocks(self):
+        redactor = TerminalOutputRedactor()
+        first = redactor.feed("diagnostic ghp_abcdefgh")
+        self.assertEqual(first, "")
+        second = redactor.feed("ijklmnopqrstuvwxyz1234\\nnext line\\n")
+        self.assertNotIn("ghp_", second)
+        self.assertIn("[REDACTED TOKEN]", second)
+        self.assertIn("next line", second)
+
+        key_redactor = TerminalOutputRedactor()
+        opening = key_redactor.feed("-----BEGIN PRIVATE KEY-----\\nprivate-part")
+        self.assertIn("[REDACTED PRIVATE KEY]", opening)
+        closing = key_redactor.feed("\\nmore-private-part\\n-----END PRIVATE KEY-----\\npublic line\\n")
+        self.assertNotIn("private-part", closing)
+        self.assertIn("public line", closing)
+
     def test_terminal_output_redacts_secrets_split_across_reader_chunks(self):
         template = {
             "id": "python_version",
