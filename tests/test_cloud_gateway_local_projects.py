@@ -152,6 +152,7 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
     def test_terminal_catalog_and_preview_report_enabled_gate_from_trusted_template(self):
         enabled = preview_template("git_status", {})
         enabled["execution_enabled"] = True
+        enabled["status"] = "EXECUTION_ENABLED"
         with patch(
             "tools.cloud_gateway.server.list_terminal_templates",
             return_value=[enabled],
