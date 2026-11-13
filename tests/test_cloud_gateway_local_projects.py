@@ -20,6 +20,7 @@ from tools.cloud_gateway.server import make_handler
 from tools.cloud_gateway.service import GatewayService
 from tools.cloud_gateway.store import RunnerStore
 from tools.cloud_gateway.terminal_grants import TerminalGrantStore
+from tools.cloud_gateway.terminal_templates import TerminalTemplateStore
 from tools.cloud_gateway.terminal_catalog import preview_template
 from tools.cloud_gateway.terminal_execution_contract import template_version_digest
 from tools.local_runner_agent.local_project import LocalProjectRegistry
@@ -44,6 +45,7 @@ class LocalProjectGatewayAPITests(unittest.TestCase):
         service.local_project_registry = registry
         service.job_store = JobStore(base / "jobs.sqlite3")
         service.terminal_grant_store = TerminalGrantStore(base / "terminal-grants.sqlite3")
+        service.terminal_template_store = TerminalTemplateStore(base / "terminal-templates.sqlite3")
         service.repository_catalog = lambda: []
         service.repository_authorizer = lambda repository: repository == "example/demo"
         service.repository_ref_catalog = lambda repository, kind: [
