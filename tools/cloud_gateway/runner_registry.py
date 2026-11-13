@@ -14,7 +14,7 @@ from .sqlite_security import prepare_private_sqlite_file
 
 _WORKER = re.compile(r"^[A-Za-z0-9_.:-]{1,100}$")
 _OS = {"linux", "windows", "macos"}
-_CAPABILITIES = {"flutter", "android", "web", "linux", "windows", "macos", "ios", "playwright"}
+_CAPABILITIES = {"flutter", "android", "web", "linux", "windows", "macos", "ios", "playwright", "terminal"}
 
 
 class WorkerNotFound(KeyError):
@@ -75,7 +75,7 @@ class RunnerRegistry:
             raise ValueError("capabilities must be a non-empty array")
         if any(not isinstance(item, str) or item not in _CAPABILITIES for item in capabilities):
             raise ValueError("unsupported Runner capability")
-        if len(set(capabilities)) != len(capabilities) or not ({"flutter", "web"} & set(capabilities)):
+        if len(set(capabilities)) != len(capabilities) or not ({"flutter", "web", "terminal"} & set(capabilities)):
             raise ValueError("capabilities must be unique and include a supported build toolchain")
         # Host identity is stored separately from verified build capabilities.
         # A Windows host without Visual Studio may still build Android/Web, but
@@ -160,6 +160,8 @@ class RunnerRegistry:
             targets.extend(("build_web", "build_static_web", "build_vite", "build_next", "build_angular"))
         if "web" in caps and "playwright" in caps:
             targets.append("test_static_web")
+        if "terminal" in caps:
+            targets.append("terminal_script")
         if "windows" in caps:
             targets.append("build_windows")
         if "linux" in caps:
