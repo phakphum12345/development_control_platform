@@ -1,9 +1,11 @@
 """Tests for the fixed-template Terminal executor; no project scripts are executed."""
+import os
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 import uuid
 from pathlib import Path
@@ -109,7 +111,10 @@ class TerminalScriptExecutorTests(unittest.TestCase):
         )
         git_run("config", "filter.hostile.clean", f'"{Path(sys.executable).as_posix()}" "{filter_hook.as_posix()}"')
         git_run("config", "filter.hostile.required", "true")
-        (self.workspace / "README.md").write_text("modified after commit\n", encoding="utf-8")
+        readme = self.workspace / "README.md"
+        readme.write_text("DCP changed workspace!\n", encoding="utf-8")
+        future_mtime = time.time() + 2
+        os.utime(readme, (future_mtime, future_mtime))
 
         # Prove the repository-local clean filter is active without the Runner overrides.
         git_run("-c", "core.fsmonitor=false", "status", "--short")
