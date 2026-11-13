@@ -183,3 +183,18 @@ Historical gate for PR #71: its Chromium sandbox launch failure applied to that 
 - Authenticated Preview Proxy browser acceptance passed on Chromium, Firefox and WebKit, including HTML/CSS loading, scoped secure cookie behavior, screenshot capture and denial after preview stop.
 - This is fixture-based proxy acceptance, not full cross-browser certification of every imported application or Dashboard route.
 - PR #59 was closed as superseded: its head was 49 commits behind and its net diff removed already-integrated Gateway proxy allowlists and newer import/snapshot documentation. No branch was deleted.
+
+
+## M14 — Durable Job Coordinator and checkpoint recovery (feature branch)
+
+**Scope:** persist worker progress and make interrupted-job recovery explicit without silently repeating an uncertain build.
+
+- Added versioned, bounded, monotonic checkpoints tied to the active worker lease and SHA-256 digest.
+- Runner saves a non-resumable source-materialized checkpoint and a terminal `ready-to-finish` checkpoint only after workspace cleanup.
+- Automatic recovery is restricted to the allowlisted terminal checkpoint; the next worker replays the saved result without rebuilding.
+- Other expired jobs become `unknown` and are not automatically re-queued. Owner resume requires an explicit attestation that the prior worker is stopped and its workspace is cleaned.
+- Added retry-wait state with server-owned maximum attempts, capped exponential backoff plus deterministic per-job jitter, and capability-filtered claims that honor `retry_after`.
+- Added owner-only Gateway and Local Auth Proxy resume routes and a Dashboard recovery control.
+- Added JobStore, authenticated Gateway API, Local Auth Proxy, Runner client, Dashboard contract, and full Runner pipeline recovery tests.
+
+**Verification boundary:** implementation is on `feat/durable-job-coordinator-checkpoints`. Exact-head CI, Windows/Linux filesystem behavior, and deployed Local Auth Proxy acceptance must pass before merge. A manual owner attestation is not proof of process termination or filesystem cleanup; unknown outcomes remain blocked until that cleanup is independently verified.
