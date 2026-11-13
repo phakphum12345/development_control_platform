@@ -1417,7 +1417,9 @@ const terminalStudioState={
 function terminalStudioStatus(message,state){
  const el=$("terminal-status");el.textContent=message;el.dataset.state=state||"unknown";
  const badge=$("terminal-studio-state");
- if(state==="execution-ready")badge.textContent="APP AUTHORIZATION READY";
+ if(state==="execution-ready")badge.textContent="TEMPLATE ENABLED · GRANT REQUIRED";
+ else if(state==="grant-issued")badge.textContent="GRANT ISSUED · CONFIRM";
+ else if(state==="queued")badge.textContent="JOB QUEUED";
  else if(state==="ready")badge.textContent="PREVIEW / RUN GATED";
  else if(state==="error")badge.textContent="CHECK REQUIRED";
  else badge.textContent="PREVIEW ONLY";
@@ -1520,7 +1522,7 @@ async function terminalStudioLoad(){
   const activeJob=terminalStudioState.jobHistory.find(job=>["queued","running","cancel_requested"].includes(job.state));
   if(activeJob)terminalStudioShowJob(activeJob);
   const enabled=data.templates.filter(item=>item&&item.execution_enabled===true&&!String(item.id).startsWith("custom-")).length;
-  terminalStudioStatus("Loaded "+(select.options.length-1)+" templates; "+enabled+" built-in templates are execution-enabled by trusted catalog policy.",enabled?"execution-ready":"ready");
+  terminalStudioStatus("Loaded "+(select.options.length-1)+" templates; "+enabled+" built-in templates are execution-enabled by trusted catalog policy.","ready");
   terminalStudioRenderExecutionGate();
  }catch(error){terminalStudioStatus("Could not load Command Library: "+error.message,"error");}
  finally{button.disabled=false;}
@@ -1644,7 +1646,7 @@ async function terminalStudioAuthorizeRun(){
   $("terminal-confirm-run").disabled=false;
   $("terminal-confirm-run").textContent="Confirm & Queue Job";
   $("terminal-discard-grant").hidden=false;
-  terminalStudioStatus("App authorization issued. Review the exact Project Workspace and template, then confirm separately.","execution-ready");
+  terminalStudioStatus("App authorization issued. Review the exact Project Workspace and template, then confirm separately.","grant-issued");
   terminalStudioRenderExecutionGate();
  }catch(error){terminalStudioStatus("App authorization denied: "+error.message,"error");}
  finally{button.disabled=false;terminalStudioRenderExecutionGate();}
@@ -1675,7 +1677,7 @@ async function terminalStudioConfirmRun(){
   terminalStudioState.pendingGrant=null;terminalStudioState.pendingSubmission=null;
   $("terminal-grant-confirmation").hidden=true;
   terminalStudioLockSubmission(false);
-  terminalStudioStatus("Terminal Job accepted by the durable queue. Runner execution is separately authorized and lease-bound.","execution-ready");
+  terminalStudioStatus("Terminal Job accepted by the durable queue. Runner execution is separately authorized and lease-bound.","queued");
   terminalStudioShowJob(job);
  }catch(error){
   button.disabled=false;button.textContent="Retry Queue Request (same Idempotency-Key)";
