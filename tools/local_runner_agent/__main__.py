@@ -153,6 +153,10 @@ def main(argv=None) -> int:
             raise ValueError("DCP_RUNNER_TRUSTED_LOCAL_PROJECTS must be a JSON array of canonical project UUIDs")
         if not raw_repositories and not raw_local_projects:
             raise ValueError("configure at least one trusted GitHub repository or Local Project ID")
+        if os.environ.get("DCP_RUNNER_TERMINAL_ENABLED") == "1":
+            if not raw_local_projects:
+                raise ValueError("Terminal capability requires at least one trusted Local Project ID")
+            capabilities = sorted(set(capabilities) | {"terminal"})
         manager = WorkspaceManager(
             root,
             max_active=_positive_int("DCP_RUNNER_MAX_ACTIVE_WORKSPACES", 8),
