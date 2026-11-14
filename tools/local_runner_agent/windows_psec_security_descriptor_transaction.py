@@ -260,6 +260,14 @@ class NativeSecurityDescriptorTransaction:
                     raise NativeSecurityDescriptorTransactionError(
                         f"identity mismatch immediately before mutation for {target.target_id}"
                     )
+                # Re-read the descriptor immediately before writing. Identity
+                # stability alone does not prove that another actor has not
+                # changed this object's DACL since the preflight snapshot.
+                current_snapshot = self._api.read_dacl(handle)
+                if current_snapshot != snapshot:
+                    raise NativeSecurityDescriptorTransactionError(
+                        f"DACL changed after preflight for {target.target_id}"
+                    )
                 attempted.append((target, snapshot))
                 self._api.write_dacl(handle, candidate)
                 read_back = self._api.read_dacl(handle)
