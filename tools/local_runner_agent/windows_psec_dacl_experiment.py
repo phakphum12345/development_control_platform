@@ -260,7 +260,12 @@ class WindowsDaclDefaultedExperiment:
         return int(count.value)
 
     def run(self, *, defaulted=True, rollback=True):
-        handles_before = self._process_handle_count()
+        # Process-wide counts are best-effort diagnostics only. They must not
+        # gate the experiment or stand in for harness-owned handle tracking.
+        try:
+            handles_before = self._process_handle_count()
+        except Exception:
+            handles_before = -1
         root = None
         file_path = None
         handle = None
@@ -406,9 +411,8 @@ class WindowsDaclDefaultedExperiment:
             self.last_cleanup_verified = cleanup_ok
             try:
                 handles_after = self._process_handle_count()
-            except Exception as exc:
+            except Exception:
                 handles_after = -1
-                primary_error = primary_error or exc
             if close_error or delete_error or not cleanup_ok:
                 cleanup_error = close_error or delete_error or DaclExperimentError(
                     "disposable root remains after cleanup"
