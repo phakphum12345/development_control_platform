@@ -117,3 +117,17 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Latest observed CI on earlier head `b3094c73c5299ae20fe146442fd267aa79bc4385`: Validate Control Plane IN_PROGRESS; Local-first Minimal Emulator IN_PROGRESS; Cross-platform Recovery Acceptance QUEUED. Exact-head results for the newer docs/ledger commits must be rechecked.
 - Builder is not yet integrated into TerminalScriptExecutor. Linux production execution remains blocked; Windows AppContainer/LPAC remains BLOCKED; macOS remains BLOCKED; all seven templates remain disabled.
 - Next exact action: verify CI on the final branch head, fix any failures, then integrate the Linux launcher behind the existing verifier and run actual-host adversarial acceptance. Do not merge without explicit user authorization.
+
+
+## 2026-11-14 — PR #116 final pre-CI checkpoint
+
+- PR #116 remains OPEN / DRAFT / NOT MERGED.
+- Exact base SHA: `62d72bddd028399d0b96cd9c2f6e3b16a704b758`.
+- Branch: `work/wp00-remaining-inventory-wp18a-linux-isolation`.
+- Branch head before this checkpoint: `42a8b4b0286ec34d70afca80730e939ea9be0619`.
+- Changed files: 11 — workflow, continuity ledger, roadmap, backlog, remaining-work inventory, Terminal OS Isolation doc, Implementation Status, docs index, Requirements Traceability, Linux sandbox tests and Linux sandbox builder.
+- Baseline inventory is now documented with 22 grouped WPs, 78 tools, 86 test files, 58 docs, 7 workflows, 21 Dashboard views and 24 requirement groups. The atomic task count remains UNKNOWN until detailed per-file and per-test-function trace is complete.
+- WP-18A builder now accepts only a fixed allowlist of sanitized Git/runtime environment variables inside the sandbox; it does not inherit the host environment wholesale.
+- Exact-head checks on the previous code head `6a0210b557af258125521124949034481f2bb044` were in progress at last inspection. The current documentation-only head needs fresh PR checks to satisfy the exact-SHA rule.
+- No merge authorization exists. Keep PR #116 draft; keep all seven Terminal templates disabled.
+- Next exact action: trigger all required workflows for documentation/checkpoint changes, then verify every check on the final head SHA. If checks pass, continue the executor integration as a separate WP-18A implementation slice; do not merge until reviewed and approved.
