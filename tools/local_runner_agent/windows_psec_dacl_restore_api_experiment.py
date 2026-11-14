@@ -87,6 +87,10 @@ class WindowsDaclRestoreApiExperiment(WindowsDaclDefaultedExperiment):
             wintypes.LPVOID, wintypes.LPVOID, wintypes.LPVOID, wintypes.LPVOID,
         ]
         self._advapi32.SetNamedSecurityInfoW.restype = wintypes.DWORD
+        self._advapi32.MakeSelfRelativeSD.argtypes = [
+            wintypes.LPVOID, wintypes.LPVOID, ctypes.POINTER(wintypes.DWORD)
+        ]
+        self._advapi32.MakeSelfRelativeSD.restype = wintypes.BOOL
 
     @staticmethod
     def candidate_names() -> tuple[str, ...]:
@@ -121,7 +125,18 @@ class WindowsDaclRestoreApiExperiment(WindowsDaclDefaultedExperiment):
             control_bits,
         ):
             raise self._last_error("SetSecurityDescriptorControl(restore candidate)")
-        return descriptor, acl_buffer
+        required = wintypes.DWORD()
+        self._advapi32.MakeSelfRelativeSD(
+            descriptor, None, ctypes.byref(required)
+        )
+        if required.value <= 0:
+            raise self._last_error("MakeSelfRelativeSD(size query)")
+        self_relative = ctypes.create_string_buffer(required.value)
+        if not self._advapi32.MakeSelfRelativeSD(
+            descriptor, self_relative, ctypes.byref(required)
+        ):
+            raise self._last_error("MakeSelfRelativeSD(restore candidate)")
+        return self_relative, acl_buffer
 
     def _apply_restore_candidate(self, candidate, *, file_path, handle, snapshot):
         acl_buffer = ctypes.create_string_buffer(
