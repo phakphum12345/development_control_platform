@@ -104,6 +104,10 @@ class WindowsPsecProbeTests(unittest.TestCase):
             CloseProcessSecurityEnvironment = FakeFunction(close)
 
         self.assertTrue(create_psec_environment(Api(), b"PSEC-spec"))
+        self.assertEqual(
+            Api.CreateProcessSecurityEnvironment.argtypes,
+            [ctypes.c_void_p, ctypes.c_uint32, ctypes.POINTER(ctypes.c_void_p)],
+        )
         self.assertEqual(closed, [0x1234])
 
     def test_create_psec_environment_rejects_failed_hresult(self):
