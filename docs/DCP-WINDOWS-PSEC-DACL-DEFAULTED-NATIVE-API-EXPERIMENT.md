@@ -126,7 +126,30 @@ PR #130 remains a separate Reader/Transaction checkpoint. Native Writer semantic
 - The CI workflow now invokes this test module on Ubuntu and Windows. The native cases are skipped off Windows; the Windows CI result is GitHub-hosted runner evidence, not the user's local Windows-host acceptance.
 - No experiment has been executed in this authoring session. No native round-trip result is claimed.
 
-## 10. Execution checklist
+## 10. GitHub-hosted Windows evidence — 2026-11-14
+
+Run: [Cross-platform Recovery Acceptance #43609971342](https://github.com/phakphum12345/development_control_platform/actions/runs/43609971342), merge checkout commit `36554d3f995a741ecac023b99e39da935b287d12`, PR head `4c11a6bdb4c91faf51cd7e17081ee9596d3e07bb`.
+
+- Host: Microsoft Windows Server 2025 Datacenter, build `10.0.26100`; runner image `windows-2025-vs2026`.
+- Python: CPython `3.12.10`, 64-bit AMD64.
+- Filesystem: NTFS; volume serial `9823700658284110452`.
+- Probe File ID: `8cb7040000006f000000000000000000`.
+- FALSE case: initial and post-write/post-rollback `DaclDefaulted=false`; API error list empty; cleanup verified.
+- Binary DACL before write: `0200080000000000` (8 bytes; explicit empty ACL).
+- Binary DACL after write and rollback: `020048000300000000101400ff011f0001010000000000051200000000101800ff011f000102000000000005200000002002000000101400ff011f00010100000000000304000000` (72 bytes).
+- Descriptor control words: before `36868 (0x9004)`; after write and rollback `33796 (0x8404)`. The protected-DACL bit was cleared and auto-inherited state appeared; the resulting ACL contains ACEs absent from the original empty ACL. This is consistent with inheritance being re-applied when the DACL is written, not proof of a single internal Windows implementation path.
+- The previous test incorrectly allowed an experiment result of `FAIL` while unittest returned success. That acceptance loophole is closed in the current branch: TRUE/FALSE cases now require exact PASS, and process handle count must return to its pre-test value.
+- Current code also sets `SE_DACL_PROTECTED` on the creation descriptor and supplies `PROTECTED_DACL_SECURITY_INFORMATION` to `SetSecurityInfo`, to preserve the inheritance boundary during write/rollback. These changes are pending a fresh Windows CI run; do not treat them as validated yet.
+
+The TRUE case was skipped because the filesystem did not retain `DaclDefaulted=TRUE` at creation. Therefore TRUE-state writer semantics remain NOT EXERCISED. This GitHub-hosted run is not acceptance evidence for the user's own Windows host.
+
+## 11. Resource lifecycle checks
+
+- The existing reader copies ACL bytes and releases the descriptor returned by `GetSecurityInfo` using `LocalFree` in a `finally` block; a failed `LocalFree` is surfaced as an error.
+- The experiment now samples `GetProcessHandleCount` before creating the probe and after closing the handle and deleting the probe root. Exact equality is required by Windows tests.
+- This is a process-handle leak check, not a complete native heap/RSS leak proof. Native memory leak acceptance remains PARTIAL; repeated-run and process-memory/heap evidence is still required on the designated host.
+
+## 12. Execution checklist
 
 - [x] Review DCP-CEEP v1.0 and Microsoft API contracts.
 - [x] Implement the isolated Windows-only harness.
