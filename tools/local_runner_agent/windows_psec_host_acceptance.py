@@ -123,7 +123,10 @@ def _filesystem_acl(path: Path) -> dict:
         }
         return result
     script = (
-        "$acl = Get-Acl -LiteralPath $args[0]; "
+        "$targetPath = $env:DCP_PSEC_ACL_PATH; "
+        "if ([string]::IsNullOrWhiteSpace($targetPath)) { "
+        "throw 'DCP_PSEC_ACL_PATH was not supplied' }; "
+        "$acl = Get-Acl -LiteralPath $targetPath; "
         "[pscustomobject]@{ owner = $acl.Owner; "
         "dacl_protected = $acl.AreAccessRulesProtected; "
         "sddl = $acl.Sddl } | ConvertTo-Json -Compress"
@@ -140,6 +143,7 @@ def _filesystem_acl(path: Path) -> dict:
             timeout=10,
             check=False,
             shell=False,
+            env={**os.environ, "DCP_PSEC_ACL_PATH": str(path)},
         )
         if descriptor.returncode == 0:
             try:
