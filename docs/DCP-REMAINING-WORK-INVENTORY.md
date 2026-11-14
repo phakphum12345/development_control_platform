@@ -21,7 +21,7 @@ This inventory distinguishes implemented code, automated tests, CI evidence, and
 | WP-00C | Test-to-requirement traceability | All 86 baseline test files listed and mapped to 24 requirement groups; function-level and workflow/job-level trace remains | IN_PROGRESS |
 | WP-00D | Documentation reconciliation | Added INDEX, IMPLEMENTATION-STATUS and REQUIREMENTS-TRACEABILITY; existing roadmap/backlog/continuity still require full reconciliation | IN_PROGRESS |
 | WP-18A | Linux bubblewrap isolation launcher | Integrated into TerminalScriptExecutor; seccomp FD and allowlisted environment wired; real bubblewrap executor and detached-child tests pass on GitHub-hosted Ubuntu; target-host acceptance still UNKNOWN | PARTIAL / IN_PROGRESS |
-| WP-18B | Windows native process isolation | PSEC v1.1 capability probe and design added; actual CreateProcessW integration, adversarial tests and target-host acceptance remain BLOCKED | IN_PROGRESS / BLOCKED |
+| WP-18B | Windows native process isolation | PSEC v1.1 capability/spec-creation probe, FlatBuffer policy builder, CreateProcessW launcher and Job Object process-tree facade integrated; adversarial process tests and target-host acceptance remain BLOCKED | IN_PROGRESS / BLOCKED |
 | WP-18C | Process-tree containment and cleanup | Linux bubblewrap parent-death containment now has a detached-descendant timeout test; authenticated Gateway cleanup attestation and conservative terminal-workspace reconciliation added. UNKNOWN, lease-expired, active, mismatched and retained workspaces are preserved; user-host/Windows acceptance remains absent | PARTIAL / IN_PROGRESS |
 | WP-18D | Adversarial security and host acceptance | Added real bubblewrap tests for socket families, socketpair, io_uring denial, zero effective capabilities, host-secret symlink isolation, and a target-Linux host acceptance harness; GitHub-hosted CI evidence only, target-host evidence remains UNKNOWN | PARTIAL / IN_PROGRESS |
 | WP-18E | Isolation CI, security review and documentation | Cross-platform recovery workflow exists; no platform sandbox acceptance matrix or independent host evidence | IN_PROGRESS |
@@ -45,9 +45,9 @@ This inventory distinguishes implemented code, automated tests, CI evidence, and
 
 ### Terminal isolation and process lifecycle
 - `tools/local_runner_agent/terminal_isolation.py` — platform assessment only; Linux bwrap presence cannot become VERIFIED.
-- `tools/local_runner_agent/terminal_executor.py` — calls `require_verified_isolation()` before workspace resolution and process launch; uses `taskkill /T /F` on Windows and POSIX process groups elsewhere; timeout/cancel/error cleanup paths exist.
+- `tools/local_runner_agent/terminal_executor.py` — calls `require_verified_isolation()` before workspace resolution and process launch; Linux uses bubblewrap; Windows routes through PSEC/CreateProcessW and a Job Object facade; timeout/cancel/error cleanup paths exist.
 - `tools/local_runner_agent/workspace.py` — owner-bound workspace marker, quotas, symlink rejection, preview retention and cleanup.
-- `tests/test_terminal_isolation.py` — six contract tests; no real host sandbox test.
+- `tests/test_terminal_isolation.py`, `tests/test_windows_psec.py`, `tests/test_windows_psec_spec.py`, and `tests/test_windows_psec_launcher.py` — API, policy serialization, readiness gate and Job Object facade contracts; no target Windows host sandbox acceptance.
 - `tests/test_terminal_executor.py` — process timeout, cancellation, output limits and policy tests; not OS sandbox acceptance.
 - `docs/DCP-TERMINAL-OS-ISOLATION.md` — correctly states all platforms BLOCKED and all templates disabled.
 
@@ -92,7 +92,7 @@ The repository contains seven workflow files:
 
 1. All seven built-in Terminal templates remain disabled.
 2. Do not set any platform to VERIFIED from executable presence or unit tests.
-3. Windows AppContainer/LPAC requires a native launcher and actual-host acceptance; Job Objects alone are insufficient.
+3. Windows PSEC v1.1 launcher is integrated but not VERIFIED; PSEC is not LPAC, and actual-host filesystem/network/process-tree acceptance is mandatory. Job Objects alone are insufficient.
 4. Linux requires an explicit mount namespace, user/PID/IPC/UTS/network namespaces, reviewed seccomp policy, assigned workspace and per-job scratch, plus actual-host adversarial acceptance.
 5. Process-tree termination and scratch cleanup must be independently verified after normal exit, timeout, cancellation, lease loss, Runner shutdown and crash.
 6. CI results must be tied to exact head SHA and must not be described as user-host acceptance.
@@ -115,7 +115,7 @@ Existing roadmap, backlog and continuity documents require reconciliation with m
 2. Complete WP-00D by reconciling roadmap/backlog/continuity and adding status/traceability docs.
 3. WP-18A executor integration is implemented; run WP-18D adversarial tests and the documented Linux target-host acceptance harness before any production enablement.
 4. Implement WP-18C process-tree and cleanup verification in parallel only where dependencies allow.
-5. Implement WP-18B Windows native isolation separately; do not substitute a POSIX shim.
+5. WP-18B Windows PSEC launcher integration is present; run the policy-creation probe and target-host adversarial acceptance before any VERIFIED status or Terminal enablement.
 6. Run exact-head CI, security review and host acceptance before considering any template enablement.
 7. Continue WP-19–WP-31 in dependency order and close with WP-31 final audit.
 
