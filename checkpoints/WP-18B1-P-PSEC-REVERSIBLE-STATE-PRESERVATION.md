@@ -34,14 +34,14 @@ Implement immutable preservation of the original DACL descriptor snapshot (S0), 
 ## Validation
 
 - Local unittest execution: NOT RUN in authoring session.
-- Previous exact-head validation on 9af105c5d9fb1d996bc5245faf4a27773afcfa96: 39 PSEC snapshot/comparison/transaction regression tests PASS on Ubuntu and Windows.
-- Previous exact-head Cross-platform Recovery Acceptance: Ubuntu job PASS; Windows job FAILS only at the known native FALSE exact-round-trip assertion in tests.test_windows_psec_dacl_experiment. The PSEC regression step ran before the native experiment and passed on Windows.
+- Exact-head validation on adc8904ad02cdb242914b7bdc81163ae6c56a971: 44 PSEC snapshot/comparison/transaction regression tests PASS on Ubuntu and Windows.
+- Cross-platform Recovery Acceptance: Ubuntu job PASS; Windows job FAILS at the known native FALSE exact-round-trip assertion in tests.test_windows_psec_dacl_experiment. The new PSEC regression step ran before the native experiment and passed on Windows.
+- Windows native evidence now shows S0=0x9004, S1=0x9404, S2=0x9404, identical DACL bytes, DaclDefaulted=FALSE, and RESTORE_NOT_EXACT with control_flags_mismatch. Snapshot transaction ID and SHA-256 digest are present in the evidence.
 - Local-first Minimal Emulator: Linux and Windows jobs PASS on that exact head.
-- Validate Control Plane: PASS on that exact head.
-- Current implementation has since added retained-handle snapshot capture and requires a fresh exact-head CI run.
-- Required exact-head test command: python -m unittest tests.test_windows_psec_reversible_state tests.test_windows_psec_dacl_comparison tests.test_windows_psec_security_descriptor_transaction -v.
+- Validate Control Plane: PASS on that exact head. Windows runner acceptance matrix remained SKIPPED and is not counted as PASS.
+- Current exact-head validation is required again after this documentation update.
+- Required test command: python -m unittest tests.test_windows_psec_reversible_state tests.test_windows_psec_dacl_comparison tests.test_windows_psec_security_descriptor_transaction -v.
 - Native experiment command: python -m unittest tests.test_windows_psec_dacl_experiment -v.
-- Fresh exact-head CI is required after the retained-handle/native-experiment integration changes.
 - Native Windows restore acceptance: NOT RUN; requires a separate disposable NTFS experiment and exact read-back evidence.
 
 ## Safety gates
