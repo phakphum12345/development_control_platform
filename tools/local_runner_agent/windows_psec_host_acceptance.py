@@ -25,6 +25,58 @@ from tools.local_runner_agent.windows_psec_launcher import (
 )
 
 
+def _paths_overlap(left: str, right: str) -> bool:
+    import ntpath
+
+    a = ntpath.normcase(ntpath.normpath(left))
+    b = ntpath.normcase(ntpath.normpath(right))
+    return (
+        a == b
+        or a.startswith(b.rstrip("\\\\") + "\\\\")
+        or b.startswith(a.rstrip("\\\\") + "\\\\")
+    )
+
+
+def _acceptance_parent() -> Path:
+    configured = os.environ.get("DCP_PSEC_ACCEPTANCE_PARENT")
+    if not configured:
+        raise WindowsPsecError(
+            "DCP_PSEC_ACCEPTANCE_PARENT must name an existing writable directory "
+            "outside USERPROFILE, PROGRAMDATA, PUBLIC, TEMP, and SYSTEMROOT\\Temp"
+        )
+    parent = Path(configured)
+    if not parent.is_absolute():
+        raise WindowsPsecError("DCP_PSEC_ACCEPTANCE_PARENT must be an absolute path")
+    try:
+        parent = parent.resolve(strict=True)
+    except (OSError, RuntimeError):
+        raise WindowsPsecError("DCP_PSEC_ACCEPTANCE_PARENT must already exist") from None
+    if not parent.is_dir():
+        raise WindowsPsecError("DCP_PSEC_ACCEPTANCE_PARENT must be a directory")
+
+    system_root = os.environ.get("SYSTEMROOT") or os.environ.get("SystemRoot")
+    denied_candidates = (
+        os.environ.get("USERPROFILE"),
+        os.environ.get("PROGRAMDATA"),
+        os.environ.get("PUBLIC"),
+        tempfile.gettempdir(),
+        str(Path(system_root) / "Temp") if system_root else None,
+    )
+    for value in denied_candidates:
+        if not value:
+            continue
+        try:
+            denied = Path(value).resolve(strict=True)
+        except (OSError, RuntimeError):
+            continue
+        if _paths_overlap(str(parent), str(denied)):
+            raise WindowsPsecError(
+                "DCP_PSEC_ACCEPTANCE_PARENT overlaps a denied filesystem root: "
+                + str(denied)
+            )
+    return parent
+
+
 def _environment() -> dict[str, str]:
     system_root = os.environ.get("SYSTEMROOT") or os.environ.get("SystemRoot")
     if not system_root:
@@ -227,7 +279,7 @@ def main() -> int:
         canary = user_profile / f".dcp-psec-canary-{uuid.uuid4().hex}.txt"
         canary.write_text("DCP-HOST-CANARY", encoding="utf-8")
 
-        with tempfile.TemporaryDirectory(prefix="dcp-psec-host-acceptance-") as temporary:
+        with tempfile.TemporaryDirectory(\n            prefix="dcp-psec-host-acceptance-", dir=str(_acceptance_parent())\n        ) as temporary:
             root = Path(temporary)
             workspace = root / "workspace"
             scratch = root / "scratch"
