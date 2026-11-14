@@ -10,6 +10,7 @@ from tools.local_runner_agent.windows_psec_acl import (
     READ_EXECUTE,
     WindowsPsecAclError,
     WindowsPsecAclManager,
+    _parse_allow_aces,
     _valid_package_sid,
 )
 
@@ -43,6 +44,26 @@ class WindowsPsecAclManagerTests(unittest.TestCase):
         (scratch / "existing.tmp").write_text("scratch", encoding="utf-8")
         return job, work, scratch
 
+    def test_sddl_symbolic_wp_normalizes_to_file_traverse_bit(self):
+        sddl = f"D:(A;;WP;;;{PACKAGE_SID})"
+        self.assertEqual(_parse_allow_aces(sddl, PACKAGE_SID), [("", FILE_TRAVERSE)])
+
+    def test_sddl_symbolic_file_rights_combine_to_expected_mask(self):
+        sddl = f"D:(A;;FRFX;;;{PACKAGE_SID})"
+        self.assertEqual(
+            _parse_allow_aces(sddl, PACKAGE_SID),
+            [("", 0x001200A9)],
+        )
+
+    def test_sddl_numeric_access_mask_remains_supported(self):
+        sddl = f"D:(A;;0x00000020;;;{PACKAGE_SID})"
+        self.assertEqual(_parse_allow_aces(sddl, PACKAGE_SID), [("", FILE_TRAVERSE)])
+
+    def test_sddl_unknown_rights_fail_closed(self):
+        sddl = f"D:(A;;ZZ;;;{PACKAGE_SID})"
+        with self.assertRaisesRegex(WindowsPsecAclError, "unsupported SDDL"):
+            _parse_allow_aces(sddl, PACKAGE_SID)
+
     def test_package_sid_validation_is_strict(self):
         self.assertTrue(_valid_package_sid(PACKAGE_SID))
         self.assertFalse(_valid_package_sid("S-1-5-21-1"))
@@ -64,6 +85,21 @@ class WindowsPsecAclManagerTests(unittest.TestCase):
         self.assertIn(f"(A;OICI;0x{READ_EXECUTE:08x};;;{PACKAGE_SID})", api.read_sddl(work))
         self.assertIn(f"(A;OICI;0x{MODIFY:08x};;;{PACKAGE_SID})", api.read_sddl(scratch))
         self.assertEqual(api.read_sddl(Path(parent)), "D:")
+
+    def test_manager_verifies_windows_symbolic_wp_root_ace(self):
+        class SymbolicRootApi(FakeAclApi):
+            def read_sddl(self, path):
+                if path.name.startswith("dcp-psec-job-"):
+                    return f"D:(A;;WP;;;{PACKAGE_SID})"
+                return super().read_sddl(path)
+
+        with tempfile.TemporaryDirectory() as parent:
+            _, work, scratch = self._job_tree(parent)
+            result = WindowsPsecAclManager(SymbolicRootApi()).apply(
+                work, scratch, PACKAGE_SID
+            )
+            self.assertEqual(result["state"], "VERIFIED")
+            self.assertTrue(result["job_root_traverse_only"])
 
     def test_rejects_non_job_private_layout_before_any_acl_write(self):
         with tempfile.TemporaryDirectory() as parent:
