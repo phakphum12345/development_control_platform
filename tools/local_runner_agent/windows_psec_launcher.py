@@ -247,6 +247,18 @@ def _trusted_directory(value: str | os.PathLike, label: str) -> Path:
     return resolved
 
 
+def _apply_sandbox_profile_environment(environment: dict[str, str], scratch: Path) -> None:
+    """Keep Windows profile-backed process initialization inside job scratch."""
+    scratch_path = str(scratch)
+    environment["HOME"] = scratch_path
+    environment["USERPROFILE"] = scratch_path
+    # PSEC process initialization resolves its per-user package/profile state
+    # through LOCALAPPDATA. Keep that state in the authorized per-job scratch
+    # root rather than exposing the host user's LocalAppData tree.
+    environment["LOCALAPPDATA"] = scratch_path
+    environment["TEMP"] = scratch_path
+    environment["TMP"] = scratch_path
+
 def _runtime_root(executable: str) -> Path:
     binary = Path(executable).resolve(strict=True)
     if not binary.is_file():
@@ -437,10 +449,7 @@ class WindowsPsecLauncher:
             raise WindowsPsecError("SYSTEMROOT is unavailable")
         system32 = Path(system_root) / "System32"
         env["SYSTEMROOT"] = system_root
-        env["HOME"] = str(temp)
-        env["USERPROFILE"] = str(temp)
-        env["TEMP"] = str(temp)
-        env["TMP"] = str(temp)
+        _apply_sandbox_profile_environment(env, temp)
         env["PATH"] = ";".join(_existing_directories((runtime_root, system32)))
 
         specification = _build_environment_spec(work, temp, command[0])
