@@ -43,6 +43,21 @@ class NativeHandleAclError(RuntimeError):
     """A handle-relative preflight operation could not be proven safe."""
 
 
+def _coerce_native_handle(handle):
+    """Normalize an integer handle or an existing ctypes HANDLE without re-wrapping pointers."""
+    if isinstance(handle, ctypes.c_void_p):
+        native_handle = handle
+    else:
+        try:
+            raw_value = int(handle)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise NativeHandleAclError("handle value is not a valid native handle") from exc
+        native_handle = wintypes.HANDLE(raw_value)
+    if not native_handle.value or native_handle.value == ctypes.c_void_p(-1).value:
+        raise NativeHandleAclError("a valid native handle is required")
+    return native_handle
+
+
 class UNICODE_STRING(ctypes.Structure):
     _fields_ = [
         ("Length", wintypes.USHORT),
@@ -225,10 +240,7 @@ class WindowsNativeHandleApi:
     def query_identity(self, handle: int) -> HandleIdentity:
         # NtCreateFile writes a ctypes HANDLE object; other callers may pass
         # the integer value retained by OpenedObject. Normalize both forms.
-        raw_handle = getattr(handle, "value", handle)
-        if raw_handle is None or raw_handle == 0:
-            raise NativeHandleAclError("a valid handle is required for identity queries")
-        native_handle = wintypes.HANDLE(raw_handle)
+        native_handle = _coerce_native_handle(handle)
         file_id = FILE_ID_INFO()
         tag = FILE_ATTRIBUTE_TAG_INFO()
         if not self.kernel32.GetFileInformationByHandleEx(
