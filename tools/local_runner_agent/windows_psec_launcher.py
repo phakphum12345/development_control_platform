@@ -17,7 +17,6 @@ from tools.local_runner_agent.windows_psec import (
     LOAD_LIBRARY_SEARCH_SYSTEM32,
     probe_psec,
 )
-from tools.local_runner_agent.windows_psec_spec import build_psec_spec
 
 
 HANDLE = ctypes.c_void_p
@@ -277,6 +276,12 @@ def _existing_directories(values: Sequence[str | os.PathLike]) -> tuple[str, ...
 
 
 def _build_environment_spec(workspace: Path, scratch: Path, executable: str) -> bytes:
+    try:
+        from tools.local_runner_agent.windows_psec_spec import build_psec_spec
+    except ImportError:
+        raise WindowsPsecError(
+            "optional flatbuffers dependency is missing; run Install-DCP-Windows-PSEC.ps1"
+        ) from None
     runtime_root = _runtime_root(executable)
     system_root = os.environ.get("SYSTEMROOT") or os.environ.get("SystemRoot")
     if not system_root:
