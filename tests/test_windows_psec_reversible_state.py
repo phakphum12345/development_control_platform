@@ -54,6 +54,22 @@ class ReversibleStatePreservationTests(unittest.TestCase):
         with self.assertRaises(FrozenInstanceError):
             self.original.descriptor.dacl_control_flags = 0x9404
 
+    def test_target_identity_hex_case_is_normalized(self):
+        upper_identity = TargetObjectIdentity(IDENTITY.volume_serial, IDENTITY.file_id.upper())
+        result = self.verify(target_identity=upper_identity)
+        self.assertEqual(result.state, "RESTORED_EXACT")
+
+    def test_invalid_original_envelope_fails_closed(self):
+        result = verify_restoration_readback(
+            None,
+            transaction_id=TRANSACTION_ID,
+            target_identity=IDENTITY,
+            readback=S0,
+            comparison_profile=DaclComparisonProfile.STRICT_DESCRIPTOR_EQUALITY,
+        )
+        self.assertEqual(result.state, "SNAPSHOT_INVALID")
+        self.assertEqual(result.mismatches, ("original_snapshot_type_invalid",))
+
     def test_exact_readback_is_verified_against_s0(self):
         result = self.verify()
         self.assertEqual(result.state, "RESTORED_EXACT")
