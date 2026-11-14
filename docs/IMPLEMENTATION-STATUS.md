@@ -29,7 +29,7 @@ Counts are tied to the exact baseline above. New files on an unmerged feature br
 | Runner lifecycle/providers | `runner_registry.py`, `runner_bootstrap.py`, `runner_cleanup.py`, `provider_router.py`, `azure_*.py`, `orka*.py` | Azure/Orka adapters, budgets, OIDC, cleanup and opt-in gates exist; live provider acceptance is separately gated |
 | Local Auth Proxy | `tools/local_auth_proxy.py` | Owner session, CSRF, signed proxy identity, artifact and preview routes exist; actual Windows host acceptance remains UNKNOWN |
 | Local Runner | `tools/local_runner_agent/` | Enrollment, checkout, immutable snapshots, execution, build, browser tests, artifacts, workspaces, checkpoints and Terminal executor exist |
-| Terminal Studio | `terminal_catalog.py`, `terminal_grants.py`, `terminal_authorization.py`, `terminal_executor.py`, `terminal_isolation.py` | Fixed typed commands, app grants and fail-closed isolation contract exist; platform launcher/acceptance is incomplete; all templates disabled |
+| Terminal Studio | `terminal_catalog.py`, `terminal_grants.py`, `terminal_authorization.py`, `terminal_executor.py`, `terminal_isolation.py` | Fixed typed commands, app grants and fail-closed isolation contract exist; Linux bubblewrap and Windows PSEC launchers are integrated, but target-host acceptance is incomplete; all templates disabled |
 | Build/runtime/preview | `web_build.py`, `runtime.py`, `preview.py`, `browser_test.py` | Static/Vite/Next/Angular build paths and authenticated preview exist; broader framework/HMR/WebSocket/visual regression remain |
 | Project intelligence | `project_intelligence.py`, `dcp_project_intelligence.py`, `architecture_planner.py` | Framework/project inspection and planning foundations exist; readiness and end-to-end AI workflow need closure |
 | Document workflow | `tools/document_workflow/` | Writer/gateway workflow exists; complete Dashboard-to-persistent-writer acceptance and recovery need review |
@@ -106,10 +106,10 @@ These are historical exact-SHA CI results for the baseline, not current feature-
 
 - WP-00 source-to-test/API/Dashboard/requirements mapping: IN_PROGRESS.
 - WP-18A Linux bubblewrap: integrated into TerminalScriptExecutor; exact-head GitHub-hosted Ubuntu runtime tests pass, including seccomp FD inheritance and detached-child termination. Target-host acceptance remains UNKNOWN.
-- WP-18B Windows AppContainer/LPAC: BLOCKED; native helper absent.
+- WP-18B Windows native process isolation: PSEC v1.1 capability/spec-creation probe, FlatBuffer policy builder, CreateProcessW launcher and Job Object process-tree facade are integrated into TerminalScriptExecutor. API readiness is at most READY_FOR_ACCEPTANCE; workspace/network enforcement, descendant cleanup and target-host adversarial acceptance remain BLOCKED. PSEC is not LPAC.
 - WP-18C process-tree and scratch cleanup: PARTIAL. Linux bubblewrap uses parent-death/PID-namespace containment and has a detached-child timeout test on the GitHub-hosted Ubuntu runner. A runner-authenticated Gateway status endpoint permits delayed cleanup only for the same worker's terminal_script workspace when the Gateway explicitly attests cleanup_safe. UNKNOWN, LEASE_EXPIRED, active, recent, mismatched, unavailable and preview-retained workspaces are preserved. User-host and Windows process-tree acceptance remain UNKNOWN.
-- WP-18D adversarial security and host acceptance: PARTIAL. Real bubblewrap CI tests cover IPv4/IPv6/Unix socket creation, socketpair, io_uring_setup, zero effective capabilities, host-secret symlink isolation, and forked-child termination. A Linux host acceptance harness records exact host/kernel/bubblewrap evidence; it has not yet been run on the target host.
-- WP-18E CI/security/docs: PARTIAL.
+- WP-18D adversarial security and host acceptance: PARTIAL. Real bubblewrap CI tests cover IPv4/IPv6/Unix socket creation, socketpair, io_uring_setup, zero effective capabilities, host-secret symlink isolation, and forked-child termination. Linux and Windows target-host acceptance harnesses now exist; neither has been run on the target user host, so operational evidence remains UNKNOWN.
+- WP-18E CI/security/docs: PARTIAL. Cross-platform CI, PSEC capability/spec probe, and per-platform host harnesses are present; exact-head checks and target-host evidence remain open.
 - WP-19 Windows host + Dashboard → Local Auth Proxy → Gateway: UNKNOWN.
 - WP-20 artifact provenance through user workflow: PARTIAL; upload/download SHA-256 and tamper rejection exist.
 - WP-21 Local Folder dependency-managed targets: PARTIAL.
