@@ -38,6 +38,8 @@ def _emit_evidence(label, result):
         "write_verified": result.write_verified,
         "rollback_verified": result.rollback_verified,
         "rollback_attempted": result.rollback_attempted,
+        "control_flags_after_each_write": result.control_flags_after_each_write,
+        "native_write_calls": result.native_write_calls,
         "control_flags": {
             "after_create": result.control_flags_before,
             "after_write": result.control_flags_after_write,
@@ -123,6 +125,42 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         self.assertFalse(result.api_errors)
         self.assertIsNone(result.dacl_defaulted_after_rollback)
         self.assertIsNone(result.dacl_bytes_after_rollback_hex)
+        self.assertTrue(result.cleanup_verified)
+        self.assertTrue(result.owned_handle_opened)
+        self.assertTrue(result.owned_handle_closed)
+        self.assertIs(result.close_handle_succeeded, True)
+
+    def test_false_creation_state_without_native_write(self):
+        experiment = WindowsDaclDefaultedExperiment()
+        result = experiment.run(
+            defaulted=False, rollback=False, write_repetitions=0
+        )
+        _emit_evidence("FALSE_CREATION_ONLY", result)
+        self.assertEqual(result.filesystem.upper(), "NTFS")
+        self.assertFalse(result.dacl_defaulted_before)
+        self.assertEqual(result.outcome, "OBSERVED")
+        self.assertEqual(result.native_write_calls, 0)
+        self.assertEqual(result.control_flags_after_each_write, ())
+        self.assertEqual(result.control_flags_after_write, result.control_flags_before)
+        self.assertEqual(result.dacl_bytes_after_write_hex, result.dacl_bytes_before_hex)
+        self.assertFalse(result.api_errors)
+        self.assertTrue(result.cleanup_verified)
+        self.assertTrue(result.owned_handle_opened)
+        self.assertTrue(result.owned_handle_closed)
+        self.assertIs(result.close_handle_succeeded, True)
+
+    def test_repeated_setsecurityinfo_control_flags_on_same_retained_handle(self):
+        experiment = WindowsDaclDefaultedExperiment()
+        result = experiment.run(
+            defaulted=False, rollback=False, write_repetitions=3
+        )
+        _emit_evidence("FALSE_REPEATED_SETSECURITYINFO", result)
+        self.assertEqual(result.filesystem.upper(), "NTFS")
+        self.assertFalse(result.dacl_defaulted_before)
+        self.assertEqual(result.outcome, "OBSERVED")
+        self.assertEqual(result.native_write_calls, 3)
+        self.assertEqual(len(result.control_flags_after_each_write), 3)
+        self.assertFalse(result.api_errors)
         self.assertTrue(result.cleanup_verified)
         self.assertTrue(result.owned_handle_opened)
         self.assertTrue(result.owned_handle_closed)
