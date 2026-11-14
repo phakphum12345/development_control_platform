@@ -223,7 +223,7 @@ def _environment_block(environment: Mapping[str, str]):
             raise WindowsPsecError("sandbox environment contains duplicate variable names")
         normalized[folded] = (key, value)
     entries = [f"{key}={value}" for key, value in sorted(normalized.values(), key=lambda pair: pair[0].casefold())]
-    return ctypes.create_unicode_buffer("\x00".join(entries) + "\x00\x00")
+    return ctypes.create_unicode_buffer("\x00".join(entries) + "\x00")
 
 
 def _trusted_directory(value: str | os.PathLike, label: str) -> Path:
