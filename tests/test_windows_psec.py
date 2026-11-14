@@ -50,6 +50,11 @@ class FakePsecDll:
 
 
 class WindowsPsecProbeTests(unittest.TestCase):
+    def test_psec_support_flag_values_match_v11_contract(self):
+        self.assertEqual(PSE_SUPPORT_FS_DENY, 0x1)
+        self.assertEqual(PSE_SUPPORT_NETWORK_INGRESS, 0x2)
+        self.assertEqual(PSE_SUPPORT_FS_ENUMERATE, 0x4)
+
     def test_non_windows_is_blocked_without_loading_dll(self):
         def should_not_load():
             raise AssertionError("DLL loader must not run off Windows")
