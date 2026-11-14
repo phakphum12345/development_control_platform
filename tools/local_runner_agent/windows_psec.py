@@ -24,8 +24,9 @@ PSEC_REQUIRED_VERSION_MINOR = 1
 PSEC_CREATE_FLAG_NONE = 0
 
 PSE_SUPPORT_FS_DENY = 0x0000000000000001
+PSE_SUPPORT_NETWORK_PROXY = 0x0000000000000002
 PSE_SUPPORT_FS_ENUMERATE = 0x0000000000000004
-PSE_SUPPORT_NETWORK_INGRESS = 0x0000000000000002
+PSE_SUPPORT_NETWORK_INGRESS = 0x0000000000000008
 
 _REQUIRED_EXPORTS = (
     "CreateProcessSecurityEnvironment",
@@ -37,6 +38,10 @@ _REQUIRED_FEATURES = {
     "filesystem_deny": PSE_SUPPORT_FS_DENY,
     "filesystem_enumerate": PSE_SUPPORT_FS_ENUMERATE,
     "network_ingress_policy": PSE_SUPPORT_NETWORK_INGRESS,
+}
+_SUPPORTED_FEATURES = {
+    **_REQUIRED_FEATURES,
+    "network_proxy": PSE_SUPPORT_NETWORK_PROXY,
 }
 
 
@@ -149,7 +154,7 @@ def probe_psec(*, platform_name: str | None = None, dll_loader=None) -> PsecAsse
         )
 
     supported = tuple(
-        name for name, bit in _REQUIRED_FEATURES.items() if flags.value & bit
+        name for name, bit in _SUPPORTED_FEATURES.items() if flags.value & bit
     )
     missing = tuple(
         name for name, bit in _REQUIRED_FEATURES.items() if not flags.value & bit
