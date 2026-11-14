@@ -713,7 +713,15 @@ class WindowsPsecLauncher:
             # Capture the exact PSEC-created process token while its initial
             # thread is still suspended. This is read-only diagnostics and
             # cannot alter the token or broaden the process policy.
-            token_diagnostics = _query_process_token(kernel32, process_info.hProcess)
+            try:
+                token_diagnostics = _query_process_token(kernel32, process_info.hProcess)
+            except Exception as exc:
+                # Diagnostics must never weaken or prevent an otherwise valid
+                # fail-closed PSEC launch.
+                token_diagnostics = {
+                    "state": "UNKNOWN",
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
             if not kernel32.AssignProcessToJobObject(job_handle, process_info.hProcess):
                 raise _win_error("AssignProcessToJobObject")
             previous_suspend_count = kernel32.ResumeThread(process_info.hThread)
