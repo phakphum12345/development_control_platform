@@ -71,6 +71,7 @@
 - [Terminal Security](DCP-TERMINAL-SECURITY.md)
 - [Terminal OS Isolation](DCP-TERMINAL-OS-ISOLATION.md)
 - [Linux Host Acceptance](DCP-LINUX-HOST-ACCEPTANCE.md) — target-host evidence harness and acceptance criteria.
+- [Windows PSEC Isolation](DCP-WINDOWS-PSEC-ISOLATION.md) — Windows process-security-environment design and capability probe.
 - [Terminal Runner Setup](DCP-TERMINAL-RUNNER-SETUP.md)
 - [Command Library](DCP-COMMAND-LIBRARY.md)
 
