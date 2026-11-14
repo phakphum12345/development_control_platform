@@ -261,3 +261,19 @@ The next gate is dedicated Windows validation of drive-root acquisition,
 nested relative traversal, extended-ID enumeration, replacement/reparse races,
 resource ceilings, and deterministic handle cleanup. Only after that evidence
 should native security-descriptor transaction work begin.
+
+
+### 11.1 Dedicated Windows host test added
+
+A Windows-only test now exists at
+`tests/test_windows_psec_handle_tree_real_host.py`. It creates a disposable
+temporary directory fixture (not an ACL fixture), opens its path by walking from
+the drive root through retained handles, enumerates its direct children with
+the 128-bit extended directory information class, and compares the retained
+handles' identities and object kinds. It closes child handles before closing
+the directory chain.
+
+This test is **not yet executed on the user's Windows host**. Its existence is
+not acceptance evidence. The portable contract suite and this real-host test
+must both be run on the exact branch HEAD; the latter must complete without
+skipping on Windows.
