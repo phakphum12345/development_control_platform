@@ -327,7 +327,7 @@ class WindowsPsecProcess:
         if not self._kernel32.QueryInformationJobObject(
             self._job_handle,
             JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION,
-            ctypes.byref(info),
+            ctypes.cast(ctypes.byref(info), HANDLE),
             ctypes.sizeof(info),
             None,
         ):
@@ -482,7 +482,7 @@ class WindowsPsecLauncher:
             if not kernel32.SetInformationJobObject(
                 job_handle,
                 JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
-                ctypes.byref(limits),
+                ctypes.cast(ctypes.byref(limits), HANDLE),
                 ctypes.sizeof(limits),
             ):
                 raise _win_error("SetInformationJobObject")
@@ -518,13 +518,13 @@ class WindowsPsecLauncher:
 
             if not kernel32.UpdateProcThreadAttribute(
                 attribute_list, 0, PROC_THREAD_ATTRIBUTE_SECURITY_ENVIRONMENT,
-                ctypes.byref(psec_handle), ctypes.sizeof(psec_handle), None, None,
+                ctypes.cast(ctypes.byref(psec_handle), HANDLE), ctypes.sizeof(psec_handle), None, None,
             ):
                 raise _win_error("UpdateProcThreadAttribute(PSEC)")
             inherited_handles = (HANDLE * 2)(stdin_handle, stdout_write)
             if not kernel32.UpdateProcThreadAttribute(
                 attribute_list, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
-                ctypes.byref(inherited_handles), ctypes.sizeof(inherited_handles), None, None,
+                ctypes.cast(ctypes.byref(inherited_handles), HANDLE), ctypes.sizeof(inherited_handles), None, None,
             ):
                 raise _win_error("UpdateProcThreadAttribute(HANDLE_LIST)")
 
@@ -548,7 +548,7 @@ class WindowsPsecLauncher:
                 | EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW,
                 ctypes.cast(environment_block, HANDLE),
                 str(work),
-                ctypes.byref(startup),
+                ctypes.cast(ctypes.byref(startup), HANDLE),
                 ctypes.byref(process_info),
             ):
                 raise _win_error("CreateProcessW(PSEC)")
@@ -589,8 +589,9 @@ class WindowsPsecLauncher:
             if process_created and process_info.hProcess:
                 if job_handle:
                     kernel32.TerminateJobObject(job_handle, 1)
-                else:
-                    kernel32.TerminateProcess(process_info.hProcess, 1)
+                # If Job assignment itself failed, the suspended root is not
+                # a member of the Job yet; terminate it explicitly as well.
+                kernel32.TerminateProcess(process_info.hProcess, 1)
                 kernel32.WaitForSingleObject(process_info.hProcess, 5000)
             if stdout_file:
                 stdout_file.close()
