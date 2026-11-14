@@ -118,6 +118,28 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
         process.close()
         self.assertEqual(len(kernel.closed), 2)
 
+    def test_process_retains_read_only_token_diagnostics(self):
+        kernel = FakeKernel32(active_processes=1)
+        evidence = {
+            "state": "PASS",
+            "captured_before_resume": True,
+            "is_app_container": True,
+            "user_sid": "S-1-5-21-test",
+        }
+        process = WindowsPsecProcess(
+            kernel32=kernel,
+            process_handle=101,
+            job_handle=202,
+            psec_dll=FakePsecDll(),
+            psec_handle=303,
+            stdout=io.BytesIO(),
+            pid=404,
+            args=("python.exe", "--version"),
+            token_diagnostics=evidence,
+        )
+        self.assertIs(process.token_diagnostics, evidence)
+        process.close()
+
     def test_process_termination_uses_job_object(self):
         kernel = FakeKernel32(active_processes=1)
         process = WindowsPsecProcess(
