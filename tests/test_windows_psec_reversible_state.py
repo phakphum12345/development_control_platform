@@ -10,6 +10,7 @@ from tools.local_runner_agent.windows_psec_reversible_state import (
     ReversibleStateError,
     TargetObjectIdentity,
     capture_original_snapshot,
+    capture_original_snapshot_from_handle,
     verify_restoration_readback,
 )
 
@@ -28,6 +29,26 @@ S0 = DescriptorSnapshot(
 )
 
 
+
+class FakeRetainedHandleReader:
+    def __init__(self, identities, descriptor=S0):
+        self.identities = list(identities)
+        self.descriptor = descriptor
+        self.query_calls = 0
+        self.read_calls = 0
+        self.handles = []
+
+    def query_identity(self, handle):
+        self.query_calls += 1
+        self.handles.append(handle)
+        return self.identities.pop(0)
+
+    def read_dacl(self, handle):
+        self.read_calls += 1
+        self.handles.append(handle)
+        return self.descriptor
+
+
 class ReversibleStatePreservationTests(unittest.TestCase):
     def setUp(self):
         self.original = capture_original_snapshot(TRANSACTION_ID, IDENTITY, S0)
@@ -41,6 +62,46 @@ class ReversibleStatePreservationTests(unittest.TestCase):
         }
         arguments.update(overrides)
         return verify_restoration_readback(self.original, **arguments)
+
+
+    def test_capture_from_retained_handle_checks_identity_before_and_after_read(self):
+        reader = FakeRetainedHandleReader([IDENTITY, IDENTITY])
+        original = capture_original_snapshot_from_handle(
+            reader, 42, TRANSACTION_ID
+        )
+        self.assertTrue(original.verify_integrity())
+        self.assertEqual(original.target_identity, IDENTITY)
+        self.assertEqual(reader.query_calls, 2)
+        self.assertEqual(reader.read_calls, 1)
+        self.assertEqual(reader.handles, [42, 42, 42])
+
+    def test_capture_from_retained_handle_rejects_identity_drift(self):
+        changed = TargetObjectIdentity(IDENTITY.volume_serial, "0" * 32)
+        reader = FakeRetainedHandleReader([IDENTITY, changed])
+        with self.assertRaisesRegex(ReversibleStateError, "identity changed"):
+            capture_original_snapshot_from_handle(reader, 42, TRANSACTION_ID)
+        self.assertEqual(reader.query_calls, 2)
+        self.assertEqual(reader.read_calls, 1)
+
+    def test_capture_from_retained_handle_rejects_invalid_handle_before_reader_access(self):
+        reader = FakeRetainedHandleReader([IDENTITY, IDENTITY])
+        for handle in (0, -1, True, "42"):
+            with self.subTest(handle=handle):
+                with self.assertRaises(ReversibleStateError):
+                    capture_original_snapshot_from_handle(reader, handle, TRANSACTION_ID)
+        self.assertEqual(reader.query_calls, 0)
+        self.assertEqual(reader.read_calls, 0)
+
+    def test_capture_from_retained_handle_wraps_reader_errors(self):
+        class BrokenReader:
+            def query_identity(self, handle):
+                return IDENTITY
+
+            def read_dacl(self, handle):
+                raise OSError("injected read failure")
+
+        with self.assertRaisesRegex(ReversibleStateError, "injected read failure"):
+            capture_original_snapshot_from_handle(BrokenReader(), 42, TRANSACTION_ID)
 
     def test_capture_binds_s0_to_transaction_and_target_with_digest(self):
         self.assertIsInstance(self.original, OriginalDescriptorSnapshot)
