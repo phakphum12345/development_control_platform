@@ -602,4 +602,9 @@ class TerminalScriptExecutor:
             reader.join(timeout=1)
             raise
         finally:
+            try:
+                if process.stdout is not None and not process.stdout.closed:
+                    process.stdout.close()
+            except OSError:
+                pass
             shutil.rmtree(job_home, ignore_errors=True)
