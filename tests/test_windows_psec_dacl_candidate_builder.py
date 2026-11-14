@@ -7,8 +7,6 @@ from tools.local_runner_agent.windows_psec_dacl_candidate_builder import (
     DaclCandidateBuildError,
     FILE_TRAVERSE,
     MODIFY,
-    OBJECT_INHERIT_ACE,
-    CONTAINER_INHERIT_ACE,
     READ_EXECUTE,
     build_dacl_candidate,
 )
@@ -41,20 +39,31 @@ def _parsed(raw: bytes):
 
 
 class DaclCandidateBuilderTests(unittest.TestCase):
-    def test_workspace_directory_adds_read_execute_with_inheritance(self):
+    def test_workspace_directory_adds_explicit_read_execute_without_inheritance(self):
         existing = _ace(0, _sid(5, 18), 0x00120089)
         source = _acl(existing, unused=b"\x00" * 8)
         result = build_dacl_candidate(source, PACKAGE_SID, "workspace", is_directory=True, dacl_control_flags=0x1000)
         parsed = _parsed(result.raw_acl)
         self.assertTrue(result.inserted)
         self.assertEqual(result.access_mask, READ_EXECUTE)
-        self.assertEqual(result.inheritance_flags, OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE)
+        self.assertEqual(result.inheritance_flags, 0)
         self.assertEqual(result.dacl_control_flags, 0x1000)
         self.assertEqual(parsed.aces[0].raw, existing)
         self.assertEqual(parsed.aces[1].sid, PACKAGE_SID)
         self.assertEqual(parsed.aces[1].access_mask, READ_EXECUTE)
-        self.assertEqual(parsed.aces[1].ace_flags, OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE)
+        self.assertEqual(parsed.aces[1].ace_flags, 0)
         self.assertEqual(parsed.unused_bytes, b"\x00" * 8)
+
+    def test_workspace_child_objects_require_separate_explicit_grants(self):
+        inherited = _ace(0, _sid(15, 2, 123, 456, 789), READ_EXECUTE, flags=0x10)
+        with self.assertRaises(DaclCandidateBuildError):
+            build_dacl_candidate(_acl(inherited), PACKAGE_SID, "workspace", is_directory=False)
+
+    def test_scratch_directory_adds_explicit_modify_without_inheritance(self):
+        result = build_dacl_candidate(_acl(), PACKAGE_SID, "scratch", is_directory=True)
+        ace = _parsed(result.raw_acl).aces[0]
+        self.assertEqual(ace.access_mask, MODIFY)
+        self.assertEqual(ace.ace_flags, 0)
 
     def test_scratch_file_adds_modify_without_inheritance(self):
         result = build_dacl_candidate(_acl(), PACKAGE_SID, "scratch", is_directory=False)
