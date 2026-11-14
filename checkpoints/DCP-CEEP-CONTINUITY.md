@@ -191,3 +191,20 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - PR #119 remains OPEN / DRAFT / NOT MERGED; PR #118 remains OPEN / DRAFT / NOT MERGED; PR #117 and #116 remain OPEN / DRAFT / NOT MERGED. These are stacked dependencies; do not merge a child before its base.
 - WP-18D is PARTIAL pending the target Linux host run. WP-18B Windows native process isolation and LPAC remain BLOCKED pending implementation and host acceptance. Terminal templates remain disabled.
 - This checkpoint follows code/test head `a497117adfcdb68f9e6a52b385f28fbec21ec621`; re-check exact-head CI on the resulting checkpoint commit before treating it as current.
+
+
+## 2026-11-14 — WP-18B.1-K disposable DACL defaulted-state experiment
+
+- Protocol: DCP-CEEP v1.0; protocol file was read before implementation.
+- PR #130 remains OPEN / DRAFT / NOT MERGED at head `a2e336eb034fdb2afc4340fe8228e87164afca9d`.
+- Separate stacked experiment PR: #131, OPEN / DRAFT / NOT MERGED; base is PR #130 head branch `work/wp18b1j-preserve-dacl-defaulted-state`.
+- Experiment branch: `work/wp18b1k-dacl-native-api-experiment-stack`; current implementation head at checkpoint creation: `638be7b55bc8d08247faca247a60b47d40045a5d`.
+- Added `tools/local_runner_agent/windows_psec_dacl_experiment.py`: Windows-only ctypes harness; unique temp directory, NTFS volume check, CREATE_NEW disposable file, explicit empty DACL with caller-selected DACL_DEFAULTED TRUE/FALSE, retained-handle SetSecurityInfo, same-handle read-back, unconditional rollback attempt after write/read-back errors, and handle identity rechecks.
+- Added `tests/test_windows_psec_dacl_experiment.py`: off-Windows fail-closed contract test; Windows TRUE/FALSE disposable NTFS cases; ambiguous post-write error injection that asserts rollback and cleanup.
+- Updated `.github/workflows/cross-platform-recovery.yml` to invoke the test module on Ubuntu and Windows; non-Windows native cases are expected to report SKIPPED, not PASS.
+- Updated `docs/DCP-WINDOWS-PSEC-DACL-DEFAULTED-NATIVE-API-EXPERIMENT.md` and `docs/INDEX.md`.
+- No code was executed in this authoring environment. No native experiment result or test pass is claimed.
+- Exact-head CI for PR #131: UNKNOWN at checkpoint; workflow-run query returned no runs and combined status returned no statuses for the then-current head. Recheck after branch updates.
+- Potential risk to resolve during CI/review: Windows behavior for opening a newly created file with an explicit empty DACL and owner READ_CONTROL/WRITE_DAC rights; cleanup uses the exact random file path inside the harness-created temporary root after closing the retained handle.
+- User-host Windows acceptance, TRUE-state round-trip semantics, Native Writer, Terminal and all seven built-in templates remain BLOCKED.
+- No merge authorization exists. Next action: inspect current PR #131 exact head and CI; fix all failures, then run the same test on the designated Windows host and retain complete logs.
