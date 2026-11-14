@@ -222,3 +222,24 @@ The FALSE round-trip remains a genuine acceptance failure: rollback restores the
 The first ambiguous-write output is **invalid as evidence that rollback was exercised**. Its injected callback had the old two-positional-argument signature, while the production `_write_dacl` now requires keyword-only `security_info_flags`. The callback therefore raised `unexpected keyword argument 'security_info_flags'` before reaching the native call; its observed call count was zero. The test callback is corrected to accept and forward the keyword-only argument, and inject its exception only after the first native `SetSecurityInfo` call returns. Re-run this case on Windows before claiming rollback-injection acceptance.
 
 **Current disposition:** F1/F2 observations are useful diagnostics; FALSE exact round-trip FAIL; TRUE NOT EXERCISED; ambiguous-write rollback NOT YET VERIFIED pending rerun after callback correction. Native Writer, Terminal, and all seven built-in templates remain BLOCKED.
+
+
+## 16. Creation-only and repeated-write probes — 2026-11-15
+
+Microsoft's SECURITY_DESCRIPTOR_CONTROL documentation makes an important distinction: SE_DACL_DEFAULTED is used to compute the final DACL and is **not stored physically in the security descriptor of a securable object**. SetSecurityInfo operates on the object descriptor and sets or clears component control bits as appropriate; it does not expose a parameter that persists the caller's in-memory bDaclDefaulted marker. Therefore a file-handle read-back cannot be treated as a round-trip store for that transient descriptor-construction flag.
+
+References:
+- https://learn.microsoft.com/en-us/windows/win32/secauthz/security-descriptor-control
+- https://learn.microsoft.com/en-us/windows/win32/secauthz/security-descriptor-operations
+- https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-setsecurityinfo
+
+The experiment now adds two isolated observations, each using its own CREATE_NEW disposable NTFS file and retained handle:
+
+1. **Creation-only baseline:** write_repetitions=0 captures the descriptor immediately after creation and performs no SetSecurityInfo call. This distinguishes creation-time behavior from changes caused by a later write.
+2. **Repeated native writes:** write_repetitions=3 calls SetSecurityInfo three times on the same retained handle, reading the descriptor control word after every call. This tests whether the 0x0400 transition occurs only on the first call or is repeated. It remains an observation, not a writer acceptance test.
+
+The API sequence is bounded to 0–8 writes. A zero-write probe cannot request rollback. Every native call uses the existing allow-listed DACL_SECURITY_INFORMATION mask or the existing combined protected-DACL mask. No new security-information flags, target paths, or object types are accepted.
+
+Evidence adds native_write_calls and control_flags_after_each_write. The existing exact round-trip assertion is deliberately unchanged: the FALSE case still reports FAIL if the complete control word cannot be restored. The new probes do not convert that result to PASS and do not authorize Native Writer.
+
+**Interpretation boundary:** a creation-only FALSE result is a baseline, not proof that TRUE can be stored. A TRUE setup that is not retained remains NOT EXERCISED. Repeated writes can characterize control-bit stability, but cannot prove that the original descriptor control word is writable or reversible through SetSecurityInfo.
