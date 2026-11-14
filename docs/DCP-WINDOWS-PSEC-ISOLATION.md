@@ -21,7 +21,7 @@ The launcher must fail closed unless all of the following are applied and verifi
 - PSEC v1.1 support, including `fs_deny`, `fs_enumerate`, and network-ingress policy support.
 - No AppContainer network capabilities; explicit egress and ingress default-deny policy, including host-loopback deny.
 - Project Workspace read-only path policy and explicit enumeration permission.
-- Per-job scratch read/write path policy only.
+- Per-job scratch read/write path policy only; child `LOCALAPPDATA`, `USERPROFILE`, `HOME`, `TEMP`, and `TMP` are scoped to this scratch root so Windows profile-backed process initialization does not need the host user's profile tree.
 - Explicit deny paths for host-sensitive locations; a host canary test must prove that files outside the allowed workspace/runtime/scratch set cannot be read.
 - Win32k system calls disabled for the non-UI Terminal workload.
 - A Windows Job Object configured with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` and an active-process ceiling. Create the process suspended, assign it to the Job Object, then resume it. No breakaway flags.
