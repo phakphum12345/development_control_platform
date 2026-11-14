@@ -113,6 +113,64 @@ def _canonical_directory(value: str | os.PathLike, label: str) -> Path:
     return resolved
 
 
+def _reject_alternate_data_streams(path: Path) -> None:
+    """Reject NTFS named streams; fail closed if Windows cannot enumerate them."""
+    if os.name != "nt":
+        return
+    import ctypes
+    from ctypes import wintypes
+
+    class _StreamData(ctypes.Structure):
+        _fields_ = [
+            ("cStreamName", wintypes.WCHAR * 296),
+            ("StreamSize", ctypes.c_longlong),
+        ]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    find_first = getattr(kernel32, "FindFirstStreamW", None)
+    find_next = getattr(kernel32, "FindNextStreamW", None)
+    find_close = getattr(kernel32, "FindClose", None)
+    if find_first is None or find_next is None or find_close is None:
+        raise ProjectionError("NTFS alternate-stream enumeration is unavailable")
+
+    handle_type = wintypes.HANDLE
+    find_first.argtypes = [wintypes.LPCWSTR, ctypes.c_int,
+                           ctypes.POINTER(_StreamData), wintypes.DWORD]
+    find_first.restype = handle_type
+    find_next.argtypes = [handle_type, ctypes.POINTER(_StreamData)]
+    find_next.restype = wintypes.BOOL
+    find_close.argtypes = [handle_type]
+    find_close.restype = wintypes.BOOL
+
+    data = _StreamData()
+    handle = find_first(str(path), 0, ctypes.byref(data), 0)
+    invalid_handle = ctypes.c_void_p(-1).value
+    if handle == invalid_handle:
+        error = ctypes.get_last_error()
+        raise ProjectionError(
+            f"NTFS alternate streams cannot be inspected (Windows error {error})"
+        )
+
+    try:
+        while True:
+            stream_name = data.cStreamName
+            # The unnamed/default file stream is expected. All named data
+            # streams are rejected because the projection copies only bytes
+            # from the unnamed stream.
+            if stream_name != "::$DATA":
+                raise ProjectionError("workspace contains an alternate data stream")
+            if not find_next(handle, ctypes.byref(data)):
+                error = ctypes.get_last_error()
+                if error == 38:  # ERROR_HANDLE_EOF
+                    break
+                raise ProjectionError(
+                    f"NTFS alternate streams cannot be enumerated (Windows error {error})"
+                )
+    finally:
+        if not find_close(handle):
+            raise ProjectionError("NTFS alternate-stream enumeration handle close failed")
+
+
 def _validate_component(name: str) -> None:
     if (not name or name in {".", ".."} or name.endswith((".", " "))
             or any(ord(char) < 32 for char in name)
@@ -145,6 +203,7 @@ def _walk(source: Path, limits: ProjectionLimits, started: float
         except OSError as exc:
             raise ProjectionError("workspace directory cannot be enumerated") from exc
         _ensure_unique_names([entry.name for entry in entries])
+        _reject_alternate_data_streams(directory)
         for entry in entries:
             if time.monotonic() - started > limits.max_copy_seconds:
                 raise ProjectionError("workspace projection exceeded its time limit")
@@ -172,6 +231,7 @@ def _walk(source: Path, limits: ProjectionLimits, started: float
                 stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400
             ):
                 raise ProjectionError("workspace contains a symlink or reparse point")
+            _reject_alternate_data_streams(path)
             if stat.S_ISDIR(info.st_mode):
                 yield path, relative, info
                 stack.append((path, relative))
