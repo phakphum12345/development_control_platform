@@ -147,6 +147,11 @@ def _reject_alternate_data_streams(path: Path) -> None:
     invalid_handle = ctypes.c_void_p(-1).value
     if handle == invalid_handle:
         error = ctypes.get_last_error()
+        # FindFirstStreamW reports ERROR_HANDLE_EOF when the path has no
+        # enumerable streams (notably ordinary directories). This is a
+        # successful empty result, not an inspection failure.
+        if error == 38:  # ERROR_HANDLE_EOF
+            return
         raise ProjectionError(
             f"NTFS alternate streams cannot be inspected (Windows error {error})"
         )
