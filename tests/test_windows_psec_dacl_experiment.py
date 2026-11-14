@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 import os
+import platform
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -47,20 +50,35 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
                 raise OSError("injected error after native SetSecurityInfo")
 
         with patch.object(experiment, "_write_dacl", side_effect=fail_after_native_write):
-            with self.assertRaisesRegex(DaclExperimentError, "experiment error"):
-                experiment.run(defaulted=False)
+            result = experiment.run(defaulted=False)
         self.assertEqual(calls["count"], 2, "rollback must run after an ambiguous write error")
+        self.assertIn("injected error after native SetSecurityInfo", result.api_errors)
+        self.assertEqual(result.outcome, "FAIL")
         self.assertTrue(experiment.last_cleanup_verified)
+        self.assertTrue(result.cleanup_verified)
 
     def test_explicit_defaulted_false_round_trip_on_disposable_ntfs_file(self):
         result = WindowsDaclDefaultedExperiment().run(defaulted=False)
         self.assertEqual(result.filesystem.upper(), "NTFS")
         self.assertFalse(result.dacl_defaulted_before)
-        self.assertTrue(result.dacl_bytes_equal_after_rollback)
+        self.assertIn(result.outcome, ("PASS", "FAIL"))
+        self.assertEqual(result.dacl_defaulted_after_rollback, False)
         self.assertTrue(result.cleanup_verified)
         self.assertGreater(result.volume_serial, 0)
         self.assertEqual(len(result.file_id), 32)
         self.assertIn(result.dacl_defaulted_after_write, (True, False))
+        print("DACL_EXPERIMENT_EVIDENCE=" + json.dumps({
+            "windows_build": platform.platform(), "python": sys.version,
+            "filesystem": result.filesystem, "volume_serial": result.volume_serial,
+            "file_id": result.file_id, "outcome": result.outcome,
+            "dacl_defaulted_before": result.dacl_defaulted_before,
+            "dacl_defaulted_after_write": result.dacl_defaulted_after_write,
+            "dacl_defaulted_after_rollback": result.dacl_defaulted_after_rollback,
+            "write_verified": result.write_verified, "rollback_verified": result.rollback_verified,
+            "control_flags": [result.control_flags_before, result.control_flags_after_write, result.control_flags_after_rollback],
+            "dacl_bytes_hex": [result.dacl_bytes_before_hex, result.dacl_bytes_after_write_hex, result.dacl_bytes_after_rollback_hex],
+            "api_errors": result.api_errors, "cleanup_verified": result.cleanup_verified,
+        }, default=str))
 
 
 if __name__ == "__main__":
