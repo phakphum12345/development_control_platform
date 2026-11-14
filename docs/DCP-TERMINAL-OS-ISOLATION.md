@@ -127,3 +127,12 @@ on that actual host and exact helper build:
 - Runner startup now performs expired-preview cleanup and asks the Gateway to attest candidate Terminal workspaces. The reconciler requires a valid ownership marker, matching job/worker, terminal target, an elapsed 120-second grace period, and explicit `cleanup_safe=true`.
 - Active, queued, retrying, UNKNOWN, LEASE_EXPIRED, recent, mismatched, unowned, malformed, unavailable, and preview-retained workspaces are preserved. A missing Gateway response never authorizes deletion.
 - This is conservative recovery for known terminal Terminal jobs, not a universal orphan cleaner. UNKNOWN workspaces intentionally remain for investigation; Windows Job Object/AppContainer and macOS process cleanup remain unimplemented. WP-18C therefore remains PARTIAL until host-level acceptance and broader crash recovery are proven.
+
+
+## WP-18D — adversarial Linux sandbox acceptance
+
+- Expanded real bubblewrap runtime coverage to deny IPv4, IPv6, Unix-domain sockets, socketpair, and `io_uring_setup`; the workload must report zero effective capabilities and must not see host `/etc/passwd`.
+- Added a workspace symlink escape test proving an absolute host-file symlink cannot expose a host sentinel through the sandbox's separate `/tmp` mount.
+- Added `tools/local_runner_agent/linux_host_acceptance.py`, which runs five non-skipped real bubblewrap tests and emits JSON evidence containing host kernel, architecture, UID/GID, Python version and bubblewrap version.
+- Run instructions and strict PASS/BLOCKED/FAIL criteria are in [Linux Host Acceptance](DCP-LINUX-HOST-ACCEPTANCE.md).
+- GitHub-hosted Ubuntu CI is not a substitute for the target host. Until the harness is run successfully on the actual Runner host, target-host acceptance remains UNKNOWN and production Terminal templates remain disabled.
