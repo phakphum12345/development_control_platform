@@ -43,6 +43,18 @@ powershell -ExecutionPolicy Bypass -File .\scripts\Install-DCP-Windows-PSEC.ps1
 
 The optional installer installs the pinned FlatBuffers serializer dependency and runs the probe. Exit code 2 / `BLOCKED` means the required API surface or policy creation is unavailable. A READY result only authorizes the next acceptance stage; it does not authorize Terminal execution.
 
+## Target-host adversarial acceptance
+
+After the policy-creation probe reports READY, run the separate host acceptance harness on the target Windows machine:
+
+```powershell
+py -3 -m tools.local_runner_agent.windows_psec_host_acceptance
+```
+
+The harness launches only fixed test payloads through `WindowsPsecLauncher`. It checks Project Workspace read access and write denial, per-job scratch write access, denial of a temporary canary file in the host user profile, loopback network denial (after verifying host loopback works outside the sandbox), and Job Object tracking/termination of a spawned descendant. It removes the canary and temporary directories in cleanup.
+
+A PASS from this harness is evidence for that exact host/build and this exact branch revision only. It does not automatically change `terminal_isolation` to VERIFIED or enable any Terminal template; review the JSON output and the exact commit SHA first.
+
 ## Integrated launcher and execution gate
 
 - `tools/local_runner_agent/windows_psec_spec.py` builds the versioned PSEC v1.1 FlatBuffer with explicit filesystem and network policy.
