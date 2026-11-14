@@ -43,6 +43,16 @@ def _emit_evidence(label, result):
         },
         "api_errors": result.api_errors,
         "cleanup_verified": result.cleanup_verified,
+        "harness_handle": {
+            "opened": result.owned_handle_opened,
+            "closed": result.owned_handle_closed,
+            "close_succeeded": result.close_handle_succeeded,
+        },
+        "inherited_ace_count": {
+            "after_create": result.inherited_ace_count_before,
+            "after_write": result.inherited_ace_count_after_write,
+            "after_rollback": result.inherited_ace_count_after_rollback,
+        },
         # Process-wide count is diagnostic only; it is not a harness-owned
         # resource inventory and must never be used as a leak assertion.
         "process_handle_count": {
@@ -73,6 +83,9 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         self.assertTrue(result.dacl_defaulted_before)
         self.assertEqual(result.outcome, "PASS", "TRUE DACL defaulted state did not round-trip exactly")
         self.assertTrue(result.cleanup_verified)
+        self.assertTrue(result.owned_handle_opened)
+        self.assertTrue(result.owned_handle_closed)
+        self.assertIs(result.close_handle_succeeded, True)
         self.assertGreater(result.volume_serial, 0)
         self.assertEqual(len(result.file_id), 32)
         self.assertIsInstance(result.dacl_defaulted_after_write, bool)
@@ -96,6 +109,9 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         self.assertEqual(result.outcome, "FAIL")
         self.assertTrue(experiment.last_cleanup_verified)
         self.assertTrue(result.cleanup_verified)
+        self.assertTrue(result.owned_handle_opened)
+        self.assertTrue(result.owned_handle_closed)
+        self.assertIs(result.close_handle_succeeded, True)
 
     def test_explicit_defaulted_false_round_trip_on_disposable_ntfs_file(self):
         result = WindowsDaclDefaultedExperiment().run(defaulted=False)
@@ -105,6 +121,9 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         self.assertEqual(result.outcome, "PASS", "FALSE DACL state failed exact round-trip")
         self.assertEqual(result.dacl_defaulted_after_rollback, False)
         self.assertTrue(result.cleanup_verified)
+        self.assertTrue(result.owned_handle_opened)
+        self.assertTrue(result.owned_handle_closed)
+        self.assertIs(result.close_handle_succeeded, True)
         self.assertGreater(result.volume_serial, 0)
         self.assertEqual(len(result.file_id), 32)
         self.assertIn(result.dacl_defaulted_after_write, (True, False))
