@@ -84,6 +84,9 @@ jobs:
       - name: Run Linux bubblewrap launcher policy tests
         run: python -m unittest tests.test_linux_sandbox -v
 
+      - name: Run Terminal executor and bubblewrap integration tests
+        run: python -m unittest tests.test_terminal_executor -v
+
       - name: Report host identity
         shell: bash
         run: |
