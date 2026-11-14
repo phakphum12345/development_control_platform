@@ -13,7 +13,6 @@ import re
 import stat
 from ctypes import wintypes
 from pathlib import Path
-from typing import Iterable
 
 
 READ_EXECUTE = 0x001200A9
@@ -285,6 +284,8 @@ class WindowsPsecAclManager:
         root_aces = _parse_allow_aces(api.read_sddl(job_root), package_sid)
         if ("", FILE_TRAVERSE) not in root_aces:
             raise WindowsPsecAclError("Package-SID traversal ACE verification failed on job root")
+        if any(mask & ~FILE_TRAVERSE for _, mask in root_aces):
+            raise WindowsPsecAclError("Package SID has an overbroad allow ACE on job root")
 
         targets = [
             *((path, READ_EXECUTE) for path, _ in _tree_targets(work)),
