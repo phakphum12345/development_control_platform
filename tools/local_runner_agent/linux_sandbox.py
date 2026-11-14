@@ -50,11 +50,25 @@ def _seccomp_program(machine: str | None = None) -> bytes:
         raise LinuxSandboxError("unsupported CPU architecture for the network-deny seccomp policy")
     # struct sock_filter: u16 code, u8 jt, u8 jf, u32 k (native endian).
     import struct
-    instructions = [struct.pack("=HBBI", 0x20, 0, 0, 0)]  # load seccomp_data.nr
+    audit_arch = {"x86_64": 0xC000003E, "amd64": 0xC000003E,
+                  "aarch64": 0xC00000B7, "arm64": 0xC00000B7}[arch]
+    instructions = [
+        struct.pack("=HBBI", 0x20, 0, 0, 4),  # load seccomp_data.arch
+        struct.pack("=HBBI", 0x15, 1, 0, audit_arch),  # reject foreign syscall ABI
+        struct.pack("=HBBI", 0x06, 0, 0, 0x80000000),  # RET_KILL_PROCESS
+    ]
+    if arch in {"x86_64", "amd64"}:
+        instructions.extend([
+            struct.pack("=HBBI", 0x20, 0, 0, 0),  # load seccomp_data.nr
+            struct.pack("=HBBI", 0x45, 0, 1, 0x40000000),  # reject x32 ABI
+            struct.pack("=HBBI", 0x06, 0, 0, 0x80000000),
+        ])
+    else:
+        instructions.append(struct.pack("=HBBI", 0x20, 0, 0, 0))
     for number in numbers:
         instructions.append(struct.pack("=HBBI", 0x15, 0, 1, number))  # JEQ -> deny
         instructions.append(struct.pack("=HBBI", 0x06, 0, 0, 0x00050001))  # RET_ERRNO(EPERM)
-    instructions.append(struct.pack("=HBBI", 0x06, 0, 0, 0x7FFF0000))  # RET_ALLOW
+    instructions.extend([\n        struct.pack("=HBBI", 0x15, 0, 1, 425),  # deny io_uring_setup (network bypass)\n        struct.pack("=HBBI", 0x06, 0, 0, 0x00050001),\n        struct.pack("=HBBI", 0x06, 0, 0, 0x7FFF0000),  # RET_ALLOW\n    ])
     return b"".join(instructions)
 
 
@@ -122,7 +136,7 @@ class LinuxBubblewrapLauncher:
                 self.bwrap,
                 "--die-with-parent",
                 "--new-session",
-                "--unshare-user", "--uid", "65534", "--gid", "65534",
+                "--unshare-user", "--uid", "0", "--gid", "0", "--cap-drop", "ALL", "--disable-userns", "--assert-userns-disabled",
                 "--unshare-pid", "--unshare-ipc", "--unshare-uts", "--unshare-net",
                 "--ro-bind", "/usr", "/usr",
             ]
