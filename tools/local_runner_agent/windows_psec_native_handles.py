@@ -151,7 +151,7 @@ class WindowsNativeHandleApi:
         self.ntdll.NtCreateFile.argtypes = [
             ctypes.POINTER(wintypes.HANDLE), wintypes.ULONG,
             ctypes.POINTER(OBJECT_ATTRIBUTES), ctypes.POINTER(IO_STATUS_BLOCK),
-            ctypes.LPVOID, wintypes.ULONG, wintypes.ULONG, wintypes.ULONG,
+            wintypes.LPVOID, wintypes.ULONG, wintypes.ULONG, wintypes.ULONG,
             wintypes.ULONG, wintypes.LPVOID, wintypes.ULONG,
         ]
         self.ntdll.NtCreateFile.restype = wintypes.LONG
