@@ -291,9 +291,13 @@ class WindowsPsecAclManager:
         # or acceptance directory).
         shared_parent_before = api.read_sddl(job_root.parent)
         api.add_allow_ace(job_root, package_sid, FILE_TRAVERSE, 0)
-        root_aces = _parse_allow_aces(api.read_sddl(job_root), package_sid)
+        root_sddl = api.read_sddl(job_root)
+        root_aces = _parse_allow_aces(root_sddl, package_sid)
         if ("", FILE_TRAVERSE) not in root_aces:
-            raise WindowsPsecAclError("Package-SID traversal ACE verification failed on job root")
+            raise WindowsPsecAclError(
+                "Package-SID traversal ACE verification failed on job root; "
+                f"parsed_aces={root_aces!r}; root_sddl={root_sddl!r}"
+            )
         if any(mask & ~FILE_TRAVERSE for _, mask in root_aces):
             raise WindowsPsecAclError("Package SID has an overbroad allow ACE on job root")
 
