@@ -301,6 +301,23 @@ class GatewayClient:
             raise RunnerGatewayError("Gateway returned an invalid artifact response")
         return result["artifact"]
 
+    def workspace_cleanup_status(self, job_id: str) -> dict:
+        """Read the authenticated Gateway's minimal cleanup attestation for this Runner."""
+        self._validate_job_id(job_id)
+        result = self._request(
+            "GET", f"/v1/runner/{job_id}/workspace-cleanup-status"
+        )
+        if (
+            result.get("job_id") != job_id
+            or result.get("worker_id") != self.config.worker_id
+            or result.get("target") != "terminal_script"
+            or not isinstance(result.get("state"), str)
+            or not isinstance(result.get("updated_at"), str)
+            or not isinstance(result.get("cleanup_safe"), bool)
+        ):
+            raise RunnerGatewayError("Gateway returned an invalid workspace cleanup status")
+        return result
+
     def finish(
         self, job_id: str, outcome: str, result: dict | None = None,
         error_code: str | None = None,

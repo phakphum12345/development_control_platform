@@ -340,6 +340,90 @@ class TerminalScriptExecutorTests(unittest.TestCase):
         self.assertTrue(Path(result.command[0]).resolve().is_relative_to(Path("/usr/bin").resolve()))
         self.assertEqual(sorted(item.name for item in self.workspace.iterdir()), ["README.md"])
 
+    @unittest.skipUnless(
+        sys.platform.startswith("linux")
+        and shutil.which("bwrap", path="/usr/bin")
+        and (shutil.which("python", path="/usr/bin") or shutil.which("python3", path="/usr/bin"))
+        and Path("/proc").is_dir(),
+        "Linux bubblewrap, /proc, or /usr/bin Python is unavailable",
+    )
+    def test_real_bubblewrap_timeout_kills_forked_child_after_new_session(self):
+        template = dict(preview_template("python_version", {}), execution_enabled=True)
+        template.update({
+            "executable": "python",
+            "argv": [
+                "-c",
+                "import os,time; child=os.fork(); "
+                "os.setsid() if child == 0 else None; "
+                "print('forked', flush=True); time.sleep(10)",
+            ],
+            "timeout_seconds": 1,
+            "max_output_bytes": 65536,
+        })
+        executor = TerminalScriptExecutor(enabled=True, timeout_ceiling_seconds=1)
+        observed_pids = []
+        original_terminate = TerminalScriptExecutor._terminate_tree
+
+        def descendants(root_pid):
+            found = []
+            pending = [root_pid]
+            while pending:
+                current = pending.pop()
+                children_file = Path(f"/proc/{current}/task/{current}/children")
+                try:
+                    children = [
+                        int(value) for value in children_file.read_text(encoding="ascii").split()
+                    ]
+                except (OSError, ValueError):
+                    children = []
+                found.extend(children)
+                pending.extend(children)
+            return found
+
+        def process_running(pid):
+            try:
+                raw = Path(f"/proc/{pid}/stat").read_text(encoding="ascii")
+                state = raw[raw.rfind(")") + 2:].split()[0]
+                return state not in {"Z", "X"}
+            except FileNotFoundError:
+                return False
+            except (OSError, IndexError):
+                return True
+
+        def capture_and_terminate(process):
+            observed_pids.extend(descendants(process.pid))
+            original_terminate(process)
+
+        executor._terminate_tree = capture_and_terminate
+        with patch(
+            "tools.local_runner_agent.terminal_executor.preview_template",
+            return_value=template,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.template_version_digest",
+            return_value="d" * 64,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.LinuxBubblewrapLauncher",
+            LinuxBubblewrapLauncher,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.shutil.which",
+            side_effect=self.original_which,
+        ):
+            result = executor.run(
+                str(uuid.uuid4()), "runner-local", self.workspace,
+                "python_version", {}, "d" * 64,
+            )
+
+        self.assertEqual(result.outcome, "failed")
+        self.assertEqual(result.error_code, "TERMINAL_TIMEOUT")
+        self.assertGreaterEqual(len(observed_pids), 2, "expected the workload and forked child in the host process tree")
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and any(process_running(pid) for pid in observed_pids):
+            time.sleep(0.02)
+        self.assertFalse(
+            any(process_running(pid) for pid in observed_pids),
+            "a descendant survived bubblewrap parent termination",
+        )
+
     def test_sandbox_construction_failure_never_falls_back_to_host_process(self):
         template = dict(preview_template("python_version", {}), execution_enabled=True)
         executor = TerminalScriptExecutor(enabled=True)

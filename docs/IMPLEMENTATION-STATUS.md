@@ -107,7 +107,7 @@ These are historical exact-SHA CI results for the baseline, not current feature-
 - WP-00 source-to-test/API/Dashboard/requirements mapping: IN_PROGRESS.
 - WP-18A Linux bubblewrap builder: implementation slice on PR #116; not integrated into TerminalScriptExecutor; host acceptance not complete.
 - WP-18B Windows AppContainer/LPAC: BLOCKED; native helper absent.
-- WP-18C process-tree and scratch cleanup: code exists; independent host evidence absent.
+- WP-18C process-tree and scratch cleanup: PARTIAL. Linux bubblewrap uses parent-death/PID-namespace containment and has a detached-child timeout test on the GitHub-hosted Ubuntu runner. A runner-authenticated Gateway status endpoint permits delayed cleanup only for the same worker's terminal_script workspace when the Gateway explicitly attests cleanup_safe. UNKNOWN, LEASE_EXPIRED, active, recent, mismatched, unavailable and preview-retained workspaces are preserved. User-host and Windows process-tree acceptance remain UNKNOWN.
 - WP-18D adversarial acceptance: PENDING.
 - WP-18E CI/security/docs: PARTIAL.
 - WP-19 Windows host + Dashboard → Local Auth Proxy → Gateway: UNKNOWN.

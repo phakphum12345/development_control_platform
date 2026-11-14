@@ -116,3 +116,14 @@ on that actual host and exact helper build:
 
 
 - Added an opt-in actual bubblewrap runtime test to the Linux-only suite. The Ubuntu CI job installs bubblewrap and attempts to verify workspace read-only behavior, isolation of an unmounted host sentinel, writable per-job scratch, and socket denial through seccomp. This is acceptance on the ephemeral GitHub-hosted Ubuntu runner only; it does not replace acceptance on the user's Linux host.
+
+
+## WP-18C — process-tree containment and conservative workspace recovery
+
+- Linux Terminal launch continues to use bubblewrap's `--die-with-parent`, a private PID namespace and a separate session. The executor terminates the outer launcher process group; the sandbox parent-death boundary is responsible for terminating descendants that create a new session inside the PID namespace.
+- Added a Linux-only adversarial timeout test that forks a child, calls `setsid()` in the child to leave the process group, then verifies that no running descendants remain after the bubblewrap parent is terminated. This is CI-host evidence, not user-host acceptance.
+- Added an authenticated Runner-only `GET /v1/runner/{job_id}/workspace-cleanup-status` endpoint. It reveals only minimal status for a Terminal job whose current/last worker matches the calling Runner.
+- The Gateway attests `cleanup_safe` only when the job is terminal, has no active worker/lease, and is either succeeded/cancelled or failed specifically because workspace cleanup failed. Lease-expired failures and UNKNOWN outcomes are not cleanup-safe.
+- Runner startup now performs expired-preview cleanup and asks the Gateway to attest candidate Terminal workspaces. The reconciler requires a valid ownership marker, matching job/worker, terminal target, an elapsed 120-second grace period, and explicit `cleanup_safe=true`.
+- Active, queued, retrying, UNKNOWN, LEASE_EXPIRED, recent, mismatched, unowned, malformed, unavailable, and preview-retained workspaces are preserved. A missing Gateway response never authorizes deletion.
+- This is conservative recovery for known terminal Terminal jobs, not a universal orphan cleaner. UNKNOWN workspaces intentionally remain for investigation; Windows Job Object/AppContainer and macOS process cleanup remain unimplemented. WP-18C therefore remains PARTIAL until host-level acceptance and broader crash recovery are proven.
