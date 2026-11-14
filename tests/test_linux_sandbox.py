@@ -1,5 +1,6 @@
 import os
 import tempfile
+import sys
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -11,6 +12,7 @@ from tools.local_runner_agent.linux_sandbox import (
 )
 
 
+@unittest.skipUnless(sys.platform.startswith('linux'), 'Linux-only')
 class LinuxBubblewrapLauncherTests(unittest.TestCase):
     def test_seccomp_program_is_aligned_and_rejects_unknown_architecture(self):
         program = _seccomp_program("x86_64")
