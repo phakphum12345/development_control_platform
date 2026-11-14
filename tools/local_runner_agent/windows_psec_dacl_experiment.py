@@ -64,6 +64,7 @@ class WindowsDaclDefaultedExperiment:
         self._kernel32 = ctypes.WinDLL("kernel32.dll", use_last_error=True)
         self._advapi32 = ctypes.WinDLL("advapi32.dll", use_last_error=True)
         self._reader = reader or WindowsHandleSecurityReader()
+        self.last_cleanup_verified = False
         self._configure()
 
     def _configure(self):
@@ -262,6 +263,7 @@ class WindowsDaclDefaultedExperiment:
                         f"disposable root cleanup failed: {exc}"
                     )
             cleanup_ok = bool(root) and not os.path.exists(root)
+            self.last_cleanup_verified = cleanup_ok
             if close_error or delete_error or not cleanup_ok:
                 cleanup_error = close_error or delete_error or DaclExperimentError(
                     "disposable root remains after cleanup"
