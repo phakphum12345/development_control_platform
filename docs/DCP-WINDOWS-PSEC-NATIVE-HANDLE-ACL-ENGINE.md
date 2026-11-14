@@ -205,3 +205,9 @@ The primitive is not yet a complete ACL engine and must not be called by the
 launcher. The portable tests exercise name validation, identity data shape,
 and handle ownership behavior; they do not exercise the Windows kernel APIs.
 The branch CI and dedicated Windows host tests remain required evidence.
+
+- Before each relative open, re-query the retained parent handle and require its
+  volume/file identity to match the captured parent identity; reject a parent
+  that is not a directory or is itself a reparse point.
+- The portable tests now cover parent identity mismatch, non-directory parents,
+  and reparse-parent rejection. Native kernel behavior remains untested here.
