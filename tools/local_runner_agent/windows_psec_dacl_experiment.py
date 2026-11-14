@@ -19,6 +19,10 @@ from .windows_psec_security_descriptor_reader import WindowsHandleSecurityReader
 SE_FILE_OBJECT = 1
 DACL_SECURITY_INFORMATION = 0x00000004
 PROTECTED_DACL_SECURITY_INFORMATION = 0x80000000
+DACL_ONLY_SECURITY_INFO = DACL_SECURITY_INFORMATION
+DACL_AND_PROTECTED_SECURITY_INFO = (
+    DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION
+)
 CREATE_NEW = 1
 FILE_ATTRIBUTE_NORMAL = 0x00000080
 FILE_SHARE_READ = 1
@@ -68,6 +72,7 @@ class ExperimentResult:
     control_flags_before: int
     control_flags_after_write: int | None
     control_flags_after_rollback: int | None
+    security_info_flags: int = DACL_AND_PROTECTED_SECURITY_INFO
     owned_handle_opened: bool = False
     owned_handle_closed: bool = False
     close_handle_succeeded: bool | None = None
@@ -245,12 +250,12 @@ class WindowsDaclDefaultedExperiment:
         # but need not consume AclBytesFree.
         return inherited
 
-    def _write_dacl(self, handle, snapshot):
+    def _write_dacl(self, handle, snapshot, *, security_info_flags):
         if not snapshot.dacl_present or snapshot.dacl_is_null or not snapshot.dacl_bytes:
             raise DaclExperimentError("only an explicit non-NULL DACL can be tested")
         acl_buffer = ctypes.create_string_buffer(snapshot.dacl_bytes, len(snapshot.dacl_bytes))
         result = self._advapi32.SetSecurityInfo(
-            wintypes.HANDLE(handle), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+            wintypes.HANDLE(handle), SE_FILE_OBJECT, security_info_flags,
             None, None, ctypes.cast(acl_buffer, wintypes.LPVOID), None,
         )
         if result != 0:
@@ -263,7 +268,14 @@ class WindowsDaclDefaultedExperiment:
             raise self._last_error("GetProcessHandleCount")
         return int(count.value)
 
-    def run(self, *, defaulted=True, rollback=True):
+    def run(
+        self, *, defaulted=True, rollback=True,
+        security_info_flags=DACL_AND_PROTECTED_SECURITY_INFO,
+    ):
+        if security_info_flags not in (
+            DACL_ONLY_SECURITY_INFO, DACL_AND_PROTECTED_SECURITY_INFO
+        ):
+            raise DaclExperimentError("unsupported SetSecurityInfo flag combination")
         # Process-wide counts are best-effort diagnostics only. They must not
         # gate the experiment or stand in for harness-owned handle tracking.
         try:
@@ -311,7 +323,9 @@ class WindowsDaclDefaultedExperiment:
 
             write_error = None
             try:
-                self._write_dacl(handle, before)
+                self._write_dacl(
+                    handle, before, security_info_flags=security_info_flags
+                )
             except Exception as exc:
                 write_error = exc
             after = None
@@ -332,7 +346,9 @@ class WindowsDaclDefaultedExperiment:
             restored = None
             if rollback:
                 try:
-                    self._write_dacl(handle, before)
+                    self._write_dacl(
+                        handle, before, security_info_flags=security_info_flags
+                    )
                 except Exception as exc:
                     rollback_error = exc
                 try:
@@ -392,6 +408,7 @@ class WindowsDaclDefaultedExperiment:
                 control_flags_after_rollback=(
                     restored.dacl_control_flags if restored is not None else None
                 ),
+                security_info_flags=security_info_flags,
                 owned_handle_opened=owned_handle_opened,
                 inherited_ace_count_before=self._inherited_ace_count(before),
                 inherited_ace_count_after_write=(self._inherited_ace_count(after) if after is not None else None),
@@ -462,6 +479,7 @@ class WindowsDaclDefaultedExperiment:
             control_flags_before=result.control_flags_before,
             control_flags_after_write=result.control_flags_after_write,
             control_flags_after_rollback=result.control_flags_after_rollback,
+            security_info_flags=result.security_info_flags,
             owned_handle_opened=result.owned_handle_opened,
             owned_handle_closed=owned_handle_closed,
             close_handle_succeeded=close_handle_succeeded,
