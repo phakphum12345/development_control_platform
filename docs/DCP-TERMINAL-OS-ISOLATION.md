@@ -52,6 +52,19 @@ Do not use the deprecated sandbox-exec interface as a production substitute.
 - Executor unit tests use an explicitly test-only passthrough launcher to exercise bounded process/output/cancellation behavior. They do not assert or prove OS isolation.
 - terminal_isolation.py remains the gate contract; linux_sandbox.py and windows_psec_launcher.py construct candidate launch boundaries. Neither module promotes a host to VERIFIED.
 
+## WP-18B target Windows acceptance
+
+Run these commands from the repository root on the target Windows Runner host:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\Install-DCP-Windows-PSEC.ps1
+py -3 -m tools.local_runner_agent.windows_psec_host_acceptance
+```
+
+The first command installs the pinned optional FlatBuffers serializer and probes PSEC v1.1 API/features plus policy creation. The second launches fixed test payloads through the PSEC launcher and checks workspace read-only behavior, scratch-only writes, host-profile canary denial, loopback network denial (after a host-side loopback baseline), and Job Object descendant termination.
+
+Preserve the complete JSON output and the exact repository HEAD SHA. A successful run is host-specific evidence for that revision; it does not automatically promote the backend to VERIFIED or enable Terminal templates. If the probe or any acceptance check is BLOCKED/FAIL/UNKNOWN, keep Windows execution blocked.
+
 ## Mandatory acceptance matrix
 
 A platform backend may be promoted to VERIFIED only after all applicable tests pass
@@ -132,7 +145,7 @@ on that actual host and exact helper build:
 - The Gateway attests `cleanup_safe` only when the job is terminal, has no active worker/lease, and is either succeeded/cancelled or failed specifically because workspace cleanup failed. Lease-expired failures and UNKNOWN outcomes are not cleanup-safe.
 - Runner startup now performs expired-preview cleanup and asks the Gateway to attest candidate Terminal workspaces. The reconciler requires a valid ownership marker, matching job/worker, terminal target, an elapsed 120-second grace period, and explicit `cleanup_safe=true`.
 - Active, queued, retrying, UNKNOWN, LEASE_EXPIRED, recent, mismatched, unowned, malformed, unavailable, and preview-retained workspaces are preserved. A missing Gateway response never authorizes deletion.
-- This is conservative recovery for known terminal Terminal jobs, not a universal orphan cleaner. UNKNOWN workspaces intentionally remain for investigation; Windows Job Object/AppContainer and macOS process cleanup remain unimplemented. WP-18C therefore remains PARTIAL until host-level acceptance and broader crash recovery are proven.
+- This is conservative recovery for known terminal Terminal jobs, not a universal orphan cleaner. UNKNOWN workspaces intentionally remain for investigation. Windows PSEC Job Object containment is now integrated under WP-18B, but actual Windows descendant cleanup and crash acceptance remain UNKNOWN; macOS process cleanup remains blocked. WP-18C therefore remains PARTIAL until host-level acceptance and broader crash recovery are proven.
 
 
 ## WP-18D — adversarial Linux sandbox acceptance
