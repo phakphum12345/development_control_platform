@@ -141,3 +141,27 @@ Important limits:
 - Testing: the exact implementation/test head is now `88af4eddba5bb892027b95e4954466ee5a716b9b`; fresh CI and target-Windows execution are pending. CI success alone cannot establish the profile mapping or child access.
 - Safety: no ACL mutation, no persistent profile creation, no direct host-process fallback, no Terminal template activation, no merge.
 - Next: run the updated harness on the target Windows host. Use its evidence to decide whether the PSEC-created Package SID has a Windows-managed profile root. Only then finalize the per-job scratch/projection authorization strategy.
+
+
+## 10. Package-SID ACL manager — first implementation checkpoint
+
+Branch `work/wp18b1-package-sid-acl-manager` adds `windows_psec_acl.py` and mocked unit coverage.
+
+- Accepts only a syntactically valid AppContainer Package SID (`S-1-15-2-...`).
+- Requires sibling `workspace` and `scratch` roots beneath a `dcp-psec-job-*` directory.
+- Applies the exact Package SID's `READ_EXECUTE` (`0x001200a9`) to every projected Workspace directory/file and `MODIFY` (`0x001301bf`) to every Scratch directory/file.
+- Adds only `FILE_TRAVERSE` (`0x20`) to the disposable job root so the child can traverse to its authorized roots. It does not add an ACE to the job-root parent.
+- Uses `ConvertStringSidToSidW`, `GetNamedSecurityInfoW`, `SetEntriesInAclW`, `SetNamedSecurityInfoW`, and SDDL read-back verification. Existing DACL entries are merged, not replaced.
+- Rejects reparse points, unsupported objects, non-canonical roots, overlap, and unexpected directory layout. It snapshots the job-root parent SDDL and fails if that parent changes.
+- Rejects an overbroad Package-SID allow ACE detected in the resulting SDDL.
+
+**Important limitations / not yet launchable:**
+- This first implementation uses path-based enumeration and Win32 named-security APIs. It is not yet native handle-relative traversal and therefore is not approved as a complete security boundary.
+- It is not yet integrated into `WindowsPsecLauncher`; no process may be resumed on the assumption that this module has already run.
+- The caller must supply the disposable projection layout produced by `create_workspace_projection`. The existing launcher still accepts the older Workspace/Scratch layout.
+- Descriptor read-back is necessary but not sufficient. Target Windows acceptance must prove Workspace read, PSEC-enforced Workspace write denial after successful read, Scratch create/write/read/delete, traversal from the real parent, and unchanged shared-parent ACLs.
+- No host ACL has been changed by this repository-side work. Terminal execution remains blocked and all seven built-in templates remain disabled.
+
+### Interpretation of the latest profile probe
+
+The target run's `GetAppContainerFolderPath` result `0x80070002` is an API lookup failure, not conclusive proof that PSEC creates an anonymous or unregistered AppContainer. In the current launcher, `_apply_sandbox_profile_environment` explicitly overrides `LOCALAPPDATA` to the supplied Scratch path. The child's environment value is therefore not independent evidence of Windows-managed profile placement. Do not infer profile lifecycle from that environment variable alone.
