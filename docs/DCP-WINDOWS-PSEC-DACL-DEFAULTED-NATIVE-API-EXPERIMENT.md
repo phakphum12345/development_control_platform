@@ -165,7 +165,7 @@ The TRUE case was skipped because the filesystem did not retain `DaclDefaulted=T
 
 The follow-up implementation changes the acceptance instrumentation without changing the disposable-object boundary:
 
-- Every TRUE, FALSE, write-only, and ambiguous-error test emits `DACL_EXPERIMENT_EVIDENCE` with `flush=True` immediately after the harness returns and **before assertions**. A failing assertion therefore does not suppress the measured result.
+- Every TRUE, FALSE, write-only, and ambiguous-error test emits `DACL_EXPERIMENT_EVIDENCE` with `flush=True` immediately after the harness returns and **before assertions**. A failing assertion therefore does not suppress the measured result. If TRUE setup is not retained, the raised `DaclDefaultedNotExercised` carries the immediate post-create snapshot and the test prints it before classifying the case as SKIPPED / NOT EXERCISED.
 - Each run captures three stages where applicable: immediately after `CreateFileW` (before any DACL write), immediately after `SetSecurityInfo`, and after rollback. The write-only case intentionally has no rollback stage.
 - The write-only observation and write-plus-rollback acceptance use separate calls to the harness. Each call creates a new unique disposable root and file, so the write-only observation is not contaminated by a later rollback.
 - The write-only case reports `OBSERVED`, not PASS. It records whether DACL bytes, `DaclDefaulted`, and control flags changed after the native call. The rollback case alone can report round-trip PASS, and only when exact state equality and cleanup are proven.
