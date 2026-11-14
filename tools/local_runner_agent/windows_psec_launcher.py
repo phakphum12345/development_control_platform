@@ -212,6 +212,136 @@ def _configure_kernel32(kernel32):
     kernel32.CloseHandle.restype = BOOL
 
 
+
+
+class SID_AND_ATTRIBUTES(ctypes.Structure):
+    _fields_ = [("Sid", HANDLE), ("Attributes", DWORD)]
+
+
+def _token_information(advapi32, token: HANDLE, information_class: int):
+    required = DWORD(0)
+    advapi32.GetTokenInformation(token, information_class, None, 0, ctypes.byref(required))
+    if not required.value:
+        raise _win_error(f"GetTokenInformation({information_class}) size")
+    buffer = ctypes.create_string_buffer(required.value)
+    if not advapi32.GetTokenInformation(
+        token, information_class, ctypes.cast(buffer, HANDLE),
+        required, ctypes.byref(required),
+    ):
+        raise _win_error(f"GetTokenInformation({information_class})")
+    return buffer
+
+
+def _sid_to_string(advapi32, kernel32, sid: HANDLE) -> str:
+    if not sid:
+        return ""
+    rendered = ctypes.c_wchar_p()
+    if not advapi32.ConvertSidToStringSidW(sid, ctypes.byref(rendered)):
+        raise _win_error("ConvertSidToStringSidW")
+    try:
+        return rendered.value or ""
+    finally:
+        kernel32.LocalFree(ctypes.cast(rendered, HANDLE))
+
+
+def _query_process_token(kernel32, process_handle: HANDLE) -> dict:
+    """Read the suspended target process token; never changes token or policy."""
+    TOKEN_QUERY = 0x0008
+    TOKEN_USER = 1
+    TOKEN_GROUPS = 2
+    TOKEN_INTEGRITY_LEVEL = 25
+    TOKEN_ELEVATION_TYPE = 18
+    TOKEN_IS_APP_CONTAINER = 29
+    advapi32 = _load_system_dll("advapi32.dll")
+    advapi32.OpenProcessToken.argtypes = [HANDLE, DWORD, ctypes.POINTER(HANDLE)]
+    advapi32.OpenProcessToken.restype = BOOL
+    advapi32.GetTokenInformation.argtypes = [
+        HANDLE, ctypes.c_int, HANDLE, DWORD, ctypes.POINTER(DWORD),
+    ]
+    advapi32.GetTokenInformation.restype = BOOL
+    advapi32.ConvertSidToStringSidW.argtypes = [HANDLE, ctypes.POINTER(ctypes.c_wchar_p)]
+    advapi32.ConvertSidToStringSidW.restype = BOOL
+    kernel32.LocalFree.argtypes = [HANDLE]
+    kernel32.LocalFree.restype = HANDLE
+
+    token = HANDLE()
+    if not advapi32.OpenProcessToken(process_handle, TOKEN_QUERY, ctypes.byref(token)):
+        return {
+            "state": "UNKNOWN",
+            "error": f"OpenProcessToken failed (WinError {ctypes.get_last_error()})",
+        }
+
+    result = {
+        "state": "PARTIAL",
+        "source": "PROCESS_INFORMATION.hProcess before ResumeThread",
+        "captured_before_resume": True,
+    }
+    try:
+        try:
+            user = _token_information(advapi32, token, TOKEN_USER)
+            user_entry = ctypes.cast(user, ctypes.POINTER(SID_AND_ATTRIBUTES)).contents
+            result["user_sid"] = _sid_to_string(advapi32, kernel32, user_entry.Sid)
+        except Exception as exc:
+            result["user_sid_error"] = f"{type(exc).__name__}: {exc}"
+
+        try:
+            integrity = _token_information(advapi32, token, TOKEN_INTEGRITY_LEVEL)
+            integrity_entry = ctypes.cast(
+                integrity, ctypes.POINTER(SID_AND_ATTRIBUTES)
+            ).contents
+            result["integrity_sid"] = _sid_to_string(
+                advapi32, kernel32, integrity_entry.Sid
+            )
+        except Exception as exc:
+            result["integrity_sid_error"] = f"{type(exc).__name__}: {exc}"
+
+        try:
+            elevation = _token_information(advapi32, token, TOKEN_ELEVATION_TYPE)
+            result["elevation_type"] = int(ctypes.cast(
+                elevation, ctypes.POINTER(DWORD)
+            ).contents.value)
+        except Exception as exc:
+            result["elevation_type_error"] = f"{type(exc).__name__}: {exc}"
+
+        try:
+            app_container = _token_information(advapi32, token, TOKEN_IS_APP_CONTAINER)
+            result["is_app_container"] = bool(ctypes.cast(
+                app_container, ctypes.POINTER(DWORD)
+            ).contents.value)
+        except Exception as exc:
+            result["is_app_container_error"] = f"{type(exc).__name__}: {exc}"
+
+        try:
+            groups = _token_information(advapi32, token, TOKEN_GROUPS)
+            count = ctypes.cast(groups, ctypes.POINTER(DWORD)).contents.value
+            if count > 512:
+                raise WindowsPsecError("process token reports an unreasonable group count")
+            offset = (ctypes.sizeof(DWORD) + ctypes.alignment(HANDLE) - 1) & ~(
+                ctypes.alignment(HANDLE) - 1
+            )
+            group_items = []
+            base = ctypes.addressof(groups) + offset
+            for index in range(count):
+                entry = ctypes.cast(
+                    base + index * ctypes.sizeof(SID_AND_ATTRIBUTES),
+                    ctypes.POINTER(SID_AND_ATTRIBUTES),
+                ).contents
+                group_items.append({
+                    "sid": _sid_to_string(advapi32, kernel32, entry.Sid),
+                    "attributes": int(entry.Attributes),
+                })
+            result["groups"] = group_items
+        except Exception as exc:
+            result["groups_error"] = f"{type(exc).__name__}: {exc}"
+
+        required = {"user_sid", "integrity_sid", "elevation_type", "is_app_container", "groups"}
+        result["state"] = "PASS" if required.issubset(result) else "PARTIAL"
+        return result
+    finally:
+        kernel32.CloseHandle(token)
+
+
+
 def _environment_block(environment: Mapping[str, str]):
     normalized = {}
     for key, value in environment.items():
@@ -328,7 +458,8 @@ class WindowsPsecProcess:
     """Popen-like process facade whose liveness tracks the entire Job Object."""
 
     def __init__(self, *, kernel32, process_handle, job_handle, psec_dll,
-                 psec_handle, stdout, pid: int, args: Sequence[str]):
+                 psec_handle, stdout, pid: int, args: Sequence[str],
+                 token_diagnostics: dict | None = None):
         self._kernel32 = kernel32
         self._process_handle = process_handle
         self._job_handle = job_handle
@@ -337,6 +468,7 @@ class WindowsPsecProcess:
         self.stdout = stdout
         self.pid = pid
         self.args = tuple(args)
+        self.token_diagnostics = token_diagnostics or {"state": "UNKNOWN"}
         self.returncode = None
         self._closed = False
 
@@ -578,6 +710,10 @@ class WindowsPsecLauncher:
             kernel32.DeleteProcThreadAttributeList(attribute_list)
             attribute_list_initialized = False
 
+            # Capture the exact PSEC-created process token while its initial
+            # thread is still suspended. This is read-only diagnostics and
+            # cannot alter the token or broaden the process policy.
+            token_diagnostics = _query_process_token(kernel32, process_info.hProcess)
             if not kernel32.AssignProcessToJobObject(job_handle, process_info.hProcess):
                 raise _win_error("AssignProcessToJobObject")
             previous_suspend_count = kernel32.ResumeThread(process_info.hThread)
@@ -601,6 +737,7 @@ class WindowsPsecLauncher:
                 stdout=stdout_file,
                 pid=int(process_info.dwProcessId),
                 args=command,
+                token_diagnostics=token_diagnostics,
             )
         except Exception:
             if process_created and process_info.hProcess:
