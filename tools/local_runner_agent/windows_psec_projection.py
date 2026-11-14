@@ -121,9 +121,12 @@ def _reject_alternate_data_streams(path: Path) -> None:
     from ctypes import wintypes
 
     class _StreamData(ctypes.Structure):
+        # WIN32_FIND_STREAM_DATA layout is LARGE_INTEGER StreamSize
+        # followed by WCHAR cStreamName[MAX_PATH + 1]. Keep this exact
+        # native field order; reversing it corrupts the stream-name read.
         _fields_ = [
-            ("cStreamName", wintypes.WCHAR * 296),
             ("StreamSize", ctypes.c_longlong),
+            ("cStreamName", wintypes.WCHAR * 296),
         ]
 
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
