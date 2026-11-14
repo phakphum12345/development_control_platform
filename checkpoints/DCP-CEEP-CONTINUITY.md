@@ -219,3 +219,19 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - The test records volume serial and 128-bit file ID from the retained handle and rechecks handle identity after write and rollback.
 - Latest exact-head CI query for `83d8dfbd8b3517225c0b9868726a720fa2af46f5`: no workflow runs and no combined status entries returned. CI remains UNKNOWN; this is not a pass.
 - PR #131 connector reports `mergeable=false`; investigate the GitHub mergeability state before any merge consideration. PR remains Draft / OPEN / NOT MERGED.
+
+
+## 2026-11-14 — WP-18B.1-K Windows evidence and inheritance-boundary correction
+
+- PR #131 remains OPEN / DRAFT / NOT MERGED; PR #130 remains OPEN / DRAFT / NOT MERGED. PR #131 is mergeable according to GitHub; no merge was performed.
+- GitHub-hosted Windows run #43609971342 completed with all jobs green on PR head `4c11a6bdb4c91faf51cd7e17081ee9596d3e07bb` (merge checkout `36554d3f995a741ecac023b99e39da935b287d12`). This was the previous test implementation; do not use it as validation of later corrections.
+- Windows host: Windows Server 2025 Datacenter build 10.0.26100; CPython 3.12.10 x64; NTFS; volume serial 9823700658284110452; probe File ID 8cb7040000006f000000000000000000.
+- DACL TRUE setup was NOT EXERCISED: NTFS did not retain DaclDefaulted=TRUE at object creation.
+- DACL FALSE experiment reported DaclDefaulted=false before, after write and after rollback; no API errors; cleanup verified. However, DACL bytes changed from 8-byte empty ACL `0200080000000000` to 72-byte ACL `020048000300000000101400ff011f0001010000000000051200000000101800ff011f000102000000000005200000002002000000101400ff011f00010100000000000304000000` and remained changed after rollback.
+- Descriptor control flags changed from 0x9004 to 0x8404; evidence shows protected-DACL state was lost and auto-inherited state appeared. This is consistent with inherited ACEs being applied during SetSecurityInfo, but the exact mechanism remains a hypothesis until re-tested.
+- Corrective change in subsequent code: set SE_DACL_PROTECTED on the creation descriptor and pass PROTECTED_DACL_SECURITY_INFORMATION with DACL_SECURITY_INFORMATION on write/rollback. This is intended to keep the test object's inheritance boundary stable.
+- Closed a prior acceptance gap: TRUE and FALSE native cases now require outcome PASS; an observed FAIL can no longer leave the unittest green. Added GetProcessHandleCount before/after and require zero delta. This only verifies process handles; native heap/memory leak acceptance remains PARTIAL.
+- Reader's GetSecurityInfo descriptor allocation is released with LocalFree in finally, and LocalFree failure is surfaced. Repeated-run memory stability remains unverified.
+- Latest code/test head at this checkpoint before the documentation/ledger-only commits: `f3694994e844302a9ca03ef27065cccc701d378b`. GitHub checks then running: Validate Control Plane and Local-first Minimal Emulator; Windows dynamic-port launcher integration still in progress. The dedicated Cross-platform Recovery Acceptance workflow was not yet visible on this exact SHA; exact-head DACL validation remains UNKNOWN.
+- GitHub-hosted Windows CI is not the designated user's Windows-host acceptance. User-host run remains PENDING; no remote execution on the user's PC was performed.
+- Native Writer remains BLOCKED; Terminal remains BLOCKED; all seven built-in templates remain DISABLED. No merge or deployment authorized.
