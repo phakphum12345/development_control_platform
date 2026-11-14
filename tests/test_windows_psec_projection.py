@@ -38,7 +38,7 @@ class WindowsPsecProjectionTests(unittest.TestCase):
                     "hello",
                 )
                 self.assertTrue((projection.scratch).is_dir())
-                self.assertEqual(len(projection.manifest), 2)
+                self.assertEqual(len(projection.manifest), 3)
                 self.assertEqual(len(projection.manifest_sha256), 64)
             finally:
                 projection.close()
