@@ -600,6 +600,45 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                 except (BrokenPipeError, ConnectionResetError):
                     pass
                 return
+            if path.startswith("/v1/runner/"):
+                worker = self.runner_identity()
+                if not worker:
+                    return self.send_json(401, {"error": "runner credentials required"})
+                parts = path[len("/v1/runner/"):].split("/")
+                if len(parts) != 2 or not re.fullmatch(r"[0-9a-f-]{36}", parts[0]):
+                    return self.send_json(404, {"error": "not found"})
+                job_id, action = parts
+                if action != "workspace-cleanup-status":
+                    return self.send_json(404, {"error": "not found"})
+                jobs = self.job_store()
+                if jobs is None:
+                    return self.send_json(503, {"error": "job control plane unavailable"})
+                job = jobs.get(job_id)
+                if (not job or job.get("target") != "terminal_script"
+                        or worker not in (job.get("worker"), job.get("last_worker"))):
+                    return self.send_json(404, {"error": "not found"})
+                terminal_state = job.get("state") in ("succeeded", "failed", "cancelled")
+                no_active_lease = job.get("worker") is None and job.get("lease_until") is None
+                cleanup_safe = (
+                    terminal_state
+                    and no_active_lease
+                    and job.get("last_worker") == worker
+                    and (
+                        job.get("state") in ("succeeded", "cancelled")
+                        or (
+                            job.get("state") == "failed"
+                            and job.get("error_code") == "WORKSPACE_CLEANUP_FAILED"
+                        )
+                    )
+                )
+                return self.send_json(200, {
+                    "job_id": job_id,
+                    "worker_id": worker,
+                    "target": "terminal_script",
+                    "state": job.get("state"),
+                    "updated_at": job.get("updated_at"),
+                    "cleanup_safe": cleanup_safe,
+                })
             if path.startswith("/api/"):
                 identity = self.proxy_identity()
                 if not identity:
