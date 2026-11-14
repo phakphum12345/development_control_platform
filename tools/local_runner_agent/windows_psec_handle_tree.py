@@ -123,7 +123,7 @@ def parse_extended_directory_buffer(buffer: bytes, *, max_entries: int = DEFAULT
     offset = 0
     header_size = FILE_ID_EXTD_DIR_INFO.FileName.offset
     while True:
-        if offset + header_size > len(buffer):
+        if offset + ctypes.sizeof(FILE_ID_EXTD_DIR_INFO) > len(buffer):
             raise NativeHandleAclError("directory information record is truncated")
         record = FILE_ID_EXTD_DIR_INFO.from_buffer_copy(
             buffer[offset : offset + ctypes.sizeof(FILE_ID_EXTD_DIR_INFO)]
@@ -223,6 +223,8 @@ class WindowsNativeHandleTree:
         opened_children: list[OpenedObject] = []
         first = True
         total = 0
+        seen_names: set[str] = set()
+        seen_file_ids: set[str] = set()
         try:
             while True:
                 info_class = (
@@ -242,12 +244,19 @@ class WindowsNativeHandleTree:
                         f"128-bit handle directory enumeration failed (WinError {error})"
                     )
                 records = parse_extended_directory_buffer(
-                    buffer.raw, max_entries=max_entries - total,
+                    buffer.raw, max_entries=max(1, max_entries - total),
                 )
                 for record in records:
                     if record.name in {".", ".."}:
                         continue
                     validate_relative_component(record.name)
+                    folded_name = record.name.casefold()
+                    if folded_name in seen_names:
+                        raise NativeHandleAclError("directory contains duplicate or case-fold-colliding names")
+                    if record.file_id in seen_file_ids:
+                        raise NativeHandleAclError("directory contains duplicate file identities or hard-link aliases")
+                    seen_names.add(folded_name)
+                    seen_file_ids.add(record.file_id)
                     if record.attributes & FILE_ATTRIBUTE_REPARSE_POINT:
                         raise NativeHandleAclError(
                             f"directory contains a reparse point: {record.name!r}"
