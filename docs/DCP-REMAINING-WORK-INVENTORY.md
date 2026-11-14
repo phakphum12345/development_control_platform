@@ -8,7 +8,7 @@
 
 ## 1. Baseline and scope
 
-The recursive Git tree at the baseline contains 289 entries: 265 blobs and 24 tree entries. The observed top-level inventory includes 78 files under `tools/`, 86 under `tests/`, 58 under `docs/`, 7 GitHub Actions workflows, 3 schemas, and the Dashboard, launchers, configuration, state and checkpoint assets.
+The recursive Git tree at the baseline contains 289 entries: 265 blobs and 24 tree entries. The observed top-level inventory includes 78 files under `tools/`, 86 under `tests/`, 58 under `docs/`, 7 GitHub Actions workflows, 3 schemas, and the Dashboard, launchers, configuration, state and checkpoint assets. First-pass mapping also identified 21 Dashboard views and the Gateway route families; detailed handler-level trace remains open.
 
 This inventory distinguishes implemented code, automated tests, CI evidence, and operational acceptance. A test existing is not proof that it ran on a target host. A passing GitHub-hosted workflow is not proof of the user's Windows host. Workstreams are grouped by acceptance boundary to avoid double-counting overlapping features.
 
@@ -16,10 +16,10 @@ This inventory distinguishes implemented code, automated tests, CI evidence, and
 
 | WP | Work Package | Current evidence / gap | Status |
 |---|---|---|---|
-| WP-00A | Repository tree and baseline capture | Recursive tree and current main SHA captured; source-by-source semantic audit continues | IN_PROGRESS |
-| WP-00B | Module/API/Dashboard/Workflow inventory | Major source groups and 7 workflows identified; every module and entry point still needs mapping | IN_PROGRESS |
-| WP-00C | Test-to-requirement traceability | 86 test files identified; full test inventory and requirement links remain | IN_PROGRESS |
-| WP-00D | Documentation reconciliation | Roadmap/backlog/continuity contain stale WP-17/WP-18 text; Implementation Status and Requirements Traceability docs absent | IN_PROGRESS |
+| WP-00A | Repository tree and baseline capture | Exact main SHA and recursive tree captured: 289 entries / 265 blobs | PASS |
+| WP-00B | Module/API/Dashboard/Workflow inventory | 78 tool files grouped by subsystem, 21 Dashboard view IDs, Gateway route families and all 7 workflows mapped; per-file entrypoint/handler tracing remains | IN_PROGRESS |
+| WP-00C | Test-to-requirement traceability | All 86 baseline test files listed and mapped to 24 requirement groups; function-level and workflow/job-level trace remains | IN_PROGRESS |
+| WP-00D | Documentation reconciliation | Added INDEX, IMPLEMENTATION-STATUS and REQUIREMENTS-TRACEABILITY; existing roadmap/backlog/continuity still require full reconciliation | IN_PROGRESS |
 | WP-18A | Linux bubblewrap isolation launcher | Added a Linux-only bubblewrap command builder and network-deny seccomp BPF policy with unit tests; not yet integrated into TerminalScriptExecutor and not host-accepted | IN_PROGRESS |
 | WP-18B | Windows AppContainer/LPAC launcher | Native helper and capability policy absent | BLOCKED |
 | WP-18C | Process-tree containment and cleanup | taskkill/process-group termination and workspace cleanup exist; independent descendant/host cleanup acceptance absent | IN_PROGRESS |
@@ -63,7 +63,14 @@ This inventory distinguishes implemented code, automated tests, CI evidence, and
 - `tests/test_dashboard_contract.py` — broad Dashboard route, import, job, preview, Terminal and safety contracts.
 - These are code-level/integration tests; live Windows host acceptance remains separate.
 
-## 4. CI baseline
+## 4. First-pass API and Dashboard map
+
+- Gateway route families: health, owner session, GitHub App repository/refs/project inspection, Local Project registry, Jobs/checkpoints/logs/events, artifacts/download, runners, infrastructure, Cloud Runner, Terminal, document workflow, and Runner v1 registration/ping/claim.
+- Local Auth Proxy exposes a separate authenticated same-origin route surface; method/role/CSRF detail remains to be traced.
+- Dashboard contains 21 views: `dev-tools`, `account`, `project-import`, `infrastructure`, `cloud-runners`, `github-api`, `repo-selector`, `repo`, `pr`, `user`, `workspace`, `evidence`, `gates`, `checkpoint`, `document-generator`, `terminal-studio`, `code-navigator`, `ui-routes`, `ui-simulator`, `route-colors`, `audit`.
+- Detailed view → DOM handler → API call → service → test mapping remains IN_PROGRESS.
+
+## 5. CI baseline
 
 At the inventory baseline, the three main-branch workflows previously checked completed successfully:
 - Local-first Minimal Emulator
@@ -81,7 +88,7 @@ The repository contains seven workflow files:
 - `.github/workflows/static.yml`
 - `.github/workflows/validate-control-plane.yml`
 
-## 5. Critical safety gates
+## 6. Critical safety gates
 
 1. All seven built-in Terminal templates remain disabled.
 2. Do not set any platform to VERIFIED from executable presence or unit tests.
@@ -91,15 +98,18 @@ The repository contains seven workflow files:
 6. CI results must be tied to exact head SHA and must not be described as user-host acceptance.
 7. No PR merge without required gates and explicit user authorization.
 
-## 6. Documentation gaps
+## 7. Documentation gaps
 
-The following canonical documents are missing at the baseline and should be added after source mapping:
+Added on the inventory branch (not yet merged):
+- `docs/INDEX.md`
 - `docs/IMPLEMENTATION-STATUS.md`
 - `docs/REQUIREMENTS-TRACEABILITY.md`
 
+These additions provide the first-pass catalog and traceability structure. They do not close all per-file or per-test mapping.
+
 Existing roadmap, backlog and continuity documents require reconciliation with merged PR #115 and current source. Do not overwrite historical audit records; append dated, SHA-scoped checkpoints.
 
-## 7. Next execution sequence
+## 8. Next execution sequence
 
 1. Complete WP-00B/00C by mapping every source module, API route, Dashboard view, workflow, test and requirement.
 2. Complete WP-00D by reconciling roadmap/backlog/continuity and adding status/traceability docs.
@@ -109,6 +119,6 @@ Existing roadmap, backlog and continuity documents require reconciliation with m
 6. Run exact-head CI, security review and host acceptance before considering any template enablement.
 7. Continue WP-19–WP-31 in dependency order and close with WP-31 final audit.
 
-## 8. Current limitations
+## 9. Current limitations
 
 This inventory is source-driven but still IN_PROGRESS. It does not yet enumerate every atomic acceptance criterion for all 78 tool files and 86 test files. No total atomic task count is claimed until WP-00B/00C produce a traceable one-to-one register. No implementation completion, host acceptance or merge is claimed by this document.
