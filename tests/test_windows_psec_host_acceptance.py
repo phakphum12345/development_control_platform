@@ -23,6 +23,19 @@ class WindowsPsecHostAcceptanceTests(unittest.TestCase):
     def test_embedded_policy_payload_is_valid_python(self):
         compile(host._read_only_network_payload(), "<psec-host-policy-payload>", "exec")
 
+    def test_embedded_payload_captures_child_token_evidence(self):
+        payload = host._read_only_network_payload()
+        for marker in (
+            "OpenProcessToken",
+            "TokenIntegrityLevel",
+            "TokenGroups",
+            "TokenPrivileges",
+            "is_app_container",
+            'result["child_token"]',
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, payload)
+
     def test_non_windows_host_reports_blocked_without_loading_psec(self):
         if os.name == "nt":
             self.skipTest("Windows host executes the native acceptance harness")
