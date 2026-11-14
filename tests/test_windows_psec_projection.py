@@ -86,6 +86,17 @@ class WindowsPsecProjectionTests(unittest.TestCase):
                     limits=ProjectionLimits(max_file_bytes=32, max_total_bytes=8),
                 )
 
+    def test_projection_bounds_directory_entries_not_only_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source, private = self._roots(Path(temporary))
+            for index in range(4):
+                (source / f"directory-{index}").mkdir()
+            with self.assertRaisesRegex(ProjectionError, "filesystem-entry limit"):
+                create_workspace_projection(
+                    source, private,
+                    limits=ProjectionLimits(max_entries=3),
+                )
+
     def test_projection_rejects_source_and_private_parent_overlap(self):
         with tempfile.TemporaryDirectory() as temporary:
             source, private = self._roots(Path(temporary))
