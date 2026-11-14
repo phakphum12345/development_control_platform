@@ -34,10 +34,13 @@ class DescriptorSnapshot:
     descriptor_revision: int = 1
     acl_revision: int = 0
     ace_count: int = 0
+    dacl_defaulted: bool = False
 
     def validate(self, *, max_descriptor_bytes: int, max_aces: int) -> None:
         if not isinstance(self.dacl_present, bool) or not isinstance(self.dacl_is_null, bool):
             raise NativeSecurityDescriptorTransactionError("DACL presence state is malformed")
+        if not isinstance(self.dacl_defaulted, bool):
+            raise NativeSecurityDescriptorTransactionError("DACL defaulted state is malformed")
         if not isinstance(self.dacl_bytes, bytes):
             raise NativeSecurityDescriptorTransactionError("DACL snapshot must contain immutable bytes")
         if len(self.dacl_bytes) > max_descriptor_bytes:
@@ -75,6 +78,7 @@ class DescriptorCandidate:
     descriptor_revision: int = 1
     acl_revision: int = 2
     ace_count: int = 0
+    dacl_defaulted: bool = False
 
     def validate(self, *, max_descriptor_bytes: int, max_aces: int) -> None:
         DescriptorSnapshot(
@@ -85,6 +89,7 @@ class DescriptorCandidate:
             descriptor_revision=self.descriptor_revision,
             acl_revision=self.acl_revision,
             ace_count=self.ace_count,
+            dacl_defaulted=self.dacl_defaulted,
         ).validate(max_descriptor_bytes=max_descriptor_bytes, max_aces=max_aces)
         if not self.dacl_present or self.dacl_is_null:
             raise NativeSecurityDescriptorTransactionError(
@@ -100,6 +105,7 @@ class DescriptorCandidate:
             descriptor_revision=self.descriptor_revision,
             acl_revision=self.acl_revision,
             ace_count=self.ace_count,
+            dacl_defaulted=self.dacl_defaulted,
         )
 
 
