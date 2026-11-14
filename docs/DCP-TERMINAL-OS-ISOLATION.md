@@ -17,13 +17,14 @@ because a helper binary is installed or a process starts successfully.
 
 | Platform | Candidate backend | Required boundary | Current state |
 |---|---|---|---|
-| Windows 10/11 | Native AppContainer or LPAC launcher + Job Object | Restricted token/package SID, explicit read-only workspace and runtime capabilities, no network capability, child-process containment and verified cleanup | BLOCKED — native launcher and host acceptance not implemented |
+| Windows 10/11 | Windows Process Security Environment (PSEC) v1.1 + Job Object | Filesystem deny/enumerate policy, default-deny network ingress/egress, no network capabilities, Win32k disabled, explicit inherited handles, kill-on-close process-tree containment | READY_FOR_ACCEPTANCE when PSEC v1.1 features are present; not VERIFIED |
 | Linux | bubblewrap + user/mount/PID/IPC/UTS/network namespaces + seccomp | Empty namespace root, explicit read-only runtime mounts, assigned workspace only, per-job scratch, private network namespace, reviewed syscall policy, child cleanup | READY_FOR_ACCEPTANCE when bwrap is present; integrated launcher is not host-verified |
 | macOS | Signed App Sandbox helper with explicit entitlements | Signed helper, explicit file access, network client/server entitlements disabled, process lifecycle and cleanup evidence | BLOCKED — helper and signing/entitlement acceptance not implemented |
 
-Windows AppContainer/LPAC is the selected Windows security boundary. Job Objects
-remain necessary for resource and process-tree lifecycle, but are not a substitute
-for AppContainer access control.
+Windows uses the Process Security Environment (PSEC) v1.1 API. PSEC is not LPAC:
+do not claim LPAC's all-application-packages opt-out or LPAC-equivalent least
+privilege. Job Objects remain necessary for process-tree lifecycle and do not
+substitute for PSEC filesystem/network access control.
 
 Linux bubblewrap is a candidate because it can construct mount and network namespaces,
 PID/IPC/UTS isolation and seccomp filtering. Its safety depends on the exact mounts and
@@ -37,17 +38,19 @@ Do not use the deprecated sandbox-exec interface as a production substitute.
 - tools/local_runner_agent/terminal_isolation.py records the platform backend and
   returns only BLOCKED or READY_FOR_ACCEPTANCE from current detection.
 - Presence of bwrap is explicitly not reported as network/filesystem/process isolation.
-- Windows and macOS remain blocked until their native helper implementations exist.
+- WP-18B adds a Windows PSEC v1.1 capability/spec-creation probe and integrates WindowsPsecLauncher into TerminalScriptExecutor. The launcher creates a PSEC security environment, starts the fixed executable through CreateProcessW with an explicit inherited-handle list, creates it suspended, assigns a Job Object with KILL_ON_JOB_CLOSE and an active-process ceiling, then resumes it. The process facade tracks Job Object active-process count rather than only the root PID.
+- Windows remains READY_FOR_ACCEPTANCE at most; the default isolation contract keeps network/filesystem/process-tree enforcement claims false and Terminal execution blocked until target-host adversarial acceptance.
+- macOS remains BLOCKED until its signed App Sandbox helper and host acceptance exist.
 - require_verified_isolation() rejects every state except a complete VERIFIED
   assessment with all three enforcement claims.
 - TerminalScriptExecutor calls require_verified_isolation() before workspace resolution or process launch. The default platform assessment cannot return VERIFIED, so production execution remains blocked.
 - WP-18A now connects the Linux executor path to LinuxBubblewrapLauncher: it resolves only tools from the approved /usr/bin runtime, mounts the assigned workspace read-only and per-job scratch separately, passes the seccomp descriptor with pass_fds, and closes the parent descriptor immediately after process creation.
-- The Linux executor does not fall back to a host Popen command if bubblewrap is missing, command construction fails, or the seccomp descriptor cannot be inherited. Non-Linux VERIFIED assessments are also rejected until their native launchers are integrated.
+- The Linux executor does not fall back to a host Popen command if bubblewrap is missing, command construction fails, or the seccomp descriptor cannot be inherited. The Windows path uses the integrated PSEC launcher and never falls back to direct host Popen; both platforms remain blocked until their host acceptance gates return VERIFIED.
 - The bubblewrap host process receives only the executor's template-allowlisted environment and fixed safety settings, never the ambient host environment or Runner credentials; the workload environment is reconstructed after --clearenv.
 - Git repository filter discovery also runs as a fixed `git config --name-only` command inside bubblewrap before the requested Git command. No Git process is launched on the host against project-controlled repository configuration.
 - Both backend detection and launcher construction resolve bubblewrap only from the approved /usr/bin runtime. The launcher rejects a resolved bubblewrap binary outside that runtime tree.
 - Executor unit tests use an explicitly test-only passthrough launcher to exercise bounded process/output/cancellation behavior. They do not assert or prove OS isolation.
-- terminal_isolation.py remains the gate contract; linux_sandbox.py constructs the candidate launch boundary. Neither module promotes a host to VERIFIED.
+- terminal_isolation.py remains the gate contract; linux_sandbox.py and windows_psec_launcher.py construct candidate launch boundaries. Neither module promotes a host to VERIFIED.
 
 ## Mandatory acceptance matrix
 
@@ -94,10 +97,13 @@ on that actual host and exact helper build:
 
 ## References
 
-- Microsoft, Windows application isolation:
-  https://learn.microsoft.com/en-us/windows/security/book/application-security-application-isolation
-- Microsoft, launching AppContainer/LPAC:
-  https://learn.microsoft.com/en-us/windows/win32/secauthz/implementing-an-appcontainer
+- Microsoft, CreateProcessSecurityEnvironment and processmodel.dll:
+  https://learn.microsoft.com/en-us/windows/win32/api/processmodel/
+- Microsoft, Windows Job Objects:
+  https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects
+- Microsoft MXC Process Container reference implementation and Windows support matrix:
+  https://github.com/microsoft/mxc/tree/main/docs/backends/process-container
+  https://github.com/microsoft/mxc/blob/main/docs/backends/process-container/os-version-support.md
 - Bubblewrap upstream documentation:
   https://github.com/containers/bubblewrap
 - Apple, App Sandbox:
