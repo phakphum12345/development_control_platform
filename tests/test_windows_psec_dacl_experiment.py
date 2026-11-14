@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import unittest
 from unittest.mock import patch
+from unittest.mock import patch
 
 from tools.local_runner_agent.windows_psec_dacl_experiment import (
     DaclExperimentError,
@@ -27,6 +28,24 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         self.assertTrue(result.cleanup_verified)
         # This is the measurement under test, not a pre-assumed success.
         self.assertIn(result.dacl_defaulted_after_write, (True, False))
+
+
+    def test_ambiguous_native_write_error_still_attempts_rollback_and_cleanup(self):
+        experiment = WindowsDaclDefaultedExperiment()
+        original_write = experiment._write_dacl
+        calls = {"count": 0}
+
+        def fail_after_native_write(handle, snapshot):
+            calls["count"] += 1
+            original_write(handle, snapshot)
+            if calls["count"] == 1:
+                raise OSError("injected error after native SetSecurityInfo")
+
+        with patch.object(experiment, "_write_dacl", side_effect=fail_after_native_write):
+            with self.assertRaisesRegex(DaclExperimentError, "write failed"):
+                experiment.run(defaulted=True)
+        self.assertEqual(calls["count"], 2, "rollback must run after an ambiguous write error")
+        self.assertTrue(experiment.last_cleanup_verified)
 
     def test_explicit_defaulted_false_round_trip_on_disposable_ntfs_file(self):
         result = WindowsDaclDefaultedExperiment().run(defaulted=False)
