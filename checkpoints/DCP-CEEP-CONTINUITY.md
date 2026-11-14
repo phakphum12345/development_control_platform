@@ -100,3 +100,20 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Important limitation: this is a command builder and test coverage only. It is not yet wired into TerminalScriptExecutor; no bubblewrap runtime or adversarial host acceptance has been executed. Linux must remain BLOCKED for production execution; all seven templates remain disabled.
 - CI exact-head status: UNKNOWN until PR checks complete.
 - Next action: open a draft PR for review/CI, then fix any CI failures. After CI, integrate behind the existing fail-closed verifier and run Linux host acceptance. No merge authorized.
+
+
+## 2026-11-14 — WP-00 first-pass mapping and WP-18A CI checkpoint
+
+- Baseline remains `main` SHA `62d72bddd028399d0b96cd9c2f6e3b16a704b758`.
+- PR #116: [feat(terminal): add Linux bubblewrap launcher builder and remaining-work inventory](https://github.com/phakphum12345/development_control_platform/pull/116), OPEN / DRAFT / NOT MERGED.
+- PR #116 base SHA: `62d72bddd028399d0b96cd9c2f6e3b16a704b758`.
+- Branch: `work/wp00-remaining-inventory-wp18a-linux-isolation`; branch head before this ledger update: `b7dbfc087ac4a45c67162782c49ede2ba751df65`.
+- Current branch includes source inventory, first-pass API and Dashboard mapping, 21 Dashboard view IDs, 86 baseline test-file list, 24 requirement groups, categorized docs index, implementation status and traceability documents.
+- Added `docs/INDEX.md`, `docs/IMPLEMENTATION-STATUS.md`, `docs/REQUIREMENTS-TRACEABILITY.md`. WP-00B/00C remain IN_PROGRESS because per-file entrypoint mapping, complete method/path/auth matrix, per-view handler tracing and per-test-function mapping remain.
+- Corrected baseline test grouping: 86 files total; Local Runner/Projects has 14 files.
+- Appended dated reconciliation notes to `docs/DCP-IMPLEMENTATION-ROADMAP.md` and `docs/DCP-MASTER-FEATURE-BACKLOG.md`. Historical stale WP-17 text is not erased; it is explicitly marked stale by a newer checkpoint.
+- WP-18A builder now uses narrow read-only runtime mounts (/usr/bin and shared-library trees), read-only workspace, separate scratch, private user/PID/IPC/UTS/network namespaces, capability drop, disabled nested user namespaces and seccomp denial of socket APIs/io_uring_setup.
+- Added a real bubblewrap runtime test to the Ubuntu CI path; it checks unmounted host-path invisibility, workspace read-only behavior, scratch writes and socket denial. This is CI-host acceptance only, not the user's Linux host.
+- Latest observed CI on earlier head `b3094c73c5299ae20fe146442fd267aa79bc4385`: Validate Control Plane IN_PROGRESS; Local-first Minimal Emulator IN_PROGRESS; Cross-platform Recovery Acceptance QUEUED. Exact-head results for the newer docs/ledger commits must be rechecked.
+- Builder is not yet integrated into TerminalScriptExecutor. Linux production execution remains blocked; Windows AppContainer/LPAC remains BLOCKED; macOS remains BLOCKED; all seven templates remain disabled.
+- Next exact action: verify CI on the final branch head, fix any failures, then integrate the Linux launcher behind the existing verifier and run actual-host adversarial acceptance. Do not merge without explicit user authorization.
