@@ -127,8 +127,8 @@ class LinuxBubblewrapLauncher:
         if not isinstance(executable, str) or not os.path.isabs(executable):
             raise LinuxSandboxError("sandbox executable must be an absolute trusted path")
         binary = Path(executable).resolve(strict=True)
-        if not binary.is_file() or not any(binary == root or root in binary.parents for root in (Path("/usr"), Path("/bin"))):
-            raise LinuxSandboxError("sandbox executable must reside in the approved system runtime")
+        if not binary.is_file() or not any(binary == root or root in binary.parents for root in (Path("/usr/bin"),)):
+            raise LinuxSandboxError("sandbox executable must reside in the approved /usr/bin runtime")
         if not isinstance(argv, (list, tuple)) or len(argv) > 32:
             raise LinuxSandboxError("sandbox argv is invalid")
         if any(not isinstance(item, str) or "\x00" in item for item in argv):
@@ -147,11 +147,13 @@ class LinuxBubblewrapLauncher:
                 "--new-session",
                 "--unshare-user", "--uid", "0", "--gid", "0", "--cap-drop", "ALL", "--disable-userns", "--assert-userns-disabled",
                 "--unshare-pid", "--unshare-ipc", "--unshare-uts", "--unshare-net",
-                "--ro-bind", "/usr", "/usr",
             ]
-            for runtime_dir in ("/lib", "/lib64"):
+            # Mount only executable and shared-library trees. In particular, do not
+            # expose /usr/local or the host's broader /usr tree to the workload.
+            for runtime_dir in ("/usr/bin", "/usr/lib", "/usr/lib64", "/lib", "/lib64"):
                 if os.path.exists(runtime_dir):
-                    command.extend(["--ro-bind", runtime_dir, runtime_dir])
+                    runtime_source = str(Path(runtime_dir).resolve(strict=True))
+                    command.extend(["--ro-bind", runtime_source, runtime_dir])
             command.extend([
                 "--dir", "/etc",
                 "--dir", "/workspace",
