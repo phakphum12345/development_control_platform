@@ -23,7 +23,7 @@ No other target kind/object combination is accepted.
 ## Preservation and ordering
 
 - Every existing supported ACE is retained byte-for-byte and in its original relative order.
-- ACL revision, reserved header bytes, and unused allocation bytes are preserved.
+- ACL revision, reserved header bytes, unused allocation bytes, and the supplied DACL control-flag metadata are preserved in the candidate result.
 - The new explicit allow ACE is inserted after existing explicit ACEs and before inherited ACEs.
 - Existing explicit deny ACEs must precede explicit allow ACEs.
 - Existing explicit ACEs after inherited ACEs, explicit deny after explicit allow, and ACE types without an approved DACL ordering policy are rejected; the builder never silently reorders existing entries.
