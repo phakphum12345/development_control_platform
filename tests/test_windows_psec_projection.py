@@ -58,12 +58,27 @@ class WindowsPsecProjectionTests(unittest.TestCase):
                 create_workspace_projection(source, private)
 
     def test_projection_rejects_reserved_names_and_ads(self):
-        for name in ("CON", "NUL.txt", "report:stream"):
+        for name in ("CON", "NUL.txt"):
             with self.subTest(name=name), tempfile.TemporaryDirectory() as temporary:
                 source, private = self._roots(Path(temporary))
                 (source / name).write_text("bad", encoding="utf-8")
                 with self.assertRaises(ProjectionError):
                     create_workspace_projection(source, private)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            source, private = self._roots(Path(temporary))
+            base = source / "report"
+            base.write_text("ordinary stream", encoding="utf-8")
+            if os.name == "nt":
+                # On NTFS this creates a named stream attached to "report";
+                # it does not create a directory entry named "report:stream".
+                Path(str(base) + ":stream").write_text("hidden", encoding="utf-8")
+            else:
+                # Other filesystems can represent the colon as a filename
+                # component, which the Windows path validator must reject.
+                (source / "report:stream").write_text("hidden", encoding="utf-8")
+            with self.assertRaisesRegex(ProjectionError, "alternate data stream|invalid Windows"):
+                create_workspace_projection(source, private)
 
     def test_projection_rejects_case_insensitive_collisions(self):
         with tempfile.TemporaryDirectory() as temporary:
