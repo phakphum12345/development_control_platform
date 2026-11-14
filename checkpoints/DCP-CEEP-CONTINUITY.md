@@ -248,3 +248,17 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Source-level review completed; Windows native execution has NOT been performed by this authoring session. No test or CI pass is claimed here.
 - Next: run local syntax/portable tests and exact-head CI; inspect all workflow results against the final head SHA. Then provide the designated Windows-host PowerShell command and require the full pre-assertion evidence output. TRUE-state semantics remain UNKNOWN / NOT EXERCISED until the host actually retains TRUE at creation.
 - Native Writer remains BLOCKED; Terminal remains BLOCKED; all seven built-in templates remain DISABLED. No merge authorized.
+
+
+## 2026-11-14 — WP-18B.1-K evidence instrumentation revision
+
+- Code/test/docs state reviewed on code/test head `ffaf16868bbb593dcc98dd6e89dc7b8baa4e1f2a`; the following continuity-only commit records that state.
+- PR #131 remains OPEN / DRAFT / NOT MERGED; PR #130 remains unchanged. No merge, deployment, Native Writer, or Terminal enablement.
+- Test evidence is now emitted with flush before assertions. TRUE setup failure carries the post-create DACL snapshot and emits it before the test is classified SKIPPED / NOT EXERCISED.
+- Separate write-only observation mode (`rollback=False`) reports OBSERVED and records immediate post-write state. Round-trip mode uses a distinct fresh disposable file and unconditionally attempts rollback after write/read-back, including ambiguous error paths.
+- Harness-owned handle open/close success is directly tracked and asserted. Process-wide handle counts are best-effort diagnostics only.
+- Bounded ACE-header parsing records inherited ACE counts at create/write/rollback stages without parsing SID payloads.
+- Current code/test suite has one portable contract test and four Windows-native tests (TRUE, FALSE write-only, FALSE round-trip, ambiguous-write rollback). Windows-native tests have not yet been executed on the user's host.
+- GitHub Actions were queued on the preceding code/test head; this continuity-only commit changes the exact SHA, so all CI gates must be rechecked on the new final PR head. The self-hosted Windows runner acceptance matrix remains SKIPPED when no eligible runner is online; SKIPPED is not PASS.
+- Next: wait for exact-head CI, inspect Windows recovery job logs including `DACL_EXPERIMENT_EVIDENCE`, fix any issues, then run the same command on the designated user Windows host. A TRUE-state skip is not a TRUE acceptance pass.
+- Native Writer remains BLOCKED; Terminal remains BLOCKED; all seven built-in templates remain DISABLED.
