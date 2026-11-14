@@ -22,6 +22,10 @@ from typing import Callable
 
 from tools.cloud_gateway.terminal_catalog import preview_template
 from tools.cloud_gateway.terminal_execution_contract import template_version_digest
+from tools.local_runner_agent.terminal_isolation import (
+    assess_isolation_backend,
+    require_verified_isolation,
+)
 
 
 class TerminalExecutionError(RuntimeError):
@@ -335,6 +339,12 @@ class TerminalScriptExecutor:
     ) -> TerminalExecutionResult:
         if not self.enabled:
             raise TerminalExecutionError("Terminal execution is disabled on this Runner")
+        try:
+            require_verified_isolation(assess_isolation_backend())
+        except RuntimeError:
+            raise TerminalExecutionError(
+                "Terminal execution is blocked: verified OS isolation is unavailable"
+            ) from None
         workspace = self._trusted_directory(workspace_path)
         try:
             template = preview_template(template_id, parameters)
