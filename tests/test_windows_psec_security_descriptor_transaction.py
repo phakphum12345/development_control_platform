@@ -134,6 +134,26 @@ class NativeSecurityDescriptorTransactionTests(unittest.TestCase):
         self.assertEqual(result.state, "ROLLED_BACK_VERIFIED")
         self.assertEqual([handle for handle, _ in api.writes], [10, 10])
 
+    def test_dacl_drift_after_preflight_blocks_target_write(self):
+        api = FakeHandleSecurityApi()
+        original_read = api.read_dacl
+        calls = {10: 0, 11: 0}
+
+        def changing_read(handle):
+            calls[handle] += 1
+            if handle == 11 and calls[handle] == 2:
+                changed = replace(ORIGINAL, dacl_bytes=b"CONCURRENT-CHANGE")
+                api.states[handle] = changed
+                return changed
+            return original_read(handle)
+
+        api.read_dacl = changing_read
+        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID)
+        self.assertEqual(result.state, "ROLLED_BACK_VERIFIED")
+        self.assertEqual([handle for handle, _ in api.writes], [10, 10])
+        self.assertEqual(api.states[10], ORIGINAL)
+        self.assertEqual(api.states[11].dacl_bytes, b"CONCURRENT-CHANGE")
+
     def test_read_back_failure_rolls_back_target_and_previous_targets(self):
         api = FakeHandleSecurityApi()
         # Preflight reads are first; fail the second read for handle 11 (read-back).
