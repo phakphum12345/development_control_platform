@@ -34,6 +34,7 @@ from tools.local_runner_agent.windows_psec_dacl_experiment import (
 
 UNPROTECTED_DACL_SECURITY_INFORMATION = 0x20000000
 SE_DACL_PROTECTED = 0x1000
+SE_DACL_AUTO_INHERITED = 0x0400
 SE_DACL_AUTO_INHERIT_REQ = 0x0100
 
 RESTORE_API_CANDIDATES = (
@@ -120,12 +121,15 @@ class WindowsDaclRestoreApiExperiment(WindowsDaclDefaultedExperiment):
             bool(snapshot.dacl_defaulted),
         ):
             raise self._last_error("SetSecurityDescriptorDacl(restore candidate)")
-        control_bits = SE_DACL_PROTECTED
+        control_interest = (
+            SE_DACL_PROTECTED | SE_DACL_AUTO_INHERITED | SE_DACL_AUTO_INHERIT_REQ
+        )
+        control_bits = snapshot.dacl_control_flags & control_interest
         if auto_inherit_req:
             control_bits |= SE_DACL_AUTO_INHERIT_REQ
         if not self._advapi32.SetSecurityDescriptorControl(
             descriptor,
-            SE_DACL_PROTECTED | SE_DACL_AUTO_INHERIT_REQ,
+            control_interest,
             control_bits,
         ):
             raise self._last_error("SetSecurityDescriptorControl(restore candidate)")
