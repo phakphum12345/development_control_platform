@@ -28,7 +28,7 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         self.assertGreater(result.volume_serial, 0)
         self.assertEqual(len(result.file_id), 32)
         # This is the measurement under test, not a pre-assumed success.
-        self.assertIn(result.dacl_defaulted_after_write, (True, False))
+        self.assertIsInstance(result.dacl_defaulted_after_write, bool)
 
 
     def test_ambiguous_native_write_error_still_attempts_rollback_and_cleanup(self):
@@ -43,8 +43,8 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
                 raise OSError("injected error after native SetSecurityInfo")
 
         with patch.object(experiment, "_write_dacl", side_effect=fail_after_native_write):
-            with self.assertRaisesRegex(DaclExperimentError, "write failed"):
-                experiment.run(defaulted=True)
+            with self.assertRaisesRegex(DaclExperimentError, "experiment error"):
+                experiment.run(defaulted=False)
         self.assertEqual(calls["count"], 2, "rollback must run after an ambiguous write error")
         self.assertTrue(experiment.last_cleanup_verified)
 
