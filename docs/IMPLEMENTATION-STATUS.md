@@ -106,7 +106,7 @@ These are historical exact-SHA CI results for the baseline, not current feature-
 
 - WP-00 source-to-test/API/Dashboard/requirements mapping: IN_PROGRESS.
 - WP-18A Linux bubblewrap: integrated into TerminalScriptExecutor; exact-head GitHub-hosted Ubuntu runtime tests pass, including seccomp FD inheritance and detached-child termination. Target-host acceptance remains UNKNOWN.
-- WP-18B Windows AppContainer/LPAC: BLOCKED; native helper absent.
+- WP-18B Windows native process isolation: PSEC v1.1 capability probe and design added; actual CreateProcessW integration, workspace/network enforcement, Job Object containment and target-host acceptance remain BLOCKED. PSEC is not LPAC.
 - WP-18C process-tree and scratch cleanup: PARTIAL. Linux bubblewrap uses parent-death/PID-namespace containment and has a detached-child timeout test on the GitHub-hosted Ubuntu runner. A runner-authenticated Gateway status endpoint permits delayed cleanup only for the same worker's terminal_script workspace when the Gateway explicitly attests cleanup_safe. UNKNOWN, LEASE_EXPIRED, active, recent, mismatched, unavailable and preview-retained workspaces are preserved. User-host and Windows process-tree acceptance remain UNKNOWN.
 - WP-18D adversarial security and host acceptance: PARTIAL. Real bubblewrap CI tests cover IPv4/IPv6/Unix socket creation, socketpair, io_uring_setup, zero effective capabilities, host-secret symlink isolation, and forked-child termination. A Linux host acceptance harness records exact host/kernel/bubblewrap evidence; it has not yet been run on the target host.
 - WP-18E CI/security/docs: PARTIAL.
