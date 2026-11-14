@@ -91,3 +91,35 @@ Microsoft's MXC process-container support matrix lists Windows 11 26H2 build 263
 - [CreateProcessW](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw)
 - [Microsoft MXC Process Container documentation and reference implementation](https://github.com/microsoft/mxc/tree/main/docs/backends/process-container)
 - [Microsoft MXC Windows OS support matrix](https://github.com/microsoft/mxc/blob/main/docs/backends/process-container/os-version-support.md)
+
+
+## External reference review — Enhanced-PsExec-GUI
+
+**Reference repository:** [phakphum12345/Enhanced-PsExec-GUI](https://github.com/phakphum12345/Enhanced-PsExec-GUI), branch `master`  
+**Review scope:** `README.md`, `EnhancedPsExecGUI/epsexecForm.cs`, `EnhancedPsExecGUI/RemoteConsole.cs`, `EnhancedPsExecGUI/EnhancedPsExec.csproj`, `EnhancedPsExecGUI/Program.cs`, and `EnhancedPsExecGUI/app.manifest`.
+
+### Architecture and disposition
+
+The reference is a legacy Windows Forms remote-administration GUI. It starts PsExec/PAExec clients to operate on remote Windows machines over SMB and exposes a remote command console. It is **not** an OS sandbox, a local execution broker, an AppContainer implementation, or a PSEC reference implementation. No source code or binary from this repository is imported into DCP.
+
+### Security findings — do not reproduce
+
+- The README instructs operators to enable SMBv2 and writable `ADMIN$`, create/use an administrator account, set `LocalAccountTokenFilterPolicy=1`, and recommends disabling Windows Firewall. These changes expand remote administrative access and conflict with DCP's local-first, least-privilege boundary. Do not apply them to a DCP host.
+- `epsexecForm.cs` writes credentials as plaintext `password=...` values in `.epsx` files and interpolates passwords into external-process command-line arguments (including PsExec/PAExec and helper executables). Do not copy this credential storage or command-line secret handling.
+- `RemoteConsole.cs` launches `paexec.exe ... -s ... cmd.exe` and forwards arbitrary text from the console input directly to the remote process standard input. This is an unrestricted administrator/SYSTEM shell, not an allowlisted task interface. It must not be exposed to the browser or Project Workspace UI.
+- Process arguments are assembled by string interpolation from IP, username, password, URL, paths, and command fragments. The code also uses `cmd.exe /c` in multiple actions. This is not an acceptable structured-argument boundary for untrusted input.
+- The inspected UI includes remote process termination, mouse/keyboard control, screenshot capture, file transfer, sound control, and helper-tool download features. This broad remote-control surface is outside the approved DCP Terminal scope.
+- `app.manifest` requests `requireAdministrator`; this elevates the controller rather than isolating a workload. The project targets .NET Framework 4.7.2 and does not provide a PSEC/Job Object containment design.
+- Several launch paths start a child process and immediately close the `Process` wrapper without establishing a durable process-tree lifecycle or Job Object ownership. This is not a model for cancellation, descendant cleanup, or evidence collection.
+
+### Limited reusable observations
+
+- The separate stdout/stderr event handlers and explicit stdin/stdout/stderr wiring in `RemoteConsole.cs` illustrate a basic interactive process-I/O shape. They are UI mechanics only; the unrestricted stdin-to-shell design is explicitly rejected.
+- DCP already has its own bounded output handling, redaction, fixed-template contract, explicit process creation, inherited-handle allowlist, and Job Object lifecycle. Those controls remain authoritative; this reference contributes no implementation code to them.
+- If a future approved interactive workflow is designed, it must still use a named, policy-approved operation, typed/validated arguments, a trusted executable path, an explicit environment/handle allowlist, bounded/redacted output, cancellation, and Job Object descendant containment. It must not provide arbitrary shell input.
+
+### Decision
+
+**REFERENCE ONLY — NO CODE ADOPTION.** Do not install or run this GUI, PsExec, PAExec, or its helper binaries as part of PSEC acceptance. Do not enable SMB, ADMIN$, remote administrator accounts, firewall exceptions, or UAC token-filter registry changes. Continue the DCP design using the PSEC launcher and fail-closed Terminal execution gate documented above.
+
+For Microsoft's documented PsExec `-l` option, note that it strips the Administrators group and runs at Low Integrity on Windows Vista and later; this is still not equivalent to PSEC/AppContainer isolation. See [Microsoft PsExec documentation](https://learn.microsoft.com/en-us/sysinternals/downloads/psexec).
