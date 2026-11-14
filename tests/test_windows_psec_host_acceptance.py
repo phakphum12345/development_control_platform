@@ -59,6 +59,7 @@ class WindowsPsecHostAcceptanceTests(unittest.TestCase):
             run.call_args.args[0][0],
             str(host.Path(r"C:\Windows") / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"),
         )
+        self.assertEqual(len(run.call_args.args[0]), 5)
         self.assertFalse(run.call_args.kwargs["shell"])
         self.assertEqual(run.call_args.kwargs["check"], False)
         self.assertEqual(
