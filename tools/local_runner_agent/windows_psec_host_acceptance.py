@@ -14,6 +14,7 @@ import sys
 import tempfile
 import threading
 import time
+import traceback
 import uuid
 from pathlib import Path
 
@@ -248,6 +249,8 @@ def main() -> int:
         print(json.dumps({
             "state": "FAIL",
             "error_type": type(exc).__name__,
+            "error_message": str(exc),
+            "traceback": traceback.format_exc(),
             "note": "No Terminal templates were enabled; the production VERIFIED gate remains closed.",
         }, indent=2, sort_keys=True))
         return 1
