@@ -40,6 +40,14 @@ def _emit_evidence(label, result):
         "rollback_attempted": result.rollback_attempted,
         "control_flags_after_each_write": result.control_flags_after_each_write,
         "native_write_calls": result.native_write_calls,
+        "original_snapshot": {
+            "transaction_id": result.original_snapshot_transaction_id,
+            "integrity_sha256": result.original_snapshot_integrity_sha256,
+        },
+        "restoration_verification": {
+            "state": result.restoration_verification_state,
+            "mismatches": result.restoration_verification_mismatches,
+        },
         "control_flags": {
             "after_create": result.control_flags_before,
             "after_write": result.control_flags_after_write,
@@ -119,6 +127,9 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         self.assertEqual(result.filesystem.upper(), "NTFS")
         self.assertFalse(result.dacl_defaulted_before)
         self.assertEqual(result.outcome, "OBSERVED")
+        self.assertTrue(result.original_snapshot_transaction_id)
+        self.assertEqual(len(result.original_snapshot_integrity_sha256), 64)
+        self.assertIsNone(result.restoration_verification_state)
         self.assertEqual(result.security_info_flags, security_info_flags)
         self.assertFalse(result.rollback_attempted)
         self.assertIsNotNone(result.dacl_bytes_after_write_hex)
@@ -142,6 +153,9 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         self.assertEqual(result.native_write_calls, 0)
         self.assertEqual(result.control_flags_after_each_write, ())
         self.assertEqual(result.control_flags_after_write, result.control_flags_before)
+        self.assertTrue(result.original_snapshot_transaction_id)
+        self.assertEqual(len(result.original_snapshot_integrity_sha256), 64)
+        self.assertIsNone(result.restoration_verification_state)
         self.assertEqual(result.dacl_bytes_after_write_hex, result.dacl_bytes_before_hex)
         self.assertFalse(result.api_errors)
         self.assertTrue(result.cleanup_verified)
@@ -197,6 +211,10 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         self.assertEqual(calls["count"], 2, "rollback must run after an ambiguous write error")
         self.assertIn("injected error after native SetSecurityInfo", result.api_errors)
         self.assertEqual(result.outcome, "FAIL")
+        self.assertEqual(result.restoration_verification_state, "RESTORE_NOT_EXACT")
+        self.assertIn("control_flags_mismatch", result.restoration_verification_mismatches)
+        self.assertTrue(result.original_snapshot_transaction_id)
+        self.assertEqual(len(result.original_snapshot_integrity_sha256), 64)
         self.assertTrue(experiment.last_cleanup_verified)
         self.assertTrue(result.cleanup_verified)
         self.assertTrue(result.owned_handle_opened)
@@ -208,6 +226,10 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         _emit_evidence("FALSE_ROUND_TRIP", result)
         self.assertEqual(result.filesystem.upper(), "NTFS")
         self.assertFalse(result.dacl_defaulted_before)
+        self.assertTrue(result.original_snapshot_transaction_id)
+        self.assertEqual(len(result.original_snapshot_integrity_sha256), 64)
+        self.assertEqual(result.restoration_verification_state, "RESTORE_NOT_EXACT")
+        self.assertIn("control_flags_mismatch", result.restoration_verification_mismatches)
         self.assertEqual(result.outcome, "PASS", "FALSE DACL state failed exact round-trip")
         self.assertEqual(result.dacl_defaulted_after_rollback, False)
         self.assertTrue(result.cleanup_verified)
