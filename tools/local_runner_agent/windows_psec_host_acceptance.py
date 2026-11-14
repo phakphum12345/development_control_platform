@@ -138,30 +138,37 @@ def _run_policy_acceptance(launcher, workspace: Path, scratch: Path, canary: Pat
 
 
 def _run_job_tree_acceptance(launcher, workspace: Path, scratch: Path, environment):
+    marker = scratch / "escaped-child-marker.txt"
     parent_code = (
         "import subprocess,sys; "
-        "subprocess.Popen([sys.executable, '-c', sys.argv[1]]); "
+        "subprocess.Popen([sys.executable, '-c', sys.argv[1], sys.argv[2]], "
+        "stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, "
+        "stderr=subprocess.DEVNULL, close_fds=True); "
         "print('DCP_PARENT_EXITED', flush=True)"
     )
-    child_code = "import time; time.sleep(30)"
+    child_code = (
+        "import pathlib,sys,time; time.sleep(4); "
+        "pathlib.Path(sys.argv[1]).write_text('child-survived', encoding='utf-8')"
+    )
     process = launcher.launch(
-        [sys.executable, "-c", parent_code, child_code],
+        [sys.executable, "-c", parent_code, child_code, str(marker)],
         workspace=workspace,
         scratch=scratch,
         environment=environment,
     )
     try:
         try:
-            process.wait(timeout=1.0)
+            process.wait(timeout=2.0)
             tracked = False
         except subprocess.TimeoutExpired:
             tracked = True
         process.terminate_tree()
         process.wait(timeout=8)
         output = process.stdout.read().decode("utf-8", "replace")
+        time.sleep(4.5)
         return {
             "job_object_tracks_descendant": "PASS" if tracked and "DCP_PARENT_EXITED" in output else "FAIL",
-            "job_object_terminates_descendant": "PASS" if process.poll() is not None else "FAIL",
+            "job_object_terminates_descendant": "PASS" if not marker.exists() else "FAIL",
         }
     finally:
         process.close()
