@@ -247,28 +247,59 @@ class TerminalScriptExecutor:
         return [resolved, *command_args]
 
     @staticmethod
+    def _sandbox_environment(env: dict[str, str]) -> dict[str, str]:
+        """Return only fixed/template-approved workload variables for bubblewrap."""
+        return {
+            name: value for name, value in env.items()
+            if name not in {"PATH", "HOME", "USERPROFILE", "SYSTEMROOT"}
+        }
+
+    @staticmethod
     def _disable_repository_filters(
-        resolved: str, workspace: Path, env: dict[str, str]
+        resolved: str,
+        workspace: Path,
+        env: dict[str, str],
+        *,
+        launcher: LinuxBubblewrapLauncher,
+        scratch: Path,
     ) -> None:
-        """Disable repository-defined clean/smudge/process filters before Git inspection."""
+        """Inspect repository filter names inside the same OS sandbox as the job."""
+        sandbox = None
         try:
-            result = subprocess.run(
-                [resolved, "config", "--name-only", "--null", "--list"],
-                cwd=str(workspace), env=env, stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                shell=False, close_fds=True, timeout=5, check=False,
+            sandbox = launcher.build(
+                executable=resolved,
+                argv=["config", "--name-only", "--null", "--list"],
+                workspace=workspace,
+                scratch=scratch,
+                environment=TerminalScriptExecutor._sandbox_environment(env),
             )
-        except (OSError, subprocess.TimeoutExpired):
+            result = subprocess.run(
+                list(sandbox.argv),
+                cwd=str(workspace),
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                shell=False,
+                close_fds=True,
+                timeout=5,
+                check=False,
+                pass_fds=(sandbox.seccomp_fd,) if os.name == "posix" else (),
+            )
+        except (OSError, subprocess.TimeoutExpired, LinuxSandboxError, ValueError):
             raise TerminalExecutionError(
                 "Git repository filter configuration could not be inspected safely"
             ) from None
+        finally:
+            if sandbox is not None:
+                sandbox.close()
         if result.returncode != 0:
             raise TerminalExecutionError(
                 "Git repository filter configuration could not be inspected safely"
             )
 
         drivers: dict[str, str] = {}
-        for raw_key in result.stdout.split(b"\0"):
+        for raw_key in result.stdout.split(b"\\0"):
             if not raw_key:
                 continue
             key = raw_key.decode("utf-8", "replace")
@@ -421,27 +452,31 @@ class TerminalScriptExecutor:
             shutil.rmtree(job_home, ignore_errors=True)
             raise TerminalExecutionError("Temporary Terminal environment could not be secured") from None
         env = self._environment(template, job_home, safe_path)
+        try:
+            launcher = LinuxBubblewrapLauncher()
+        except (LinuxSandboxError, OSError, ValueError):
+            shutil.rmtree(job_home, ignore_errors=True)
+            raise TerminalExecutionError(
+                "Linux bubblewrap sandbox could not be constructed safely"
+            ) from None
         if executable == "git":
             try:
-                self._disable_repository_filters(resolved, workspace, env)
+                self._disable_repository_filters(
+                    resolved, workspace, env, launcher=launcher, scratch=job_home
+                )
             except TerminalExecutionError:
                 shutil.rmtree(job_home, ignore_errors=True)
                 raise
         timeout = min(int(template["timeout_seconds"]), self.timeout_ceiling_seconds)
         output_limit = min(int(template["max_output_bytes"]), self.output_ceiling_bytes)
         command = self._build_command(resolved, executable, argv)
-        sandbox_environment = {
-            name: value for name, value in env.items()
-            if name not in {"PATH", "HOME", "USERPROFILE", "SYSTEMROOT"}
-        }
         try:
-            launcher = LinuxBubblewrapLauncher()
             sandbox_command = launcher.build(
                 executable=resolved,
                 argv=command[1:],
                 workspace=workspace,
                 scratch=job_home,
-                environment=sandbox_environment,
+                environment=self._sandbox_environment(env),
             )
         except (LinuxSandboxError, OSError, ValueError):
             shutil.rmtree(job_home, ignore_errors=True)
