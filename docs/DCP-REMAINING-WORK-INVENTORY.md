@@ -20,10 +20,10 @@ This inventory distinguishes implemented code, automated tests, CI evidence, and
 | WP-00B | Module/API/Dashboard/Workflow inventory | 78 tool files grouped by subsystem, 21 Dashboard view IDs, Gateway route families and all 7 workflows mapped; per-file entrypoint/handler tracing remains | IN_PROGRESS |
 | WP-00C | Test-to-requirement traceability | All 86 baseline test files listed and mapped to 24 requirement groups; function-level and workflow/job-level trace remains | IN_PROGRESS |
 | WP-00D | Documentation reconciliation | Added INDEX, IMPLEMENTATION-STATUS and REQUIREMENTS-TRACEABILITY; existing roadmap/backlog/continuity still require full reconciliation | IN_PROGRESS |
-| WP-18A | Linux bubblewrap isolation launcher | Added a Linux-only bubblewrap command builder and network-deny seccomp BPF policy with unit tests; not yet integrated into TerminalScriptExecutor and not host-accepted | IN_PROGRESS |
+| WP-18A | Linux bubblewrap isolation launcher | Integrated into TerminalScriptExecutor; seccomp FD and allowlisted environment wired; real bubblewrap executor and detached-child tests pass on GitHub-hosted Ubuntu; target-host acceptance still UNKNOWN | PARTIAL / IN_PROGRESS |
 | WP-18B | Windows AppContainer/LPAC launcher | Native helper and capability policy absent | BLOCKED |
 | WP-18C | Process-tree containment and cleanup | Linux bubblewrap parent-death containment now has a detached-descendant timeout test; authenticated Gateway cleanup attestation and conservative terminal-workspace reconciliation added. UNKNOWN, lease-expired, active, mismatched and retained workspaces are preserved; user-host/Windows acceptance remains absent | PARTIAL / IN_PROGRESS |
-| WP-18D | Adversarial security and host acceptance | Contract/unit tests exist; actual filesystem/network/process escape acceptance absent | PENDING |
+| WP-18D | Adversarial security and host acceptance | Added real bubblewrap tests for socket families, socketpair, io_uring denial, zero effective capabilities, host-secret symlink isolation, and a target-Linux host acceptance harness; GitHub-hosted CI evidence only, target-host evidence remains UNKNOWN | PARTIAL / IN_PROGRESS |
 | WP-18E | Isolation CI, security review and documentation | Cross-platform recovery workflow exists; no platform sandbox acceptance matrix or independent host evidence | IN_PROGRESS |
 | WP-19 | Windows host and Dashboard → Local Auth Proxy → Gateway acceptance | Unit/integration contracts exist; live supported Windows-host evidence not present in the reviewed ledger | UNKNOWN |
 | WP-20 | Artifact provenance and end-to-end SHA-256 verification | Gateway hashes upload and re-verifies downloaded bytes; tamper tests exist; Dashboard-to-download provenance acceptance remains | PARTIAL |
@@ -113,7 +113,7 @@ Existing roadmap, backlog and continuity documents require reconciliation with m
 
 1. Complete WP-00B/00C by mapping every source module, API route, Dashboard view, workflow, test and requirement.
 2. Complete WP-00D by reconciling roadmap/backlog/continuity and adding status/traceability docs.
-3. Integrate and validate WP-18A Linux-only bubblewrap launch builder with explicit mounts, private network namespace, seccomp policy and bounded scratch; keep execution blocked until real-host adversarial acceptance passes.
+3. WP-18A executor integration is implemented; run WP-18D adversarial tests and the documented Linux target-host acceptance harness before any production enablement.
 4. Implement WP-18C process-tree and cleanup verification in parallel only where dependencies allow.
 5. Implement WP-18B Windows native isolation separately; do not substitute a POSIX shim.
 6. Run exact-head CI, security review and host acceptance before considering any template enablement.
