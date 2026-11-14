@@ -36,6 +36,11 @@ class NativeHandlePreflightTests(unittest.TestCase):
         with self.assertRaises(NativeHandleAclError):
             validate_relative_component("x" * 256)
 
+    def test_rejects_reserved_dos_device_names(self):
+        for value in ("CON", "nul.txt", "COM1", "LPT9.log"):
+            with self.subTest(value=value), self.assertRaises(NativeHandleAclError):
+                validate_relative_component(value)
+
     def test_identity_captures_full_file_id_and_object_kind(self):
         identity = HandleIdentity(
             volume_serial=7,
