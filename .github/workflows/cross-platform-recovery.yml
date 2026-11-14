@@ -85,6 +85,7 @@ jobs:
         run: python -m unittest tests.test_linux_sandbox -v
 
       - name: Run Terminal executor and bubblewrap integration tests
+        if: runner.os == 'Linux'
         run: python -m unittest tests.test_terminal_executor -v
 
       - name: Report host identity
