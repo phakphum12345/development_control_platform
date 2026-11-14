@@ -448,18 +448,9 @@ class TerminalScriptExecutor:
         if process.poll() is not None:
             return
         if os.name == "nt":
-            try:
-                subprocess.run(
-                    ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL, check=False, timeout=5,
-                    shell=False,
-                )
-            except (OSError, subprocess.TimeoutExpired):
-                try:
-                    process.kill()
-                except OSError:
-                    pass
+            raise TerminalExecutionError(
+                "Windows Terminal process is not owned by a PSEC Job Object"
+            )
         else:
             try:
                 os.killpg(process.pid, signal.SIGTERM)
