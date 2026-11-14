@@ -235,3 +235,16 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Latest code/test head at this checkpoint before the documentation/ledger-only commits: `f3694994e844302a9ca03ef27065cccc701d378b`. GitHub checks then running: Validate Control Plane and Local-first Minimal Emulator; Windows dynamic-port launcher integration still in progress. The dedicated Cross-platform Recovery Acceptance workflow was not yet visible on this exact SHA; exact-head DACL validation remains UNKNOWN.
 - GitHub-hosted Windows CI is not the designated user's Windows-host acceptance. User-host run remains PENDING; no remote execution on the user's PC was performed.
 - Native Writer remains BLOCKED; Terminal remains BLOCKED; all seven built-in templates remain DISABLED. No merge or deployment authorized.
+
+
+## 2026-11-14 — WP-18B.1-K corrective instrumentation checkpoint
+
+- PR #131 only; branch `work/wp18b1k-dacl-native-api-experiment-stack`. PR #130 is unchanged. PR #131 remains OPEN / DRAFT / NOT MERGED; no merge or deployment performed.
+- Fixed evidence ordering: TRUE/FALSE/ambiguous-error/write-only tests emit flushed `DACL_EXPERIMENT_EVIDENCE` immediately after harness return and before assertions.
+- Split native observation from rollback: a `rollback=False` run records the immediate post-`SetSecurityInfo` state and reports `OBSERVED`; a separate default run uses a fresh disposable object and attempts rollback. The write-only test does not assert that the write preserved bytes; it records the actual result.
+- Added bounded ACE-header parsing to report `INHERITED_ACE` counts after creation, after write, and after rollback where available. SID payloads are not parsed.
+- Added harness-owned handle lifecycle evidence (`owned_handle_opened`, `owned_handle_closed`, `close_handle_succeeded`) and direct assertions. Process-wide handle counts are best-effort diagnostics only and are no longer acceptance gates.
+- Added a distinct Windows write-only observation test. Existing FALSE round-trip and ambiguous-write-error tests remain separate disposable runs.
+- Source-level review completed; Windows native execution has NOT been performed by this authoring session. No test or CI pass is claimed here.
+- Next: run local syntax/portable tests and exact-head CI; inspect all workflow results against the final head SHA. Then provide the designated Windows-host PowerShell command and require the full pre-assertion evidence output. TRUE-state semantics remain UNKNOWN / NOT EXERCISED until the host actually retains TRUE at creation.
+- Native Writer remains BLOCKED; Terminal remains BLOCKED; all seven built-in templates remain DISABLED. No merge authorized.
