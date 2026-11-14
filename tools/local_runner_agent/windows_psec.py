@@ -184,9 +184,10 @@ def create_psec_environment(dll, specification: bytes):
     if not isinstance(specification, bytes) or not specification:
         raise ValueError("PSEC specification must be non-empty bytes")
     create = dll.CreateProcessSecurityEnvironment
+    # Microsoft ABI: (BYTE *specification, UINT32 size, HANDLE *environment).
+    # There is no flags parameter; the output handle is the third argument.
     create.argtypes = [
         ctypes.c_void_p,
-        ctypes.c_uint32,
         ctypes.c_uint32,
         ctypes.POINTER(ctypes.c_void_p),
     ]
@@ -200,7 +201,6 @@ def create_psec_environment(dll, specification: bytes):
     hr = int(create(
         ctypes.cast(buffer, ctypes.c_void_p),
         len(specification),
-        0,
         ctypes.byref(environment),
     ))
     if hr < 0 or not environment.value:
