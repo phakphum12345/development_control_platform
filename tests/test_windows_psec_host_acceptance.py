@@ -37,16 +37,25 @@ class WindowsPsecHostAcceptanceTests(unittest.TestCase):
                 self.assertIn(marker, payload)
 
     def test_filesystem_acl_diagnostic_is_read_only(self):
-        completed = mock.Mock(returncode=0, stdout="DACL evidence", stderr="")
+        dacl = mock.Mock(returncode=0, stdout="DACL evidence", stderr="")
+        descriptor = mock.Mock(
+            returncode=0,
+            stdout='{"owner":"HOST\\\\user","dacl_protected":true,"sddl":"D:PAI"}',
+            stderr="",
+        )
         with mock.patch.dict(os.environ, {"SYSTEMROOT": r"C:\Windows"}):
             with mock.patch.object(host.Path, "is_file", return_value=True):
-                with mock.patch.object(host.subprocess, "run", return_value=completed) as run:
+                with mock.patch.object(
+                    host.subprocess, "run", side_effect=[dacl, descriptor]
+                ) as run:
                     result = host._filesystem_acl(host.Path(r"C:\DCP\workspace"))
 
         self.assertEqual(result["state"], "CAPTURED")
         self.assertEqual(result["stdout"], "DACL evidence")
-        command = run.call_args.args[0]
-        self.assertEqual(command[0], r"C:\Windows\System32\icacls.exe")
+        self.assertEqual(result["security_descriptor"]["state"], "CAPTURED")
+        self.assertTrue(result["security_descriptor"]["dacl_protected"])
+        self.assertEqual(run.call_count, 2)
+        self.assertEqual(run.call_args.args[0][0], r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")
         self.assertFalse(run.call_args.kwargs["shell"])
         self.assertEqual(run.call_args.kwargs["check"], False)
 
