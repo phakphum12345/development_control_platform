@@ -190,7 +190,11 @@ class _WindowsAclApi:
         self.kernel32.LocalFree.restype = wintypes.LPVOID
 
     def _sddl_from_path(self, path: Path) -> str:
-        owner = wintypes.LPVOID()\n        group = wintypes.LPVOID()\n        dacl = wintypes.LPVOID()\n        sacl = wintypes.LPVOID()\n        descriptor = wintypes.LPVOID()
+        owner = wintypes.LPVOID()
+        group = wintypes.LPVOID()
+        dacl = wintypes.LPVOID()
+        sacl = wintypes.LPVOID()
+        descriptor = wintypes.LPVOID()
         result = self.advapi32.GetNamedSecurityInfoW(
             str(path), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION,
             ctypes.byref(owner), ctypes.byref(group), ctypes.byref(dacl),
@@ -219,7 +223,11 @@ class _WindowsAclApi:
 
     def add_allow_ace(self, path: Path, package_sid: str, mask: int, inheritance: int) -> None:
         sid = wintypes.LPVOID()
-        old_descriptor = wintypes.LPVOID()\n        old_owner = wintypes.LPVOID()\n        old_group = wintypes.LPVOID()\n        old_dacl = wintypes.LPVOID()\n        old_sacl = wintypes.LPVOID()
+        old_descriptor = wintypes.LPVOID()
+        old_owner = wintypes.LPVOID()
+        old_group = wintypes.LPVOID()
+        old_dacl = wintypes.LPVOID()
+        old_sacl = wintypes.LPVOID()
         new_acl = wintypes.LPVOID()
         try:
             if not self.advapi32.ConvertStringSidToSidW(package_sid, ctypes.byref(sid)):
