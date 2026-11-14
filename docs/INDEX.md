@@ -9,6 +9,7 @@
 - [Continuity Ledger](../checkpoints/DCP-CEEP-CONTINUITY.md) — latest resumable work checkpoint.
 - [WP-18B.1-M Protocol v1 Consumer Conformance Checkpoint](../checkpoints/WP-18B1-M-PROTOCOL-V1-CONSUMER-CONFORMANCE.md) — source-to-profile audit and exact-head CI baseline.
 - [WP-18B.1-N Explicit DACL Comparison Profiles](../checkpoints/WP-18B1-N-PROTOCOL-V1-COMPARATOR.md) — required comparison-profile contract and deterministic non-native conformance tests.
+- [WP-18B.1-O Mathematical Profile Adapter Checkpoint](../checkpoints/WP-18B1-O-PSEC-MATHEMATICAL-PROFILE-ADAPTER.md) — four-profile Decimal adapter experiment and exact-head validation gate.
 - [CEEP Command Reference](DCP-CEEP-COMMAND-REFERENCE.md)
 - [CEEP Project Profile Template](templates/DCP-CEEP-PROJECT-PROFILE.md)
 - [CEEP v2.0 Proposal](DCP-CEEP-UNIVERSAL-v2.0.md) — proposal only; not adopted.
