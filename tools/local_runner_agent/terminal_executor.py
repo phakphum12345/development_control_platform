@@ -30,6 +30,10 @@ from tools.local_runner_agent.linux_sandbox import (
     LinuxBubblewrapLauncher,
     LinuxSandboxError,
 )
+from tools.local_runner_agent.windows_psec_launcher import (
+    WindowsPsecLauncher,
+    WindowsPsecError,
+)
 
 
 class TerminalExecutionError(RuntimeError):
@@ -323,6 +327,104 @@ class TerminalScriptExecutor:
         env["GIT_CONFIG_COUNT"] = str(index)
 
     @staticmethod
+    def _disable_repository_filters_windows(
+        resolved: str,
+        workspace: Path,
+        env: dict[str, str],
+        *,
+        launcher: WindowsPsecLauncher,
+        scratch: Path,
+    ) -> None:
+        """Inspect Git filter names inside a PSEC process before the main Git command."""
+        process = None
+        chunks: queue.Queue[bytes | None] = queue.Queue(maxsize=8)
+        output = bytearray()
+        reader = None
+        try:
+            process = launcher.launch(
+                [resolved, "config", "--name-only", "--null", "--list"],
+                workspace=workspace,
+                scratch=scratch,
+                environment=env,
+            )
+
+            def read_output():
+                try:
+                    while True:
+                        chunk = process.stdout.read(4096)
+                        if not chunk:
+                            break
+                        chunks.put(chunk)
+                finally:
+                    chunks.put(None)
+
+            reader = threading.Thread(target=read_output, name="dcp-git-filter-config", daemon=True)
+            reader.start()
+            deadline = time.monotonic() + 5
+            reader_done = False
+            while not reader_done:
+                if time.monotonic() >= deadline:
+                    process.terminate_tree()
+                    raise TerminalExecutionError(
+                        "Git repository filter configuration could not be inspected safely"
+                    )
+                try:
+                    chunk = chunks.get(timeout=0.05)
+                except queue.Empty:
+                    continue
+                if chunk is None:
+                    reader_done = True
+                    continue
+                if len(output) + len(chunk) > 65536:
+                    process.terminate_tree()
+                    raise TerminalExecutionError(
+                        "Git repository filter configuration exceeded its output limit"
+                    )
+                output.extend(chunk)
+            if process.wait(timeout=5) != 0:
+                raise TerminalExecutionError(
+                    "Git repository filter configuration could not be inspected safely"
+                )
+        except (OSError, subprocess.TimeoutExpired, WindowsPsecError, ValueError):
+            if process is not None:
+                try:
+                    process.terminate_tree()
+                except Exception:
+                    pass
+            raise TerminalExecutionError(
+                "Git repository filter configuration could not be inspected safely"
+            ) from None
+        finally:
+            if reader is not None:
+                reader.join(timeout=2)
+            if process is not None:
+                process.close()
+
+        drivers: dict[str, str] = {}
+        for raw_key in bytes(output).split(b"\0"):
+            if not raw_key:
+                continue
+            key = raw_key.decode("utf-8", "replace")
+            section, separator, setting = key.rpartition(".")
+            if not separator or setting.casefold() not in {"clean", "smudge", "process", "required"}:
+                continue
+            if not section.casefold().startswith("filter."):
+                continue
+            driver = section[len("filter."):]
+            if driver:
+                drivers.setdefault(driver, driver)
+
+        index = int(env.get("GIT_CONFIG_COUNT", "0"))
+        for driver in drivers.values():
+            for setting, value in (
+                ("clean", ""), ("smudge", ""), ("process", ""), ("required", "false")
+            ):
+                env[f"GIT_CONFIG_KEY_{index}"] = f"filter.{driver}.{setting}"
+                env[f"GIT_CONFIG_VALUE_{index}"] = value
+                index += 1
+        env["GIT_CONFIG_COUNT"] = str(index)
+
+    @staticmethod
     def _log_chunks(value: str, max_bytes: int = 7000):
         current = []
         current_bytes = 0
@@ -338,22 +440,17 @@ class TerminalScriptExecutor:
             yield "".join(current)
 
     @staticmethod
-    def _terminate_tree(process: subprocess.Popen) -> None:
+    def _terminate_tree(process) -> None:
+        terminate_tree = getattr(process, "terminate_tree", None)
+        if callable(terminate_tree):
+            terminate_tree()
+            return
         if process.poll() is not None:
             return
         if os.name == "nt":
-            try:
-                subprocess.run(
-                    ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL, check=False, timeout=5,
-                    shell=False,
-                )
-            except (OSError, subprocess.TimeoutExpired):
-                try:
-                    process.kill()
-                except OSError:
-                    pass
+            raise TerminalExecutionError(
+                "Windows Terminal process is not owned by a PSEC Job Object"
+            )
         else:
             try:
                 os.killpg(process.pid, signal.SIGTERM)
@@ -381,9 +478,7 @@ class TerminalScriptExecutor:
             raise TerminalExecutionError(
                 "Terminal execution is blocked: verified OS isolation is unavailable"
             ) from None
-        # WP-18A currently integrates only the Linux bubblewrap backend. A future
-        # Windows/macOS VERIFIED result must not fall through to host Popen.
-        if assessment.platform != "linux":
+        if assessment.platform not in {"linux", "windows"}:
             raise TerminalExecutionError(
                 "Terminal execution is blocked: this Runner has no integrated isolation launcher for the host platform"
             )
@@ -406,27 +501,34 @@ class TerminalScriptExecutor:
                 or len(argv) > 32 or any(not isinstance(arg, str) or "\x00" in arg for arg in argv)):
             raise TerminalExecutionError("Terminal template resolved an unsafe command")
         safe_path = self._safe_path(workspace)
-        # bubblewrap exposes only the system-managed /usr/bin runtime tree. Do
-        # not select tools from /usr/local, a user PATH, or the project itself.
-        linux_names = {
-            "git": ("git",),
-            "python": ("python", "python3"),
-            "node": ("node",),
-        }
-        resolved = next(
-            (
-                candidate
-                for name in linux_names[executable]
-                if (candidate := shutil.which(name, path="/usr/bin"))
-            ),
-            None,
-        )
-        if not resolved:
-            raise TerminalExecutionError(
-                "Required Terminal executable is unavailable in the approved /usr/bin runtime"
+        if assessment.platform == "linux":
+            # bubblewrap exposes only the system-managed /usr/bin runtime tree.
+            # Do not select tools from /usr/local, a user PATH, or the project.
+            linux_names = {
+                "git": ("git",),
+                "python": ("python", "python3"),
+                "node": ("node",),
+            }
+            resolved = next(
+                (
+                    candidate
+                    for name in linux_names[executable]
+                    if (candidate := shutil.which(name, path="/usr/bin"))
+                ),
+                None,
             )
+            if not resolved:
+                raise TerminalExecutionError(
+                    "Required Terminal executable is unavailable in the approved /usr/bin runtime"
+                )
+        else:
+            resolved = shutil.which(executable, path=safe_path)
+            if not resolved:
+                raise TerminalExecutionError("Required Terminal executable is unavailable")
         resolved_path = Path(resolved).resolve(strict=True)
-        if (not resolved_path.is_file() or resolved_path.suffix.lower() in (".bat", ".cmd")):
+        if (not resolved_path.is_file()
+                or resolved_path.suffix.lower() in (".bat", ".cmd")
+                or (assessment.platform == "windows" and resolved_path.suffix.lower() != ".exe")):
             raise TerminalExecutionError("Terminal executable is not a trusted native binary")
         try:
             resolved_path.relative_to(workspace)
@@ -452,59 +554,82 @@ class TerminalScriptExecutor:
             shutil.rmtree(job_home, ignore_errors=True)
             raise TerminalExecutionError("Temporary Terminal environment could not be secured") from None
         env = self._environment(template, job_home, safe_path)
-        try:
-            launcher = LinuxBubblewrapLauncher()
-        except (LinuxSandboxError, OSError, ValueError):
-            shutil.rmtree(job_home, ignore_errors=True)
-            raise TerminalExecutionError(
-                "Linux bubblewrap sandbox could not be constructed safely"
-            ) from None
+        launcher = None
+        if assessment.platform == "linux":
+            try:
+                launcher = LinuxBubblewrapLauncher()
+            except (LinuxSandboxError, OSError, ValueError):
+                shutil.rmtree(job_home, ignore_errors=True)
+                raise TerminalExecutionError(
+                    "Linux bubblewrap sandbox could not be constructed safely"
+                ) from None
+        else:
+            try:
+                launcher = WindowsPsecLauncher()
+            except (WindowsPsecError, OSError, ValueError):
+                shutil.rmtree(job_home, ignore_errors=True)
+                raise TerminalExecutionError(
+                    "Windows PSEC sandbox could not be constructed safely"
+                ) from None
         if executable == "git":
             try:
-                self._disable_repository_filters(
-                    resolved, workspace, env, launcher=launcher, scratch=job_home
-                )
+                if assessment.platform == "linux":
+                    self._disable_repository_filters(
+                        resolved, workspace, env, launcher=launcher, scratch=job_home
+                    )
+                else:
+                    self._disable_repository_filters_windows(
+                        resolved, workspace, env, launcher=launcher, scratch=job_home
+                    )
             except TerminalExecutionError:
                 shutil.rmtree(job_home, ignore_errors=True)
                 raise
         timeout = min(int(template["timeout_seconds"]), self.timeout_ceiling_seconds)
         output_limit = min(int(template["max_output_bytes"]), self.output_ceiling_bytes)
         command = self._build_command(resolved, executable, argv)
-        try:
-            sandbox_command = launcher.build(
-                executable=resolved,
-                argv=command[1:],
-                workspace=workspace,
-                scratch=job_home,
-                environment=self._sandbox_environment(env),
-            )
-        except (LinuxSandboxError, OSError, ValueError):
-            shutil.rmtree(job_home, ignore_errors=True)
-            raise TerminalExecutionError(
-                "Linux bubblewrap sandbox could not be constructed safely"
-            ) from None
+        sandbox_command = None
+        if assessment.platform == "linux":
+            try:
+                sandbox_command = launcher.build(
+                    executable=resolved,
+                    argv=command[1:],
+                    workspace=workspace,
+                    scratch=job_home,
+                    environment=self._sandbox_environment(env),
+                )
+            except (LinuxSandboxError, OSError, ValueError):
+                shutil.rmtree(job_home, ignore_errors=True)
+                raise TerminalExecutionError(
+                    "Linux bubblewrap sandbox could not be constructed safely"
+                ) from None
 
-        # _environment() contains only the template allowlist and fixed safety
-        # settings, never the ambient host environment or Runner credentials.
-        # bubblewrap reconstructs the workload environment after --clearenv.
-        creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
+        # The Windows launcher applies PSEC before CreateProcessW and assigns the
+        # suspended process to a kill-on-close Job Object before resuming it.
         started = time.monotonic()
         try:
-            process = subprocess.Popen(
-                list(sandbox_command.argv), cwd=str(workspace), env=env,
-                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT, shell=False, close_fds=True,
-                start_new_session=(os.name != "nt"), creationflags=creationflags,
-                bufsize=0,
-                pass_fds=(sandbox_command.seccomp_fd,) if os.name == "posix" else (),
-            )
-        except (OSError, ValueError):
+            if assessment.platform == "linux":
+                creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
+                process = subprocess.Popen(
+                    list(sandbox_command.argv), cwd=str(workspace), env=env,
+                    stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT, shell=False, close_fds=True,
+                    start_new_session=True, creationflags=creationflags,
+                    bufsize=0, pass_fds=(sandbox_command.seccomp_fd,),
+                )
+            else:
+                process = launcher.launch(
+                    command,
+                    workspace=workspace,
+                    scratch=job_home,
+                    environment=env,
+                )
+        except (OSError, ValueError, WindowsPsecError):
             shutil.rmtree(job_home, ignore_errors=True)
-            raise TerminalExecutionError("Linux bubblewrap launcher could not be started") from None
+            raise TerminalExecutionError("OS isolation launcher could not be started") from None
         finally:
-            # The child inherited only the explicitly passed seccomp descriptor.
-            # Closing the parent's copy prevents an FD leak across subsequent jobs.
-            sandbox_command.close()
+            if sandbox_command is not None:
+                # The child inherited only the explicitly passed seccomp descriptor.
+                sandbox_command.close()
 
         chunks: queue.Queue[bytes | None] = queue.Queue(maxsize=8)
 
@@ -603,7 +728,10 @@ class TerminalScriptExecutor:
             raise
         finally:
             try:
-                if process.stdout is not None and not process.stdout.closed:
+                close_process = getattr(process, "close", None)
+                if callable(close_process):
+                    close_process()
+                elif process.stdout is not None and not process.stdout.closed:
                     process.stdout.close()
             except OSError:
                 pass
