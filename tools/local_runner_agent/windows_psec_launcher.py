@@ -252,6 +252,8 @@ def _query_process_token(kernel32, process_handle: HANDLE) -> dict:
     TOKEN_INTEGRITY_LEVEL = 25
     TOKEN_ELEVATION_TYPE = 18
     TOKEN_IS_APP_CONTAINER = 29
+    TOKEN_CAPABILITIES = 30
+    TOKEN_APP_CONTAINER_SID = 31
     advapi32 = _load_system_dll("advapi32.dll")
     advapi32.OpenProcessToken.argtypes = [HANDLE, DWORD, ctypes.POINTER(HANDLE)]
     advapi32.OpenProcessToken.restype = BOOL
@@ -312,29 +314,54 @@ def _query_process_token(kernel32, process_handle: HANDLE) -> dict:
             result["is_app_container_error"] = f"{type(exc).__name__}: {exc}"
 
         try:
-            groups = _token_information(advapi32, token, TOKEN_GROUPS)
-            count = ctypes.cast(groups, ctypes.POINTER(DWORD)).contents.value
-            if count > 512:
-                raise WindowsPsecError("process token reports an unreasonable group count")
+            app_container = _token_information(
+                advapi32, token, TOKEN_APP_CONTAINER_SID
+            )
+            app_container_sid = ctypes.cast(
+                app_container, ctypes.POINTER(HANDLE)
+            ).contents.value
+            result["app_container_sid"] = _sid_to_string(
+                advapi32, kernel32, app_container_sid
+            )
+        except Exception as exc:
+            result["app_container_sid_error"] = f"{type(exc).__name__}: {exc}"
+
+        def read_sid_attributes(information_class: int) -> list[dict]:
+            token_groups = _token_information(advapi32, token, information_class)
+            group_count = ctypes.cast(
+                token_groups, ctypes.POINTER(DWORD)
+            ).contents.value
+            if group_count > 512:
+                raise WindowsPsecError(
+                    "process token reports an unreasonable SID count"
+                )
             offset = (ctypes.sizeof(DWORD) + ctypes.alignment(HANDLE) - 1) & ~(
                 ctypes.alignment(HANDLE) - 1
             )
-            group_items = []
-            base = ctypes.addressof(groups) + offset
-            for index in range(count):
+            items = []
+            base = ctypes.addressof(token_groups) + offset
+            for index in range(group_count):
                 entry = ctypes.cast(
                     base + index * ctypes.sizeof(SID_AND_ATTRIBUTES),
                     ctypes.POINTER(SID_AND_ATTRIBUTES),
                 ).contents
-                group_items.append({
+                items.append({
                     "sid": _sid_to_string(advapi32, kernel32, entry.Sid),
                     "attributes": int(entry.Attributes),
                 })
-            result["groups"] = group_items
+            return items
+
+        try:
+            result["capabilities"] = read_sid_attributes(TOKEN_CAPABILITIES)
+        except Exception as exc:
+            result["capabilities_error"] = f"{type(exc).__name__}: {exc}"
+
+        try:
+            result["groups"] = read_sid_attributes(TOKEN_GROUPS)
         except Exception as exc:
             result["groups_error"] = f"{type(exc).__name__}: {exc}"
 
-        required = {"user_sid", "integrity_sid", "elevation_type", "is_app_container", "groups"}
+        required = {"user_sid", "integrity_sid", "elevation_type", "is_app_container", "app_container_sid", "groups", "capabilities"}
         result["state"] = "CAPTURED" if required.issubset(result) else "PARTIAL"
         return result
     finally:
