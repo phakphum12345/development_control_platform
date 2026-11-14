@@ -26,11 +26,10 @@ class WindowsPsecHostAcceptanceTests(unittest.TestCase):
     def test_embedded_payload_captures_child_token_evidence(self):
         payload = host._read_only_network_payload()
         for marker in (
-            "OpenProcessToken",
-            "TokenIntegrityLevel",
-            "TokenGroups",
-            "TokenPrivileges",
-            "is_app_container",
+            "whoami.exe",
+            '"/all"',
+            "subprocess.run",
+            "shell=False",
             'result["child_token"]',
         ):
             with self.subTest(marker=marker):
