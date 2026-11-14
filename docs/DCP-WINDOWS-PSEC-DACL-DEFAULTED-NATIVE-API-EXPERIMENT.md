@@ -146,8 +146,8 @@ The TRUE case was skipped because the filesystem did not retain `DaclDefaulted=T
 ## 11. Resource lifecycle checks
 
 - The existing reader copies ACL bytes and releases the descriptor returned by `GetSecurityInfo` using `LocalFree` in a `finally` block; a failed `LocalFree` is surfaced as an error.
-- The experiment now samples `GetProcessHandleCount` before creating the probe and after closing the handle and deleting the probe root. Exact equality is required by Windows tests.
-- This is a process-handle leak check, not a complete native heap/RSS leak proof. Native memory leak acceptance remains PARTIAL; repeated-run and process-memory/heap evidence is still required on the designated host.
+- The experiment samples `GetProcessHandleCount` before and after as best-effort diagnostic context only. It is process-wide and is not an acceptance assertion or proof of harness ownership.
+- Windows tests instead assert direct lifecycle evidence for the handle created by the harness: it was opened, `CloseHandle` returned success, and the handle was marked closed. This does not prove native heap/RSS stability; repeated-run and process-memory/heap evidence remains outstanding on the designated host.
 
 ## 12. Execution checklist
 
