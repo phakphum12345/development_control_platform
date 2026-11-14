@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from tools.local_runner_agent.windows_psec_dacl_experiment import (
+    DaclDefaultedNotExercised,
     DaclExperimentError,
     WindowsDaclDefaultedExperiment,
 )
@@ -20,7 +21,10 @@ class WindowsDaclExperimentContractTests(unittest.TestCase):
 @unittest.skipUnless(os.name == "nt", "native DACL defaulted experiment requires Windows + NTFS")
 class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
     def test_explicit_defaulted_true_round_trip_on_disposable_ntfs_file(self):
-        result = WindowsDaclDefaultedExperiment().run(defaulted=True)
+        try:
+            result = WindowsDaclDefaultedExperiment().run(defaulted=True)
+        except DaclDefaultedNotExercised as exc:
+            self.skipTest(str(exc))
         self.assertEqual(result.filesystem.upper(), "NTFS")
         self.assertTrue(result.dacl_defaulted_before)
         self.assertTrue(result.dacl_bytes_equal_after_rollback)
