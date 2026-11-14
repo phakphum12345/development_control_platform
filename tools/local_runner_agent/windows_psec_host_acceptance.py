@@ -133,7 +133,7 @@ def _filesystem_acl(path: Path) -> dict:
     )
     try:
         descriptor = subprocess.run(
-            [str(powershell), "-NoProfile", "-NonInteractive", "-Command", script, str(path)],
+            [str(powershell), "-NoProfile", "-NonInteractive", "-Command", script],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
