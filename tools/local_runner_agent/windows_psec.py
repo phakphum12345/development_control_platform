@@ -237,8 +237,8 @@ def probe_psec_spec() -> tuple[bool, str]:
                 disallow_win32k_system_calls=True,
                 ui_restrictions=0x3FF,
             )
-        dll = _load_processmodel()
-        create_psec_environment(dll, specification)
+            dll = _load_processmodel()
+            create_psec_environment(dll, specification)
         return True, "PSEC v1.1 policy accepted by CreateProcessSecurityEnvironment"
     except Exception as exc:
         return False, f"PSEC policy creation probe failed: {type(exc).__name__}"
