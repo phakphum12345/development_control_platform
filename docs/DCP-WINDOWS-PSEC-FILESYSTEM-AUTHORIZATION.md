@@ -249,3 +249,23 @@ Launcher integration remains blocked until this gate and the real-host API
 round-trip both pass. Job Object drain must then be strengthened so cleanup
 waits for `ActiveProcesses == 0`; timeout or inability to prove zero is a
 cleanup failure, not permission to remove the projection or Scratch tree.
+
+
+### Ancestor traversal dependency — explicitly unresolved
+
+The current ACL manager grants `FILE_TRAVERSE` on the disposable job root but
+intentionally leaves its parent unchanged. That is safe with respect to shared
+ACL mutation, but it does **not yet prove** that an AppContainer can reach the
+job root by pathname. Windows may bypass directory traversal checks when the
+token has the relevant enabled privilege; the current host evidence does not
+record whether `SeChangeNotifyPrivilege` is present and enabled. Do not infer
+that it is.
+
+Before treating the ACL layout as viable, capture the child token's complete
+privilege set and test actual pathname access from the suspended-then-resumed
+PSEC child. If traversal fails, do not add an ACE to a shared acceptance parent.
+Redesign placement so any additional traversal ACE is confined to a newly
+created per-job ancestor whose own parent is already traversable under the
+actual token, or establish another documented safe mechanism. Handle-relative
+opens by the host do not, by themselves, grant the child access to PSEC policy
+paths. The child must still prove effective access.
