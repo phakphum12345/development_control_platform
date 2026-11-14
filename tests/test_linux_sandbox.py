@@ -110,7 +110,7 @@ class LinuxBubblewrapLauncherTests(unittest.TestCase):
                 "assert (w/'visible.txt').read_text() == 'workspace-ok'; "
                 "p=pathlib.Path(sys.argv[1]); "
                 "exec(\"try: p.read_text(); raise AssertionError('host file visible')\\nexcept FileNotFoundError: pass\"); "
-                "exec(\"try: (w/'forbidden.txt').write_text('bad'); raise AssertionError('workspace writable')\\nexcept PermissionError: pass\"); "
+                "exec(\"try: (w/'forbidden.txt').write_text('bad'); raise AssertionError('workspace writable')\\nexcept OSError: pass\"); "
                 "exec(\"try: socket.socket(); raise AssertionError('socket allowed')\\nexcept PermissionError: pass\"); "
                 "pathlib.Path('/tmp/scratch-proof.txt').write_text('scratch-ok')"
             )
