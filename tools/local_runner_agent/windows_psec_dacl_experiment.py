@@ -34,6 +34,10 @@ class DaclExperimentError(RuntimeError):
     """The disposable native experiment could not prove a safe result."""
 
 
+class DaclDefaultedNotExercised(DaclExperimentError):
+    """The filesystem did not retain the requested TRUE setup state."""
+
+
 @dataclass(frozen=True)
 class ExperimentResult:
     filesystem: str
@@ -205,7 +209,7 @@ class WindowsDaclDefaultedExperiment:
                 raise DaclExperimentError("created probe handle is a directory or reparse point")
             before = self._reader.read_dacl(handle)
             if defaulted and before.dacl_defaulted is not True:
-                raise DaclExperimentError(
+                raise DaclDefaultedNotExercised(
                     "NTFS did not retain DaclDefaulted=TRUE at creation; TRUE-state writer case NOT EXERCISED"
                 )
             if not before.dacl_present or before.dacl_is_null:
@@ -251,10 +255,20 @@ class WindowsDaclDefaultedExperiment:
                     "experiment error: "
                     f"write={write_error}; readback={readback_error}; "
                     f"rollback_write={rollback_error}; rollback_read={rollback_read_error}; "
+                    f"after_defaulted={getattr(after, 'dacl_defaulted', None)}; "
+                    f"after_bytes_equal={(after.dacl_bytes == before.dacl_bytes) if after is not None else None}; "
+                    f"after_control={getattr(after, 'dacl_control_flags', None)}; "
+                    f"restored_defaulted={getattr(restored, 'dacl_defaulted', None)}; "
                     f"rollback_equal={rollback_equal}"
                 )
             if not rollback_equal:
-                raise DaclExperimentError("rollback not verified: DACL bytes/control state differ")
+                raise DaclExperimentError(
+                    "rollback not verified: "
+                    f"after_defaulted={after.dacl_defaulted if after is not None else None}; "
+                    f"after_bytes_equal={(after.dacl_bytes == before.dacl_bytes) if after is not None else None}; "
+                    f"restored_defaulted={restored.dacl_defaulted if restored is not None else None}; "
+                    "DACL bytes/control state differ"
+                )
             result = ExperimentResult(
                 filesystem=filesystem,
                 dacl_defaulted_before=before.dacl_defaulted,
