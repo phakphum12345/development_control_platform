@@ -123,6 +123,15 @@ def _validate_component(name: str) -> None:
         raise ProjectionError("workspace contains a reserved DOS device name")
 
 
+def _ensure_unique_names(names: Iterator[str] | list[str] | tuple[str, ...]) -> None:
+    seen: set[str] = set()
+    for name in names:
+        folded = name.casefold()
+        if folded in seen:
+            raise ProjectionError("workspace contains a case-insensitive name collision")
+        seen.add(folded)
+
+
 def _walk(source: Path, limits: ProjectionLimits, started: float
           ) -> Iterator[tuple[Path, str, os.stat_result]]:
     count = 0
@@ -135,15 +144,11 @@ def _walk(source: Path, limits: ProjectionLimits, started: float
             entries = sorted(os.scandir(directory), key=lambda item: item.name.casefold())
         except OSError as exc:
             raise ProjectionError("workspace directory cannot be enumerated") from exc
-        local_folded: set[str] = set()
+        _ensure_unique_names([entry.name for entry in entries])
         for entry in entries:
             if time.monotonic() - started > limits.max_copy_seconds:
                 raise ProjectionError("workspace projection exceeded its time limit")
             _validate_component(entry.name)
-            folded_name = entry.name.casefold()
-            if folded_name in local_folded:
-                raise ProjectionError("workspace contains a case-insensitive name collision")
-            local_folded.add(folded_name)
             relative = f"{relative_parent}/{entry.name}" if relative_parent else entry.name
             if len(relative) > limits.max_relative_path_chars:
                 raise ProjectionError("workspace path exceeds the configured length limit")
@@ -156,7 +161,10 @@ def _walk(source: Path, limits: ProjectionLimits, started: float
                 raise ProjectionError("workspace exceeds the filesystem-entry limit")
             path = Path(entry.path)
             try:
-                info = entry.stat(follow_symlinks=False)
+                # On Windows, DirEntry.stat() can report st_nlink=0 for
+                # ordinary NTFS entries. Path.lstat() queries the path through
+                # the OS stat path and provides the link count needed here.
+                info = path.lstat()
             except OSError as exc:
                 raise ProjectionError("workspace entry cannot be inspected") from exc
             attributes = getattr(info, "st_file_attributes", 0)
@@ -168,8 +176,11 @@ def _walk(source: Path, limits: ProjectionLimits, started: float
                 yield path, relative, info
                 stack.append((path, relative))
             elif stat.S_ISREG(info.st_mode):
-                if getattr(info, "st_nlink", 1) != 1:
-                    raise ProjectionError("workspace contains a multiply-linked file")
+                link_count = getattr(info, "st_nlink", 0)
+                if link_count != 1:
+                    detail = ("cannot verify file hard-link count"
+                              if link_count < 1 else "workspace contains a multiply-linked file")
+                    raise ProjectionError(detail)
                 count += 1
                 if count > limits.max_files:
                     raise ProjectionError("workspace exceeds the file-count limit")
