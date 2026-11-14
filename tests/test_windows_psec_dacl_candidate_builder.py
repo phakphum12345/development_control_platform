@@ -44,7 +44,7 @@ class DaclCandidateBuilderTests(unittest.TestCase):
     def test_workspace_directory_adds_read_execute_with_inheritance(self):
         existing = _ace(0, _sid(5, 18), 0x00120089)
         source = _acl(existing, unused=b"\x00" * 8)
-        result = build_dacl_candidate(source, PACKAGE_SID, "workspace", is_directory=True)
+        result = build_dacl_candidate(source, PACKAGE_SID, "workspace", is_directory=True, dacl_control_flags=0x1000)
         parsed = _parsed(result.raw_acl)
         self.assertTrue(result.inserted)
         self.assertEqual(result.access_mask, READ_EXECUTE)
