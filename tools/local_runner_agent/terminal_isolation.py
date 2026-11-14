@@ -78,7 +78,7 @@ def assess_isolation_backend(
 
     backend, requirement = _BACKENDS[name]
     if name == "linux":
-        bwrap = executable_lookup("bwrap")
+        bwrap = executable_lookup("bwrap", path="/usr/bin")
         if not bwrap:
             return IsolationAssessment(
                 platform=name, backend=backend, state="BLOCKED", available=False,
