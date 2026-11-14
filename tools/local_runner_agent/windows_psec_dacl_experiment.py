@@ -42,9 +42,9 @@ class DaclDefaultedNotExercised(DaclExperimentError):
 class ExperimentResult:
     filesystem: str
     dacl_defaulted_before: bool
-    dacl_defaulted_after_write: bool
+    dacl_defaulted_after_write: bool | None
     dacl_bytes_equal_after_write: bool
-    dacl_defaulted_after_rollback: bool
+    dacl_defaulted_after_rollback: bool | None
     dacl_bytes_equal_after_rollback: bool
     cleanup_verified: bool
     volume_serial: int
@@ -254,12 +254,6 @@ class WindowsDaclDefaultedExperiment:
                     raise DaclExperimentError("retained handle identity changed after rollback")
             except Exception as exc:
                 rollback_read_error = exc
-            rollback_equal = bool(
-                restored is not None
-                and restored.dacl_bytes == before.dacl_bytes
-                and restored.dacl_defaulted == before.dacl_defaulted
-                and restored.dacl_control_flags == before.dacl_control_flags
-            )
             write_verified = bool(
                 after is not None
                 and after.dacl_bytes == before.dacl_bytes
