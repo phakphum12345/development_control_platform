@@ -39,6 +39,10 @@ class DaclExperimentError(RuntimeError):
 class DaclDefaultedNotExercised(DaclExperimentError):
     """The filesystem did not retain the requested TRUE setup state."""
 
+    def __init__(self, message, *, evidence=None):
+        super().__init__(message)
+        self.evidence = dict(evidence or {})
+
 
 @dataclass(frozen=True)
 class ExperimentResult:
@@ -291,7 +295,16 @@ class WindowsDaclDefaultedExperiment:
             before = self._reader.read_dacl(handle)
             if defaulted and before.dacl_defaulted is not True:
                 raise DaclDefaultedNotExercised(
-                    "NTFS did not retain DaclDefaulted=TRUE at creation; TRUE-state writer case NOT EXERCISED"
+                    "NTFS did not retain DaclDefaulted=TRUE at creation; TRUE-state writer case NOT EXERCISED",
+                    evidence={
+                        "filesystem": filesystem,
+                        "volume_serial": identity_before.volume_serial,
+                        "file_id": identity_before.file_id,
+                        "dacl_defaulted_after_create": before.dacl_defaulted,
+                        "control_flags_after_create": before.dacl_control_flags,
+                        "dacl_bytes_after_create_hex": before.dacl_bytes.hex(),
+                        "inherited_ace_count_after_create": self._inherited_ace_count(before),
+                    },
                 )
             if not before.dacl_present or before.dacl_is_null:
                 raise DaclExperimentError("created object did not expose an explicit non-NULL DACL")
