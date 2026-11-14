@@ -90,7 +90,7 @@
 - `test_runner_agent_gateway_e2e.py`
 - `test_runner_preflight.py`
 
-### Local Runner and Local Projects (13)
+### Local Runner and Local Projects (14)
 - `test_local_project_cli.py`
 - `test_local_project_registry.py`
 - `test_local_project_snapshot.py`
@@ -104,6 +104,7 @@
 - `test_local_runner_pipeline_e2e.py`
 - `test_local_runner_readiness.py`
 - `test_local_runner_service.py`
+- `test_local_runner_workspace.py`
 
 ### Terminal (5)
 - `test_terminal_command_pack_schema.py`
