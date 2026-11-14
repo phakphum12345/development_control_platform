@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import unittest
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 from tools.local_runner_agent.workspace import WorkspaceError, WorkspaceManager
@@ -171,6 +172,89 @@ class WorkspaceManagerTests(unittest.TestCase):
         completed = store.finish(job["id"], "runner-e2e", "cancelled",
                                  {"workspace_cleaned": True})
         self.assertEqual(completed["state"], "cancelled")
+
+    def test_reconciliation_removes_only_old_gateway_attested_terminal_workspace(self):
+        a = self.manager.create(self.job_a, "worker-a")
+        b = self.manager.create(self.job_b, "worker-b")
+        now = 10000.0
+        old = datetime.fromtimestamp(now - 300, timezone.utc).isoformat()
+        statuses = {
+            self.job_a: {
+                "job_id": self.job_a, "worker_id": "worker-a",
+                "target": "terminal_script", "state": "failed",
+                "updated_at": old, "cleanup_safe": True,
+            },
+            self.job_b: {
+                "job_id": self.job_b, "worker_id": "worker-b",
+                "target": "terminal_script", "state": "unknown",
+                "updated_at": old, "cleanup_safe": False,
+            },
+        }
+
+        report = self.manager.reconcile_terminal_workspaces(
+            lambda job_id: statuses[job_id],
+            now_epoch=now,
+            grace_seconds=60,
+        )
+
+        self.assertEqual(report, {"scanned": 2, "removed": 1, "skipped": 1})
+        self.assertFalse(a.exists())
+        self.assertTrue(b.exists())
+
+    def test_reconciliation_preserves_recent_mismatched_and_unavailable_statuses(self):
+        a = self.manager.create(self.job_a, "worker-a")
+        b = self.manager.create(self.job_b, "worker-b")
+        now = 10000.0
+        recent = datetime.fromtimestamp(now - 30, timezone.utc).isoformat()
+        old = datetime.fromtimestamp(now - 300, timezone.utc).isoformat()
+        statuses = {
+            self.job_a: {
+                "job_id": self.job_a, "worker_id": "worker-a",
+                "target": "terminal_script", "state": "succeeded",
+                "updated_at": recent, "cleanup_safe": True,
+            },
+            self.job_b: {
+                "job_id": self.job_b, "worker_id": "different-worker",
+                "target": "terminal_script", "state": "succeeded",
+                "updated_at": old, "cleanup_safe": True,
+            },
+        }
+
+        report = self.manager.reconcile_terminal_workspaces(
+            lambda job_id: statuses[job_id],
+            now_epoch=now,
+            grace_seconds=60,
+        )
+        self.assertEqual(report["removed"], 0)
+        self.assertEqual(report["skipped"], 2)
+        self.assertTrue(a.exists())
+        self.assertTrue(b.exists())
+
+        failed = self.manager.reconcile_terminal_workspaces(
+            lambda _job_id: (_ for _ in ()).throw(RuntimeError("Gateway offline")),
+            now_epoch=now,
+            grace_seconds=60,
+        )
+        self.assertEqual(failed["removed"], 0)
+        self.assertTrue(a.exists())
+        self.assertTrue(b.exists())
+
+    def test_reconciliation_preserves_preview_retention_even_when_gateway_attests_cleanup(self):
+        workspace = self.manager.create(self.job_a, "worker-a")
+        self.manager.retain_for_preview(self.job_a, "worker-a", ttl_seconds=3600)
+        old = datetime.fromtimestamp(10000 - 300, timezone.utc).isoformat()
+        report = self.manager.reconcile_terminal_workspaces(
+            lambda job_id: {
+                "job_id": job_id, "worker_id": "worker-a",
+                "target": "terminal_script", "state": "succeeded",
+                "updated_at": old, "cleanup_safe": True,
+            },
+            now_epoch=10000,
+            grace_seconds=60,
+        )
+        self.assertEqual(report["removed"], 0)
+        self.assertTrue(workspace.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
