@@ -119,7 +119,13 @@ def validate_relative_component(name: str) -> str:
         raise NativeHandleAclError("relative child name contains a namespace separator")
     if name.endswith((" ", ".")):
         raise NativeHandleAclError("relative child name has a Win32-normalized suffix")
-    if len(name.encode("utf-16-le")) > 510:
+    if re.fullmatch(r"(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?", name, re.IGNORECASE | re.ASCII):
+        raise NativeHandleAclError("relative child name is a reserved DOS device name")
+    try:
+        encoded_length = len(name.encode("utf-16-le"))
+    except UnicodeEncodeError as exc:
+        raise NativeHandleAclError("relative child name contains an invalid Unicode sequence") from exc
+    if encoded_length > 510:
         raise NativeHandleAclError("relative child name exceeds the NT component limit")
     if any(ord(char) < 32 for char in name):
         raise NativeHandleAclError("relative child name contains a control character")
