@@ -16,7 +16,7 @@ import hmac
 import json
 import re
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Protocol
 
 from tools.local_runner_agent.windows_psec_dacl_comparison import (
     DaclComparisonProfile,
@@ -178,6 +178,66 @@ def capture_original_snapshot(
         integrity_sha256=digest,
     )
 
+
+
+class RetainedHandleSecurityReader(Protocol):
+    """Read identity and DACL state from the same already-open handle."""
+
+    def query_identity(self, handle: int) -> object: ...
+
+    def read_dacl(self, handle: int) -> DescriptorSnapshot: ...
+
+
+def _identity_from_reader(value: object) -> TargetObjectIdentity:
+    if not hasattr(value, "volume_serial") or not hasattr(value, "file_id"):
+        raise ReversibleStateError("retained-handle identity is incomplete")
+    identity = TargetObjectIdentity(
+        volume_serial=value.volume_serial,
+        file_id=value.file_id,
+    )
+    identity.validate()
+    return TargetObjectIdentity(identity.volume_serial, identity.file_id.casefold())
+
+
+def capture_original_snapshot_from_handle(
+    reader: RetainedHandleSecurityReader,
+    handle: int,
+    transaction_id: str,
+    *,
+    limits: TransactionLimits | None = None,
+) -> OriginalDescriptorSnapshot:
+    """Capture S0 from one retained handle with identity checks around the read.
+
+    The identity is queried both before and after reading the descriptor. If
+    either query fails or the object identity changes, no snapshot is issued.
+    This function is read-only and never resolves a path or performs a write.
+    """
+    if isinstance(handle, bool) or not isinstance(handle, int) or handle <= 0:
+        raise ReversibleStateError("a valid retained integer handle is required")
+    if not callable(getattr(reader, "query_identity", None)) or not callable(
+        getattr(reader, "read_dacl", None)
+    ):
+        raise ReversibleStateError("a retained-handle security reader is required")
+    try:
+        identity_before = _identity_from_reader(reader.query_identity(handle))
+        descriptor = reader.read_dacl(handle)
+        identity_after = _identity_from_reader(reader.query_identity(handle))
+    except Exception as exc:
+        if isinstance(exc, ReversibleStateError):
+            raise
+        raise ReversibleStateError(
+            f"retained-handle original snapshot capture failed: {exc}"
+        ) from exc
+    if identity_before != identity_after:
+        raise ReversibleStateError(
+            "target identity changed during original snapshot capture"
+        )
+    return capture_original_snapshot(
+        transaction_id,
+        identity_before,
+        descriptor,
+        limits=limits,
+    )
 
 def verify_restoration_readback(
     original: OriginalDescriptorSnapshot,
