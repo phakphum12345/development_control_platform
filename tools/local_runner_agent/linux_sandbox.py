@@ -68,7 +68,11 @@ def _seccomp_program(machine: str | None = None) -> bytes:
     for number in numbers:
         instructions.append(struct.pack("=HBBI", 0x15, 0, 1, number))  # JEQ -> deny
         instructions.append(struct.pack("=HBBI", 0x06, 0, 0, 0x00050001))  # RET_ERRNO(EPERM)
-    instructions.extend([\n        struct.pack("=HBBI", 0x15, 0, 1, 425),  # deny io_uring_setup (network bypass)\n        struct.pack("=HBBI", 0x06, 0, 0, 0x00050001),\n        struct.pack("=HBBI", 0x06, 0, 0, 0x7FFF0000),  # RET_ALLOW\n    ])
+    instructions.extend([
+        struct.pack("=HBBI", 0x15, 0, 1, 425),  # deny io_uring_setup (network bypass)
+        struct.pack("=HBBI", 0x06, 0, 0, 0x00050001),
+        struct.pack("=HBBI", 0x06, 0, 0, 0x7FFF0000),  # RET_ALLOW
+    ])
     return b"".join(instructions)
 
 
