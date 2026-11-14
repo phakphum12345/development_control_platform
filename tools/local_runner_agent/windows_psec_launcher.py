@@ -410,6 +410,7 @@ def _require_app_container_token(token: object) -> dict:
     if not _valid_sid_string(token["user_sid"]) or not _valid_sid_string(token["integrity_sid"]):
         raise WindowsPsecError("PSEC process token contains an invalid user or integrity SID")
     if (isinstance(token["elevation_type"], bool)
+            or not isinstance(token["elevation_type"], int)
             or token["elevation_type"] not in (1, 2, 3)):
         raise WindowsPsecError("PSEC process token elevation type is invalid")
     if not isinstance(token["groups"], list) or not isinstance(token["capabilities"], list):
