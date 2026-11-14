@@ -8,14 +8,12 @@ from __future__ import annotations
 
 import ctypes
 import os
-import shutil
 import tempfile
 import uuid
 from ctypes import wintypes
 from dataclasses import dataclass
 
 from .windows_psec_security_descriptor_reader import WindowsHandleSecurityReader
-from .windows_psec_security_descriptor_transaction import DescriptorSnapshot
 
 
 SE_FILE_OBJECT = 1
@@ -45,6 +43,8 @@ class ExperimentResult:
     dacl_defaulted_after_rollback: bool
     dacl_bytes_equal_after_rollback: bool
     cleanup_verified: bool
+    volume_serial: int
+    file_id: str
 
 
 class _SECURITY_ATTRIBUTES(ctypes.Structure):
@@ -200,6 +200,9 @@ class WindowsDaclDefaultedExperiment:
             filesystem = self._require_ntfs(root)
             file_path = os.path.join(root, "probe-" + uuid.uuid4().hex + ".bin")
             handle, keepalive = self._create_file(file_path, defaulted=defaulted)
+            identity_before = self._reader.query_identity(handle)
+            if identity_before.is_directory or identity_before.attributes & 0x00000400:
+                raise DaclExperimentError("created probe handle is a directory or reparse point")
             before = self._reader.read_dacl(handle)
             if defaulted and before.dacl_defaulted is not True:
                 raise DaclExperimentError(
@@ -213,35 +216,55 @@ class WindowsDaclDefaultedExperiment:
                 self._write_dacl(handle, before)
             except Exception as exc:
                 write_error = exc
-            after = self._reader.read_dacl(handle)
-            bytes_equal = after.dacl_bytes == before.dacl_bytes
-            # Attempt restoration even if the write reported an error; the
-            # API may have partially changed the object before returning.
+            after = None
+            readback_error = None
+            try:
+                after = self._reader.read_dacl(handle)
+                if self._reader.query_identity(handle) != identity_before:
+                    raise DaclExperimentError("retained handle identity changed after write")
+            except Exception as exc:
+                readback_error = exc
+
+            # Rollback is unconditional after the write attempt, including
+            # when the write or its read-back reports an error.
             rollback_error = None
             try:
                 self._write_dacl(handle, before)
             except Exception as exc:
                 rollback_error = exc
-            restored = self._reader.read_dacl(handle)
-            rollback_equal = (
-                restored.dacl_bytes == before.dacl_bytes
+            restored = None
+            rollback_read_error = None
+            try:
+                restored = self._reader.read_dacl(handle)
+                if self._reader.query_identity(handle) != identity_before:
+                    raise DaclExperimentError("retained handle identity changed after rollback")
+            except Exception as exc:
+                rollback_read_error = exc
+            rollback_equal = bool(
+                restored is not None
+                and restored.dacl_bytes == before.dacl_bytes
                 and restored.dacl_defaulted == before.dacl_defaulted
                 and restored.dacl_control_flags == before.dacl_control_flags
             )
-            if write_error is not None:
-                raise DaclExperimentError(f"write failed: {write_error}; rollback_error={rollback_error}; rollback_equal={rollback_equal}")
-            if rollback_error is not None or not rollback_equal:
+            if write_error or readback_error or rollback_error or rollback_read_error:
                 raise DaclExperimentError(
-                    f"rollback not verified: error={rollback_error}; bytes_equal={rollback_equal}"
+                    "experiment error: "
+                    f"write={write_error}; readback={readback_error}; "
+                    f"rollback_write={rollback_error}; rollback_read={rollback_read_error}; "
+                    f"rollback_equal={rollback_equal}"
                 )
+            if not rollback_equal:
+                raise DaclExperimentError("rollback not verified: DACL bytes/control state differ")
             result = ExperimentResult(
                 filesystem=filesystem,
                 dacl_defaulted_before=before.dacl_defaulted,
                 dacl_defaulted_after_write=after.dacl_defaulted,
-                dacl_bytes_equal_after_write=bytes_equal,
+                dacl_bytes_equal_after_write=(after is not None and after.dacl_bytes == before.dacl_bytes),
                 dacl_defaulted_after_rollback=restored.dacl_defaulted,
                 dacl_bytes_equal_after_rollback=rollback_equal,
                 cleanup_verified=False,
+                volume_serial=identity_before.volume_serial,
+                file_id=identity_before.file_id,
             )
         except Exception as exc:
             primary_error = exc
@@ -281,4 +304,6 @@ class WindowsDaclDefaultedExperiment:
             dacl_defaulted_after_rollback=result.dacl_defaulted_after_rollback,
             dacl_bytes_equal_after_rollback=result.dacl_bytes_equal_after_rollback,
             cleanup_verified=True,
+            volume_serial=result.volume_serial,
+            file_id=result.file_id,
         )
