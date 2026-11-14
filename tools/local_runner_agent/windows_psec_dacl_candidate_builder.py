@@ -82,13 +82,12 @@ def _policy(target_kind: str, is_directory: bool) -> tuple[int, int]:
     if not isinstance(is_directory, bool):
         raise DaclCandidateBuildError("target object kind must be explicit")
     if target_kind == "workspace":
-        return READ_EXECUTE, (
-            OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE if is_directory else 0
-        )
+        # The complete bounded tree is enumerated and authorized per object.
+        # Inheritable grants would create inherited Package-SID ACEs on child
+        # objects, conflicting with exact per-object candidate validation.
+        return READ_EXECUTE, 0
     if target_kind == "scratch":
-        return MODIFY, (
-            OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE if is_directory else 0
-        )
+        return MODIFY, 0
     if target_kind == "job_root" and is_directory:
         return FILE_TRAVERSE, 0
     raise DaclCandidateBuildError("unsupported target kind/object-kind combination")
