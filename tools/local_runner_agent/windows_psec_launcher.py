@@ -335,7 +335,7 @@ def _query_process_token(kernel32, process_handle: HANDLE) -> dict:
             result["groups_error"] = f"{type(exc).__name__}: {exc}"
 
         required = {"user_sid", "integrity_sid", "elevation_type", "is_app_container", "groups"}
-        result["state"] = "PASS" if required.issubset(result) else "PARTIAL"
+        result["state"] = "CAPTURED" if required.issubset(result) else "PARTIAL"
         return result
     finally:
         kernel32.CloseHandle(token)
