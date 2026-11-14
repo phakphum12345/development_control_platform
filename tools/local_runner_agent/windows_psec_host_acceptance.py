@@ -279,7 +279,9 @@ def main() -> int:
         canary = user_profile / f".dcp-psec-canary-{uuid.uuid4().hex}.txt"
         canary.write_text("DCP-HOST-CANARY", encoding="utf-8")
 
-        with tempfile.TemporaryDirectory(\n            prefix="dcp-psec-host-acceptance-", dir=str(_acceptance_parent())\n        ) as temporary:
+        with tempfile.TemporaryDirectory(
+            prefix="dcp-psec-host-acceptance-", dir=str(_acceptance_parent())
+        ) as temporary:
             root = Path(temporary)
             workspace = root / "workspace"
             scratch = root / "scratch"
