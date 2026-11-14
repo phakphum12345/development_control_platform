@@ -237,13 +237,16 @@ class TerminalScriptExecutorTests(unittest.TestCase):
             args=["git", "config"], returncode=0,
             stdout=b"filter.hostile.clean\0filter.Hostile.clean\0",
         )
-        with patch(
-            "tools.local_runner_agent.terminal_executor.subprocess.run",
-            return_value=listed,
-        ):
-            TerminalScriptExecutor._disable_repository_filters(
-                "git", self.workspace, env
-            )
+        with tempfile.TemporaryDirectory() as scratch:
+            with patch(
+                "tools.local_runner_agent.terminal_executor.subprocess.run",
+                return_value=listed,
+            ):
+                TerminalScriptExecutor._disable_repository_filters(
+                    "git", self.workspace, env,
+                    launcher=_TestOnlyPassthroughLauncher(),
+                    scratch=Path(scratch),
+                )
 
         self.assertEqual(env["GIT_CONFIG_COUNT"], "8")
         configured = {
