@@ -141,3 +141,167 @@ Important limits:
 - Testing: the exact implementation/test head is now `88af4eddba5bb892027b95e4954466ee5a716b9b`; fresh CI and target-Windows execution are pending. CI success alone cannot establish the profile mapping or child access.
 - Safety: no ACL mutation, no persistent profile creation, no direct host-process fallback, no Terminal template activation, no merge.
 - Next: run the updated harness on the target Windows host. Use its evidence to decide whether the PSEC-created Package SID has a Windows-managed profile root. Only then finalize the per-job scratch/projection authorization strategy.
+
+
+## 10. Package-SID ACL manager — first implementation checkpoint
+
+Branch `work/wp18b1-package-sid-acl-manager` adds `windows_psec_acl.py` and mocked unit coverage.
+
+- Accepts only a syntactically valid AppContainer Package SID (`S-1-15-2-...`).
+- Requires sibling `workspace` and `scratch` roots beneath a `dcp-psec-job-*` directory.
+- Applies the exact Package SID's `READ_EXECUTE` (`0x001200a9`) to every projected Workspace directory/file and `MODIFY` (`0x001301bf`) to every Scratch directory/file.
+- Adds only `FILE_TRAVERSE` (`0x20`) to the disposable job root so the child can traverse to its authorized roots. It does not add an ACE to the job-root parent.
+- Uses `ConvertStringSidToSidW`, `GetNamedSecurityInfoW`, `SetEntriesInAclW`, `SetNamedSecurityInfoW`, and SDDL read-back verification. Existing DACL entries are merged, not replaced.
+- Rejects reparse points, unsupported objects, non-canonical roots, overlap, and unexpected directory layout. It snapshots the job-root parent SDDL and fails if that parent changes.
+- Rejects an overbroad Package-SID allow ACE detected in the resulting SDDL.
+
+**Important limitations / not yet launchable:**
+- This first implementation uses path-based enumeration and Win32 named-security APIs. It is not yet native handle-relative traversal and therefore is not approved as a complete security boundary.
+- It is not yet integrated into `WindowsPsecLauncher`; no process may be resumed on the assumption that this module has already run.
+- The caller must supply the disposable projection layout produced by `create_workspace_projection`. The existing launcher still accepts the older Workspace/Scratch layout.
+- Descriptor read-back is necessary but not sufficient. Target Windows acceptance must prove Workspace read, PSEC-enforced Workspace write denial after successful read, Scratch create/write/read/delete, traversal from the real parent, and unchanged shared-parent ACLs.
+- No host ACL has been changed by this repository-side work. Terminal execution remains blocked and all seven built-in templates remain disabled.
+
+### Interpretation of the latest profile probe
+
+The target run's `GetAppContainerFolderPath` result `0x80070002` is an API lookup failure, not conclusive proof that PSEC creates an anonymous or unregistered AppContainer. In the current launcher, `_apply_sandbox_profile_environment` explicitly overrides `LOCALAPPDATA` to the supplied Scratch path. The child's environment value is therefore not independent evidence of Windows-managed profile placement. Do not infer profile lifecycle from that environment variable alone.
+
+
+## 11. Real Win32 ACL API smoke test — opt-in target-host checkpoint
+
+Commit `fa5955e328360eba7e68d3ff93b1eef91166292c` adds
+`tests/test_windows_psec_acl_real_host.py`. This test is intentionally
+opt-in and Windows-only. It exercises the real `_WindowsAclApi` calls
+(`ConvertStringSidToSidW`, `GetNamedSecurityInfoW`,
+`SetEntriesInAclW`, `SetNamedSecurityInfoW`) and verifies SDDL read-back
+against a disposable tree under the pre-created acceptance parent.
+
+Run only on the dedicated Windows acceptance host, after confirming the
+acceptance parent is the intended test directory:
+
+```powershell
+$env:DCP_PSEC_REAL_ACL_TEST = "1"
+$env:DCP_PSEC_REAL_ACL_PACKAGE_SID = "S-1-15-2-4048921270-1110085035-832899681-549863699-8652410-2260480956-1408363724"
+$env:DCP_PSEC_ACCEPTANCE_PARENT = "C:\\DCP-PSEC-Acceptance"
+
+py -3 -m unittest tests.test_windows_psec_acl_real_host -v
+if ($LASTEXITCODE -ne 0) {
+    throw "Real Win32 ACL API smoke test failed"
+}
+```
+
+The test creates a unique temporary child below the acceptance parent, then
+creates only its own `dcp-psec-job-*` tree. It snapshots both the acceptance
+parent and the immediate temporary parent DACLs and requires them to remain
+byte-for-byte identical in SDDL. The disposable child tree is removed by
+`TemporaryDirectory` cleanup.
+
+This is deliberately **not** an AppContainer effective-access test and does
+not validate a race-resistant traversal boundary. It only confirms that the
+native ACL API round-trip and descriptor verification work on the target
+filesystem. Do not interpret a pass as permission to integrate the path-based
+manager into the launcher.
+
+## 12. Native handle-relative traversal — implementation gate
+
+The next security implementation must replace the current path-based
+preflight/apply sequence before launcher integration:
+
+1. Open the job root, Workspace, Scratch, and each descendant with handles
+   opened using `FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT`
+   (or a verified native relative-open equivalent). Reject every handle whose
+   file attributes include `FILE_ATTRIBUTE_REPARSE_POINT`.
+2. Record stable object identity from `BY_HANDLE_FILE_INFORMATION`:
+   volume serial number and the 64-bit file index. Also record object type.
+3. Enumerate each directory from its already-open directory handle; open each
+   child relative to that directory handle where supported. Do not trust a
+   second path lookup to identify the object that was preflighted.
+4. Retain all validated handles through ACL application. Before changing a
+   DACL, re-query identity and type on the same handle and require exact
+   equality with the preflight record.
+5. Use handle-based security APIs (`GetSecurityInfo` and
+   `SetSecurityInfo`) for the retained object handles; do not fall back to
+   `GetNamedSecurityInfoW` / `SetNamedSecurityInfoW` for the security write.
+6. Read back the descriptor from the same handle and verify the exact SID,
+   mask, inheritance flags, and absence of overbroad Package-SID allow ACEs.
+7. Close all retained handles deterministically. Any enumeration, identity,
+   access, descriptor, or cleanup uncertainty is a hard failure before
+   `ResumeThread`.
+
+The `CreateFileW` flags alone do not make a multi-step path walk handle-relative:
+the implementation must prove that each opened child is the child of the
+already-validated parent handle, not merely an object reached by re-resolving
+an absolute path. If that cannot be established with the selected Win32 API,
+use `NtCreateFile` with `OBJECT_ATTRIBUTES.RootDirectory` and a relative
+`UNICODE_STRING`, with explicit status conversion and exhaustive handle
+cleanup. Do not ship a path-based approximation under a handle-relative name.
+
+The handle traversal change requires dedicated Windows tests for:
+- a junction/reparse swap between enumeration and open;
+- replacement/rename between preflight and ACL application;
+- file and directory identity stability;
+- parent-child relationship enforcement;
+- no ACL writes after any failed preflight;
+- exact SDDL read-back on the retained handle;
+- no mutation of the acceptance parent or any shared ancestor.
+
+Launcher integration remains blocked until this gate and the real-host API
+round-trip both pass. Job Object drain must then be strengthened so cleanup
+waits for `ActiveProcesses == 0`; timeout or inability to prove zero is a
+cleanup failure, not permission to remove the projection or Scratch tree.
+
+
+### Ancestor traversal dependency — explicitly unresolved
+
+The current ACL manager grants `FILE_TRAVERSE` on the disposable job root but
+intentionally leaves its parent unchanged. That is safe with respect to shared
+ACL mutation, but it does **not yet prove** that an AppContainer can reach the
+job root by pathname. Windows may bypass directory traversal checks when the
+token has the relevant enabled privilege; the current host evidence does not
+record whether `SeChangeNotifyPrivilege` is present and enabled. Do not infer
+that it is.
+
+Before treating the ACL layout as viable, capture the child token's complete
+privilege set and test actual pathname access from the suspended-then-resumed
+PSEC child. If traversal fails, do not add an ACE to a shared acceptance parent.
+Redesign placement so any additional traversal ACE is confined to a newly
+created per-job ancestor whose own parent is already traversable under the
+actual token, or establish another documented safe mechanism. Handle-relative
+opens by the host do not, by themselves, grant the child access to PSEC policy
+paths. The child must still prove effective access.
+
+
+## 13. Target-host SDDL symbolic-rights finding
+
+The target Windows host ran the opt-in real Win32 ACL test and returned this
+job-root descriptor after the Package-SID traversal ACE was applied:
+
+```text
+D:PAI(A;;WP;;;S-1-15-2-4048921270-1110085035-832899681-549863699-8652410-2260480956-1408363724)(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;OW)
+```
+
+The native API call reached descriptor read-back and the Package-SID ACE was
+present. Verification failed because the SDDL parser accepted only numeric
+access masks, while Windows serialized the `0x00000020` mask as the symbolic
+rights token `WP`. The token's numeric bit is `0x20`; for this file-system
+object that bit is `FILE_TRAVERSE`. This is a serialization/parser mismatch,
+not evidence that the DACL write failed.
+
+The parser now:
+- recognizes documented two-character SDDL rights tokens and ORs their numeric
+  masks, including `WP`, `FR`, `FX`, and `FA`;
+- retains support for numeric hexadecimal masks;
+- checks symbolic tokens before bare hexadecimal parsing, because tokens such
+  as `FA` contain only hexadecimal characters;
+- rejects unknown symbolic tokens rather than silently ignoring an ACE.
+
+Regression tests cover the exact observed Windows descriptor, `WP` to
+`FILE_TRAVERSE`, `FRFX` composition, `FA` token precedence, numeric masks,
+unknown-token fail-closed behavior, and manager verification with a symbolic
+root ACE.
+
+**Validation remains pending:** the parser correction has not yet been rerun
+against the real Win32 API on the target host. GitHub Actions for the current
+PR head are also still running. A passing parser/unit test does not establish
+effective AppContainer access, ancestor traversal, handle-relative safety, or
+permission to integrate the manager into the launcher.
