@@ -116,9 +116,11 @@ The first implementation slice is platform-independent:
 - Explicit-profile read-back comparison.
 - Deterministic tests for exact match, control-word drift, identity mismatch, transaction mismatch, tampering, and invalid profile input.
 
-This slice does not call SetSecurityInfo, mutate an ACL, or claim native restoration capability.
+The platform-independent snapshot layer does not itself call SetSecurityInfo or mutate an ACL.
 
-The next native experiment must use only a newly created disposable NTFS object and a retained handle. It must record S0, S1, every restoration attempt, and S2 independently. The experiment must isolate each candidate native API and control-bit behavior. A native restoration PASS requires exact read-back equality under the selected profile and verified cleanup.
+The disposable NTFS experiment now captures S0 through the retained handle, queries object identity before and after the descriptor read, verifies the snapshot digest before the first write, and uses the immutable S0 descriptor for both the forward write and rollback attempt. After rollback it independently reads S2 and calls the strict Protocol v1 read-back verifier. Evidence includes the transaction UUID, snapshot digest, restoration result, and mismatch dimensions.
+
+The native experiment still does not prove restoration capability. A native restoration PASS requires exact read-back equality under the selected profile and verified cleanup. The known FALSE-state control-word transition remains FAIL.
 
 ## 10. Current Gate
 
