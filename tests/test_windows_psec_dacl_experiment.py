@@ -75,9 +75,19 @@ class WindowsDaclExperimentContractTests(unittest.TestCase):
 @unittest.skipUnless(os.name == "nt", "native DACL defaulted experiment requires Windows + NTFS")
 class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
     def test_explicit_defaulted_true_round_trip_on_disposable_ntfs_file(self):
+        experiment = WindowsDaclDefaultedExperiment()
         try:
-            result = WindowsDaclDefaultedExperiment().run(defaulted=True)
+            result = experiment.run(defaulted=True)
         except DaclDefaultedNotExercised as exc:
+            evidence = {
+                "label": "TRUE_SETUP_NOT_EXERCISED",
+                "windows_build": platform.platform(),
+                "python": sys.version,
+                "outcome": "NOT_EXERCISED",
+                **exc.evidence,
+                "cleanup_verified": experiment.last_cleanup_verified,
+            }
+            print("DACL_EXPERIMENT_EVIDENCE=" + json.dumps(evidence, default=str), flush=True)
             self.skipTest(str(exc))
         _emit_evidence("TRUE_ROUND_TRIP", result)
         self.assertEqual(result.filesystem.upper(), "NTFS")
