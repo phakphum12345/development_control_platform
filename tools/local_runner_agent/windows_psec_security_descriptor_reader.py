@@ -158,6 +158,7 @@ class WindowsHandleSecurityReader:
                     descriptor_revision=int(revision.value),
                     acl_revision=0,
                     ace_count=0,
+                    dacl_defaulted=bool(dacl_defaulted.value),
                 )
 
             if not self._advapi32.IsValidAcl(dacl_pointer):
@@ -208,6 +209,7 @@ class WindowsHandleSecurityReader:
                 descriptor_revision=int(revision.value),
                 acl_revision=acl_revision,
                 ace_count=declared_count,
+                dacl_defaulted=bool(dacl_defaulted.value),
             )
         except Exception as exc:
             primary_error = exc
