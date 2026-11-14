@@ -9,6 +9,7 @@ from tools.local_runner_agent.windows_psec_projection import (
     ProjectionError,
     ProjectionLimits,
     create_workspace_projection,
+    _ensure_unique_names,
 )
 
 
@@ -67,10 +68,18 @@ class WindowsPsecProjectionTests(unittest.TestCase):
     def test_projection_rejects_case_insensitive_collisions(self):
         with tempfile.TemporaryDirectory() as temporary:
             source, private = self._roots(Path(temporary))
-            (source / "Readme.txt").write_text("one", encoding="utf-8")
-            (source / "README.txt").write_text("two", encoding="utf-8")
-            with self.assertRaisesRegex(ProjectionError, "collision"):
-                create_workspace_projection(source, private)
+            first = source / "Readme.txt"
+            second = source / "README.txt"
+            first.write_text("one", encoding="utf-8")
+            if second.exists():
+                # Case-insensitive filesystems cannot materialize both names;
+                # exercise the exact directory-name validation independently.
+                with self.assertRaisesRegex(ProjectionError, "collision"):
+                    _ensure_unique_names(["Readme.txt", "README.txt"])
+            else:
+                second.write_text("two", encoding="utf-8")
+                with self.assertRaisesRegex(ProjectionError, "collision"):
+                    create_workspace_projection(source, private)
 
     def test_projection_enforces_file_and_total_byte_limits(self):
         with tempfile.TemporaryDirectory() as temporary:
