@@ -70,6 +70,7 @@ class ExperimentResult:
     inherited_ace_count_before: int = 0
     inherited_ace_count_after_write: int | None = None
     inherited_ace_count_after_rollback: int | None = None
+    rollback_attempted: bool = True
 
 
 class _SECURITY_ATTRIBUTES(ctypes.Structure):
@@ -257,7 +258,7 @@ class WindowsDaclDefaultedExperiment:
             raise self._last_error("GetProcessHandleCount")
         return int(count.value)
 
-    def run(self, *, defaulted=True):
+    def run(self, *, defaulted=True, rollback=True):
         handles_before = self._process_handle_count()
         root = None
         file_path = None
@@ -303,21 +304,24 @@ class WindowsDaclDefaultedExperiment:
             except Exception as exc:
                 readback_error = exc
 
-            # Rollback is unconditional after the write attempt, including
-            # when the write or its read-back reports an error.
+            # Rollback is unconditional in rollback mode after the write
+            # attempt, including when write/read-back reports an error.
+            # Write-only mode deliberately records the immediate effect on
+            # this disposable object and then relies on deletion for cleanup.
             rollback_error = None
-            try:
-                self._write_dacl(handle, before)
-            except Exception as exc:
-                rollback_error = exc
-            restored = None
             rollback_read_error = None
-            try:
-                restored = self._reader.read_dacl(handle)
-                if self._reader.query_identity(handle) != identity_before:
-                    raise DaclExperimentError("retained handle identity changed after rollback")
-            except Exception as exc:
-                rollback_read_error = exc
+            restored = None
+            if rollback:
+                try:
+                    self._write_dacl(handle, before)
+                except Exception as exc:
+                    rollback_error = exc
+                try:
+                    restored = self._reader.read_dacl(handle)
+                    if self._reader.query_identity(handle) != identity_before:
+                        raise DaclExperimentError("retained handle identity changed after rollback")
+                except Exception as exc:
+                    rollback_read_error = exc
             write_verified = bool(
                 after is not None
                 and after.dacl_bytes == before.dacl_bytes
@@ -335,7 +339,7 @@ class WindowsDaclDefaultedExperiment:
                 (write_error, readback_error, rollback_error, rollback_read_error)
                 if error is not None
             )
-            outcome = "PASS" if write_verified and rollback_equal and not api_errors else "FAIL"
+            outcome = ("PASS" if write_verified and rollback_equal and not api_errors else "FAIL") if rollback else ("OBSERVED" if after is not None and not write_error and not readback_error else "FAIL")
             result = ExperimentResult(
                 filesystem=filesystem,
                 dacl_defaulted_before=before.dacl_defaulted,
@@ -373,6 +377,7 @@ class WindowsDaclDefaultedExperiment:
                 inherited_ace_count_before=self._inherited_ace_count(before),
                 inherited_ace_count_after_write=(self._inherited_ace_count(after) if after is not None else None),
                 inherited_ace_count_after_rollback=(self._inherited_ace_count(restored) if restored is not None else None),
+                rollback_attempted=bool(rollback),
             )
         except Exception as exc:
             primary_error = exc
@@ -441,4 +446,5 @@ class WindowsDaclDefaultedExperiment:
             inherited_ace_count_before=result.inherited_ace_count_before,
             inherited_ace_count_after_write=result.inherited_ace_count_after_write,
             inherited_ace_count_after_rollback=result.inherited_ace_count_after_rollback,
+            rollback_attempted=result.rollback_attempted,
         )
