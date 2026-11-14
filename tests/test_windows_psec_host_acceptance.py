@@ -9,6 +9,17 @@ from tools.local_runner_agent import windows_psec_host_acceptance as host
 
 
 class WindowsPsecHostAcceptanceTests(unittest.TestCase):
+    def test_paths_overlap_detects_denied_parent_and_child(self):
+        self.assertTrue(
+            host._paths_overlap(
+                r"C:\\Users\\phakp\\AppData\\Local\\Temp\\job",
+                r"C:\\Users\\phakp",
+            )
+        )
+        self.assertFalse(
+            host._paths_overlap(r"D:\\DCP-PSEC-Acceptance", r"C:\\Users\\phakp")
+        )
+
     def test_embedded_policy_payload_is_valid_python(self):
         compile(host._read_only_network_payload(), "<psec-host-policy-payload>", "exec")
 
