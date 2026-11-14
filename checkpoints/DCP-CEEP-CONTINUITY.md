@@ -283,3 +283,14 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - The ambiguous-write test did not actually reach the native write: its patched callback omitted the newly required keyword-only `security_info_flags` argument, so callback call count was zero. Corrected the callback signature and forwarding behavior; Windows rerun is required before accepting rollback-injection evidence.
 - Exact-head CI on this SHA: Local-first Minimal Emulator PASS; Validate Control Plane PASS; Cross-platform Recovery Acceptance FAIL. The Windows recovery failure includes the two findings above. New commit must receive fresh exact-head CI.
 - No merge. Native Writer, Terminal, and all seven built-in templates remain BLOCKED.
+
+
+## 2026-11-15 — WP-18B.1-K creation-only and repeated-write probes
+
+- Re-read Microsoft Learn: SE_DACL_DEFAULTED is used to compute the final DACL and is not physically stored in the security descriptor of a securable object. SetSecurityInfo has no bDaclDefaulted input; object read-back must not be described as persistence of the in-memory creation marker.
+- PR #131 only; branch work/wp18b1k-dacl-native-api-experiment-stack; expected parent HEAD 562b21ad5ba8dc7bd699e661039f5510f2643f34. PR #130 is unchanged.
+- Extended the disposable NTFS harness with a bounded write_repetitions parameter (0–8). Zero performs a creation-only read-back and is prohibited from requesting rollback. Three performs three sequential SetSecurityInfo calls on the same retained handle.
+- Added per-call control-word evidence (control_flags_after_each_write) and native call count (native_write_calls).
+- Added Windows-only tests for FALSE creation-only baseline and repeated same-handle SetSecurityInfo observations. Existing strict FALSE round-trip assertion remains unchanged and is still expected to report the observed exact-state limitation until further evidence justifies a protocol-level disposition.
+- No Windows execution or CI pass is claimed by this source update. New exact-head CI and native evidence are required.
+- Native Writer, Terminal and all seven built-in templates remain BLOCKED. No merge or deployment.
