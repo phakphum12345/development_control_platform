@@ -208,3 +208,14 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Potential risk to resolve during CI/review: Windows behavior for opening a newly created file with an explicit empty DACL and owner READ_CONTROL/WRITE_DAC rights; cleanup uses the exact random file path inside the harness-created temporary root after closing the retained handle.
 - User-host Windows acceptance, TRUE-state round-trip semantics, Native Writer, Terminal and all seven built-in templates remain BLOCKED.
 - No merge authorization exists. Next action: inspect current PR #131 exact head and CI; fix all failures, then run the same test on the designated Windows host and retain complete logs.
+
+
+### WP-18B.1-K follow-up reconciliation
+
+- Latest PR #131 head after the harness safety/error-reporting revisions: `83d8dfbd8b3517225c0b9868726a720fa2af46f5`.
+- The TRUE-state setup now raises a dedicated `DaclDefaultedNotExercised`; the Windows test classifies this condition as SKIPPED / NOT EXERCISED rather than treating it as a writer pass.
+- On write/read-back/rollback failure, diagnostics retain the observed post-write `DaclDefaulted`, DACL byte-equality, control flags, rollback result and error stages.
+- Rollback is attempted unconditionally after a write attempt, even if the post-write read-back fails.
+- The test records volume serial and 128-bit file ID from the retained handle and rechecks handle identity after write and rollback.
+- Latest exact-head CI query for `83d8dfbd8b3517225c0b9868726a720fa2af46f5`: no workflow runs and no combined status entries returned. CI remains UNKNOWN; this is not a pass.
+- PR #131 connector reports `mergeable=false`; investigate the GitHub mergeability state before any merge consideration. PR remains Draft / OPEN / NOT MERGED.
