@@ -4,6 +4,7 @@ import ctypes
 import io
 import os
 import unittest
+from pathlib import Path
 
 from tools.local_runner_agent.windows_psec_launcher import (
     JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
@@ -70,10 +71,10 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
 
     def test_sandbox_profile_environment_keeps_local_app_data_in_scratch(self):
         environment = {
-            "LOCALAPPDATA": r"C:\\Users\\host\\AppData\\Local",
-            "USERPROFILE": r"C:\\Users\\host",
+            "LOCALAPPDATA": r"C:\Users\host\AppData\Local",
+            "USERPROFILE": r"C:\Users\host",
         }
-        scratch = __import__("pathlib").Path(r"C:\\DCP\\scratch")
+        scratch = Path(r"C:\DCP\scratch")
         _apply_sandbox_profile_environment(environment, scratch)
         self.assertEqual(environment["LOCALAPPDATA"], str(scratch))
         self.assertEqual(environment["USERPROFILE"], str(scratch))
