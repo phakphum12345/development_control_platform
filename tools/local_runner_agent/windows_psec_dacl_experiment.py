@@ -25,8 +25,6 @@ FILE_ATTRIBUTE_NORMAL = 0x00000080
 FILE_SHARE_READ = 1
 FILE_SHARE_WRITE = 2
 FILE_SHARE_DELETE = 4
-GENERIC_READ = 0x80000000
-GENERIC_WRITE = 0x40000000
 READ_CONTROL = 0x00020000
 WRITE_DAC = 0x00040000
 INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
@@ -167,7 +165,7 @@ class WindowsDaclDefaultedExperiment:
             attrs_ptr = None
         handle = self._kernel32.CreateFileW(
             path,
-            GENERIC_READ | GENERIC_WRITE | READ_CONTROL | WRITE_DAC,
+            READ_CONTROL | WRITE_DAC,
             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
             attrs_ptr,
             CREATE_NEW,
