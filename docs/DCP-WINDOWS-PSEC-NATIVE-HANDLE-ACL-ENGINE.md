@@ -211,3 +211,53 @@ The branch CI and dedicated Windows host tests remain required evidence.
   that is not a directory or is itself a reparse point.
 - The portable tests now cover parent identity mismatch, non-directory parents,
   and reparse-parent rejection. Native kernel behavior remains untested here.
+
+
+## 11. Implementation checkpoint — trusted root and directory enumeration
+
+The next increment adds `tools/local_runner_agent/windows_psec_handle_tree.py`
+and contract tests in `tests/test_windows_psec_handle_tree.py`.
+
+Implemented in this increment:
+
+- Accept only drive-letter absolute paths (for example, `C:\\work\\job`).
+  UNC paths, device/extended namespaces, slash-normalized paths, ADS syntax,
+  empty components, and traversal components are rejected.
+- Acquire the drive root with `CreateFileW` using directory and
+  open-reparse-point flags; validate the root from its handle-derived identity.
+- Traverse each subsequent directory component with the existing
+  `NtCreateFile` relative-child opener rooted at the retained parent handle.
+  Every parent is re-queried and identity-checked before the next open.
+- Enumerate direct children from the retained directory handle using
+  `FileIdExtdDirectoryRestartInfo` / `FileIdExtdDirectoryInfo` (128-bit
+  file IDs). There is no fallback to the legacy 64-bit directory information
+  class.
+- Open each enumerated child relative to the retained directory handle and
+  require its full 128-bit File ID, volume serial, object kind, and non-reparse
+  state to match the enumeration record.
+- Reject reparse points, duplicate/case-fold-colliding names, duplicate file
+  identities (including hard-link aliases in the enumerated directory), invalid
+  names, malformed enumeration offsets, and resource-ceiling violations.
+- Return retained child handles to the caller; close operations run in reverse
+  ownership order and report close failures.
+
+Safety and scope limits:
+
+- This increment is read-only with respect to filesystem contents and ACLs.
+  It creates no files, changes no DACLs, and does not touch shared parent ACLs.
+- The root path parser intentionally supports only drive-letter paths. UNC,
+  volume-GUID, mount-point, and device namespace support is NOT IMPLEMENTED.
+- Enumeration is direct-child only. A caller must recurse explicitly and retain
+  the required parent/child handles; no full-tree manifest or mutation engine is
+  claimed yet.
+- The 128-bit extended directory information class is required. Unsupported
+  systems/filesystems fail closed; no weaker 64-bit fallback is permitted.
+- Portable parser/path tests do not exercise `CreateFileW`, `NtCreateFile`, or
+  kernel directory enumeration. Dedicated Windows host tests remain required.
+- No ACL mutation, launcher integration, process resume, Terminal execution, or
+  built-in template activation is included.
+
+The next gate is dedicated Windows validation of drive-root acquisition,
+nested relative traversal, extended-ID enumeration, replacement/reparse races,
+resource ceilings, and deterministic handle cleanup. Only after that evidence
+should native security-descriptor transaction work begin.
