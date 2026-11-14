@@ -10,6 +10,7 @@ from tools.local_runner_agent.windows_psec_launcher import (
     WindowsPsecError,
     WindowsPsecLauncher,
     WindowsPsecProcess,
+    _apply_sandbox_profile_environment,
     _environment_block,
 )
 
@@ -66,6 +67,18 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
         block = _environment_block({"zeta": "2", "Alpha": "1"})
         values = "".join(block)
         self.assertTrue(values.startswith("Alpha=1\x00zeta=2\x00\x00"))
+
+    def test_sandbox_profile_environment_keeps_local_app_data_in_scratch(self):
+        environment = {
+            "LOCALAPPDATA": r"C:\\Users\\host\\AppData\\Local",
+            "USERPROFILE": r"C:\\Users\\host",
+        }
+        scratch = __import__("pathlib").Path(r"C:\\DCP\\scratch")
+        _apply_sandbox_profile_environment(environment, scratch)
+        self.assertEqual(environment["LOCALAPPDATA"], str(scratch))
+        self.assertEqual(environment["USERPROFILE"], str(scratch))
+        self.assertEqual(environment["TEMP"], str(scratch))
+        self.assertEqual(environment["TMP"], str(scratch))
 
     def test_environment_block_rejects_duplicate_names_case_insensitively(self):
         with self.assertRaisesRegex(WindowsPsecError, "duplicate"):
