@@ -30,12 +30,24 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
             self.skipTest(str(exc))
         self.assertEqual(result.filesystem.upper(), "NTFS")
         self.assertTrue(result.dacl_defaulted_before)
-        self.assertTrue(result.dacl_bytes_equal_after_rollback)
+        self.assertIn(result.outcome, ("PASS", "FAIL"))
         self.assertTrue(result.cleanup_verified)
         self.assertGreater(result.volume_serial, 0)
         self.assertEqual(len(result.file_id), 32)
-        # This is the measurement under test, not a pre-assumed success.
         self.assertIsInstance(result.dacl_defaulted_after_write, bool)
+        print("DACL_EXPERIMENT_TRUE_EVIDENCE=" + json.dumps({
+            "windows_build": platform.platform(), "python": sys.version,
+            "filesystem": result.filesystem, "volume_serial": result.volume_serial,
+            "file_id": result.file_id, "outcome": result.outcome,
+            "dacl_defaulted_before": result.dacl_defaulted_before,
+            "dacl_defaulted_after_write": result.dacl_defaulted_after_write,
+            "dacl_defaulted_after_rollback": result.dacl_defaulted_after_rollback,
+            "write_verified": result.write_verified, "rollback_verified": result.rollback_verified,
+            "control_flags": [result.control_flags_before, result.control_flags_after_write, result.control_flags_after_rollback],
+            "dacl_bytes_hex": [result.dacl_bytes_before_hex, result.dacl_bytes_after_write_hex, result.dacl_bytes_after_rollback_hex],
+            "api_errors": result.api_errors, "cleanup_verified": result.cleanup_verified,
+        }, default=str))
+        self.assertEqual(result.outcome, "PASS", "TRUE DACL defaulted state did not round-trip exactly")
 
 
     def test_ambiguous_native_write_error_still_attempts_rollback_and_cleanup(self):
