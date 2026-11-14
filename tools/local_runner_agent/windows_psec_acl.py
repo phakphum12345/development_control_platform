@@ -30,9 +30,43 @@ SDDL_REVISION_1 = 1
 ERROR_SUCCESS = 0
 
 _SID_RE = re.compile(r"^S-1-15-2-(?:0|[1-9][0-9]{0,9})(?:-(?:0|[1-9][0-9]{0,9})){0,14}$", re.ASCII)
-_ACE_RE = re.compile(
-    r"\((A|D);([^;]*);(0x[0-9a-fA-F]+|[0-9a-fA-F]+);;;([^)]*)\)"
-)
+_ACE_RE = re.compile(r"\\((A|D);([^;]*);([^;]+);;;([^)]*)\\)")
+
+# SDDL rights are two-character tokens, not necessarily hexadecimal masks.
+# Several object-specific rights share bit values with file-system rights:
+# in a SE_FILE_OBJECT DACL, Windows rendered FILE_TRAVERSE (0x20) as "WP".
+# Verification therefore normalizes the serialized token to its numeric bit.
+_SDDL_RIGHTS = {
+    "CC": 0x00000001, "DC": 0x00000002, "LC": 0x00000004,
+    "SW": 0x00000008, "RP": 0x00000010, "WP": 0x00000020,
+    "DT": 0x00000040, "LO": 0x00000080, "CR": 0x00000100,
+    "SD": 0x00010000, "RC": 0x00020000, "WD": 0x00040000,
+    "WO": 0x00080000, "GA": 0x10000000, "GX": 0x20000000,
+    "GW": 0x40000000, "GR": 0x80000000,
+    "FA": 0x001F01FF, "FR": 0x00120089,
+    "FW": 0x00120116, "FX": 0x001200A0,
+}
+
+
+def _parse_sddl_access_mask(value: str) -> int:
+    """Normalize a numeric or concatenated SDDL rights field to an access mask."""
+    if value.startswith(("0x", "0X")):
+        return int(value, 16)
+    if re.fullmatch(r"[0-9a-fA-F]+", value, re.ASCII):
+        # Preserve support for numeric masks emitted by test adapters and tools.
+        return int(value, 16)
+    token_string = value.upper()
+    if len(token_string) % 2:
+        raise WindowsPsecAclError("unsupported SDDL access-mask encoding")
+    mask = 0
+    for offset in range(0, len(token_string), 2):
+        token = token_string[offset:offset + 2]
+        if token not in _SDDL_RIGHTS:
+            raise WindowsPsecAclError(
+                f"unsupported SDDL access-right token: {token}"
+            )
+        mask |= _SDDL_RIGHTS[token]
+    return mask
 
 
 class WindowsPsecAclError(RuntimeError):
@@ -146,7 +180,7 @@ def _parse_allow_aces(sddl: str, package_sid: str) -> list[tuple[str, int]]:
     for ace_type, flags, mask_text, sid in _ACE_RE.findall(sddl):
         if sid.casefold() != package_sid.casefold():
             continue
-        mask = int(mask_text, 16)
+        mask = _parse_sddl_access_mask(mask_text)
         if ace_type == "A":
             matches.append((flags, mask))
     return matches
