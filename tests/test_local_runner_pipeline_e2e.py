@@ -16,7 +16,7 @@ from tools.cloud_gateway.terminal_execution_contract import template_version_dig
 from tools.cloud_gateway.artifacts import ArtifactStore
 from tools.cloud_gateway.runner_registry import RunnerRegistry
 from tools.cloud_gateway.server import make_handler
-from tools.local_runner_agent.client import GatewayClient, RunnerAgentConfig
+from tools.local_runner_agent.client import GatewayClient, RunnerAgentConfig, RunnerGatewayError
 from tools.local_runner_agent.execution import FlutterBuildExecutor
 from tools.local_runner_agent.pipeline import RunnerPipeline
 from tools.local_runner_agent.service import RunnerAgentService
@@ -28,6 +28,7 @@ from tools.local_runner_agent.terminal_isolation import IsolationAssessment
 
 
 TOKEN = "runner-pipeline-e2e-token-which-is-long-enough"
+OTHER_TOKEN = "runner-other-pipeline-e2e-token-which-is-long-enough"
 
 
 class _Service:
@@ -88,6 +89,7 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
             ("127.0.0.1", 0),
             make_handler(service, "internal-gateway-token", runner_tokens={
                 "runner-e2e": TOKEN,
+                "runner-other": OTHER_TOKEN,
             }),
         )
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -648,6 +650,16 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
         self.assertEqual(result["outcome"], "succeeded", result)
         self.assertEqual(result["job"]["id"], job["id"])
         self.assertEqual(result["job"]["state"], "succeeded")
+        cleanup_status = self.client.workspace_cleanup_status(job["id"])
+        self.assertTrue(cleanup_status["cleanup_safe"])
+        self.assertEqual(cleanup_status["worker_id"], "runner-e2e")
+        other_client = GatewayClient(RunnerAgentConfig(
+            gateway_url=f"http://127.0.0.1:{self.server.server_port}",
+            worker_id="runner-other", token=OTHER_TOKEN,
+        ))
+        with self.assertRaises(RunnerGatewayError) as denied:
+            other_client.workspace_cleanup_status(job["id"])
+        self.assertEqual(denied.exception.status_code, 404)
         self.assertEqual(result["result"]["source_type"], "terminal_script")
         self.assertEqual(result["result"]["project_workspace_id"], project["workspace_id"])
         self.assertEqual(result["result"]["template_id"], "python_version")
