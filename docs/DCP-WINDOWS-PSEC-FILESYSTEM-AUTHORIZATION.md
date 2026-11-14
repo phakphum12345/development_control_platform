@@ -112,3 +112,32 @@ A skipped test is `SKIPPED`, not `PASS`. A denied Workspace write without a succ
 ## 7. Current state
 
 The architecture decision and first projection primitives are committed. These primitives do not apply ACLs, do not prove AppContainer traversal, and are not integrated into the launcher. No ACL has been changed on the user's host. No production execution gate has been opened. Unit tests have been added but have not yet been executed in this environment; CI is the next validation source. Windows Host Acceptance remains pending.
+
+
+## 8. Windows-managed AppContainer profile path — read-only investigation
+
+Microsoft documents two relevant APIs:
+
+- `CreateAppContainerProfile` creates a per-user, per-AppContainer data profile and returns the Package SID. Microsoft states that its profile folders have ACLs that protect them from other users and apps. The profile name is constrained and an `ERROR_ALREADY_EXISTS` result is distinct from successful creation.
+- `GetAppContainerFolderPath` accepts an AppContainer SID string and returns that container's local application-data path. The returned path is the AppContainer's `FOLDERID_LocalAppData` location. The caller must release the returned string with `CoTaskMemFree`.
+
+References:
+- https://learn.microsoft.com/en-us/windows/win32/secauthz/implementing-an-appcontainer
+- https://learn.microsoft.com/en-us/windows/win32/api/userenv/nf-userenv-createappcontainerprofile
+- https://learn.microsoft.com/en-us/windows/win32/api/userenv/nf-userenv-getappcontainerfolderpath
+
+Important limits:
+- `GetAppContainerFolderPath` is a path lookup, not documented proof that a profile is registered, that the directory exists, or that a child process can access it.
+- `CreateAppContainerProfile` creates a profile from a name and returns the SID for that profile. It cannot be assumed to adopt an independently-created PSEC Package SID. Do not create a persistent profile as an experiment or change the PSEC identity lifecycle without an explicit design and cleanup contract.
+- The target host acceptance harness now records the exact Package SID's managed profile path, directory existence, ACL snapshot, and whether the child's reported `LOCALAPPDATA` matches it. This probe is read-only and does not create profiles or modify ACLs.
+- A captured path or ACL is diagnostic evidence only. The child must still prove access from its own PSEC token. If PSEC does not use a registered profile for the exact Package SID, this route is unavailable and the isolated-root authorization design remains unresolved.
+
+## 9. Protocol v1 checkpoint — 2026-11-14
+
+- Recon: PR #121 exact head was `c7e23fcb1716a12ad7ed364355328ae5a1045408`; all three CI workflows succeeded, while the Windows runner acceptance matrix was skipped.
+- Inventory: projection primitives and fail-closed token identity validation exist; Package-SID ACL application, native handle-based traversal, and launcher lifecycle integration do not.
+- Gap: the original host acceptance still fails Workspace read and Scratch write with `PermissionError`. The derived Workspace write-denial result remains invalid evidence.
+- Implementation: add a read-only `GetAppContainerFolderPath` diagnostic to the Windows host acceptance harness. It reports path, directory existence, ACL evidence, and child `LOCALAPPDATA` match without changing host state.
+- Testing: pending on the exact new head. Target-Windows execution is required; CI success alone cannot establish the profile mapping or child access.
+- Safety: no ACL mutation, no persistent profile creation, no direct host-process fallback, no Terminal template activation, no merge.
+- Next: run the updated harness on the target Windows host. Use its evidence to decide whether the PSEC-created Package SID has a Windows-managed profile root. Only then finalize the per-job scratch/projection authorization strategy.
