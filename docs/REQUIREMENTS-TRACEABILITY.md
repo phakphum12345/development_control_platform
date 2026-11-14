@@ -138,7 +138,7 @@
 - `test_native_mcp_engine.py`
 - `test_native_mcp_server.py`
 
-### Other supporting tests and scripts (11)
+### Other supporting tests and scripts (10)
 - `browser_smoke.mjs`
 - `emit_runner_bootstrap_scripts.py`
 - `live_gateway_preflight.py`
