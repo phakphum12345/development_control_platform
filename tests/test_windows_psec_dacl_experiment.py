@@ -31,6 +31,7 @@ def _emit_evidence(label, result):
         },
         "write_verified": result.write_verified,
         "rollback_verified": result.rollback_verified,
+        "rollback_attempted": result.rollback_attempted,
         "control_flags": {
             "after_create": result.control_flags_before,
             "after_write": result.control_flags_after_write,
@@ -89,6 +90,23 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         self.assertGreater(result.volume_serial, 0)
         self.assertEqual(len(result.file_id), 32)
         self.assertIsInstance(result.dacl_defaulted_after_write, bool)
+
+    def test_write_only_observation_is_separate_from_rollback(self):
+        # A fresh disposable file is used; this run intentionally performs
+        # no rollback so the post-SetSecurityInfo state is independently visible.
+        result = WindowsDaclDefaultedExperiment().run(defaulted=False, rollback=False)
+        _emit_evidence("FALSE_WRITE_ONLY", result)
+        self.assertEqual(result.filesystem.upper(), "NTFS")
+        self.assertFalse(result.dacl_defaulted_before)
+        self.assertEqual(result.outcome, "OBSERVED")
+        self.assertTrue(result.write_verified)
+        self.assertFalse(result.rollback_attempted)
+        self.assertIsNone(result.dacl_defaulted_after_rollback)
+        self.assertIsNone(result.dacl_bytes_after_rollback_hex)
+        self.assertTrue(result.cleanup_verified)
+        self.assertTrue(result.owned_handle_opened)
+        self.assertTrue(result.owned_handle_closed)
+        self.assertIs(result.close_handle_succeeded, True)
 
     def test_ambiguous_native_write_error_still_attempts_rollback_and_cleanup(self):
         experiment = WindowsDaclDefaultedExperiment()
