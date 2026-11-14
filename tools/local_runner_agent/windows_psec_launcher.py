@@ -369,6 +369,61 @@ def _query_process_token(kernel32, process_handle: HANDLE) -> dict:
 
 
 
+
+def _valid_sid_string(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    parts = value.split("-")
+    if (len(parts) < 4 or len(parts) > 18 or parts[:2] != ["S", "1"]
+            or any(not part.isascii() or not part.isdecimal() for part in parts[2:])):
+        return False
+    try:
+        authority = int(parts[2], 10)
+        subauthorities = [int(part, 10) for part in parts[3:]]
+    except ValueError:
+        return False
+    return 0 <= authority <= 0xFFFFFFFFFFFF and all(
+        0 <= item <= 0xFFFFFFFF for item in subauthorities
+    )
+
+
+def _require_app_container_token(token: object) -> dict:
+    """Require complete, pre-resume AppContainer identity evidence.
+
+    This validates identity only; it does not grant filesystem access or prove
+    that Package-SID ACL authorization has been installed.
+    """
+    if not isinstance(token, dict):
+        raise WindowsPsecError("PSEC process token diagnostics are unavailable")
+    required = {
+        "state", "captured_before_resume", "is_app_container", "app_container_sid",
+        "user_sid", "integrity_sid", "elevation_type", "groups", "capabilities",
+    }
+    if not required.issubset(token):
+        raise WindowsPsecError("PSEC process token diagnostics are incomplete")
+    if token["state"] != "CAPTURED" or token["captured_before_resume"] is not True:
+        raise WindowsPsecError("PSEC process token was not completely captured before resume")
+    if token["is_app_container"] is not True:
+        raise WindowsPsecError("PSEC process token is not an AppContainer token")
+    if not _valid_sid_string(token["app_container_sid"]):
+        raise WindowsPsecError("PSEC AppContainer Package SID is invalid")
+    if not _valid_sid_string(token["user_sid"]) or not _valid_sid_string(token["integrity_sid"]):
+        raise WindowsPsecError("PSEC process token contains an invalid user or integrity SID")
+    if (isinstance(token["elevation_type"], bool)
+            or not isinstance(token["elevation_type"], int)
+            or token["elevation_type"] not in (1, 2, 3)):
+        raise WindowsPsecError("PSEC process token elevation type is invalid")
+    if not isinstance(token["groups"], list) or not isinstance(token["capabilities"], list):
+        raise WindowsPsecError("PSEC process token SID collections are invalid")
+    for collection_name in ("groups", "capabilities"):
+        for entry in token[collection_name]:
+            if (not isinstance(entry, dict) or not _valid_sid_string(entry.get("sid"))
+                    or isinstance(entry.get("attributes"), bool)
+                    or not isinstance(entry.get("attributes"), int)):
+                raise WindowsPsecError(f"PSEC process token {collection_name} are invalid")
+    return token
+
+
 def _environment_block(environment: Mapping[str, str]):
     normalized = {}
     for key, value in environment.items():
@@ -737,18 +792,21 @@ class WindowsPsecLauncher:
             kernel32.DeleteProcThreadAttributeList(attribute_list)
             attribute_list_initialized = False
 
-            # Capture the exact PSEC-created process token while its initial
-            # thread is still suspended. This is read-only diagnostics and
-            # cannot alter the token or broaden the process policy.
+            # Capture and validate the exact PSEC-created AppContainer token
+            # while its initial thread is suspended. Identity evidence is a
+            # prerequisite for any later Package-SID authorization step.
+            # Missing or malformed evidence must never be downgraded to a
+            # diagnostic warning or allowed to reach ResumeThread.
             try:
-                token_diagnostics = _query_process_token(kernel32, process_info.hProcess)
+                token_diagnostics = _require_app_container_token(
+                    _query_process_token(kernel32, process_info.hProcess)
+                )
             except Exception as exc:
-                # Diagnostics must never weaken or prevent an otherwise valid
-                # fail-closed PSEC launch.
-                token_diagnostics = {
-                    "state": "UNKNOWN",
-                    "error": f"{type(exc).__name__}: {exc}",
-                }
+                if isinstance(exc, WindowsPsecError):
+                    raise
+                raise WindowsPsecError(
+                    f"PSEC process token validation failed: {type(exc).__name__}: {exc}"
+                ) from exc
             if not kernel32.AssignProcessToJobObject(job_handle, process_info.hProcess):
                 raise _win_error("AssignProcessToJobObject")
             previous_suspend_count = kernel32.ResumeThread(process_info.hThread)
