@@ -110,6 +110,7 @@ No undocumented API, privilege expansion, alternate object target, or production
 The first implementation slice is platform-independent:
 
 - Immutable S0 record.
+- Retained-handle capture that queries object identity before and after descriptor read, rejecting identity drift.
 - Transaction and target identity binding.
 - SHA-256 integrity verification.
 - Explicit-profile read-back comparison.
