@@ -13,10 +13,11 @@ Implement immutable preservation of the original DACL descriptor snapshot (S0), 
 
 - Added a frozen original snapshot envelope.
 - Captures DACL presence, NULL state, exact ACL bytes, DACL defaulted state, all 16-bit descriptor control flags, descriptor/ACL revisions, and ACE count through the existing DescriptorSnapshot.
+- Added retained-handle capture that reads object identity before and after the descriptor snapshot and rejects identity drift.
 - Binds the snapshot to a canonical transaction UUID and target volume serial / 128-bit file ID.
 - Computes a SHA-256 integrity digest over metadata and exact binary ACL bytes.
 - Adds fail-closed read-back verification under the selected existing comparison profile.
-- Adds deterministic cross-platform unit tests for exact restoration, 0x9004 to 0x9404 strict mismatch, explicit content-only profile behavior, transaction/identity mismatch, tampering, and invalid profile input.
+- Adds deterministic cross-platform unit tests for exact restoration, 0x9004 to 0x9404 strict mismatch, explicit content-only profile behavior, transaction/identity mismatch, tampering, invalid profile input, and retained-handle capture boundaries.
 
 ## Deliberate limitations
 
@@ -31,7 +32,11 @@ Implement immutable preservation of the original DACL descriptor snapshot (S0), 
 ## Validation
 
 - Local unittest execution: NOT RUN in authoring session.
-- Required exact-head CI: pending.
+- Previous exact-head validation on 9af105c5d9fb1d996bc5245faf4a27773afcfa96: 39 PSEC snapshot/comparison/transaction regression tests PASS on Ubuntu and Windows.
+- Previous exact-head Cross-platform Recovery Acceptance: Ubuntu job PASS; Windows job FAILS only at the known native FALSE exact-round-trip assertion in tests.test_windows_psec_dacl_experiment. The PSEC regression step ran before the native experiment and passed on Windows.
+- Local-first Minimal Emulator: Linux and Windows jobs PASS on that exact head.
+- Validate Control Plane: PASS on that exact head.
+- Current implementation has since added retained-handle snapshot capture and requires a fresh exact-head CI run.
 - Required test command: python -m unittest tests.test_windows_psec_reversible_state -v.
 - Regression commands: python -m unittest tests.test_windows_psec_dacl_comparison tests.test_windows_psec_security_descriptor_transaction -v.
 - Native Windows restore acceptance: NOT RUN; requires a separate disposable NTFS experiment and exact read-back evidence.
