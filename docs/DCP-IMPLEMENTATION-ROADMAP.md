@@ -280,3 +280,16 @@ Historical gate for PR #71: its Chromium sandbox launch failure applied to that 
 - Current status for all platforms: BLOCKED pending actual launchers, adversarial host acceptance and independent cleanup evidence. Linux bwrap presence can only become READY_FOR_ACCEPTANCE, never VERIFIED by itself.
 - All seven built-in Terminal templates remain execution_enabled=false. No network/filesystem/process isolation claim is made from workspace binding or Job Objects.
 - Acceptance requires filesystem boundary, network denial (including loopback/LAN/DNS/IPv6/metadata), process-tree termination, credential isolation, adversarial tests and recovery evidence on the actual supported host.
+
+
+## 2026-11-14 source-backed checkpoint — WP-00 inventory and PR #115 reconciliation
+
+- Verified `main` baseline for this checkpoint: `62d72bddd028399d0b96cd9c2f6e3b16a704b758`, the merge commit for PR #115.
+- PR #115 closed the WP-18 fail-closed contract slice. It did not add a Linux/Windows/macOS production sandbox launcher.
+- Earlier WP-17 text in this roadmap that describes PR #114 as OPEN is historical/stale. PR #114 is merged as `ef3bf7e3522119ebbd3a41de693cee254e1ea7cf`.
+- A source-driven remaining-work register and first-pass status/requirements docs are being added on PR #116. See `docs/DCP-REMAINING-WORK-INVENTORY.md`, `docs/IMPLEMENTATION-STATUS.md`, `docs/REQUIREMENTS-TRACEABILITY.md` and `docs/INDEX.md`.
+- The baseline inventory found 289 recursive tree entries (265 files), 78 tool files, 86 test files, 58 docs and 7 workflows. Dashboard view inventory contains 21 views. These counts are tied to the exact baseline SHA.
+- Current register contains 22 Work Packages as a grouping only; atomic task count is not final until per-file, API, Dashboard-handler and test-function traceability is completed.
+- WP-18A now has a Linux-only bubblewrap command builder and seccomp network-deny policy on PR #116. The builder is not yet integrated into TerminalScriptExecutor. No real host acceptance is claimed.
+- Windows AppContainer/LPAC remains BLOCKED; macOS remains BLOCKED. All seven built-in Terminal templates remain disabled.
+- User-host Windows acceptance, independent process cleanup, workspace cleanup after interruption, complete browser visual/accessibility evidence and full operations/upgrade/rollback acceptance remain open.
