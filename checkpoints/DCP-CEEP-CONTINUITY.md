@@ -294,3 +294,16 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Added Windows-only tests for FALSE creation-only baseline and repeated same-handle SetSecurityInfo observations. Existing strict FALSE round-trip assertion remains unchanged and is still expected to report the observed exact-state limitation until further evidence justifies a protocol-level disposition.
 - No Windows execution or CI pass is claimed by this source update. New exact-head CI and native evidence are required.
 - Native Writer, Terminal and all seven built-in templates remain BLOCKED. No merge or deployment.
+
+
+## 2026-11-15 — WP-18B.1-L DACL State Semantics Protocol v1.0
+
+- Created a separate documentation-only child branch `work/wp18b1l-dacl-state-protocol-v1` from PR #131 exact evidence head `cf5e43aec6b6f7e72fc20b3c41fa052d585ff7e9`. PR #131's experiment source/tests and evidence baseline were not modified.
+- Added `docs/DCP-PSEC-DACL-STATE-PROTOCOL-v1.md`: draft normative state model distinguishing (1) DACL content, (2) descriptor-construction metadata such as `SE_DACL_DEFAULTED`, and (3) OS-managed control state such as `SE_DACL_AUTO_INHERITED` / `SE_DACL_PROTECTED`.
+- Defined named comparison profiles: `DACL_CONTENT_EQUALITY`, `DACL_OBJECT_STATE_EQUALITY`, `CONTROL_STATE_EQUALITY`, and `STRICT_DESCRIPTOR_EQUALITY`. A content-equality observation cannot be promoted to strict descriptor equality; raw control flags must remain visible and must not be normalized to manufacture PASS.
+- Recorded PR #131 Windows Server 2025 / NTFS observation: control flags `0x9004 → 0x9404`; DACL bytes unchanged; object-readable DACL_DEFAULTED remained FALSE; inherited ACE count remained zero. Strict FALSE round-trip remains FAIL. TRUE-state setup remains NOT EXERCISED when NTFS does not retain TRUE after creation.
+- Added the new protocol to `docs/INDEX.md`. No production code, tests, workflow, ACL mutation behavior, or PR #131 content was changed.
+- New branch commits: protocol document `6d0fcce7b56167650a25385b11cbb47eca3a925a`; documentation index `b3855cb40b9a33af8297fe601c0949d15d5a743b`; continuity ledger update follows.
+- PR #130 remains untouched. PR #131 remains the original Draft / BLOCKED architecture-evidence PR. Native Writer, Terminal and all seven built-in templates remain BLOCKED / disabled.
+- Validation status for this new documentation branch: source/document review only; exact-head CI has not yet been checked. Protocol v1.0 remains DRAFT / REVIEW REQUIRED and is not an implementation or merge authorization.
+- Next exact action: open a separate Draft PR based on PR #131, verify exact-head CI and review the protocol contract. Do not merge this child before its base; no merge or deployment is authorized.
