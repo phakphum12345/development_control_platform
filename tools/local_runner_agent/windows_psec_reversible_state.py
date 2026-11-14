@@ -12,6 +12,7 @@ host-tested gate.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import re
 from dataclasses import dataclass
@@ -74,7 +75,7 @@ class OriginalDescriptorSnapshot:
         return (
             isinstance(self.integrity_sha256, str)
             and re.fullmatch(r"[0-9a-f]{64}", self.integrity_sha256) is not None
-            and hashlib.compare_digest(expected, self.integrity_sha256)
+            and hmac.compare_digest(expected, self.integrity_sha256)
         )
 
 
@@ -186,6 +187,10 @@ def verify_restoration_readback(
     try:
         profile = resolve_dacl_comparison_profile(comparison_profile)
         _validate_transaction_id(transaction_id)
+        if not isinstance(original, OriginalDescriptorSnapshot):
+            return RestorationVerification(
+                "SNAPSHOT_INVALID", profile.value, ("original_snapshot_type_invalid",)
+            )
         target_identity.validate()
         if not original.verify_integrity(limits=selected_limits):
             return RestorationVerification(
@@ -195,7 +200,11 @@ def verify_restoration_readback(
             return RestorationVerification(
                 "RESTORE_NOT_EXACT", profile.value, ("transaction_id_mismatch",)
             )
-        if target_identity != original.target_identity:
+        normalized_identity = TargetObjectIdentity(
+            volume_serial=target_identity.volume_serial,
+            file_id=target_identity.file_id.casefold(),
+        )
+        if normalized_identity != original.target_identity:
             return RestorationVerification(
                 "RESTORE_NOT_EXACT", profile.value, ("target_identity_mismatch",)
             )
