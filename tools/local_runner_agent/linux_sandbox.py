@@ -177,7 +177,7 @@ class LinuxBubblewrapLauncher:
                     or name.startswith("GIT_CONFIG_KEY_")
                     or name.startswith("GIT_CONFIG_VALUE_")
                 )
-                if not allowed or not isinstance(value, str) or "\\x00" in value:
+                if not allowed or not isinstance(value, str) or "\x00" in value:
                     raise LinuxSandboxError("sandbox environment contains an unsupported variable")
                 command.extend(["--setenv", name, value])
             command.extend([
