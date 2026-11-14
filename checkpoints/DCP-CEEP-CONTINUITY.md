@@ -178,3 +178,16 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - WP-18D remains PARTIAL until the harness is run on the actual target Linux host. Windows AppContainer/LPAC remains BLOCKED and user-host acceptance remains UNKNOWN.
 - This checkpoint is followed by a small evidence-schema refinement that records both the harness interpreter version and the exact /usr/bin Python runtime versions; re-check CI against the resulting new head.
 - PR #116, #117 and #118 remain OPEN / DRAFT / NOT MERGED. No merge to main, deployment or Terminal template enablement is authorized.
+
+
+## 2026-11-14 — WP-18D exact-head evidence refinement accepted
+
+- PR #119 code/test head `a497117adfcdb68f9e6a52b385f28fbec21ec621`: all exact-head workflows PASS.
+- Cross-platform Recovery Acceptance #171: PASS (Ubuntu and Windows).
+- Local-first Minimal Emulator #535: PASS (Linux and Windows).
+- Validate Control Plane #749: PASS.
+- Linux host acceptance harness on the ephemeral Ubuntu CI host: PASS, 5/5, 0 skipped, 0 failures, 0 errors. Exact evidence: Bubblewrap 0.11.1; Linux 7.0.0-1016-aws; x86_64; UID/GID 1001; harness Python 3.12.16; Terminal runtime Python 3.14.4; sandbox test Python 3.14.4.
+- Windows runner acceptance matrix: SKIPPED; no eligible self-hosted host acceptance Runner. No target Windows or Linux host acceptance is claimed.
+- PR #119 remains OPEN / DRAFT / NOT MERGED; PR #118 remains OPEN / DRAFT / NOT MERGED; PR #117 and #116 remain OPEN / DRAFT / NOT MERGED. These are stacked dependencies; do not merge a child before its base.
+- WP-18D is PARTIAL pending the target Linux host run. WP-18B Windows native process isolation and LPAC remain BLOCKED pending implementation and host acceptance. Terminal templates remain disabled.
+- This checkpoint follows code/test head `a497117adfcdb68f9e6a52b385f28fbec21ec621`; re-check exact-head CI on the resulting checkpoint commit before treating it as current.
