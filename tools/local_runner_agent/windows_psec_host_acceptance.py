@@ -556,12 +556,13 @@ def main() -> int:
 
         results = {**policy_results, **tree_results}
         child_process_token = results.pop("child_process_token", {})
+        child_token = results.pop("child_token", {})
         diagnostics = {
-            "child_token": results.pop("child_token", {}),
+            "child_token": child_token,
             "child_process_token": child_process_token,
             "filesystem_acl": filesystem_acl,
             "app_container_profile": (
-                _app_container_profile_evidence(app_container_sid, results.get("child_token", {}))
+                _app_container_profile_evidence(app_container_sid, child_token)
                 if app_container_sid else {
                     "state": "UNKNOWN",
                     "reason": "Package SID was not captured",
