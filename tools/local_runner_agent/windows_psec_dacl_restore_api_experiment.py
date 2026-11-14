@@ -101,21 +101,21 @@ class WindowsDaclRestoreApiExperiment(WindowsDaclDefaultedExperiment):
     def candidate_names() -> tuple[str, ...]:
         return RESTORE_API_CANDIDATES
 
-    def _build_absolute_dacl_descriptor(self, snapshot, *, auto_inherit_req: bool):
+    def _build_self_relative_dacl_descriptor(self, snapshot, *, auto_inherit_req: bool):
         if not snapshot.dacl_present or snapshot.dacl_is_null or not snapshot.dacl_bytes:
             raise DaclRestoreApiExperimentError(
                 "restore candidate requires an explicit non-NULL DACL"
             )
-        descriptor = ctypes.create_string_buffer(64)
+        absolute_descriptor = ctypes.create_string_buffer(64)
         acl_buffer = ctypes.create_string_buffer(
             snapshot.dacl_bytes, len(snapshot.dacl_bytes)
         )
         if not self._advapi32.InitializeSecurityDescriptor(
-            descriptor, SECURITY_DESCRIPTOR_REVISION
+            absolute_descriptor, SECURITY_DESCRIPTOR_REVISION
         ):
             raise self._last_error("InitializeSecurityDescriptor(restore candidate)")
         if not self._advapi32.SetSecurityDescriptorDacl(
-            descriptor,
+            absolute_descriptor,
             True,
             ctypes.cast(acl_buffer, wintypes.LPVOID),
             bool(snapshot.dacl_defaulted),
@@ -128,20 +128,20 @@ class WindowsDaclRestoreApiExperiment(WindowsDaclDefaultedExperiment):
         if auto_inherit_req:
             control_bits |= SE_DACL_AUTO_INHERIT_REQ
         if not self._advapi32.SetSecurityDescriptorControl(
-            descriptor,
+            absolute_descriptor,
             control_interest,
             control_bits,
         ):
             raise self._last_error("SetSecurityDescriptorControl(restore candidate)")
         required = wintypes.DWORD()
         self._advapi32.MakeSelfRelativeSD(
-            descriptor, None, ctypes.byref(required)
+            absolute_descriptor, None, ctypes.byref(required)
         )
         if required.value <= 0:
             raise self._last_error("MakeSelfRelativeSD(size query)")
         self_relative = ctypes.create_string_buffer(required.value)
         if not self._advapi32.MakeSelfRelativeSD(
-            descriptor, self_relative, ctypes.byref(required)
+            absolute_descriptor, self_relative, ctypes.byref(required)
         ):
             raise self._last_error("MakeSelfRelativeSD(restore candidate)")
         return self_relative, acl_buffer
