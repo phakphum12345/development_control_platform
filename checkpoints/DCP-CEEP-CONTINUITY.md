@@ -163,3 +163,18 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - WP-18C remains PARTIAL: automatic cleanup is limited to Gateway-attested terminal Terminal jobs. UNKNOWN and LEASE_EXPIRED workspaces are intentionally preserved; this is not a universal orphan cleaner. Windows AppContainer/LPAC and macOS helper remain BLOCKED.
 - PR #117 remains OPEN / DRAFT / NOT MERGED; PR #116 remains its base dependency. No branch has been merged to main.
 - No user-host acceptance, deployment, template enablement or deletion was performed or authorized. After this ledger-only update, re-check exact-head CI on the new branch SHA before treating it as current evidence.
+
+
+## 2026-11-14 — WP-18D exact-head CI completion
+
+- PR #119: [test(terminal): add Linux adversarial sandbox acceptance](https://github.com/phakphum12345/development_control_platform/pull/119), OPEN / DRAFT / NOT MERGED.
+- PR #119 code/test head with completed CI: `57399f94d8ece4c706eb373ec74f9c3bcda3e61f`.
+- Exact-head workflows on that code/test head:
+  - Cross-platform Recovery Acceptance #170: PASS (Ubuntu and Windows jobs).
+  - Local-first Minimal Emulator #534: PASS (Linux and Windows jobs).
+  - Validate Control Plane #748: PASS.
+  - Windows runner acceptance matrix: SKIPPED; no eligible self-hosted host acceptance Runner. SKIPPED is not PASS.
+- Ubuntu host-acceptance harness: PASS on the ephemeral GitHub-hosted runner, 5/5 tests, 0 skipped, 0 failures, 0 errors. Evidence: Bubblewrap 0.11.1; Linux 7.0.0-1016-aws; x86_64; UID/GID 1001. This is CI-host evidence only.
+- WP-18D remains PARTIAL until the harness is run on the actual target Linux host. Windows AppContainer/LPAC remains BLOCKED and user-host acceptance remains UNKNOWN.
+- This checkpoint is followed by a small evidence-schema refinement that records both the harness interpreter version and the exact /usr/bin Python runtime versions; re-check CI against the resulting new head.
+- PR #116, #117 and #118 remain OPEN / DRAFT / NOT MERGED. No merge to main, deployment or Terminal template enablement is authorized.
