@@ -571,7 +571,7 @@ class WindowsPsecLauncher:
 
             import msvcrt
             descriptor = msvcrt.open_osfhandle(
-                int(stdout_read), os.O_RDONLY | os.O_BINARY
+                int(stdout_read.value), os.O_RDONLY | os.O_BINARY
             )
             stdout_file = os.fdopen(descriptor, "rb", buffering=0)
             stdout_read = None
