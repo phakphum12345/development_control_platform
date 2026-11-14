@@ -70,6 +70,7 @@
 - [Terminal Execution Architecture](DCP-TERMINAL-EXECUTION-ARCHITECTURE.md)
 - [Terminal Security](DCP-TERMINAL-SECURITY.md)
 - [Terminal OS Isolation](DCP-TERMINAL-OS-ISOLATION.md)
+- [PSEC DACL Defaulted Native API Experiment](DCP-WINDOWS-PSEC-DACL-DEFAULTED-NATIVE-API-EXPERIMENT.md) — isolated NTFS experiment design; no native ACL write or acceptance has been executed.
 - [Terminal Runner Setup](DCP-TERMINAL-RUNNER-SETUP.md)
 - [Command Library](DCP-COMMAND-LIBRARY.md)
 
