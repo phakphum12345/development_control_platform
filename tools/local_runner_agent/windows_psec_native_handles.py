@@ -17,6 +17,7 @@ from ctypes import wintypes
 from dataclasses import dataclass
 
 
+FILE_LIST_DIRECTORY = 0x0001
 FILE_READ_ATTRIBUTES = 0x0080
 READ_CONTROL = 0x00020000
 WRITE_DAC = 0x00040000
@@ -206,6 +207,8 @@ class WindowsNativeHandleApi:
         io_status = IO_STATUS_BLOCK()
         child = wintypes.HANDLE()
         desired_access = FILE_READ_ATTRIBUTES | READ_CONTROL | WRITE_DAC | SYNCHRONIZE
+        if directory:
+            desired_access |= FILE_LIST_DIRECTORY
         create_options = FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT
         create_options |= FILE_DIRECTORY_FILE if directory else FILE_NON_DIRECTORY_FILE
         status = int(self.ntdll.NtCreateFile(
