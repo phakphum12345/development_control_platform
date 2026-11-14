@@ -20,7 +20,7 @@ from tools.local_runner_agent.terminal_executor import (
     TerminalOutputRedactor,
     redact_terminal_output,
 )
-from tools.local_runner_agent.linux_sandbox import LinuxSandboxError
+from tools.local_runner_agent.linux_sandbox import LinuxBubblewrapLauncher, LinuxSandboxError
 
 
 class _TestOnlySandboxCommand:
@@ -73,6 +73,7 @@ class TerminalScriptExecutorTests(unittest.TestCase):
         # The test-only launcher accepts the host test interpreter as a stand-in
         # for /usr/bin; production LinuxBubblewrapLauncher rejects other runtime roots.
         original_which = shutil.which
+        self.original_which = original_which
         def test_which(name, path=None):
             if path == "/usr/bin":
                 return original_which(name) or (
@@ -305,6 +306,35 @@ class TerminalScriptExecutorTests(unittest.TestCase):
                 str(uuid.uuid4()), "runner-local", self.workspace,
                 "python_version", {}, template_version_digest("python_version", {}),
             )
+
+    @unittest.skipUnless(
+        sys.platform.startswith("linux")
+        and shutil.which("bwrap", path="/usr/bin")
+        and (shutil.which("python", path="/usr/bin") or shutil.which("python3", path="/usr/bin")),
+        "Linux bubblewrap runtime or /usr/bin Python is unavailable",
+    )
+    def test_real_bubblewrap_executor_launches_catalog_command_with_seccomp_fd(self):
+        template = dict(preview_template("python_version", {}), execution_enabled=True)
+        executor = TerminalScriptExecutor(enabled=True)
+        with patch(
+            "tools.local_runner_agent.terminal_executor.preview_template",
+            return_value=template,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.LinuxBubblewrapLauncher",
+            LinuxBubblewrapLauncher,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.shutil.which",
+            side_effect=self.original_which,
+        ):
+            result = executor.run(
+                str(uuid.uuid4()), "runner-local", self.workspace,
+                "python_version", {}, template_version_digest("python_version", {}),
+            )
+        self.assertEqual(result.outcome, "succeeded", result)
+        self.assertEqual(result.return_code, 0)
+        self.assertGreater(result.output_bytes, 0)
+        self.assertEqual(result.command[0], str(Path(shutil.which("python", path="/usr/bin") or shutil.which("python3", path="/usr/bin")).resolve()))
+        self.assertEqual(sorted(item.name for item in self.workspace.iterdir()), ["README.md"])
 
     def test_sandbox_construction_failure_never_falls_back_to_host_process(self):
         template = dict(preview_template("python_version", {}), execution_enabled=True)
