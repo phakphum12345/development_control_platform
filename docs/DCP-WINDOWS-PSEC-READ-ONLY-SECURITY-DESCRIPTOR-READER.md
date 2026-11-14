@@ -6,7 +6,7 @@
 
 ## Scope
 
-This checkpoint adds a Windows-only reader that obtains security descriptor state through the exact retained file handle. It uses `GetSecurityInfo` with `SE_FILE_OBJECT` and `DACL_SECURITY_INFORMATION`, validates the returned descriptor and ACL, copies the complete ACL allocation (used plus free bytes), captures DACL presence/null state and descriptor control flags, then releases the API-owned descriptor buffer with `LocalFree`.
+This checkpoint adds a Windows-only reader that obtains security descriptor state through the exact retained file handle. It uses `GetSecurityInfo` with `SE_FILE_OBJECT` and `DACL_SECURITY_INFORMATION`, validates the returned descriptor and ACL, copies the complete ACL allocation (used plus free bytes), captures DACL presence/null state, the native `DaclDefaulted` output, and descriptor control flags, then releases the API-owned descriptor buffer with `LocalFree`.
 
 It also delegates identity queries to the existing native handle API. It does not reopen by path.
 
@@ -23,8 +23,9 @@ It also delegates identity queries to the existing native handle API. It does no
 2. It checks the returned security descriptor and DACL with Windows validation APIs.
 3. It bounds ACL allocation size to the native ACL size field and ACE count to 4096.
 4. It copies the full ACL allocation before freeing the descriptor buffer.
-5. It preserves DACL-present and NULL-pointer state separately, so an absent DACL, NULL DACL, and empty non-NULL ACL are not treated as equivalent.
-6. It fails closed on malformed sizes, inconsistent ACL metadata, unsupported ACL revisions, API failures, or cleanup failure.
+5. It preserves DACL-present, NULL-pointer, and `DaclDefaulted` state separately, so an absent DACL, NULL DACL, and empty non-NULL ACL are not treated as equivalent.
+6. The transaction snapshot and candidate model carry `dacl_defaulted` through read-back and rollback comparisons.
+7. It fails closed on malformed sizes, inconsistent ACL metadata, unsupported ACL revisions, API failures, or cleanup failure.
 
 ## Required validation
 
