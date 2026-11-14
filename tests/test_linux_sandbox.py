@@ -51,7 +51,8 @@ class LinuxBubblewrapLauncherTests(unittest.TestCase):
                 self.assertIn("--seccomp", args)
                 self.assertIn("--disable-userns", args)
                 self.assertIn("--cap-drop", args)
-                self.assertEqual(args[-2:], ["/usr/bin/python3", "--version"])
+                self.assertEqual(Path(args[-2]).resolve(), Path("/usr/bin/python3").resolve())
+                self.assertEqual(args[-1], "--version")
                 self.assertTrue(os.fstat(result.seccomp_fd))
             finally:
                 result.close()
@@ -89,7 +90,7 @@ class LinuxBubblewrapLauncherTests(unittest.TestCase):
                 launcher.build(executable="python3", argv=[], workspace=workspace, scratch=scratch)
             link = Path(root) / "workspace-link"
             link.symlink_to(workspace, target_is_directory=True)
-            with self.assertRaisesRegex(LinuxSandboxError, "real directory"):
+            with self.assertRaisesRegex(LinuxSandboxError, "symlink"):
                 launcher.build(executable="/usr/bin/python3", argv=[], workspace=link, scratch=scratch)
 
 
