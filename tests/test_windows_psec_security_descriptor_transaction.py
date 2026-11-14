@@ -234,5 +234,58 @@ class NativeSecurityDescriptorTransactionTests(unittest.TestCase):
         self.assertEqual(api.writes, [])
 
 
+    def test_missing_profile_is_rejected_before_any_write(self):
+        api = FakeHandleSecurityApi()
+        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID)
+        self.assertEqual(result.state, "PREFLIGHT_REJECTED_BLOCKED")
+        self.assertIn("explicit DACL comparison profile is required", result.error)
+        self.assertEqual(api.writes, [])
+
+    def test_unknown_profile_is_rejected_before_any_write(self):
+        api = FakeHandleSecurityApi()
+        result = NativeSecurityDescriptorTransaction(api).apply(
+            targets(), PACKAGE_SID, comparison_profile="CONTENT_EQUALITY"
+        )
+        self.assertEqual(result.state, "PREFLIGHT_REJECTED_BLOCKED")
+        self.assertIn("unknown DACL comparison profile", result.error)
+        self.assertEqual(api.writes, [])
+
+    def test_explicit_content_profile_does_not_silently_require_control_equality(self):
+        class AutoInheritedFlagApi(FakeHandleSecurityApi):
+            def write_dacl(self, handle, state):
+                super().write_dacl(handle, state)
+                current = self.states[handle]
+                self.states[handle] = replace(
+                    current, dacl_control_flags=current.dacl_control_flags | 0x0400
+                )
+
+        api = AutoInheritedFlagApi()
+        result = NativeSecurityDescriptorTransaction(api).apply(
+            targets(), PACKAGE_SID,
+            comparison_profile=DaclComparisonProfile.DACL_CONTENT_EQUALITY,
+        )
+        self.assertEqual(result.state, "APPLIED_VERIFIED")
+        self.assertEqual(api.states[10].dacl_bytes, ORIGINAL.dacl_bytes)
+        self.assertEqual(api.states[10].dacl_control_flags, 0x1400)
+
+    def test_strict_profile_keeps_control_transition_fatal_through_rollback(self):
+        class AutoInheritedFlagApi(FakeHandleSecurityApi):
+            def write_dacl(self, handle, state):
+                super().write_dacl(handle, state)
+                current = self.states[handle]
+                self.states[handle] = replace(
+                    current, dacl_control_flags=current.dacl_control_flags | 0x0400
+                )
+
+        api = AutoInheritedFlagApi()
+        result = NativeSecurityDescriptorTransaction(api).apply(
+            targets(), PACKAGE_SID,
+            comparison_profile=DaclComparisonProfile.STRICT_DESCRIPTOR_EQUALITY,
+        )
+        self.assertEqual(result.state, "ROLLBACK_INCOMPLETE_BLOCKED")
+        self.assertTrue(result.rollback_errors)
+        self.assertNotEqual(result.state, "APPLIED_VERIFIED")
+
+
 if __name__ == "__main__":
     unittest.main()
