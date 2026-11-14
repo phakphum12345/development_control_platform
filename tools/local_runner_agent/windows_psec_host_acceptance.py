@@ -77,6 +77,42 @@ def _acceptance_parent() -> Path:
     return parent
 
 
+
+def _filesystem_acl(path: Path) -> dict:
+    """Capture the host-visible ACL without changing any filesystem permissions."""
+    system_root = os.environ.get("SYSTEMROOT") or os.environ.get("SystemRoot")
+    if not system_root:
+        return {"state": "UNKNOWN", "reason": "SYSTEMROOT is unavailable"}
+    icacls = Path(system_root) / "System32" / "icacls.exe"
+    if not icacls.is_file():
+        return {"state": "UNKNOWN", "reason": "icacls.exe is unavailable"}
+    try:
+        completed = subprocess.run(
+            [str(icacls), str(path)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+            check=False,
+            shell=False,
+        )
+    except Exception as exc:
+        return {
+            "state": "ERROR",
+            "error_type": type(exc).__name__,
+            "error_message": str(exc),
+        }
+    return {
+        "state": "CAPTURED" if completed.returncode == 0 else "ERROR",
+        "path": str(path),
+        "returncode": int(completed.returncode),
+        "stdout": completed.stdout[:12000],
+        "stderr": completed.stderr[:4000],
+    }
+
 def _environment() -> dict[str, str]:
     system_root = os.environ.get("SYSTEMROOT") or os.environ.get("SystemRoot")
     if not system_root:
@@ -339,9 +375,23 @@ def main() -> int:
             )
 
         results = {**policy_results, **tree_results}
+        child_process_token = results.pop("child_process_token", {})
+        app_container_sid = child_process_token.get("app_container_sid")
+        filesystem_acl = {
+            "workspace_directory": _filesystem_acl(workspace),
+            "workspace_read_file": _filesystem_acl(workspace / "read.txt"),
+            "scratch_directory": _filesystem_acl(scratch),
+        }
+        if app_container_sid:
+            for evidence in filesystem_acl.values():
+                acl_text = (evidence.get("stdout", "") + evidence.get("stderr", "")).casefold()
+                evidence["app_container_sid_literal_present"] = (
+                    app_container_sid.casefold() in acl_text
+                )
         diagnostics = {
             "child_token": results.pop("child_token", {}),
-            "child_process_token": results.pop("child_process_token", {}),
+            "child_process_token": child_process_token,
+            "filesystem_acl": filesystem_acl,
         }
         failures = [name for name, state in results.items() if state != "PASS"]
         output = {
