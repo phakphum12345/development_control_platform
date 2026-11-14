@@ -28,7 +28,7 @@ EXPECTED = (
 class State:
     dacl_present = True
     dacl_is_null = False
-    dacl_bytes = b"\\x02\\x00\\x08\\x00\\x00\\x00\\x00\\x00"
+    dacl_bytes = b"\x02\x00\x08\x00\x00\x00\x00\x00"
     dacl_defaulted = False
 
     def __init__(self, control_flags: int):
