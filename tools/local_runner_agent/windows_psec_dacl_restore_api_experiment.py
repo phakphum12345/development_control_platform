@@ -77,6 +77,10 @@ class WindowsDaclRestoreApiExperiment(WindowsDaclDefaultedExperiment):
     """Run one documented restore candidate per new disposable NTFS file."""
 
     def __init__(self, *, reader=None):
+        if os.name != "nt":
+            raise DaclRestoreApiExperimentError(
+                "restore API experiment is Windows-only"
+            )
         super().__init__(reader=reader)
         self._advapi32.SetFileSecurityW.argtypes = [
             wintypes.LPCWSTR, wintypes.DWORD, wintypes.LPVOID
