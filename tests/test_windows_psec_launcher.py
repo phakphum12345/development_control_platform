@@ -177,6 +177,18 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
         with self.assertRaisesRegex(WindowsPsecError, "Package SID is invalid"):
             _require_app_container_token(token)
 
+    def test_app_container_token_validation_rejects_out_of_range_sid_subauthority(self):
+        token = self._captured_app_container_token()
+        token["app_container_sid"] = "S-1-15-2-4294967296"
+        with self.assertRaisesRegex(WindowsPsecError, "Package SID is invalid"):
+            _require_app_container_token(token)
+
+    def test_app_container_token_validation_rejects_unknown_elevation_type(self):
+        token = self._captured_app_container_token()
+        token["elevation_type"] = 4
+        with self.assertRaisesRegex(WindowsPsecError, "elevation type is invalid"):
+            _require_app_container_token(token)
+
     def test_app_container_token_validation_requires_pre_resume_capture(self):
         token = self._captured_app_container_token()
         token["captured_before_resume"] = False
