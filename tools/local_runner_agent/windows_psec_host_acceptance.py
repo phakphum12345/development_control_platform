@@ -99,6 +99,188 @@ canary = pathlib.Path(sys.argv[3])
 port = int(sys.argv[4])
 result = {}
 
+# Query the token of this exact PSEC-launched process. Host PowerShell identity
+# is not a substitute for this evidence.
+try:
+    import ctypes
+    from ctypes import wintypes
+
+    advapi32 = ctypes.WinDLL("advapi32.dll", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32.dll", use_last_error=True)
+
+    class SID_AND_ATTRIBUTES(ctypes.Structure):
+        _fields_ = [("Sid", ctypes.c_void_p), ("Attributes", wintypes.DWORD)]
+
+    class TOKEN_GROUPS_HEAD(ctypes.Structure):
+        _fields_ = [("GroupCount", wintypes.DWORD), ("Groups", SID_AND_ATTRIBUTES * 1)]
+
+    class LUID(ctypes.Structure):
+        _fields_ = [("LowPart", wintypes.DWORD), ("HighPart", wintypes.LONG)]
+
+    class LUID_AND_ATTRIBUTES(ctypes.Structure):
+        _fields_ = [("Luid", LUID), ("Attributes", wintypes.DWORD)]
+
+    class TOKEN_PRIVILEGES_HEAD(ctypes.Structure):
+        _fields_ = [("PrivilegeCount", wintypes.DWORD), ("Privileges", LUID_AND_ATTRIBUTES * 1)]
+
+    advapi32.OpenProcessToken.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)]
+    advapi32.OpenProcessToken.restype = wintypes.BOOL
+    advapi32.GetTokenInformation.argtypes = [
+        wintypes.HANDLE, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    advapi32.GetTokenInformation.restype = wintypes.BOOL
+    advapi32.ConvertSidToStringSidW.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p)]
+    advapi32.ConvertSidToStringSidW.restype = wintypes.BOOL
+    advapi32.GetSidSubAuthorityCount.argtypes = [ctypes.c_void_p]
+    advapi32.GetSidSubAuthorityCount.restype = ctypes.POINTER(ctypes.c_ubyte)
+    advapi32.GetSidSubAuthority.argtypes = [ctypes.c_void_p, wintypes.DWORD]
+    advapi32.GetSidSubAuthority.restype = ctypes.POINTER(wintypes.DWORD)
+    advapi32.LookupPrivilegeNameW.argtypes = [
+        wintypes.LPCWSTR, ctypes.POINTER(LUID), wintypes.LPWSTR,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    advapi32.LookupPrivilegeNameW.restype = wintypes.BOOL
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+    kernel32.LocalFree.restype = ctypes.c_void_p
+
+    def token_buffer(token_handle, information_class):
+        required = wintypes.DWORD(0)
+        advapi32.GetTokenInformation(token_handle, information_class, None, 0, ctypes.byref(required))
+        if not required.value:
+            raise ctypes.WinError(ctypes.get_last_error())
+        buffer = ctypes.create_string_buffer(required.value)
+        if not advapi32.GetTokenInformation(
+            token_handle, information_class, buffer, required.value, ctypes.byref(required)
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return buffer
+
+    def sid_string(sid):
+        allocated = ctypes.c_void_p()
+        if not advapi32.ConvertSidToStringSidW(sid, ctypes.byref(allocated)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            return ctypes.wstring_at(allocated.value)
+        finally:
+            kernel32.LocalFree(allocated)
+
+    def token_dword(token_handle, information_class):
+        try:
+            buffer = token_buffer(token_handle, information_class)
+            return ctypes.cast(buffer, ctypes.POINTER(wintypes.DWORD)).contents.value
+        except OSError:
+            return None
+
+    child_token = {
+        "pid": os.getpid(),
+        "parent_pid": os.getppid(),
+        "environment": {
+            key: os.environ.get(key)
+            for key in ("USERNAME", "USERPROFILE", "LOCALAPPDATA", "TEMP", "TMP", "SYSTEMROOT", "PATH")
+        },
+    }
+    token_handle = wintypes.HANDLE()
+    if not advapi32.OpenProcessToken(kernel32.GetCurrentProcess(), 0x0008, ctypes.byref(token_handle)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        user_buffer = token_buffer(token_handle, 1)  # TokenUser
+        user_entry = ctypes.cast(user_buffer, ctypes.POINTER(SID_AND_ATTRIBUTES)).contents
+        child_token["user_sid"] = sid_string(user_entry.Sid)
+
+        integrity_buffer = token_buffer(token_handle, 25)  # TokenIntegrityLevel
+        integrity_entry = ctypes.cast(integrity_buffer, ctypes.POINTER(SID_AND_ATTRIBUTES)).contents
+        integrity_sid = sid_string(integrity_entry.Sid)
+        count_pointer = advapi32.GetSidSubAuthorityCount(integrity_entry.Sid)
+        integrity_rid = None
+        if count_pointer and count_pointer.contents.value:
+            rid_pointer = advapi32.GetSidSubAuthority(
+                integrity_entry.Sid, count_pointer.contents.value - 1
+            )
+            if rid_pointer:
+                integrity_rid = int(rid_pointer.contents.value)
+        integrity_names = {
+            0x0000: "UNTRUSTED", 0x1000: "LOW", 0x2000: "MEDIUM",
+            0x2100: "MEDIUM_PLUS", 0x3000: "HIGH",
+            0x4000: "SYSTEM", 0x5000: "PROTECTED",
+        }
+        child_token["integrity"] = {
+            "sid": integrity_sid,
+            "rid": integrity_rid,
+            "level": integrity_names.get(integrity_rid, "UNKNOWN"),
+        }
+
+        groups_buffer = token_buffer(token_handle, 2)  # TokenGroups
+        groups_head = ctypes.cast(groups_buffer, ctypes.POINTER(TOKEN_GROUPS_HEAD)).contents
+        groups = []
+        groups_offset = TOKEN_GROUPS_HEAD.Groups.offset
+        for index in range(groups_head.GroupCount):
+            entry = ctypes.cast(
+                ctypes.addressof(groups_buffer) + groups_offset
+                + index * ctypes.sizeof(SID_AND_ATTRIBUTES),
+                ctypes.POINTER(SID_AND_ATTRIBUTES),
+            ).contents
+            attributes = int(entry.Attributes)
+            groups.append({
+                "sid": sid_string(entry.Sid),
+                "attributes": attributes,
+                "enabled": bool(attributes & 0x00000004),
+                "deny_only": bool(attributes & 0x00000010),
+                "owner": bool(attributes & 0x00000008),
+                "integrity": bool(attributes & 0x00000020),
+            })
+        child_token["groups"] = groups
+
+        privileges_buffer = token_buffer(token_handle, 3)  # TokenPrivileges
+        privileges_head = ctypes.cast(
+            privileges_buffer, ctypes.POINTER(TOKEN_PRIVILEGES_HEAD)
+        ).contents
+        privileges_offset = TOKEN_PRIVILEGES_HEAD.Privileges.offset
+        privileges = []
+        for index in range(privileges_head.PrivilegeCount):
+            entry = ctypes.cast(
+                ctypes.addressof(privileges_buffer) + privileges_offset
+                + index * ctypes.sizeof(LUID_AND_ATTRIBUTES),
+                ctypes.POINTER(LUID_AND_ATTRIBUTES),
+            ).contents
+            name_size = wintypes.DWORD(0)
+            advapi32.LookupPrivilegeNameW(None, ctypes.byref(entry.Luid), None, ctypes.byref(name_size))
+            name_buffer = ctypes.create_unicode_buffer(max(1, name_size.value + 1))
+            if name_size.value and advapi32.LookupPrivilegeNameW(
+                None, ctypes.byref(entry.Luid), name_buffer, ctypes.byref(name_size)
+            ):
+                name = name_buffer.value
+            else:
+                name = "LUID:%08x:%08x" % (entry.Luid.HighPart & 0xffffffff, entry.Luid.LowPart)
+            attributes = int(entry.Attributes)
+            privileges.append({
+                "name": name,
+                "attributes": attributes,
+                "enabled": bool(attributes & 0x00000002),
+                "enabled_by_default": bool(attributes & 0x00000001),
+                "removed": bool(attributes & 0x00000004),
+            })
+        child_token["privileges"] = privileges
+        child_token["elevation_type"] = token_dword(token_handle, 18)  # TokenElevationType
+        child_token["elevated"] = bool(token_dword(token_handle, 20))  # TokenElevation
+        child_token["is_app_container"] = bool(token_dword(token_handle, 29))  # TokenIsAppContainer
+    finally:
+        kernel32.CloseHandle(token_handle)
+    result["child_token"] = child_token
+except Exception as exc:
+    result["child_token"] = {
+        "pid": os.getpid(),
+        "parent_pid": os.getppid(),
+        "diagnostic_error": {
+            "type": type(exc).__name__,
+            "message": str(exc),
+            "winerror": getattr(exc, "winerror", None),
+        },
+    }
+
 try:
     workspace_value = (workspace / "read.txt").read_text(encoding="utf-8")
     result["workspace_read"] = "PASS" if workspace_value == "DCP-WORKSPACE-READ" else "FAIL"
@@ -299,6 +481,7 @@ def main() -> int:
             )
 
         results = {**policy_results, **tree_results}
+        diagnostics = {"child_token": results.pop("child_token", {})}
         failures = [name for name, state in results.items() if state != "PASS"]
         output = {
             "state": "PASS" if not failures else "FAIL",
@@ -311,6 +494,7 @@ def main() -> int:
             "psec_api": api.to_dict(),
             "psec_spec": {"state": "PASS", "reason": spec_reason},
             "checks": results,
+            "diagnostics": diagnostics,
             "failures": failures,
             "note": "This host acceptance result does not automatically set terminal isolation to VERIFIED.",
         }
