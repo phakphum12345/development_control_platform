@@ -132,7 +132,7 @@ class WindowsDaclDefaultedExperiment:
             )
         return fs_name.value
 
-    def _defaulted_security_attributes(self):
+    def _security_attributes(self, *, defaulted: bool):
         # An empty, non-NULL DACL is intentionally used only on the newly
         # created disposable file. The CREATE_NEW handle is retained and has
         # WRITE_DAC/READ_CONTROL; no later path reopen is required.
@@ -145,7 +145,7 @@ class WindowsDaclDefaultedExperiment:
         if not self._advapi32.InitializeAcl(acl, len(acl), ACL_REVISION):
             raise self._last_error("InitializeAcl")
         if not self._advapi32.SetSecurityDescriptorDacl(
-            descriptor, True, ctypes.cast(acl, wintypes.LPVOID), True
+            descriptor, True, ctypes.cast(acl, wintypes.LPVOID), bool(defaulted)
         ):
             raise self._last_error("SetSecurityDescriptorDacl(defaulted=TRUE)")
         attrs = _SECURITY_ATTRIBUTES(
@@ -157,12 +157,8 @@ class WindowsDaclDefaultedExperiment:
         return attrs, descriptor, acl
 
     def _create_file(self, path, *, defaulted):
-        if defaulted:
-            attrs, descriptor, acl = self._defaulted_security_attributes()
-            attrs_ptr = ctypes.byref(attrs)
-        else:
-            attrs = descriptor = acl = None
-            attrs_ptr = None
+        attrs, descriptor, acl = self._security_attributes(defaulted=defaulted)
+        attrs_ptr = ctypes.byref(attrs)
         handle = self._kernel32.CreateFileW(
             path,
             READ_CONTROL | WRITE_DAC,
