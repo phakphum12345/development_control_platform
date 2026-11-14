@@ -80,6 +80,8 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
         self.assertEqual(environment["USERPROFILE"], str(scratch))
         self.assertEqual(environment["TEMP"], str(scratch))
         self.assertEqual(environment["TMP"], str(scratch))
+        block = _environment_block(environment)
+        self.assertIn(f"LOCALAPPDATA={scratch}\x00", "".join(block))
 
     def test_environment_block_rejects_duplicate_names_case_insensitively(self):
         with self.assertRaisesRegex(WindowsPsecError, "duplicate"):
