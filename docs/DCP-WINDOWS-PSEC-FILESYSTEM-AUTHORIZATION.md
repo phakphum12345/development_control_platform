@@ -4,7 +4,7 @@
 **Parent:** PR #120 — Windows PSEC isolation capability probe  
 **Implementation branch:** `work/wp18b1-windows-psec-filesystem-authorization`  
 **Baseline:** `f6dc28219658d1fb14e31324f25053ab77aed81a`  
-**Status:** DESIGN DECISION / IMPLEMENTATION NOT YET ACCEPTED
+**Status:** PROJECTION PRIMITIVES IMPLEMENTED / WINDOWS AUTHORIZATION AND LAUNCH INTEGRATION BLOCKED
 
 ## 1. Problem statement
 
@@ -111,4 +111,4 @@ A skipped test is `SKIPPED`, not `PASS`. A denied Workspace write without a succ
 
 ## 7. Current state
 
-The architecture decision is recorded. No ACL has been changed on the user's host. No production execution gate has been opened. The branch currently contains this design checkpoint only; implementation and Windows acceptance remain pending.
+The architecture decision and first projection primitives are committed. These primitives do not apply ACLs, do not prove AppContainer traversal, and are not integrated into the launcher. No ACL has been changed on the user's host. No production execution gate has been opened. Unit tests have been added but have not yet been executed in this environment; CI is the next validation source. Windows Host Acceptance remains pending.
