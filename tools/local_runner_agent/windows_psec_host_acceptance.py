@@ -94,6 +94,17 @@ def _run_policy_acceptance(launcher, workspace: Path, scratch: Path, canary: Pat
     port = server.getsockname()[1]
     accepted = []
 
+    # Prove that loopback is reachable from the host before using it as a
+    # sandbox network-denial canary.
+    try:
+        baseline = socket.create_connection(("127.0.0.1", port), timeout=1.0)
+        host_connection, _ = server.accept()
+        baseline.close()
+        host_connection.close()
+    except OSError:
+        server.close()
+        raise WindowsPsecError("host loopback baseline is unavailable; network policy cannot be assessed")
+
     def accept_once():
         try:
             connection, _ = server.accept()
