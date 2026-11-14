@@ -39,7 +39,7 @@ def _evidence_base() -> dict:
         "machine": platform.machine(),
         "uid": os.getuid(),
         "gid": os.getgid(),
-        "python_version": platform.python_version(),
+        "harness_python_version": platform.python_version(),
         "tests_expected": len(_REQUIRED_TESTS),
         "tests_run": 0,
         "skipped": 0,
@@ -56,13 +56,15 @@ def main() -> int:
         return 2
 
     bwrap = shutil.which("bwrap", path="/usr/bin")
-    python = shutil.which("python3", path="/usr/bin") or shutil.which("python", path="/usr/bin")
-    if not bwrap or not python:
+    python = shutil.which("python", path="/usr/bin")
+    python3 = shutil.which("python3", path="/usr/bin")
+    if not bwrap or not python or not python3:
         evidence.update({
             "status": "BLOCKED",
-            "reason": "approved /usr/bin bubblewrap and Python runtime are required",
+            "reason": "approved /usr/bin bubblewrap, python and python3 runtimes are required",
             "bubblewrap_path": bwrap,
             "python_path": python,
+            "python3_path": python3,
         })
         print(json.dumps(evidence, indent=2, sort_keys=True))
         return 2
@@ -70,12 +72,18 @@ def main() -> int:
     approved_root = Path("/usr/bin").resolve(strict=True)
     bwrap_path = Path(bwrap).resolve(strict=True)
     python_path = Path(python).resolve(strict=True)
-    if approved_root not in bwrap_path.parents or approved_root not in python_path.parents:
+    python3_path = Path(python3).resolve(strict=True)
+    if (
+        approved_root not in bwrap_path.parents
+        or approved_root not in python_path.parents
+        or approved_root not in python3_path.parents
+    ):
         evidence.update({
             "status": "FAIL",
-            "reason": "bubblewrap or Python resolved outside approved /usr/bin",
+            "reason": "bubblewrap, python or python3 resolved outside approved /usr/bin",
             "bubblewrap_path": str(bwrap_path),
             "python_path": str(python_path),
+            "python3_path": str(python3_path),
         })
         print(json.dumps(evidence, indent=2, sort_keys=True))
         return 1
@@ -99,6 +107,32 @@ def main() -> int:
         print(json.dumps(evidence, indent=2, sort_keys=True))
         return 1
 
+    try:
+        terminal_python_version = subprocess.run(
+            [str(python_path), "--version"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=5,
+            check=True,
+            shell=False,
+        )
+        sandbox_python_version = subprocess.run(
+            [str(python3_path), "--version"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=5,
+            check=True,
+            shell=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        evidence.update({"status": "FAIL", "reason": f"Python runtime version check failed: {type(exc).__name__}"})
+        print(json.dumps(evidence, indent=2, sort_keys=True))
+        return 1
+
     suite = unittest.TestSuite(
         test_case(test_name) for test_case, test_name in _REQUIRED_TESTS
     )
@@ -106,7 +140,10 @@ def main() -> int:
     evidence.update({
         "bubblewrap_path": str(bwrap_path),
         "bubblewrap_version": version,
-        "python_path": str(python_path),
+        "terminal_python_path": str(python_path),
+        "terminal_python_version": terminal_python_version.stdout.strip() or terminal_python_version.stderr.strip(),
+        "sandbox_test_python3_path": str(python3_path),
+        "sandbox_test_python3_version": sandbox_python_version.stdout.strip() or sandbox_python_version.stderr.strip(),
         "tests_run": result.testsRun,
         "skipped": len(result.skipped),
         "failures": len(result.failures),

@@ -20,7 +20,7 @@ The harness runs five real bubblewrap tests:
 
 - Linux on a supported architecture: x86_64 or aarch64.
 - Bubblewrap installed at `/usr/bin/bwrap`.
-- Python installed at `/usr/bin/python3` or `/usr/bin/python`.
+- Both `/usr/bin/python` (Terminal catalog runtime) and `/usr/bin/python3` (sandbox test runtime) are installed.
 - Run as the same unprivileged OS account that will run the Local Runner; do not switch to root merely to make the test pass.
 - Run from the repository root with the project dependencies available.
 
@@ -38,7 +38,7 @@ The harness writes a JSON evidence object to stdout and unittest detail to stder
 - JSON `status` is `PASS`.
 - `tests_expected` and `tests_run` are both `5`.
 - `skipped`, `failures`, and `errors` are all `0`.
-- The evidence records the host kernel, architecture, UID/GID, Python version, and exact bubblewrap path/version.
+- The evidence records the host kernel, architecture, UID/GID, harness Python version, both approved runtime Python paths/versions, and exact bubblewrap path/version.
 
 A missing dependency or unsupported host is `BLOCKED`, not PASS. Any skipped test, failed test, or test error is FAIL. Preserve the JSON output with the host acceptance record. Re-run after changing the kernel, bubblewrap package, user-namespace policy, or Runner account.
 
