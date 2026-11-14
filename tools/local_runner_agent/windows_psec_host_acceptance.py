@@ -48,21 +48,38 @@ port = int(sys.argv[4])
 result = {}
 
 try:
-    result["workspace_read"] = "PASS" if (workspace / "read.txt").read_text(encoding="utf-8") == "DCP-WORKSPACE-READ" else "FAIL"
-except Exception:
+    workspace_value = (workspace / "read.txt").read_text(encoding="utf-8")
+    result["workspace_read"] = "PASS" if workspace_value == "DCP-WORKSPACE-READ" else "FAIL"
+except Exception as exc:
     result["workspace_read"] = "FAIL"
+    result["workspace_read_error"] = {
+        "type": type(exc).__name__,
+        "message": str(exc),
+    }
 
 try:
     (workspace / "write-probe.txt").write_text("must-not-write", encoding="utf-8")
+    result["workspace_write_probe"] = "UNEXPECTED_WRITE"
     result["workspace_read_only"] = "FAIL"
-except OSError:
-    result["workspace_read_only"] = "PASS"
+except OSError as exc:
+    result["workspace_write_probe"] = "DENIED"
+    result["workspace_read_only"] = (
+        "PASS" if result["workspace_read"] == "PASS" else "FAIL"
+    )
+    result["workspace_write_error"] = {
+        "type": type(exc).__name__,
+        "message": str(exc),
+    }
 
 try:
     (scratch / "scratch-probe.txt").write_text("scratch-write-ok", encoding="utf-8")
     result["scratch_write"] = "PASS"
-except Exception:
+except Exception as exc:
     result["scratch_write"] = "FAIL"
+    result["scratch_write_error"] = {
+        "type": type(exc).__name__,
+        "message": str(exc),
+    }
 
 try:
     value = canary.read_text(encoding="utf-8")
