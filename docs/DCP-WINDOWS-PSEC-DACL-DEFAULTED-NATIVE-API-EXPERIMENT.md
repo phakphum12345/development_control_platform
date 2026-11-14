@@ -159,3 +159,19 @@ The TRUE case was skipped because the filesystem did not retain `DaclDefaulted=T
 - [ ] Run exact-head CI and inspect full logs.
 - [ ] Run the native experiment on the designated Windows host.
 - [ ] Append measured evidence and limitations; do not infer results.
+
+
+## 13. WP-18B.1-K corrective instrumentation — 2026-11-14
+
+The follow-up implementation changes the acceptance instrumentation without changing the disposable-object boundary:
+
+- Every TRUE, FALSE, write-only, and ambiguous-error test emits `DACL_EXPERIMENT_EVIDENCE` with `flush=True` immediately after the harness returns and **before assertions**. A failing assertion therefore does not suppress the measured result.
+- Each run captures three stages where applicable: immediately after `CreateFileW` (before any DACL write), immediately after `SetSecurityInfo`, and after rollback. The write-only case intentionally has no rollback stage.
+- The write-only observation and write-plus-rollback acceptance use separate calls to the harness. Each call creates a new unique disposable root and file, so the write-only observation is not contaminated by a later rollback.
+- The write-only case reports `OBSERVED`, not PASS. It records whether DACL bytes, `DaclDefaulted`, and control flags changed after the native call. The rollback case alone can report round-trip PASS, and only when exact state equality and cleanup are proven.
+- The evidence now includes inherited ACE counts at each available stage. The parser reads only the bounded ACE header fields and counts `INHERITED_ACE (0x10)`; it does not parse or expose SID payloads. ACL capacity after the final ACE is permitted, while every ACE header and size is checked against the declared ACL size.
+- The harness reports whether its own retained file handle was opened, whether `CloseHandle` succeeded, and whether it was closed. Windows tests assert this direct lifecycle evidence.
+- `GetProcessHandleCount` remains best-effort diagnostic evidence only. Failure to sample it does not abort the experiment, and its process-wide delta is not an acceptance assertion because it cannot identify which component owns a handle.
+- The ambiguous-write test still injects an error after the native write call and proves the rollback path is attempted. It also asserts harness-owned handle closure and disposable-root cleanup.
+
+**Validation status:** these are source changes only at this checkpoint. They have not yet been run on a Windows host. Exact-head CI and the designated user-host acceptance remain pending. The TRUE case must still be classified NOT EXERCISED if the newly created NTFS file does not expose `DaclDefaulted=TRUE`. Do not treat `OBSERVED`, SKIPPED, or an old run as PASS.
