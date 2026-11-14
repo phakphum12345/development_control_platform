@@ -12,9 +12,9 @@ This checkpoint constructs bounded DACL byte candidates in memory. It does not o
 
 | Target kind | Object | Access mask | Inheritance |
 |---|---|---:|---|
-| Workspace | Directory | `0x001200A9` READ_EXECUTE | OI + CI |
+| Workspace | Directory | `0x001200A9` READ_EXECUTE | None — explicit per-object grant |
 | Workspace | File | `0x001200A9` READ_EXECUTE | None |
-| Scratch | Directory | `0x001301BF` MODIFY | OI + CI |
+| Scratch | Directory | `0x001301BF` MODIFY | None — explicit per-object grant |
 | Scratch | File | `0x001301BF` MODIFY | None |
 | Job root | Directory | `0x00000020` FILE_TRAVERSE | None |
 
@@ -27,6 +27,8 @@ No other target kind/object combination is accepted.
 - The new explicit allow ACE is inserted after existing explicit ACEs and before inherited ACEs.
 - Existing explicit deny ACEs must precede explicit allow ACEs.
 - Existing explicit ACEs after inherited ACEs, explicit deny after explicit allow, and ACE types without an approved DACL ordering policy are rejected; the builder never silently reorders existing entries.
+- Every object in the bounded tree receives its own explicit Package-SID ACE; directory ACEs do not inherit to descendants.
+- The complete object manifest must be enumerated and validated before any transaction write. An inherited Package-SID ACE on a descendant is rejected rather than treated as proof of an explicit per-object grant.
 - An exact, unique existing Package-SID allow ACE is idempotent.
 - Duplicate Package-SID ACEs, deny ACEs for that SID, overbroad or wrong-mask grants, and wrong inheritance are rejected.
 - Absent or NULL DACLs are rejected. Unknown ACE layouts remain rejected by the parent strict parser.
@@ -35,7 +37,7 @@ No other target kind/object combination is accepted.
 
 The builder supports only a conservative DACL ACE subset (ACCESS_ALLOWED_ACE and ACCESS_DENIED_ACE) for candidate policy. Other layouts that the lower-level parser can decode are rejected here because their DACL ordering/semantics have not been approved. It does not claim to canonicalize all Windows ACL variants.
 
-The function is pure and deterministic. It does not prove that a native descriptor can be installed atomically, that inherited ACE propagation is correct on a real filesystem, or that rollback works.
+The function is pure and deterministic. It does not prove that a native descriptor can be installed atomically, that explicit grants cover the complete real filesystem tree, or that rollback works.
 
 ## Explicit non-goals
 
