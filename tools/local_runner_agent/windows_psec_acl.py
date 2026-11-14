@@ -276,6 +276,16 @@ class WindowsPsecAclManager:
         work, temp, job_root = _validate_private_roots(workspace, scratch)
         api = self._api or _WindowsAclApi()
 
+        # Complete all filesystem preflight before the first DACL mutation.
+        # A rejected reparse point must not leave even the private job root
+        # partially modified.
+        workspace_targets = _tree_targets(work)
+        scratch_targets = _tree_targets(temp)
+        targets = [
+            *((path, READ_EXECUTE, is_directory) for path, is_directory in workspace_targets),
+            *((path, MODIFY, is_directory) for path, is_directory in scratch_targets),
+        ]
+
         # The job root is itself disposable and receives traversal only. Its
         # parent is snapshotted but never modified (it may be a shared runner
         # or acceptance directory).
@@ -287,23 +297,15 @@ class WindowsPsecAclManager:
         if any(mask & ~FILE_TRAVERSE for _, mask in root_aces):
             raise WindowsPsecAclError("Package SID has an overbroad allow ACE on job root")
 
-        targets = [
-            *((path, READ_EXECUTE) for path, _ in _tree_targets(work)),
-            *((path, MODIFY) for path, _ in _tree_targets(temp)),
-        ]
-        for path, mask in targets:
-            try:
-                is_directory = path.is_dir()
-            except OSError as exc:
-                raise WindowsPsecAclError("ACL target type cannot be revalidated") from exc
+        for path, mask, is_directory in targets:
             inheritance = (OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE) if is_directory else 0
             api.add_allow_ace(path, package_sid, mask, inheritance)
 
         verified = []
-        for path, mask in targets:
+        for path, mask, is_directory in targets:
             sddl = api.read_sddl(path)
             aces = _parse_allow_aces(sddl, package_sid)
-            required_flags = {"OI", "CI"} if path.is_dir() else set()
+            required_flags = {"OI", "CI"} if is_directory else set()
             matching = [
                 (flags, granted) for flags, granted in aces
                 if granted == mask and required_flags.issubset(
@@ -322,8 +324,8 @@ class WindowsPsecAclManager:
         return {
             "state": "VERIFIED",
             "package_sid": package_sid,
-            "workspace_targets": sum(1 for path, mask in targets if mask == READ_EXECUTE),
-            "scratch_targets": sum(1 for path, mask in targets if mask == MODIFY),
+            "workspace_targets": sum(1 for path, mask, is_directory in targets if mask == READ_EXECUTE),
+            "scratch_targets": sum(1 for path, mask, is_directory in targets if mask == MODIFY),
             "job_root_traverse_only": True,
             "shared_parent_sddl_unchanged": True,
             "targets": verified,
