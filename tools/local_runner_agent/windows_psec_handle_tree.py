@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from .windows_psec_native_handles import (
     FILE_ATTRIBUTE_DIRECTORY,
     FILE_ATTRIBUTE_REPARSE_POINT,
+    FILE_LIST_DIRECTORY,
     FILE_READ_ATTRIBUTES,
     READ_CONTROL,
     SYNCHRONIZE,
@@ -172,7 +173,7 @@ class WindowsNativeHandleTree:
             wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE,
         ]
         kernel32.CreateFileW.restype = wintypes.HANDLE
-        access = FILE_READ_ATTRIBUTES | READ_CONTROL | SYNCHRONIZE
+        access = FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | READ_CONTROL | SYNCHRONIZE
         share = 0x1 | 0x2 | 0x4
         handle = kernel32.CreateFileW(
             root_path, access, share, None, OPEN_EXISTING,
