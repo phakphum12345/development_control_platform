@@ -8,6 +8,7 @@ from tools.local_runner_agent.windows_psec_security_descriptor_transaction impor
     DescriptorCandidate,
     DescriptorSnapshot,
     NativeSecurityDescriptorTransaction,
+    NativeSecurityDescriptorTransactionError,
     TransactionTarget,
 )
 
@@ -170,6 +171,13 @@ class NativeSecurityDescriptorTransactionTests(unittest.TestCase):
         result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID)
         self.assertEqual(result.state, "ROLLED_BACK_VERIFIED")
         self.assertEqual(api.states, {10: ORIGINAL, 11: ORIGINAL})
+
+    def test_rejects_control_flags_outside_native_word(self):
+        for flags in (-1, 0x10000, True):
+            with self.subTest(flags=flags):
+                malformed = replace(ORIGINAL, dacl_control_flags=flags)
+                with self.assertRaisesRegex(NativeSecurityDescriptorTransactionError, "DACL control flags"):
+                    malformed.validate(max_descriptor_bytes=1024, max_aces=16)
 
     def test_rejects_null_dacl_candidate(self):
         api = FakeHandleSecurityApi()
