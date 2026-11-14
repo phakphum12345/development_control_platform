@@ -91,7 +91,8 @@ class WindowsPsecProbeTests(unittest.TestCase):
     def test_create_psec_environment_closes_successful_handle(self):
         closed = []
 
-        def create(specification, size, flags, output):
+        def create(specification, size, output):
+            self.assertEqual(size, len(b"PSEC-spec"))
             ctypes.cast(output, ctypes.POINTER(ctypes.c_void_p))[0] = 0x1234
             return 0
 
@@ -108,7 +109,7 @@ class WindowsPsecProbeTests(unittest.TestCase):
     def test_create_psec_environment_rejects_failed_hresult(self):
         closed = []
 
-        def create(specification, size, flags, output):
+        def create(specification, size, output):
             return -2147024809
 
         class Api:
