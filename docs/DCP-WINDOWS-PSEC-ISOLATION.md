@@ -31,14 +31,14 @@ The launcher must fail closed unless all of the following are applied and verifi
 
 ## Capability and policy-creation probe
 
-`tools/local_runner_agent/windows_psec.py` loads `processmodel.dll` only from System32, checks the required exports, queries PSEC support flags, and requires PSEC v1.1. The command-line probe also builds a minimal v1.1 policy using temporary workspace/scratch directories, calls `CreateProcessSecurityEnvironment`, and closes the returned handle.
+`tools/local_runner_agent/windows_psec.py` loads `processmodel.dll` only from System32, checks the required exports, queries PSEC support flags, and requires PSEC v1.1. The command-line probe also builds a minimal v1.1 policy using temporary workspace/scratch directories, calls `CreateProcessSecurityEnvironment` with the documented four-argument ABI (including `PROCESS_SECURITY_ENVIRONMENT_FLAG_NONE`), and closes the returned handle.
 
 This validates API availability and policy acceptance only. It does **not** launch a workload process and does not prove filesystem, network, or process-tree enforcement.
 
 Run on the target Windows host from the repository root:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\Install-DCP-Windows-PSEC.ps1
+powershell -ExecutionPolicy Bypass -File .\Install-DCP-Windows-PSEC.ps1
 ```
 
 The optional installer installs the pinned FlatBuffers serializer dependency and runs the probe. Exit code 2 / `BLOCKED` means the required API surface or policy creation is unavailable. A READY result only authorizes the next acceptance stage; it does not authorize Terminal execution.
