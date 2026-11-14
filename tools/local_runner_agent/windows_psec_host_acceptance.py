@@ -30,11 +30,11 @@ def _paths_overlap(left: str, right: str) -> bool:
 
     a = ntpath.normcase(ntpath.normpath(left))
     b = ntpath.normcase(ntpath.normpath(right))
-    return (
-        a == b
-        or a.startswith(b.rstrip("\\\\") + "\\\\")
-        or b.startswith(a.rstrip("\\\\") + "\\\\")
-    )
+    try:
+        common = ntpath.commonpath((a, b))
+    except ValueError:
+        return False
+    return common == a or common == b
 
 
 def _acceptance_parent() -> Path:
