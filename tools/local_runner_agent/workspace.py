@@ -6,12 +6,14 @@ runs commands, or provisions infrastructure.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shutil
 import stat
 import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -211,6 +213,90 @@ class WorkspaceManager:
                 # Invalid or concurrently changing markers are retained for manual inspection.
                 continue
         return removed
+
+    def reconcile_terminal_workspaces(
+        self,
+        status_provider,
+        *,
+        now_epoch: float | None = None,
+        grace_seconds: int = 120,
+    ) -> dict:
+        """Remove only old Terminal workspaces proven safe by the authenticated Gateway.
+
+        Active, queued, retrying, UNKNOWN, lease-expired, unowned, malformed, and
+        preview-retained workspaces are preserved. The Gateway must explicitly
+        attest cleanup_safe for the same job/worker before deletion is considered.
+        """
+        if not callable(status_provider):
+            raise ValueError("status_provider must be callable")
+        if (isinstance(grace_seconds, bool) or not isinstance(grace_seconds, int)
+                or not 60 <= grace_seconds <= 3600):
+            raise ValueError("grace_seconds must be between 60 and 3600")
+        now = time.time() if now_epoch is None else now_epoch
+        if (isinstance(now, bool) or not isinstance(now, (int, float))
+                or not math.isfinite(now)):
+            raise ValueError("now_epoch must be a finite timestamp")
+        cutoff = datetime.fromtimestamp(now - grace_seconds, timezone.utc)
+        report = {"scanned": 0, "removed": 0, "skipped": 0}
+        try:
+            entries = list(os.scandir(self.root))
+        except OSError:
+            raise WorkspaceError("workspace root cannot be scanned for reconciliation") from None
+        for entry in entries:
+            if not entry.is_dir(follow_symlinks=False):
+                continue
+            target = Path(entry.path)
+            marker = target / _MARKER
+            if marker.is_symlink() or not marker.is_file():
+                continue
+            report["scanned"] += 1
+            try:
+                metadata = json.loads(marker.read_text(encoding="utf-8"))
+                if (not isinstance(metadata, dict)
+                        or set(metadata) != {"job_id", "worker_id", "version"}
+                        or metadata.get("version") != 1):
+                    report["skipped"] += 1
+                    continue
+                job_id, worker_id = metadata.get("job_id"), metadata.get("worker_id")
+                self._identity(job_id, worker_id)
+                if entry.name != job_id or target.resolve(strict=True).parent != self.root:
+                    report["skipped"] += 1
+                    continue
+                retention = target / ".dcp-preview-retention.json"
+                if retention.exists() or retention.is_symlink():
+                    report["skipped"] += 1
+                    continue
+                try:
+                    status = status_provider(job_id)
+                except Exception:
+                    report["skipped"] += 1
+                    continue
+                if (not isinstance(status, dict)
+                        or status.get("job_id") != job_id
+                        or status.get("worker_id") != worker_id
+                        or status.get("target") != "terminal_script"
+                        or status.get("cleanup_safe") is not True
+                        or status.get("state") not in {"succeeded", "failed", "cancelled"}):
+                    report["skipped"] += 1
+                    continue
+                updated_at = status.get("updated_at")
+                if not isinstance(updated_at, str):
+                    report["skipped"] += 1
+                    continue
+                try:
+                    updated = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+                except ValueError:
+                    report["skipped"] += 1
+                    continue
+                if updated.tzinfo is None or updated > cutoff:
+                    report["skipped"] += 1
+                    continue
+                self.cleanup(job_id, worker_id)
+                report["removed"] += 1
+            except (OSError, ValueError, TypeError, WorkspaceError, json.JSONDecodeError):
+                # Corrupt or concurrently changing ownership evidence is never deleted.
+                report["skipped"] += 1
+        return report
 
     def cleanup(self, job_id: str, worker_id: str) -> None:
         """Remove only the exact workspace whose marker proves matching ownership."""
