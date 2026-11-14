@@ -47,6 +47,7 @@ class _TestOnlyPassthroughLauncher:
 
 
 
+@unittest.skipUnless(sys.platform.startswith("linux"), "Linux-only Terminal executor integration tests")
 class TerminalScriptExecutorTests(unittest.TestCase):
     def setUp(self):
         self.isolation_patch = patch(
