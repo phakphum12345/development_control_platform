@@ -54,8 +54,12 @@ class DescriptorSnapshot:
                 raise NativeSecurityDescriptorTransactionError("unsupported ACL revision")
         if self.descriptor_revision != 1:
             raise NativeSecurityDescriptorTransactionError("unsupported security descriptor revision")
-        if not isinstance(self.dacl_control_flags, int) or self.dacl_control_flags < 0:
-            raise NativeSecurityDescriptorTransactionError("DACL control flags are malformed")
+        if (
+            isinstance(self.dacl_control_flags, bool)
+            or not isinstance(self.dacl_control_flags, int)
+            or not 0 <= self.dacl_control_flags <= 0xFFFF
+        ):
+            raise NativeSecurityDescriptorTransactionError("DACL control flags must fit the native 16-bit control field")
         if not isinstance(self.ace_count, int) or self.ace_count < 0 or self.ace_count > max_aces:
             raise NativeSecurityDescriptorTransactionError("ACE count exceeds configured ceiling")
 
