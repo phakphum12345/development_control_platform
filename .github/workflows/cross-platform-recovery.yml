@@ -80,6 +80,9 @@ jobs:
       - name: Run disposable NTFS DACL defaulted-state experiment
         run: python -m unittest tests.test_windows_psec_dacl_experiment -v
 
+      - name: Run PSEC reversible snapshot and comparison regression tests
+        run: python -m unittest tests.test_windows_psec_reversible_state tests.test_windows_psec_dacl_comparison tests.test_windows_psec_security_descriptor_transaction -v
+
       - name: Install bubblewrap on Linux host
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y bubblewrap
