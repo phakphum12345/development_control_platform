@@ -18,6 +18,7 @@ from .windows_psec_security_descriptor_reader import WindowsHandleSecurityReader
 
 SE_FILE_OBJECT = 1
 DACL_SECURITY_INFORMATION = 0x00000004
+PROTECTED_DACL_SECURITY_INFORMATION = 0x80000000
 CREATE_NEW = 1
 FILE_ATTRIBUTE_NORMAL = 0x00000080
 FILE_SHARE_READ = 1
@@ -209,7 +210,7 @@ class WindowsDaclDefaultedExperiment:
             raise DaclExperimentError("only an explicit non-NULL DACL can be tested")
         acl_buffer = ctypes.create_string_buffer(snapshot.dacl_bytes, len(snapshot.dacl_bytes))
         result = self._advapi32.SetSecurityInfo(
-            wintypes.HANDLE(handle), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION,
+            wintypes.HANDLE(handle), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
             None, None, ctypes.cast(acl_buffer, wintypes.LPVOID), None,
         )
         if result != 0:
