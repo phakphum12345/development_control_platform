@@ -172,13 +172,21 @@ class NativeSecurityDescriptorTransactionTests(unittest.TestCase):
         self.assertEqual(result.state, "ROLLED_BACK_VERIFIED")
         self.assertEqual(api.states, {10: ORIGINAL, 11: ORIGINAL})
 
-    def test_dacl_defaulted_state_is_preserved_in_candidate_and_rollback(self):
+    def test_dacl_defaulted_state_is_preserved_in_candidate_and_readback(self):
         api = FakeHandleSecurityApi()
         result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID)
         self.assertEqual(result.state, "APPLIED_VERIFIED")
         for handle in (10, 11):
             self.assertTrue(api.states[handle].dacl_defaulted)
             self.assertTrue(api.writes[handle - 10][1].dacl_defaulted)
+
+    def test_dacl_defaulted_state_is_restored_after_apply_failure(self):
+        api = FakeHandleSecurityApi()
+        api.fail_write_for.add(11)
+        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID)
+        self.assertEqual(result.state, "ROLLED_BACK_VERIFIED")
+        self.assertTrue(api.states[10].dacl_defaulted)
+        self.assertTrue(api.states[11].dacl_defaulted)
 
     def test_rejects_malformed_dacl_defaulted_state(self):
         malformed = replace(ORIGINAL, dacl_defaulted=1)
