@@ -427,6 +427,17 @@ def main() -> int:
             scratch.mkdir()
             (workspace / "read.txt").write_text("DCP-WORKSPACE-READ", encoding="utf-8")
 
+            # Capture fixture ACLs before PSEC creation so the acceptance
+            # report can distinguish pre-existing host ACL restrictions from
+            # changes made while creating/running the PSEC environment.
+            filesystem_acl_before = {
+                "acceptance_parent": _filesystem_acl(_acceptance_parent()),
+                "temporary_root": _filesystem_acl(root),
+                "workspace_directory": _filesystem_acl(workspace),
+                "workspace_read_file": _filesystem_acl(workspace / "read.txt"),
+                "scratch_directory": _filesystem_acl(scratch),
+            }
+
             launcher = WindowsPsecLauncher()
             environment = _environment()
             policy_results = _run_policy_acceptance(
@@ -446,11 +457,24 @@ def main() -> int:
                 "scratch_directory": _filesystem_acl(scratch),
             }
             if app_container_sid:
-                for evidence in filesystem_acl.values():
-                    acl_text = (evidence.get("stdout", "") + evidence.get("stderr", "")).casefold()
-                    evidence["app_container_sid_literal_present"] = (
-                        app_container_sid.casefold() in acl_text
-                    )
+                for snapshot in (filesystem_acl_before, filesystem_acl):
+                    for evidence in snapshot.values():
+                        acl_text = (evidence.get("stdout", "") + evidence.get("stderr", "")).casefold()
+                        evidence["app_container_sid_literal_present"] = (
+                            app_container_sid.casefold() in acl_text
+                        )
+
+            for name, evidence in filesystem_acl.items():
+                before_descriptor = filesystem_acl_before.get(name, {}).get("security_descriptor", {})
+                after_descriptor = evidence.get("security_descriptor", {})
+                before_sddl = before_descriptor.get("sddl")
+                after_sddl = after_descriptor.get("sddl")
+                evidence["dacl_changed_during_psec_run"] = (
+                    before_sddl != after_sddl
+                    if before_sddl is not None and after_sddl is not None
+                    else None
+                )
+            filesystem_acl["before_launch"] = filesystem_acl_before
 
         results = {**policy_results, **tree_results}
         child_process_token = results.pop("child_process_token", {})
