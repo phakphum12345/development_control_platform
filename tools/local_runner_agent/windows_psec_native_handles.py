@@ -223,17 +223,23 @@ class WindowsNativeHandleApi:
             raise
 
     def query_identity(self, handle: int) -> HandleIdentity:
+        # NtCreateFile writes a ctypes HANDLE object; other callers may pass
+        # the integer value retained by OpenedObject. Normalize both forms.
+        raw_handle = getattr(handle, "value", handle)
+        if raw_handle is None or raw_handle == 0:
+            raise NativeHandleAclError("a valid handle is required for identity queries")
+        native_handle = wintypes.HANDLE(raw_handle)
         file_id = FILE_ID_INFO()
         tag = FILE_ATTRIBUTE_TAG_INFO()
         if not self.kernel32.GetFileInformationByHandleEx(
-            wintypes.HANDLE(handle), FILE_ID_INFO_CLASS,
+            native_handle, FILE_ID_INFO_CLASS,
             ctypes.byref(file_id), ctypes.sizeof(file_id),
         ):
             raise NativeHandleAclError(
                 f"FileIdInfo query failed (WinError {ctypes.get_last_error()})"
             )
         if not self.kernel32.GetFileInformationByHandleEx(
-            wintypes.HANDLE(handle), FILE_ATTRIBUTE_TAG_INFO_CLASS,
+            native_handle, FILE_ATTRIBUTE_TAG_INFO_CLASS,
             ctypes.byref(tag), ctypes.sizeof(tag),
         ):
             raise NativeHandleAclError(
