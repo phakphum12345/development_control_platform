@@ -137,7 +137,7 @@ Important limits:
 - Recon: PR #121 exact head was `c7e23fcb1716a12ad7ed364355328ae5a1045408`; all three CI workflows succeeded, while the Windows runner acceptance matrix was skipped.
 - Inventory: projection primitives and fail-closed token identity validation exist; Package-SID ACL application, native handle-based traversal, and launcher lifecycle integration do not.
 - Gap: the original host acceptance still fails Workspace read and Scratch write with `PermissionError`. The derived Workspace write-denial result remains invalid evidence.
-- Implementation: add a read-only `GetAppContainerFolderPath` diagnostic to the Windows host acceptance harness. It reports path, directory existence, ACL evidence, and child `LOCALAPPDATA` match without changing host state.
-- Testing: pending on the exact new head. Target-Windows execution is required; CI success alone cannot establish the profile mapping or child access.
+- Implementation: add a read-only `GetAppContainerFolderPath` diagnostic to the Windows host acceptance harness. It reports path, directory existence, ACL evidence, and child `LOCALAPPDATA` match without changing host state; add mocked unit tests for successful lookup, environment mismatch, HRESULT failure, and missing SID.
+- Testing: the exact implementation/test head is now `88af4eddba5bb892027b95e4954466ee5a716b9b`; fresh CI and target-Windows execution are pending. CI success alone cannot establish the profile mapping or child access.
 - Safety: no ACL mutation, no persistent profile creation, no direct host-process fallback, no Terminal template activation, no merge.
 - Next: run the updated harness on the target Windows host. Use its evidence to decide whether the PSEC-created Package SID has a Windows-managed profile root. Only then finalize the per-job scratch/projection authorization strategy.
