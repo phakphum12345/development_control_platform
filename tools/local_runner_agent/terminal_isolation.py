@@ -11,6 +11,8 @@ import shutil
 from dataclasses import dataclass
 from typing import Literal
 
+from tools.local_runner_agent.windows_psec import probe_psec
+
 
 IsolationState = Literal["BLOCKED", "READY_FOR_ACCEPTANCE", "VERIFIED"]
 PlatformName = Literal["windows", "linux", "macos"]
@@ -30,9 +32,10 @@ class IsolationAssessment:
 
 _BACKENDS: dict[str, tuple[str, str]] = {
     "windows": (
-        "appcontainer-lpac",
-        "A signed native AppContainer/LPAC launcher with explicit filesystem "
-        "capabilities, no network capability, and Job Object containment is required.",
+        "windows-process-security-environment",
+        "The PSEC v1.1 process-security environment must enforce filesystem deny/"
+        "enumerate policy and default-deny network ingress/egress; a Job Object "
+        "must contain and kill the complete process tree. PSEC is not LPAC.",
     ),
     "linux": (
         "bubblewrap-namespaces-seccomp",
@@ -92,6 +95,38 @@ def assess_isolation_backend(
             process_tree_contained=False,
             reason="bwrap is present, but namespace, mount, seccomp, network-denial "
                    "and process-cleanup acceptance has not been run; " + requirement,
+        )
+
+    if name == "windows":
+        try:
+            psec = probe_psec()
+        except Exception:
+            psec = None
+        if psec is not None and psec.state == "READY_FOR_ACCEPTANCE":
+            return IsolationAssessment(
+                platform=name,
+                backend=backend,
+                state="READY_FOR_ACCEPTANCE",
+                available=True,
+                network_isolated=False,
+                filesystem_isolated=False,
+                process_tree_contained=False,
+                reason=(
+                    "PSEC v1.1 API and required feature flags are present; "
+                    "the integrated launcher still requires process-level adversarial "
+                    "and target-host acceptance. " + requirement
+                ),
+            )
+        reason = psec.reason if psec is not None else "PSEC capability probe failed"
+        return IsolationAssessment(
+            platform=name,
+            backend=backend,
+            state="BLOCKED",
+            available=False,
+            network_isolated=False,
+            filesystem_isolated=False,
+            process_tree_contained=False,
+            reason=reason + "; " + requirement,
         )
 
     return IsolationAssessment(
