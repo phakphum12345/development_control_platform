@@ -20,7 +20,7 @@ This inventory distinguishes implemented code, automated tests, CI evidence, and
 | WP-00B | Module/API/Dashboard/Workflow inventory | Major source groups and 7 workflows identified; every module and entry point still needs mapping | IN_PROGRESS |
 | WP-00C | Test-to-requirement traceability | 86 test files identified; full test inventory and requirement links remain | IN_PROGRESS |
 | WP-00D | Documentation reconciliation | Roadmap/backlog/continuity contain stale WP-17/WP-18 text; Implementation Status and Requirements Traceability docs absent | IN_PROGRESS |
-| WP-18A | Linux bubblewrap isolation launcher | Current code only detects bwrap and reports READY_FOR_ACCEPTANCE; no launcher or enforcement | NOT STARTED |
+| WP-18A | Linux bubblewrap isolation launcher | Added a Linux-only bubblewrap command builder and network-deny seccomp BPF policy with unit tests; not yet integrated into TerminalScriptExecutor and not host-accepted | IN_PROGRESS |
 | WP-18B | Windows AppContainer/LPAC launcher | Native helper and capability policy absent | BLOCKED |
 | WP-18C | Process-tree containment and cleanup | taskkill/process-group termination and workspace cleanup exist; independent descendant/host cleanup acceptance absent | IN_PROGRESS |
 | WP-18D | Adversarial security and host acceptance | Contract/unit tests exist; actual filesystem/network/process escape acceptance absent | PENDING |
@@ -103,7 +103,7 @@ Existing roadmap, backlog and continuity documents require reconciliation with m
 
 1. Complete WP-00B/00C by mapping every source module, API route, Dashboard view, workflow, test and requirement.
 2. Complete WP-00D by reconciling roadmap/backlog/continuity and adding status/traceability docs.
-3. Implement WP-18A as a Linux-only launcher with explicit mounts, private network namespace, seccomp policy and bounded scratch; keep execution blocked until real-host adversarial acceptance passes.
+3. Integrate and validate WP-18A Linux-only bubblewrap launch builder with explicit mounts, private network namespace, seccomp policy and bounded scratch; keep execution blocked until real-host adversarial acceptance passes.
 4. Implement WP-18C process-tree and cleanup verification in parallel only where dependencies allow.
 5. Implement WP-18B Windows native isolation separately; do not substitute a POSIX shim.
 6. Run exact-head CI, security review and host acceptance before considering any template enablement.
