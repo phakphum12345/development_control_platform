@@ -70,6 +70,7 @@
 - [Terminal Execution Architecture](DCP-TERMINAL-EXECUTION-ARCHITECTURE.md)
 - [Terminal Security](DCP-TERMINAL-SECURITY.md)
 - [Terminal OS Isolation](DCP-TERMINAL-OS-ISOLATION.md)
+- [PSEC DACL Defaulted Native API Experiment](DCP-WINDOWS-PSEC-DACL-DEFAULTED-NATIVE-API-EXPERIMENT.md) — disposable NTFS-only API experiment; host results are recorded separately from CI.
 - [Linux Host Acceptance](DCP-LINUX-HOST-ACCEPTANCE.md) — target-host evidence harness and acceptance criteria.
 - [Windows PSEC Isolation](DCP-WINDOWS-PSEC-ISOLATION.md) — PSEC v1.1 policy probe, CreateProcessW/Job Object launcher, and target-host acceptance steps.
 - [Windows PSEC Filesystem Authorization](DCP-WINDOWS-PSEC-FILESYSTEM-AUTHORIZATION.md) — WP-18B.1 per-job projection, Package SID authorization, lifecycle and adversarial acceptance design.
