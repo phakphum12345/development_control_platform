@@ -8,12 +8,29 @@ from tools.local_runner_agent.windows_psec_native_handles import (
     HandleIdentity,
     NativeHandleAclError,
     OpenedObject,
+    _coerce_native_handle,
     validate_parent_identity,
     validate_relative_component,
 )
 
 
 class NativeHandlePreflightTests(unittest.TestCase):
+    def test_coerces_integer_and_existing_ctypes_handles(self):
+        import ctypes
+
+        integer_handle = _coerce_native_handle(123)
+        wrapped_handle = ctypes.c_void_p(456)
+        existing_handle = _coerce_native_handle(wrapped_handle)
+        self.assertEqual(integer_handle.value, 123)
+        self.assertIs(existing_handle, wrapped_handle)
+
+    def test_rejects_null_and_invalid_handles(self):
+        import ctypes
+
+        for value in (0, None, ctypes.c_void_p()):
+            with self.subTest(value=value), self.assertRaises(NativeHandleAclError):
+                _coerce_native_handle(value)
+
     def test_accepts_single_plain_component(self):
         self.assertEqual(validate_relative_component("notes.txt"), "notes.txt")
         self.assertEqual(validate_relative_component("nested-folder"), "nested-folder")
