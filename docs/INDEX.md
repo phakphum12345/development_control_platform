@@ -7,6 +7,7 @@
 ## Operating and execution control
 - [DCP-CEEP v1.0 Protocol](DCP-CEEP-PROTOCOL.md) — mandatory execution, evidence, resilience, reporting, continuity and merge gates.
 - [Continuity Ledger](../checkpoints/DCP-CEEP-CONTINUITY.md) — latest resumable work checkpoint.
+- [WP-18B.1-M Protocol v1 Consumer Conformance Checkpoint](../checkpoints/WP-18B1-M-PROTOCOL-V1-CONSUMER-CONFORMANCE.md) — source-to-profile audit and exact-head CI baseline.
 - [CEEP Command Reference](DCP-CEEP-COMMAND-REFERENCE.md)
 - [CEEP Project Profile Template](templates/DCP-CEEP-PROJECT-PROFILE.md)
 - [CEEP v2.0 Proposal](DCP-CEEP-UNIVERSAL-v2.0.md) — proposal only; not adopted.
