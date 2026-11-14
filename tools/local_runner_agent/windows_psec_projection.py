@@ -25,6 +25,7 @@ class ProjectionError(RuntimeError):
 @dataclass(frozen=True)
 class ProjectionLimits:
     max_files: int = 20_000
+    max_entries: int = 40_000
     max_total_bytes: int = 512 * 1024 * 1024
     max_file_bytes: int = 128 * 1024 * 1024
     max_relative_path_chars: int = 240
@@ -32,7 +33,7 @@ class ProjectionLimits:
     chunk_bytes: int = 1024 * 1024
 
     def __post_init__(self) -> None:
-        for name in ("max_files", "max_total_bytes", "max_file_bytes",
+        for name in ("max_files", "max_entries", "max_total_bytes", "max_file_bytes",
                      "max_relative_path_chars", "chunk_bytes"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
@@ -125,6 +126,7 @@ def _validate_component(name: str) -> None:
 def _walk(source: Path, limits: ProjectionLimits, started: float
           ) -> Iterator[tuple[Path, str, os.stat_result]]:
     count = 0
+    entry_count = 0
     folded_paths: set[str] = set()
     stack: list[tuple[Path, str]] = [(source, "")]
     while stack:
@@ -149,6 +151,9 @@ def _walk(source: Path, limits: ProjectionLimits, started: float
             if folded_relative in folded_paths:
                 raise ProjectionError("workspace contains a case-insensitive path collision")
             folded_paths.add(folded_relative)
+            entry_count += 1
+            if entry_count > limits.max_entries:
+                raise ProjectionError("workspace exceeds the filesystem-entry limit")
             path = Path(entry.path)
             try:
                 info = entry.stat(follow_symlinks=False)
