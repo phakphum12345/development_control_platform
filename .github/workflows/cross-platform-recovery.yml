@@ -12,6 +12,8 @@ on:
       - "tests/test_local_auth_proxy.py"
       - "tests/test_local_runner_execution.py"
       - "tests/test_linux_sandbox.py"
+      - "docs/**"
+      - "checkpoints/**"
   push:
     branches: [main]
     paths:
@@ -24,6 +26,8 @@ on:
       - "tests/test_local_auth_proxy.py"
       - "tests/test_local_runner_execution.py"
       - "tests/test_linux_sandbox.py"
+      - "docs/**"
+      - "checkpoints/**"
   workflow_dispatch:
 
 permissions:
