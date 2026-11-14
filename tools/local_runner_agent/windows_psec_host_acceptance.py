@@ -374,21 +374,23 @@ def main() -> int:
             tree_results = _run_job_tree_acceptance(
                 launcher, workspace, scratch, environment
             )
+            # Capture ACLs while the temporary acceptance tree still exists.
+            child_process_token = policy_results.get("child_process_token", {})
+            app_container_sid = child_process_token.get("app_container_sid")
+            filesystem_acl = {
+                "workspace_directory": _filesystem_acl(workspace),
+                "workspace_read_file": _filesystem_acl(workspace / "read.txt"),
+                "scratch_directory": _filesystem_acl(scratch),
+            }
+            if app_container_sid:
+                for evidence in filesystem_acl.values():
+                    acl_text = (evidence.get("stdout", "") + evidence.get("stderr", "")).casefold()
+                    evidence["app_container_sid_literal_present"] = (
+                        app_container_sid.casefold() in acl_text
+                    )
 
         results = {**policy_results, **tree_results}
         child_process_token = results.pop("child_process_token", {})
-        app_container_sid = child_process_token.get("app_container_sid")
-        filesystem_acl = {
-            "workspace_directory": _filesystem_acl(workspace),
-            "workspace_read_file": _filesystem_acl(workspace / "read.txt"),
-            "scratch_directory": _filesystem_acl(scratch),
-        }
-        if app_container_sid:
-            for evidence in filesystem_acl.values():
-                acl_text = (evidence.get("stdout", "") + evidence.get("stderr", "")).casefold()
-                evidence["app_container_sid_literal_present"] = (
-                    app_container_sid.casefold() in acl_text
-                )
         diagnostics = {
             "child_token": results.pop("child_token", {}),
             "child_process_token": child_process_token,
