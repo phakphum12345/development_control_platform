@@ -111,6 +111,14 @@ class OpenedObject:
                 raise NativeHandleAclError("CloseHandle failed for retained object")
 
 
+def validate_parent_identity(actual: HandleIdentity, expected: HandleIdentity) -> None:
+    """Require the exact retained parent object to remain a safe directory."""
+    if actual != expected:
+        raise NativeHandleAclError("retained parent identity changed before relative open")
+    if not actual.is_directory or actual.attributes & FILE_ATTRIBUTE_REPARSE_POINT:
+        raise NativeHandleAclError("parent handle is not a validated non-reparse directory")
+
+
 def validate_relative_component(name: str) -> str:
     """Accept exactly one ordinary Win32 filename component."""
     if not isinstance(name, str) or not name or name in {".", ".."}:
@@ -163,10 +171,7 @@ class WindowsNativeHandleApi:
         if not parent_handle or parent_handle in (0, ctypes.c_void_p(-1).value):
             raise NativeHandleAclError("a valid retained parent directory handle is required")
         actual_parent_identity = self.query_identity(parent_handle)
-        if actual_parent_identity != expected_parent_identity:
-            raise NativeHandleAclError("retained parent identity changed before relative open")
-        if not actual_parent_identity.is_directory or actual_parent_identity.attributes & FILE_ATTRIBUTE_REPARSE_POINT:
-            raise NativeHandleAclError("parent handle is not a validated non-reparse directory")
+        validate_parent_identity(actual_parent_identity, expected_parent_identity)
         component = validate_relative_component(name)
         # Keep the backing UTF-16 buffer alive for the duration of NtCreateFile.
         name_buffer = ctypes.create_unicode_buffer(component)
