@@ -138,7 +138,7 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - PR #130 remains a separate OPEN / DRAFT / NOT MERGED Reader/Transaction checkpoint; do not add experiment code to it.
 - Experiment branch: `work/wp18b1k-dacl-defaulted-native-api-experiment`.
 - Exact base: `main` at `cb9322b3bbffafeed3a46fceb4ee0177fa924e48` (merge commit for PR #116).
-- Initial design commit: `fbf6814df8540ad08175cb6705e2e27bf2b3d244` is the docs index update; experiment design was added immediately before it on the same branch.
+- Initial experiment design commit: `8d17e49f0f1cfc0986705b737c169e6c491479d4`; docs index update: `fbf6814df8540ad08175cb6705e2e27bf2b3d244`; continuity checkpoint update: `e69978963d10433f9eb556f263074b442a1f563e` (current branch head at this checkpoint).
 - Added `docs/DCP-WINDOWS-PSEC-DACL-DEFAULTED-NATIVE-API-EXPERIMENT.md` defining disposable NTFS-only cases, retained-handle read-back, binary/control-state comparison, rollback, cleanup, and fail-closed evidence vocabulary.
 - Microsoft API review confirms `GetSecurityDescriptorDacl` reports the DACL-defaulted state; `SetSecurityDescriptorDacl` can set the flag only in an in-memory absolute descriptor; `SetSecurityInfo` accepts a handle and DACL pointer but no explicit `bDaclDefaulted` parameter, and Microsoft says it updates descriptor control bits as appropriate. `SetKernelObjectSecurity` is explicitly not for file-system objects.
 - No native API call, ACL mutation, Windows-host test, or rollback experiment has been executed in this work package. Design only; implementation and host evidence remain UNKNOWN / IN_PROGRESS.
