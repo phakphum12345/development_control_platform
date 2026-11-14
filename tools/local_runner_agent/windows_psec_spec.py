@@ -131,12 +131,6 @@ def build_psec_spec(
     enumerate_vector = _string_vector(builder, enumerate)
     capabilities_string = builder.CreateString("")
 
-    # SchemaVersion is a 4-byte struct: major then minor (little-endian).
-    builder.Prep(4, 4)
-    builder.PrependUint16(PSEC_SCHEMA_MINOR)
-    builder.PrependUint16(PSEC_SCHEMA_MAJOR)
-    version_struct = builder.Offset()
-
     builder.StartObject(9)
     if enumerate_vector:
         builder.PrependUOffsetTRelativeSlot(8, enumerate_vector, 0)
@@ -148,6 +142,11 @@ def build_psec_spec(
     builder.PrependUint64Slot(3, ui_restrictions, 0)
     builder.PrependBoolSlot(2, disallow_win32k_system_calls, False)
     builder.PrependUOffsetTRelativeSlot(1, capabilities_string, 0)
+    # FlatBuffers structs must be built immediately before their table slot.
+    builder.Prep(4, 4)
+    builder.PrependUint16(PSEC_SCHEMA_MINOR)
+    builder.PrependUint16(PSEC_SCHEMA_MAJOR)
+    version_struct = builder.Offset()
     builder.PrependStructSlot(0, version_struct, 0)
     root = builder.EndObject()
     builder.Finish(root, file_identifier=b"PSEC")
