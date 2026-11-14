@@ -169,3 +169,39 @@ At creation:
 - No host ACL mutation is authorized or performed by this design checkpoint.
 - Terminal execution remains BLOCKED; all seven built-in templates remain DISABLED.
 - This document is a design artifact only. It does not claim implementation, tests, effective access, or security verification.
+
+
+## 10. Implementation checkpoint — native relative child opener
+
+Commit sequence on `work/wp18b1-native-handle-acl-engine` now includes a first
+Windows-only native primitive in
+`tools/local_runner_agent/windows_psec_native_handles.py` and portable
+contract tests in `tests/test_windows_psec_native_handles.py`.
+
+Implemented in this increment:
+- `NtCreateFile` opens exactly one child component with
+  `OBJECT_ATTRIBUTES.RootDirectory` set to the retained parent directory
+  handle. There is no absolute-path fallback.
+- `FILE_OPEN_REPARSE_POINT` is requested, then the opened handle is checked
+  for `FILE_ATTRIBUTE_REPARSE_POINT`.
+- Expected directory/file type is enforced with NT create options and verified
+  again from handle-derived attributes.
+- Stable identity is captured from `FILE_ID_INFO`: volume serial plus the
+  complete 128-bit file ID. Re-query operates on the same handle.
+- Retained handle close is explicit and idempotent; close failures are surfaced.
+- Relative component validation rejects separators, ADS syntax, dot traversal,
+  control characters, Win32-normalized suffixes, reserved DOS device names,
+  invalid Unicode sequences, and components exceeding the NT limit.
+
+**Explicitly not implemented in this increment:**
+- secure root-handle acquisition and handle-based directory enumeration;
+- parent-child relationship enumeration proof for a complete tree;
+- native ACL descriptor parsing, `GetSecurityInfo` / `SetSecurityInfo`,
+  transactional DACL application, and rollback;
+- integration into `WindowsPsecLauncher`;
+- real-host reparse-race and replacement tests.
+
+The primitive is not yet a complete ACL engine and must not be called by the
+launcher. The portable tests exercise name validation, identity data shape,
+and handle ownership behavior; they do not exercise the Windows kernel APIs.
+The branch CI and dedicated Windows host tests remain required evidence.
