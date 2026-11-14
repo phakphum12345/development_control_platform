@@ -272,3 +272,14 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Evidence records the exact native `SecurityInfo` mask in decimal and hex. The existing round-trip and ambiguous-write rollback cases retain the combined protected-DACL mask and their strict assertions.
 - The matrix is diagnostic: neither write-only observation can pass the round-trip acceptance gate. It does not relax exact control-state comparison.
 - No native execution or CI result is claimed by this checkpoint. Next: run portable tests, inspect exact-head CI logs, and then run the native matrix on Windows Server/Windows host. Keep Native Writer, Terminal, and all built-in templates BLOCKED; no merge or deployment.
+
+
+## 2026-11-15 — WP-18B.1-K Windows flag matrix findings and test correction
+
+- Exact tested head: `90e48b693885363183f8990d1f8102ccc06cab30`; PR #131 only. PR #130 remains unchanged.
+- Windows Server 2025 / NTFS evidence: F1 (`0x4`) and F2 (`0x80000004`) both retained the 8-byte empty DACL and `DaclDefaulted=FALSE`, while control flags changed `0x9004 → 0x9404`. Both report zero inherited ACEs. The AUTO_INHERITED bit transition is therefore not isolated to the protected-DACL flag.
+- FALSE round-trip remains FAIL because rollback leaves control flags at `0x9404` instead of restoring `0x9004`; byte equality and FALSE state alone do not satisfy the exact descriptor-state gate.
+- TRUE setup remains NOT EXERCISED because NTFS did not retain TRUE at creation.
+- The ambiguous-write test did not actually reach the native write: its patched callback omitted the newly required keyword-only `security_info_flags` argument, so callback call count was zero. Corrected the callback signature and forwarding behavior; Windows rerun is required before accepting rollback-injection evidence.
+- Exact-head CI on this SHA: Local-first Minimal Emulator PASS; Validate Control Plane PASS; Cross-platform Recovery Acceptance FAIL. The Windows recovery failure includes the two findings above. New commit must receive fresh exact-head CI.
+- No merge. Native Writer, Terminal, and all seven built-in templates remain BLOCKED.

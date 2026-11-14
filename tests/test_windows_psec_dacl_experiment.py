@@ -143,9 +143,13 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         original_write = experiment._write_dacl
         calls = {"count": 0}
 
-        def fail_after_native_write(handle, snapshot):
+        def fail_after_native_write(handle, snapshot, *, security_info_flags):
+            # Mirror the production method's keyword-only API exactly. The
+            # injected error happens only after the first native write returns.
             calls["count"] += 1
-            original_write(handle, snapshot, security_info_flags=DACL_AND_PROTECTED_SECURITY_INFO)
+            original_write(
+                handle, snapshot, security_info_flags=security_info_flags
+            )
             if calls["count"] == 1:
                 raise OSError("injected error after native SetSecurityInfo")
 

@@ -202,3 +202,23 @@ Microsoft references:
 - https://learn.microsoft.com/en-us/windows/win32/secauthz/security-descriptor-control
 
 **Status:** implementation pending exact-head CI and Windows execution. Native Writer, Terminal, and built-in templates remain BLOCKED.
+
+
+## 15. Windows flag-isolation run and rollback-injection correction — 2026-11-15
+
+The supplied Windows Server 2025 / NTFS run on head `90e48b693885363183f8990d1f8102ccc06cab30` produced:
+
+| Case | SecurityInfo | DACL bytes | DaclDefaulted | Control flags | Result |
+|---|---:|---|---|---|---|
+| F1 write-only | `0x00000004` | unchanged empty ACL (`0200080000000000`) | FALSE → FALSE | `0x9004 → 0x9404` | OBSERVED |
+| F2 write-only | `0x80000004` | unchanged empty ACL (`0200080000000000`) | FALSE → FALSE | `0x9004 → 0x9404` | OBSERVED |
+| FALSE round-trip | `0x80000004` | unchanged empty ACL | FALSE throughout | `0x9004 → 0x9404 → 0x9404` | FAIL |
+| TRUE setup | n/a | inherited ACL at create | FALSE | `0x8004` | NOT EXERCISED / SKIPPED |
+
+F1 and F2 both produce the same `SE_DACL_AUTO_INHERITED (0x0400)` control-bit transition. The evidence does not support attributing the transition specifically to `PROTECTED_DACL_SECURITY_INFORMATION`. Both write-only observations report zero inherited ACEs; the bit must not be misreported as proof that an inherited ACE was added.
+
+The FALSE round-trip remains a genuine acceptance failure: rollback restores the same ACL bytes and FALSE defaulted state, but does not restore the original control word. Cleanup and the harness-owned handle close are verified. Do not relax exact control-state comparison.
+
+The first ambiguous-write output is **invalid as evidence that rollback was exercised**. Its injected callback had the old two-positional-argument signature, while the production `_write_dacl` now requires keyword-only `security_info_flags`. The callback therefore raised `unexpected keyword argument 'security_info_flags'` before reaching the native call; its observed call count was zero. The test callback is corrected to accept and forward the keyword-only argument, and inject its exception only after the first native `SetSecurityInfo` call returns. Re-run this case on Windows before claiming rollback-injection acceptance.
+
+**Current disposition:** F1/F2 observations are useful diagnostics; FALSE exact round-trip FAIL; TRUE NOT EXERCISED; ambiguous-write rollback NOT YET VERIFIED pending rerun after callback correction. Native Writer, Terminal, and all seven built-in templates remain BLOCKED.
