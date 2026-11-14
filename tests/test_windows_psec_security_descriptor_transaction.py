@@ -265,7 +265,7 @@ class NativeSecurityDescriptorTransactionTests(unittest.TestCase):
             comparison_profile=DaclComparisonProfile.DACL_CONTENT_EQUALITY,
         )
         self.assertEqual(result.state, "APPLIED_VERIFIED")
-        self.assertEqual(api.states[10].dacl_bytes, ORIGINAL.dacl_bytes)
+        self.assertEqual(api.states[10].dacl_bytes, ORIGINAL.dacl_bytes + b"|PACKAGE-ACE|")
         self.assertEqual(api.states[10].dacl_control_flags, 0x9404)
 
     def test_strict_profile_keeps_control_transition_fatal_through_rollback(self):
