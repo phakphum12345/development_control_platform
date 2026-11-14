@@ -54,8 +54,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\Run-DCP-Windows-PSEC-Host-Acc
 Before running acceptance, create a dedicated writable directory on a local volume that is outside all denied roots, then set `DCP_PSEC_ACCEPTANCE_PARENT` to that directory. For example, when `D:\` is a writable data volume:
 
 ```powershell
-New-Item -ItemType Directory -Force -Path 'D:\\DCP-PSEC-Acceptance' | Out-Null
-$env:DCP_PSEC_ACCEPTANCE_PARENT = 'D:\\DCP-PSEC-Acceptance'
+New-Item -ItemType Directory -Force -Path 'D:\DCP-PSEC-Acceptance' | Out-Null
+$env:DCP_PSEC_ACCEPTANCE_PARENT = 'D:\DCP-PSEC-Acceptance'
 ```
 
 The harness rejects a missing or overlapping parent before launching the payload; it does not weaken or remove any deny rule. Keep the host `%TEMP%` unchanged so it remains explicitly denied.
