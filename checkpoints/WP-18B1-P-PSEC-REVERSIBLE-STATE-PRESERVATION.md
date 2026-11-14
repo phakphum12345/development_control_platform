@@ -14,6 +14,8 @@ Implement immutable preservation of the original DACL descriptor snapshot (S0), 
 - Added a frozen original snapshot envelope.
 - Captures DACL presence, NULL state, exact ACL bytes, DACL defaulted state, all 16-bit descriptor control flags, descriptor/ACL revisions, and ACE count through the existing DescriptorSnapshot.
 - Added retained-handle capture that reads object identity before and after the descriptor snapshot and rejects identity drift.
+- Integrated immutable S0 capture into the disposable NTFS native experiment; the harness verifies the digest before writing, uses S0 as the rollback source, and checks S2 through the strict Protocol v1 verifier.
+- Adds transaction UUID, snapshot digest, and restoration mismatch evidence to the native experiment output.
 - Binds the snapshot to a canonical transaction UUID and target volume serial / 128-bit file ID.
 - Computes a SHA-256 integrity digest over metadata and exact binary ACL bytes.
 - Adds fail-closed read-back verification under the selected existing comparison profile.
@@ -37,8 +39,9 @@ Implement immutable preservation of the original DACL descriptor snapshot (S0), 
 - Local-first Minimal Emulator: Linux and Windows jobs PASS on that exact head.
 - Validate Control Plane: PASS on that exact head.
 - Current implementation has since added retained-handle snapshot capture and requires a fresh exact-head CI run.
-- Required test command: python -m unittest tests.test_windows_psec_reversible_state -v.
-- Regression commands: python -m unittest tests.test_windows_psec_dacl_comparison tests.test_windows_psec_security_descriptor_transaction -v.
+- Required exact-head test command: python -m unittest tests.test_windows_psec_reversible_state tests.test_windows_psec_dacl_comparison tests.test_windows_psec_security_descriptor_transaction -v.
+- Native experiment command: python -m unittest tests.test_windows_psec_dacl_experiment -v.
+- Fresh exact-head CI is required after the retained-handle/native-experiment integration changes.
 - Native Windows restore acceptance: NOT RUN; requires a separate disposable NTFS experiment and exact read-back evidence.
 
 ## Safety gates
