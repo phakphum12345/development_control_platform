@@ -1,0 +1,609 @@
+"""Windows PSEC process launcher with Job Object process-tree containment.
+
+This launcher is a candidate backend only. Production Terminal execution remains
+blocked by terminal_isolation.require_verified_isolation until host acceptance.
+"""
+from __future__ import annotations
+
+import ctypes
+import os
+import subprocess
+import tempfile
+import time
+from pathlib import Path
+from typing import Mapping, Sequence
+
+from tools.local_runner_agent.windows_psec import (
+    LOAD_LIBRARY_SEARCH_SYSTEM32,
+    probe_psec,
+)
+from tools.local_runner_agent.windows_psec_spec import build_psec_spec
+
+
+HANDLE = ctypes.c_void_p
+DWORD = ctypes.c_uint32
+BOOL = ctypes.c_int
+WORD = ctypes.c_uint16
+SIZE_T = ctypes.c_size_t
+ULONG_PTR = ctypes.c_size_t
+
+CREATE_SUSPENDED = 0x00000004
+CREATE_UNICODE_ENVIRONMENT = 0x00000400
+CREATE_NO_WINDOW = 0x08000000
+EXTENDED_STARTUPINFO_PRESENT = 0x00080000
+STARTF_USESTDHANDLES = 0x00000100
+
+HANDLE_FLAG_INHERIT = 0x00000001
+GENERIC_READ = 0x80000000
+FILE_SHARE_READ = 0x00000001
+FILE_SHARE_WRITE = 0x00000002
+OPEN_EXISTING = 3
+FILE_ATTRIBUTE_NORMAL = 0x00000080
+INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+
+PROC_THREAD_ATTRIBUTE_HANDLE_LIST = 0x00020002
+PROC_THREAD_ATTRIBUTE_SECURITY_ENVIRONMENT = 0x00020023
+
+JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
+JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION = 1
+JOB_OBJECT_LIMIT_ACTIVE_PROCESS = 0x00000008
+JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
+WAIT_TIMEOUT = 0x00000102
+WAIT_OBJECT_0 = 0x00000000
+INFINITE = 0xFFFFFFFF
+STILL_ACTIVE = 259
+
+
+class WindowsPsecError(RuntimeError):
+    """Windows PSEC launch or containment failed closed."""
+
+
+class SECURITY_ATTRIBUTES(ctypes.Structure):
+    _fields_ = [
+        ("nLength", DWORD),
+        ("lpSecurityDescriptor", HANDLE),
+        ("bInheritHandle", BOOL),
+    ]
+
+
+class STARTUPINFOW(ctypes.Structure):
+    _fields_ = [
+        ("cb", DWORD),
+        ("lpReserved", ctypes.c_wchar_p),
+        ("lpDesktop", ctypes.c_wchar_p),
+        ("lpTitle", ctypes.c_wchar_p),
+        ("dwX", DWORD),
+        ("dwY", DWORD),
+        ("dwXSize", DWORD),
+        ("dwYSize", DWORD),
+        ("dwXCountChars", DWORD),
+        ("dwYCountChars", DWORD),
+        ("dwFillAttribute", DWORD),
+        ("dwFlags", DWORD),
+        ("wShowWindow", WORD),
+        ("cbReserved2", WORD),
+        ("lpReserved2", ctypes.POINTER(ctypes.c_ubyte)),
+        ("hStdInput", HANDLE),
+        ("hStdOutput", HANDLE),
+        ("hStdError", HANDLE),
+    ]
+
+
+class STARTUPINFOEXW(ctypes.Structure):
+    _fields_ = [
+        ("StartupInfo", STARTUPINFOW),
+        ("lpAttributeList", HANDLE),
+    ]
+
+
+class PROCESS_INFORMATION(ctypes.Structure):
+    _fields_ = [
+        ("hProcess", HANDLE),
+        ("hThread", HANDLE),
+        ("dwProcessId", DWORD),
+        ("dwThreadId", DWORD),
+    ]
+
+
+class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+    _fields_ = [
+        ("PerProcessUserTimeLimit", ctypes.c_longlong),
+        ("PerJobUserTimeLimit", ctypes.c_longlong),
+        ("LimitFlags", DWORD),
+        ("MinimumWorkingSetSize", SIZE_T),
+        ("MaximumWorkingSetSize", SIZE_T),
+        ("ActiveProcessLimit", DWORD),
+        ("Affinity", ULONG_PTR),
+        ("PriorityClass", DWORD),
+        ("SchedulingClass", DWORD),
+    ]
+
+
+class IO_COUNTERS(ctypes.Structure):
+    _fields_ = [
+        ("ReadOperationCount", ctypes.c_uint64),
+        ("WriteOperationCount", ctypes.c_uint64),
+        ("OtherOperationCount", ctypes.c_uint64),
+        ("ReadTransferCount", ctypes.c_uint64),
+        ("WriteTransferCount", ctypes.c_uint64),
+        ("OtherTransferCount", ctypes.c_uint64),
+    ]
+
+
+class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+    _fields_ = [
+        ("BasicLimitInformation", JOBOBJECT_BASIC_LIMIT_INFORMATION),
+        ("IoInfo", IO_COUNTERS),
+        ("ProcessMemoryLimit", SIZE_T),
+        ("JobMemoryLimit", SIZE_T),
+        ("PeakProcessMemoryUsed", SIZE_T),
+        ("PeakJobMemoryUsed", SIZE_T),
+    ]
+
+
+class JOBOBJECT_BASIC_ACCOUNTING_INFORMATION(ctypes.Structure):
+    _fields_ = [
+        ("TotalUserTime", ctypes.c_longlong),
+        ("TotalKernelTime", ctypes.c_longlong),
+        ("ThisPeriodTotalUserTime", ctypes.c_longlong),
+        ("ThisPeriodTotalKernelTime", ctypes.c_longlong),
+        ("TotalPageFaultCount", DWORD),
+        ("TotalProcesses", DWORD),
+        ("ActiveProcesses", DWORD),
+        ("TotalTerminatedProcesses", DWORD),
+    ]
+
+
+def _win_error(operation: str) -> WindowsPsecError:
+    return WindowsPsecError(f"{operation} failed (WinError {ctypes.get_last_error()})")
+
+
+def _load_system_dll(name: str):
+    return ctypes.WinDLL(name, use_last_error=True, winmode=LOAD_LIBRARY_SEARCH_SYSTEM32)
+
+
+def _configure_kernel32(kernel32):
+    kernel32.CreateJobObjectW.argtypes = [HANDLE, ctypes.c_wchar_p]
+    kernel32.CreateJobObjectW.restype = HANDLE
+    kernel32.SetInformationJobObject.argtypes = [HANDLE, ctypes.c_int, HANDLE, DWORD]
+    kernel32.SetInformationJobObject.restype = BOOL
+    kernel32.CreatePipe.argtypes = [
+        ctypes.POINTER(HANDLE), ctypes.POINTER(HANDLE),
+        ctypes.POINTER(SECURITY_ATTRIBUTES), DWORD,
+    ]
+    kernel32.CreatePipe.restype = BOOL
+    kernel32.SetHandleInformation.argtypes = [HANDLE, DWORD, DWORD]
+    kernel32.SetHandleInformation.restype = BOOL
+    kernel32.CreateFileW.argtypes = [
+        ctypes.c_wchar_p, DWORD, DWORD, ctypes.POINTER(SECURITY_ATTRIBUTES),
+        DWORD, DWORD, HANDLE,
+    ]
+    kernel32.CreateFileW.restype = HANDLE
+    kernel32.InitializeProcThreadAttributeList.argtypes = [HANDLE, DWORD, DWORD, ctypes.POINTER(SIZE_T)]
+    kernel32.InitializeProcThreadAttributeList.restype = BOOL
+    kernel32.UpdateProcThreadAttribute.argtypes = [
+        HANDLE, DWORD, ULONG_PTR, HANDLE, SIZE_T, HANDLE, ctypes.POINTER(SIZE_T),
+    ]
+    kernel32.UpdateProcThreadAttribute.restype = BOOL
+    kernel32.DeleteProcThreadAttributeList.argtypes = [HANDLE]
+    kernel32.DeleteProcThreadAttributeList.restype = None
+    kernel32.CreateProcessW.argtypes = [
+        ctypes.c_wchar_p, ctypes.c_wchar_p, HANDLE, HANDLE, BOOL, DWORD,
+        HANDLE, ctypes.c_wchar_p, HANDLE, ctypes.POINTER(PROCESS_INFORMATION),
+    ]
+    kernel32.CreateProcessW.restype = BOOL
+    kernel32.AssignProcessToJobObject.argtypes = [HANDLE, HANDLE]
+    kernel32.AssignProcessToJobObject.restype = BOOL
+    kernel32.ResumeThread.argtypes = [HANDLE]
+    kernel32.ResumeThread.restype = DWORD
+    kernel32.QueryInformationJobObject.argtypes = [
+        HANDLE, ctypes.c_int, HANDLE, DWORD, ctypes.POINTER(DWORD),
+    ]
+    kernel32.QueryInformationJobObject.restype = BOOL
+    kernel32.GetExitCodeProcess.argtypes = [HANDLE, ctypes.POINTER(DWORD)]
+    kernel32.GetExitCodeProcess.restype = BOOL
+    kernel32.TerminateJobObject.argtypes = [HANDLE, DWORD]
+    kernel32.TerminateJobObject.restype = BOOL
+    kernel32.TerminateProcess.argtypes = [HANDLE, DWORD]
+    kernel32.TerminateProcess.restype = BOOL
+    kernel32.WaitForSingleObject.argtypes = [HANDLE, DWORD]
+    kernel32.WaitForSingleObject.restype = DWORD
+    kernel32.CloseHandle.argtypes = [HANDLE]
+    kernel32.CloseHandle.restype = BOOL
+
+
+def _environment_block(environment: Mapping[str, str]):
+    normalized = {}
+    for key, value in environment.items():
+        if (not isinstance(key, str) or not key or "=" in key or "\x00" in key
+                or not isinstance(value, str) or "\x00" in value):
+            raise WindowsPsecError("sandbox environment contains an invalid entry")
+        folded = key.casefold()
+        if folded in normalized:
+            raise WindowsPsecError("sandbox environment contains duplicate variable names")
+        normalized[folded] = (key, value)
+    entries = [f"{key}={value}" for key, value in sorted(normalized.values(), key=lambda pair: pair[0].casefold())]
+    return ctypes.create_unicode_buffer("\x00".join(entries) + "\x00\x00")
+
+
+def _trusted_directory(value: str | os.PathLike, label: str) -> Path:
+    raw = Path(value)
+    if not raw.is_absolute():
+        raise WindowsPsecError(f"{label} must be absolute")
+    current = Path(raw.anchor)
+    for part in raw.parts[1:]:
+        current = current / part
+        try:
+            if current.is_symlink() or (hasattr(current, "is_junction") and current.is_junction()):
+                raise WindowsPsecError(f"{label} path contains a reparse point")
+        except OSError:
+            raise WindowsPsecError(f"{label} path cannot be inspected") from None
+    try:
+        resolved = raw.resolve(strict=True)
+    except (OSError, RuntimeError):
+        raise WindowsPsecError(f"{label} is unavailable") from None
+    if resolved != raw or not resolved.is_dir():
+        raise WindowsPsecError(f"{label} must be a canonical directory")
+    return resolved
+
+
+def _runtime_root(executable: str) -> Path:
+    binary = Path(executable).resolve(strict=True)
+    if not binary.is_file():
+        raise WindowsPsecError("sandbox executable is not a regular file")
+    parent = binary.parent
+    if parent.name.casefold() in {"cmd", "bin", "scripts"}:
+        return parent.parent
+    return parent
+
+
+def _existing_directories(values: Sequence[str | os.PathLike]) -> tuple[str, ...]:
+    result = []
+    seen = set()
+    for value in values:
+        if not value:
+            continue
+        try:
+            path = Path(value).resolve(strict=True)
+        except (OSError, RuntimeError):
+            continue
+        if not path.is_dir():
+            continue
+        key = str(path).casefold()
+        if key not in seen:
+            seen.add(key)
+            result.append(str(path))
+    return tuple(result)
+
+
+def _build_environment_spec(workspace: Path, scratch: Path, executable: str) -> bytes:
+    runtime_root = _runtime_root(executable)
+    system_root = os.environ.get("SYSTEMROOT") or os.environ.get("SystemRoot")
+    if not system_root:
+        raise WindowsPsecError("SYSTEMROOT is unavailable")
+    system_root_path = Path(system_root).resolve(strict=True)
+    system_directories = _existing_directories((
+        system_root_path / "System32",
+        system_root_path / "WinSxS",
+        system_root_path / "SysWOW64",
+    ))
+    read_only = _existing_directories((workspace, runtime_root, *system_directories))
+    denied = _existing_directories((
+        os.environ.get("USERPROFILE"),
+        os.environ.get("PROGRAMDATA"),
+        os.environ.get("PUBLIC"),
+        tempfile.gettempdir(),
+        system_root_path / "Temp",
+    ))
+    enumerate_paths = tuple((*read_only, str(scratch)))
+    return build_psec_spec(
+        read_only_paths=read_only,
+        read_write_paths=(str(scratch),),
+        denied_paths=denied,
+        enumerate_paths=enumerate_paths,
+        disallow_win32k_system_calls=True,
+        ui_restrictions=0x3FF,
+    )
+
+
+class WindowsPsecProcess:
+    """Popen-like process facade whose liveness tracks the entire Job Object."""
+
+    def __init__(self, *, kernel32, process_handle, job_handle, psec_dll,
+                 psec_handle, stdout, pid: int, args: Sequence[str]):
+        self._kernel32 = kernel32
+        self._process_handle = process_handle
+        self._job_handle = job_handle
+        self._psec_dll = psec_dll
+        self._psec_handle = psec_handle
+        self.stdout = stdout
+        self.pid = pid
+        self.args = tuple(args)
+        self.returncode = None
+        self._closed = False
+
+    def _active_processes(self) -> int:
+        info = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION()
+        if not self._kernel32.QueryInformationJobObject(
+            self._job_handle,
+            JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION,
+            ctypes.byref(info),
+            ctypes.sizeof(info),
+            None,
+        ):
+            raise _win_error("QueryInformationJobObject")
+        return int(info.ActiveProcesses)
+
+    def poll(self):
+        if self.returncode is not None:
+            return self.returncode
+        if self._active_processes() > 0:
+            return None
+        exit_code = DWORD()
+        if not self._kernel32.GetExitCodeProcess(self._process_handle, ctypes.byref(exit_code)):
+            raise _win_error("GetExitCodeProcess")
+        if exit_code.value == STILL_ACTIVE:
+            return None
+        self.returncode = int(exit_code.value)
+        return self.returncode
+
+    def wait(self, timeout: float | None = None):
+        deadline = None if timeout is None else time.monotonic() + timeout
+        while True:
+            result = self.poll()
+            if result is not None:
+                return result
+            if deadline is not None and time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired(self.args, timeout)
+            time.sleep(0.05)
+
+    def terminate_tree(self):
+        if self.poll() is None:
+            if not self._kernel32.TerminateJobObject(self._job_handle, 1):
+                raise _win_error("TerminateJobObject")
+
+    def kill(self):
+        self.terminate_tree()
+
+    def close(self):
+        if self._closed:
+            return
+        try:
+            if self.poll() is None:
+                self.terminate_tree()
+                try:
+                    self.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    # Closing a KILL_ON_JOB_CLOSE handle remains the final
+                    # fail-safe if TerminateJobObject or wait cannot complete.
+                    pass
+        finally:
+            try:
+                if self.stdout:
+                    self.stdout.close()
+            finally:
+                if self._process_handle:
+                    self._kernel32.CloseHandle(self._process_handle)
+                    self._process_handle = None
+                if self._job_handle:
+                    self._kernel32.CloseHandle(self._job_handle)
+                    self._job_handle = None
+                if self._psec_handle:
+                    self._psec_dll.CloseProcessSecurityEnvironment(self._psec_handle)
+                    self._psec_handle = None
+                self._closed = True
+
+
+class WindowsPsecLauncher:
+    """Launch one fixed command inside PSEC with a kill-on-close Job Object."""
+
+    def __init__(self):
+        if os.name != "nt":
+            raise WindowsPsecError("Windows PSEC launcher is supported only on Windows")
+        assessment = probe_psec()
+        if assessment.state != "READY_FOR_ACCEPTANCE":
+            raise WindowsPsecError("required Windows PSEC v1.1 API features are unavailable")
+        self.kernel32 = _load_system_dll("kernel32.dll")
+        _configure_kernel32(self.kernel32)
+        self.psec_dll = _load_system_dll("processmodel.dll")
+
+    def launch(
+        self,
+        command: Sequence[str],
+        *,
+        workspace: str | os.PathLike,
+        scratch: str | os.PathLike,
+        environment: Mapping[str, str],
+    ) -> WindowsPsecProcess:
+        if not command or any(not isinstance(item, str) or "\x00" in item for item in command):
+            raise WindowsPsecError("sandbox command is invalid")
+        if not Path(command[0]).is_absolute():
+            raise WindowsPsecError("sandbox executable must be an absolute path")
+        work = _trusted_directory(workspace, "Project Workspace")
+        temp = _trusted_directory(scratch, "Terminal scratch")
+        if work == temp or work in temp.parents or temp in work.parents:
+            raise WindowsPsecError("workspace and scratch must be separate directory trees")
+
+        env = dict(environment)
+        runtime_root = _runtime_root(command[0])
+        system_root = os.environ.get("SYSTEMROOT") or os.environ.get("SystemRoot")
+        if not system_root:
+            raise WindowsPsecError("SYSTEMROOT is unavailable")
+        system32 = Path(system_root) / "System32"
+        env["SYSTEMROOT"] = system_root
+        env["HOME"] = str(temp)
+        env["USERPROFILE"] = str(temp)
+        env["TEMP"] = str(temp)
+        env["TMP"] = str(temp)
+        env["PATH"] = ";".join(_existing_directories((runtime_root, system32)))
+
+        specification = _build_environment_spec(work, temp, command[0])
+        create = self.psec_dll.CreateProcessSecurityEnvironment
+        create.argtypes = [
+            ctypes.c_void_p, DWORD, DWORD, ctypes.POINTER(HANDLE),
+        ]
+        create.restype = ctypes.c_long
+        close_psec = self.psec_dll.CloseProcessSecurityEnvironment
+        close_psec.argtypes = [HANDLE]
+        close_psec.restype = None
+        specification_buffer = ctypes.create_string_buffer(specification, len(specification))
+        psec_handle = HANDLE()
+        hr = int(create(
+            ctypes.cast(specification_buffer, HANDLE),
+            len(specification),
+            0,
+            ctypes.byref(psec_handle),
+        ))
+        if hr < 0 or not psec_handle.value:
+            raise WindowsPsecError(
+                f"CreateProcessSecurityEnvironment failed (HRESULT 0x{hr & 0xffffffff:08x})"
+            )
+
+        kernel32 = self.kernel32
+        job_handle = HANDLE()
+        stdout_read = HANDLE()
+        stdout_write = HANDLE()
+        stdin_handle = HANDLE()
+        process_info = PROCESS_INFORMATION()
+        attribute_buffer = None
+        attribute_list = HANDLE()
+        attribute_list_initialized = False
+        stdout_file = None
+        process_created = False
+        try:
+            job_handle = kernel32.CreateJobObjectW(None, None)
+            if not job_handle:
+                raise _win_error("CreateJobObjectW")
+            limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+            limits.BasicLimitInformation.LimitFlags = (
+                JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_ACTIVE_PROCESS
+            )
+            limits.BasicLimitInformation.ActiveProcessLimit = 16
+            if not kernel32.SetInformationJobObject(
+                job_handle,
+                JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                ctypes.byref(limits),
+                ctypes.sizeof(limits),
+            ):
+                raise _win_error("SetInformationJobObject")
+
+            security = SECURITY_ATTRIBUTES(
+                ctypes.sizeof(SECURITY_ATTRIBUTES), None, 1
+            )
+            if not kernel32.CreatePipe(
+                ctypes.byref(stdout_read), ctypes.byref(stdout_write),
+                ctypes.byref(security), 0,
+            ):
+                raise _win_error("CreatePipe")
+            if not kernel32.SetHandleInformation(stdout_read, HANDLE_FLAG_INHERIT, 0):
+                raise _win_error("SetHandleInformation(stdout read)")
+            stdin_handle = kernel32.CreateFileW(
+                "NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                ctypes.byref(security), OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, None,
+            )
+            if not stdin_handle or stdin_handle == INVALID_HANDLE_VALUE:
+                raise _win_error("CreateFileW(NUL)")
+
+            attribute_size = SIZE_T(0)
+            kernel32.InitializeProcThreadAttributeList(None, 2, 0, ctypes.byref(attribute_size))
+            if not attribute_size.value:
+                raise _win_error("InitializeProcThreadAttributeList(size)")
+            attribute_buffer = ctypes.create_string_buffer(attribute_size.value)
+            attribute_list = ctypes.cast(attribute_buffer, HANDLE)
+            if not kernel32.InitializeProcThreadAttributeList(
+                attribute_list, 2, 0, ctypes.byref(attribute_size)
+            ):
+                raise _win_error("InitializeProcThreadAttributeList")
+            attribute_list_initialized = True
+
+            if not kernel32.UpdateProcThreadAttribute(
+                attribute_list, 0, PROC_THREAD_ATTRIBUTE_SECURITY_ENVIRONMENT,
+                ctypes.byref(psec_handle), ctypes.sizeof(psec_handle), None, None,
+            ):
+                raise _win_error("UpdateProcThreadAttribute(PSEC)")
+            inherited_handles = (HANDLE * 2)(stdin_handle, stdout_write)
+            if not kernel32.UpdateProcThreadAttribute(
+                attribute_list, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                ctypes.byref(inherited_handles), ctypes.sizeof(inherited_handles), None, None,
+            ):
+                raise _win_error("UpdateProcThreadAttribute(HANDLE_LIST)")
+
+            startup = STARTUPINFOEXW()
+            startup.StartupInfo.cb = ctypes.sizeof(STARTUPINFOEXW)
+            startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES
+            startup.StartupInfo.hStdInput = stdin_handle
+            startup.StartupInfo.hStdOutput = stdout_write
+            startup.StartupInfo.hStdError = stdout_write
+            startup.lpAttributeList = attribute_list
+
+            command_line = ctypes.create_unicode_buffer(subprocess.list2cmdline(list(command)))
+            environment_block = _environment_block(env)
+            if not kernel32.CreateProcessW(
+                command[0],
+                command_line,
+                None,
+                None,
+                True,
+                CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT
+                | EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW,
+                ctypes.cast(environment_block, HANDLE),
+                str(work),
+                ctypes.byref(startup),
+                ctypes.byref(process_info),
+            ):
+                raise _win_error("CreateProcessW(PSEC)")
+
+            process_created = True
+            kernel32.CloseHandle(stdin_handle)
+            stdin_handle = None
+            kernel32.CloseHandle(stdout_write)
+            stdout_write = None
+            kernel32.DeleteProcThreadAttributeList(attribute_list)
+            attribute_list_initialized = False
+
+            if not kernel32.AssignProcessToJobObject(job_handle, process_info.hProcess):
+                raise _win_error("AssignProcessToJobObject")
+            previous_suspend_count = kernel32.ResumeThread(process_info.hThread)
+            if previous_suspend_count == 0xFFFFFFFF:
+                raise _win_error("ResumeThread")
+            kernel32.CloseHandle(process_info.hThread)
+            process_info.hThread = None
+
+            import msvcrt
+            descriptor = msvcrt.open_osfhandle(
+                int(stdout_read), os.O_RDONLY | os.O_BINARY
+            )
+            stdout_file = os.fdopen(descriptor, "rb", buffering=0)
+            stdout_read = None
+            return WindowsPsecProcess(
+                kernel32=kernel32,
+                process_handle=process_info.hProcess,
+                job_handle=job_handle,
+                psec_dll=self.psec_dll,
+                psec_handle=psec_handle,
+                stdout=stdout_file,
+                pid=int(process_info.dwProcessId),
+                args=command,
+            )
+        except Exception:
+            if process_created and process_info.hProcess:
+                if job_handle:
+                    kernel32.TerminateJobObject(job_handle, 1)
+                else:
+                    kernel32.TerminateProcess(process_info.hProcess, 1)
+                kernel32.WaitForSingleObject(process_info.hProcess, 5000)
+            if stdout_file:
+                stdout_file.close()
+            for handle in (stdout_read, stdout_write, stdin_handle):
+                if handle:
+                    kernel32.CloseHandle(handle)
+            if process_info.hThread:
+                kernel32.CloseHandle(process_info.hThread)
+            if process_info.hProcess:
+                kernel32.CloseHandle(process_info.hProcess)
+            if attribute_list_initialized:
+                kernel32.DeleteProcThreadAttributeList(attribute_list)
+            if job_handle:
+                kernel32.CloseHandle(job_handle)
+            close_psec(psec_handle)
+            raise
