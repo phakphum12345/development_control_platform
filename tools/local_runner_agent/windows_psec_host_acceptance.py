@@ -378,6 +378,8 @@ def main() -> int:
             child_process_token = policy_results.get("child_process_token", {})
             app_container_sid = child_process_token.get("app_container_sid")
             filesystem_acl = {
+                "acceptance_parent": _filesystem_acl(_acceptance_parent()),
+                "temporary_root": _filesystem_acl(root),
                 "workspace_directory": _filesystem_acl(workspace),
                 "workspace_read_file": _filesystem_acl(workspace / "read.txt"),
                 "scratch_directory": _filesystem_acl(scratch),
