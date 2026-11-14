@@ -444,8 +444,10 @@ class WindowsPsecLauncher:
 
         specification = _build_environment_spec(work, temp, command[0])
         create = self.psec_dll.CreateProcessSecurityEnvironment
+        # Microsoft ABI: (BYTE *specification, UINT32 size, HANDLE *environment).
+        # The output handle is the third argument; there is no flags parameter.
         create.argtypes = [
-            ctypes.c_void_p, DWORD, DWORD, ctypes.POINTER(HANDLE),
+            ctypes.c_void_p, DWORD, ctypes.POINTER(HANDLE),
         ]
         create.restype = ctypes.c_long
         close_psec = self.psec_dll.CloseProcessSecurityEnvironment
@@ -456,7 +458,6 @@ class WindowsPsecLauncher:
         hr = int(create(
             ctypes.cast(specification_buffer, HANDLE),
             len(specification),
-            0,
             ctypes.byref(psec_handle),
         ))
         if hr < 0 or not psec_handle.value:
