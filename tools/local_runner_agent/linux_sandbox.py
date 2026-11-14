@@ -119,6 +119,7 @@ class LinuxBubblewrapLauncher:
         argv: list[str] | tuple[str, ...],
         workspace: str | os.PathLike,
         scratch: str | os.PathLike,
+        environment: dict[str, str] | None = None,
     ) -> LinuxSandboxCommand:
         work = _trusted_directory(workspace, "assigned workspace")
         temp = _trusted_directory(scratch, "per-job scratch")
@@ -164,9 +165,22 @@ class LinuxBubblewrapLauncher:
                 "--bind", str(temp), "/tmp",
                 "--chdir", "/workspace",
                 "--clearenv",
-                "--setenv", "PATH", "/usr/bin:/bin",
+                "--setenv", "PATH", "/usr/bin",
                 "--setenv", "HOME", "/tmp",
                 "--setenv", "LANG", "C.UTF-8",
+            ])
+            for name, value in (environment or {}).items():
+                allowed = (
+                    name in {"CI", "PYTHONDONTWRITEBYTECODE", "PYTHONNOUSERSITE", "PAGER",
+                             "GIT_OPTIONAL_LOCKS", "GIT_TERMINAL_PROMPT", "GIT_CONFIG_NOSYSTEM",
+                             "GIT_ATTR_NOSYSTEM", "GIT_PAGER", "GIT_CONFIG_COUNT"}
+                    or name.startswith("GIT_CONFIG_KEY_")
+                    or name.startswith("GIT_CONFIG_VALUE_")
+                )
+                if not allowed or not isinstance(value, str) or "\\x00" in value:
+                    raise LinuxSandboxError("sandbox environment contains an unsupported variable")
+                command.extend(["--setenv", name, value])
+            command.extend([
                 "--seccomp", str(fd),
                 "--",
                 str(binary),
