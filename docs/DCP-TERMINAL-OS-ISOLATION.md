@@ -97,3 +97,14 @@ on that actual host and exact helper build:
   https://github.com/containers/bubblewrap
 - Apple, App Sandbox:
   https://developer.apple.com/documentation/security/app-sandbox
+
+
+## WP-18A implementation checkpoint — Linux bubblewrap command builder
+
+- Added `tools/local_runner_agent/linux_sandbox.py` with a Linux-only bubblewrap command builder.
+- The builder uses explicit read-only `/usr`, optional read-only `/lib` and `/lib64`, a read-only assigned workspace at `/workspace`, a separate per-job scratch mount at `/tmp`, a private network namespace, PID/IPC/UTS/user namespaces, a cleared environment, and a seccomp BPF filter that denies socket-related syscalls and io_uring setup.
+- The user namespace is mapped to UID/GID 0 inside the namespace, all capabilities are dropped, and further user namespaces are disabled/asserted disabled. The host-side workspace remains read-only and scratch remains job-scoped.
+- Added `tests/test_linux_sandbox.py` for argument policy, seccomp program alignment, unsupported architectures, path validation and workspace/scratch separation. These are command-construction tests, not proof that the kernel accepted or enforced the sandbox.
+- Added the Linux policy tests to the Ubuntu/Windows Cross-platform Recovery Acceptance matrix. Windows marks this Linux-only test class skipped; that skip is not a Windows pass for Linux isolation.
+- The command builder is not yet integrated into TerminalScriptExecutor and no actual host acceptance has been run. Linux remains BLOCKED/READY_FOR_ACCEPTANCE only; `require_verified_isolation()` still blocks production execution. All seven built-in templates remain disabled.
+- Upstream behavior reference: bubblewrap's own option parser documents `--unshare-user`, `--uid`, `--gid`, `--unshare-net`, `--seccomp`, `--disable-userns` and `--cap-drop`: https://github.com/containers/bubblewrap/blob/main/bubblewrap.c
