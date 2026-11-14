@@ -17,7 +17,7 @@ from tools.local_runner_agent.windows_psec_security_descriptor_transaction impor
 PACKAGE_SID = "S-1-15-2-123-456-789"
 IDENTITY_A = HandleIdentity(1, "00" * 16, True, 0x10, 0)
 IDENTITY_B = HandleIdentity(1, "11" * 16, False, 0x80, 0)
-ORIGINAL = DescriptorSnapshot(True, False, b"ACL-ORIGINAL-BYTES", 0x1000, 1, 2, 1, True)
+ORIGINAL = DescriptorSnapshot(True, False, b"ACL-ORIGINAL-BYTES", 0x9004, 1, 2, 1, True)
 
 
 class FakeHandleSecurityApi:
@@ -266,7 +266,7 @@ class NativeSecurityDescriptorTransactionTests(unittest.TestCase):
         )
         self.assertEqual(result.state, "APPLIED_VERIFIED")
         self.assertEqual(api.states[10].dacl_bytes, ORIGINAL.dacl_bytes)
-        self.assertEqual(api.states[10].dacl_control_flags, 0x1400)
+        self.assertEqual(api.states[10].dacl_control_flags, 0x9404)
 
     def test_strict_profile_keeps_control_transition_fatal_through_rollback(self):
         class AutoInheritedFlagApi(FakeHandleSecurityApi):
