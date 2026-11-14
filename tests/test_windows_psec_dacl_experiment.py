@@ -30,8 +30,9 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
             self.skipTest(str(exc))
         self.assertEqual(result.filesystem.upper(), "NTFS")
         self.assertTrue(result.dacl_defaulted_before)
-        self.assertIn(result.outcome, ("PASS", "FAIL"))
+        self.assertEqual(result.outcome, "PASS", "FALSE DACL state failed exact round-trip")
         self.assertTrue(result.cleanup_verified)
+        self.assertEqual(result.process_handle_delta, 0, "process handle leak detected")
         self.assertGreater(result.volume_serial, 0)
         self.assertEqual(len(result.file_id), 32)
         self.assertIsInstance(result.dacl_defaulted_after_write, bool)
@@ -46,8 +47,11 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
             "control_flags": [result.control_flags_before, result.control_flags_after_write, result.control_flags_after_rollback],
             "dacl_bytes_hex": [result.dacl_bytes_before_hex, result.dacl_bytes_after_write_hex, result.dacl_bytes_after_rollback_hex],
             "api_errors": result.api_errors, "cleanup_verified": result.cleanup_verified,
+            "process_handles": [result.process_handles_before, result.process_handles_after],
+            "process_handle_delta": result.process_handle_delta,
         }, default=str))
         self.assertEqual(result.outcome, "PASS", "TRUE DACL defaulted state did not round-trip exactly")
+        self.assertEqual(result.process_handle_delta, 0, "process handle leak detected")
 
 
     def test_ambiguous_native_write_error_still_attempts_rollback_and_cleanup(self):
@@ -66,6 +70,7 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         self.assertEqual(calls["count"], 2, "rollback must run after an ambiguous write error")
         self.assertIn("injected error after native SetSecurityInfo", result.api_errors)
         self.assertEqual(result.outcome, "FAIL")
+        self.assertEqual(result.process_handle_delta, 0, "process handle leak detected")
         self.assertTrue(experiment.last_cleanup_verified)
         self.assertTrue(result.cleanup_verified)
 
