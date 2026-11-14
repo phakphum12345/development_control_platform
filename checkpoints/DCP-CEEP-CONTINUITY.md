@@ -262,3 +262,13 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - GitHub Actions were queued on the preceding code/test head; this continuity-only commit changes the exact SHA, so all CI gates must be rechecked on the new final PR head. The self-hosted Windows runner acceptance matrix remains SKIPPED when no eligible runner is online; SKIPPED is not PASS.
 - Next: wait for exact-head CI, inspect Windows recovery job logs including `DACL_EXPERIMENT_EVIDENCE`, fix any issues, then run the same command on the designated user Windows host. A TRUE-state skip is not a TRUE acceptance pass.
 - Native Writer remains BLOCKED; Terminal remains BLOCKED; all seven built-in templates remain DISABLED.
+
+
+## 2026-11-15 — WP-18B.1-K SetSecurityInfo flag-isolation matrix
+
+- PR #131 only; branch `work/wp18b1k-dacl-native-api-experiment-stack`; based on PR #130. PR #130 remains unchanged.
+- Latest preceding evidence from Windows Server 2025 / NTFS: FALSE write-only and round-trip preserved the 8-byte empty DACL and `DaclDefaulted=FALSE`, but descriptor control flags changed from `0x9004` to `0x9404`. The delta is `SE_DACL_AUTO_INHERITED (0x0400)`; inherited ACE count remained zero.
+- Added an isolated write-only flag matrix using separate disposable files: `DACL_SECURITY_INFORMATION (0x4)` versus `DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION (0x80000004)`.
+- Evidence records the exact native `SecurityInfo` mask in decimal and hex. The existing round-trip and ambiguous-write rollback cases retain the combined protected-DACL mask and their strict assertions.
+- The matrix is diagnostic: neither write-only observation can pass the round-trip acceptance gate. It does not relax exact control-state comparison.
+- No native execution or CI result is claimed by this checkpoint. Next: run portable tests, inspect exact-head CI logs, and then run the native matrix on Windows Server/Windows host. Keep Native Writer, Terminal, and all built-in templates BLOCKED; no merge or deployment.

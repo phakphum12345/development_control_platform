@@ -10,6 +10,8 @@ from unittest.mock import patch
 from tools.local_runner_agent.windows_psec_dacl_experiment import (
     DaclDefaultedNotExercised,
     DaclExperimentError,
+    DACL_ONLY_SECURITY_INFO,
+    DACL_AND_PROTECTED_SECURITY_INFO,
     WindowsDaclDefaultedExperiment,
 )
 
@@ -24,6 +26,10 @@ def _emit_evidence(label, result):
         "volume_serial": result.volume_serial,
         "file_id": result.file_id,
         "outcome": result.outcome,
+        "set_security_info_flags": {
+            "decimal": result.security_info_flags,
+            "hex": hex(result.security_info_flags),
+        },
         "dacl_defaulted": {
             "after_create": result.dacl_defaulted_before,
             "after_write": result.dacl_defaulted_after_write,
@@ -101,14 +107,17 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         self.assertEqual(len(result.file_id), 32)
         self.assertIsInstance(result.dacl_defaulted_after_write, bool)
 
-    def test_write_only_observation_is_separate_from_rollback(self):
-        # A fresh disposable file is used; this run intentionally performs
-        # no rollback so the post-SetSecurityInfo state is independently visible.
-        result = WindowsDaclDefaultedExperiment().run(defaulted=False, rollback=False)
-        _emit_evidence("FALSE_WRITE_ONLY", result)
+    def _assert_write_only_flag_case(self, security_info_flags, label):
+        # Each API flag combination receives a fresh disposable file.
+        result = WindowsDaclDefaultedExperiment().run(
+            defaulted=False, rollback=False,
+            security_info_flags=security_info_flags,
+        )
+        _emit_evidence(label, result)
         self.assertEqual(result.filesystem.upper(), "NTFS")
         self.assertFalse(result.dacl_defaulted_before)
         self.assertEqual(result.outcome, "OBSERVED")
+        self.assertEqual(result.security_info_flags, security_info_flags)
         self.assertFalse(result.rollback_attempted)
         self.assertIsNotNone(result.dacl_bytes_after_write_hex)
         self.assertFalse(result.api_errors)
@@ -119,6 +128,16 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         self.assertTrue(result.owned_handle_closed)
         self.assertIs(result.close_handle_succeeded, True)
 
+    def test_write_only_dacl_security_information_only(self):
+        self._assert_write_only_flag_case(
+            DACL_ONLY_SECURITY_INFO, "FALSE_WRITE_ONLY_DACL_ONLY"
+        )
+
+    def test_write_only_dacl_plus_protected_security_information(self):
+        self._assert_write_only_flag_case(
+            DACL_AND_PROTECTED_SECURITY_INFO, "FALSE_WRITE_ONLY_DACL_PLUS_PROTECTED"
+        )
+
     def test_ambiguous_native_write_error_still_attempts_rollback_and_cleanup(self):
         experiment = WindowsDaclDefaultedExperiment()
         original_write = experiment._write_dacl
@@ -126,7 +145,7 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
 
         def fail_after_native_write(handle, snapshot):
             calls["count"] += 1
-            original_write(handle, snapshot)
+            original_write(handle, snapshot, security_info_flags=DACL_AND_PROTECTED_SECURITY_INFO)
             if calls["count"] == 1:
                 raise OSError("injected error after native SetSecurityInfo")
 
