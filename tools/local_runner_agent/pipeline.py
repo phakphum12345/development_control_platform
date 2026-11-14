@@ -81,6 +81,15 @@ class RunnerPipeline:
         runner = self.client.register(self.worker_os, sorted(self.capabilities))
         if runner.get("state") != "online":
             raise ExecutionError("Runner is draining or offline and cannot claim new work")
+        try:
+            self.workspaces.cleanup_expired_preview_workspaces()
+            status_provider = getattr(self.client, "workspace_cleanup_status", None)
+            if callable(status_provider):
+                self.workspaces.reconcile_terminal_workspaces(status_provider)
+        except WorkspaceError:
+            raise ExecutionError(
+                "Runner workspace reconciliation failed; refusing new job claims"
+            ) from None
         job = self.client.claim(lease_seconds=300)
         if job is None:
             return None
@@ -163,7 +172,6 @@ class RunnerPipeline:
                     raise TerminalExecutionError("Runner received an unsupported Terminal grant scope")
             else:
                 raise ExecutionError("job source type is not supported by this Runner")
-            self.workspaces.cleanup_expired_preview_workspaces()
             self.workspaces.create(job_id, worker_id)
             allocated = True
             self.client.append_log(job_id, "Runner claimed job; workspace allocated", "system")
