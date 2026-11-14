@@ -156,9 +156,17 @@ class WindowsNativeHandleApi:
         self.kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
         self.kernel32.CloseHandle.restype = wintypes.BOOL
 
-    def open_child(self, parent_handle: int, name: str, *, directory: bool) -> OpenedObject:
+    def open_child(
+        self, parent_handle: int, expected_parent_identity: HandleIdentity,
+        name: str, *, directory: bool,
+    ) -> OpenedObject:
         if not parent_handle or parent_handle in (0, ctypes.c_void_p(-1).value):
             raise NativeHandleAclError("a valid retained parent directory handle is required")
+        actual_parent_identity = self.query_identity(parent_handle)
+        if actual_parent_identity != expected_parent_identity:
+            raise NativeHandleAclError("retained parent identity changed before relative open")
+        if not actual_parent_identity.is_directory or actual_parent_identity.attributes & FILE_ATTRIBUTE_REPARSE_POINT:
+            raise NativeHandleAclError("parent handle is not a validated non-reparse directory")
         component = validate_relative_component(name)
         # Keep the backing UTF-16 buffer alive for the duration of NtCreateFile.
         name_buffer = ctypes.create_unicode_buffer(component)
