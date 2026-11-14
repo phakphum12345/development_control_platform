@@ -49,6 +49,16 @@ class ExperimentResult:
     cleanup_verified: bool
     volume_serial: int
     file_id: str
+    outcome: str
+    write_verified: bool
+    rollback_verified: bool
+    api_errors: tuple[str, ...]
+    dacl_bytes_before_hex: str
+    dacl_bytes_after_write_hex: str | None
+    dacl_bytes_after_rollback_hex: str | None
+    control_flags_before: int
+    control_flags_after_write: int | None
+    control_flags_after_rollback: int | None
 
 
 class _SECURITY_ATTRIBUTES(ctypes.Structure):
@@ -250,35 +260,54 @@ class WindowsDaclDefaultedExperiment:
                 and restored.dacl_defaulted == before.dacl_defaulted
                 and restored.dacl_control_flags == before.dacl_control_flags
             )
-            if write_error or readback_error or rollback_error or rollback_read_error:
-                raise DaclExperimentError(
-                    "experiment error: "
-                    f"write={write_error}; readback={readback_error}; "
-                    f"rollback_write={rollback_error}; rollback_read={rollback_read_error}; "
-                    f"after_defaulted={getattr(after, 'dacl_defaulted', None)}; "
-                    f"after_bytes_equal={(after.dacl_bytes == before.dacl_bytes) if after is not None else None}; "
-                    f"after_control={getattr(after, 'dacl_control_flags', None)}; "
-                    f"restored_defaulted={getattr(restored, 'dacl_defaulted', None)}; "
-                    f"rollback_equal={rollback_equal}"
-                )
-            if not rollback_equal:
-                raise DaclExperimentError(
-                    "rollback not verified: "
-                    f"after_defaulted={after.dacl_defaulted if after is not None else None}; "
-                    f"after_bytes_equal={(after.dacl_bytes == before.dacl_bytes) if after is not None else None}; "
-                    f"restored_defaulted={restored.dacl_defaulted if restored is not None else None}; "
-                    "DACL bytes/control state differ"
-                )
+            write_verified = bool(
+                after is not None
+                and after.dacl_bytes == before.dacl_bytes
+                and after.dacl_defaulted == before.dacl_defaulted
+                and after.dacl_control_flags == before.dacl_control_flags
+            )
+            rollback_equal = bool(
+                restored is not None
+                and restored.dacl_bytes == before.dacl_bytes
+                and restored.dacl_defaulted == before.dacl_defaulted
+                and restored.dacl_control_flags == before.dacl_control_flags
+            )
+            api_errors = tuple(
+                str(error) for error in
+                (write_error, readback_error, rollback_error, rollback_read_error)
+                if error is not None
+            )
+            outcome = "PASS" if write_verified and rollback_equal and not api_errors else "FAIL"
             result = ExperimentResult(
                 filesystem=filesystem,
                 dacl_defaulted_before=before.dacl_defaulted,
-                dacl_defaulted_after_write=after.dacl_defaulted,
-                dacl_bytes_equal_after_write=(after is not None and after.dacl_bytes == before.dacl_bytes),
-                dacl_defaulted_after_rollback=restored.dacl_defaulted,
+                dacl_defaulted_after_write=(after.dacl_defaulted if after is not None else None),
+                dacl_bytes_equal_after_write=(
+                    after is not None and after.dacl_bytes == before.dacl_bytes
+                ),
+                dacl_defaulted_after_rollback=(
+                    restored.dacl_defaulted if restored is not None else None
+                ),
                 dacl_bytes_equal_after_rollback=rollback_equal,
                 cleanup_verified=False,
                 volume_serial=identity_before.volume_serial,
                 file_id=identity_before.file_id,
+                outcome=outcome,
+                write_verified=write_verified,
+                rollback_verified=rollback_equal,
+                api_errors=api_errors,
+                dacl_bytes_before_hex=before.dacl_bytes.hex(),
+                dacl_bytes_after_write_hex=(after.dacl_bytes.hex() if after is not None else None),
+                dacl_bytes_after_rollback_hex=(
+                    restored.dacl_bytes.hex() if restored is not None else None
+                ),
+                control_flags_before=before.dacl_control_flags,
+                control_flags_after_write=(
+                    after.dacl_control_flags if after is not None else None
+                ),
+                control_flags_after_rollback=(
+                    restored.dacl_control_flags if restored is not None else None
+                ),
             )
         except Exception as exc:
             primary_error = exc
@@ -320,4 +349,14 @@ class WindowsDaclDefaultedExperiment:
             cleanup_verified=True,
             volume_serial=result.volume_serial,
             file_id=result.file_id,
+            outcome=result.outcome,
+            write_verified=result.write_verified,
+            rollback_verified=result.rollback_verified,
+            api_errors=result.api_errors,
+            dacl_bytes_before_hex=result.dacl_bytes_before_hex,
+            dacl_bytes_after_write_hex=result.dacl_bytes_after_write_hex,
+            dacl_bytes_after_rollback_hex=result.dacl_bytes_after_rollback_hex,
+            control_flags_before=result.control_flags_before,
+            control_flags_after_write=result.control_flags_after_write,
+            control_flags_after_rollback=result.control_flags_after_rollback,
         )
