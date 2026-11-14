@@ -145,3 +145,21 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Added Linux-only detached-child timeout test using bubblewrap parent-death/PID-namespace containment. Exact-head CI for this WP-18C branch has not yet run.
 - Current WP-18C branch head: `3fb72e498d7b3b1decda44a16f054532e04ce50f`.
 - No merge, deployment, template enablement or deletion is authorized. Continue with tests, exact-head CI, Draft PR and evidence reconciliation; do not merge without separate explicit approval.
+
+
+## 2026-11-14 — WP-18C exact-head CI completion
+
+- PR #118: [feat(terminal): add conservative WP-18C recovery and descendant cleanup](https://github.com/phakphum12345/development_control_platform/pull/118), OPEN / DRAFT / NOT MERGED.
+- PR #118 is stacked on PR #117's branch `work/wp18a-linux-executor-integration`; base SHA `45b1650e740b4f4667ca21c793fab0d670c84a73`.
+- Code/test head before this ledger-only update: `a8a79cdf4f0a82b9dc55419f79fc0d8386de8554`.
+- Exact-head CI on `a8a79cdf4f0a82b9dc55419f79fc0d8386de8554`:
+  - Cross-platform Recovery Acceptance #168: PASS (Ubuntu and Windows jobs).
+  - Validate Control Plane #746: PASS.
+  - Local-first Minimal Emulator #532: PASS.
+  - Windows runner acceptance matrix: SKIPPED; no eligible self-hosted host acceptance Runner. SKIPPED is not PASS.
+- Linux executor suite: 23 tests PASS, including actual bubblewrap executor launch with seccomp FD inheritance and a forked child that calls `setsid()`; the child did not survive launcher termination.
+- Linux sandbox suite: 5 tests PASS, including actual bubblewrap filesystem/network/scratch boundary test.
+- Pipeline E2E verifies Gateway cleanup status is available only to the owning Runner. Workspace reconciliation tests verify that UNKNOWN, recent, mismatched, unavailable and preview-retained workspaces are preserved.
+- WP-18C remains PARTIAL: automatic cleanup is limited to Gateway-attested terminal Terminal jobs. UNKNOWN and LEASE_EXPIRED workspaces are intentionally preserved; this is not a universal orphan cleaner. Windows AppContainer/LPAC and macOS helper remain BLOCKED.
+- PR #117 remains OPEN / DRAFT / NOT MERGED; PR #116 remains its base dependency. No branch has been merged to main.
+- No user-host acceptance, deployment, template enablement or deletion was performed or authorized. After this ledger-only update, re-check exact-head CI on the new branch SHA before treating it as current evidence.
