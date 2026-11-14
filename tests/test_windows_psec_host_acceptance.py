@@ -58,6 +58,10 @@ class WindowsPsecHostAcceptanceTests(unittest.TestCase):
         self.assertEqual(run.call_args.args[0][0], r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")
         self.assertFalse(run.call_args.kwargs["shell"])
         self.assertEqual(run.call_args.kwargs["check"], False)
+        self.assertEqual(
+            run.call_args.kwargs["env"]["DCP_PSEC_ACL_PATH"],
+            r"C:\DCP\workspace",
+        )
 
     def test_non_windows_host_reports_blocked_without_loading_psec(self):
         if os.name == "nt":
