@@ -72,3 +72,18 @@
 ## Resume rule
 
 Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-check repository and exact current head before resuming after interruption. Preserve all branches and files; no deletion or deployment is authorized by this checkpoint.
+
+
+## 2026-11-14 — WP-00 source-driven inventory checkpoint
+
+- Latest verified main SHA for this inventory: `62d72bddd028399d0b96cd9c2f6e3b16a704b758` (PR #115 merge commit).
+- PR #115 is merged; it adds the fail-closed isolation contract, not a platform sandbox launcher.
+- Recursive tree: 289 entries / 265 blobs; 78 files under tools/, 86 under tests/, 58 under docs/, 7 GitHub Actions workflow files.
+- Open PR count and open issue count were both zero at baseline.
+- Created branch `work/wp00-remaining-inventory-wp18a-linux-isolation` from the exact main SHA above.
+- Added `docs/DCP-REMAINING-WORK-INVENTORY.md` in commit `34499a2816e1bba514f4e838efbfda72619b259b`.
+- Inventory currently groups 22 WPs (WP-00A–D, WP-18A–E, WP-19–WP-31). This is a work-package count, NOT the final atomic task count. WP-00 source/test/API/Dashboard traceability remains IN_PROGRESS.
+- Source inspection confirmed the artifact upload/download SHA-256 code and tamper tests already exist; remaining work is end-to-end provenance acceptance, not reimplementation of basic hashing.
+- Source inspection confirmed Terminal executor calls the fail-closed verifier before workspace resolution/process launch; no production platform launcher exists. All seven templates remain disabled.
+- Current branch head after inventory document: `34499a2816e1bba514f4e838efbfda72619b259b`.
+- Next exact action: continue WP-00B/00C source-to-test mapping, then implement Linux-only WP-18A behind a fail-closed boundary. Do not merge without explicit approval.
