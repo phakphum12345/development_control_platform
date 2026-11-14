@@ -30,7 +30,7 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
             self.skipTest(str(exc))
         self.assertEqual(result.filesystem.upper(), "NTFS")
         self.assertTrue(result.dacl_defaulted_before)
-        self.assertEqual(result.outcome, "PASS", "FALSE DACL state failed exact round-trip")
+        self.assertEqual(result.outcome, "PASS", "TRUE DACL defaulted state did not round-trip exactly")
         self.assertTrue(result.cleanup_verified)
         self.assertEqual(result.process_handle_delta, 0, "process handle leak detected")
         self.assertGreater(result.volume_serial, 0)
@@ -47,6 +47,8 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
             "control_flags": [result.control_flags_before, result.control_flags_after_write, result.control_flags_after_rollback],
             "dacl_bytes_hex": [result.dacl_bytes_before_hex, result.dacl_bytes_after_write_hex, result.dacl_bytes_after_rollback_hex],
             "api_errors": result.api_errors, "cleanup_verified": result.cleanup_verified,
+            "process_handles": [result.process_handles_before, result.process_handles_after],
+            "process_handle_delta": result.process_handle_delta,
             "process_handles": [result.process_handles_before, result.process_handles_after],
             "process_handle_delta": result.process_handle_delta,
         }, default=str))
@@ -78,9 +80,10 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         result = WindowsDaclDefaultedExperiment().run(defaulted=False)
         self.assertEqual(result.filesystem.upper(), "NTFS")
         self.assertFalse(result.dacl_defaulted_before)
-        self.assertIn(result.outcome, ("PASS", "FAIL"))
+        self.assertEqual(result.outcome, "PASS", "FALSE DACL state failed exact round-trip")
         self.assertEqual(result.dacl_defaulted_after_rollback, False)
         self.assertTrue(result.cleanup_verified)
+        self.assertEqual(result.process_handle_delta, 0, "process handle leak detected")
         self.assertGreater(result.volume_serial, 0)
         self.assertEqual(len(result.file_id), 32)
         self.assertIn(result.dacl_defaulted_after_write, (True, False))
