@@ -92,6 +92,13 @@ class ReversibleStatePreservationTests(unittest.TestCase):
         self.assertEqual(reader.query_calls, 0)
         self.assertEqual(reader.read_calls, 0)
 
+    def test_capture_from_retained_handle_rejects_invalid_transaction_before_reader_access(self):
+        reader = FakeRetainedHandleReader([IDENTITY, IDENTITY])
+        with self.assertRaises(ReversibleStateError):
+            capture_original_snapshot_from_handle(reader, 42, "invalid")
+        self.assertEqual(reader.query_calls, 0)
+        self.assertEqual(reader.read_calls, 0)
+
     def test_capture_from_retained_handle_wraps_reader_errors(self):
         class BrokenReader:
             def query_identity(self, handle):
