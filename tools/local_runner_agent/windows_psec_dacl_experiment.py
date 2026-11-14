@@ -14,6 +14,12 @@ from ctypes import wintypes
 from dataclasses import dataclass
 
 from .windows_psec_security_descriptor_reader import WindowsHandleSecurityReader
+from .windows_psec_dacl_comparison import DaclComparisonProfile
+from .windows_psec_reversible_state import (
+    TargetObjectIdentity,
+    capture_original_snapshot_from_handle,
+    verify_restoration_readback,
+)
 
 
 SE_FILE_OBJECT = 1
@@ -82,6 +88,10 @@ class ExperimentResult:
     rollback_attempted: bool = True
     control_flags_after_each_write: tuple[int, ...] = ()
     native_write_calls: int = 0
+    original_snapshot_transaction_id: str | None = None
+    original_snapshot_integrity_sha256: str | None = None
+    restoration_verification_state: str | None = None
+    restoration_verification_mismatches: tuple[str, ...] = ()
 
 
 class _SECURITY_ATTRIBUTES(ctypes.Structure):
@@ -311,7 +321,17 @@ class WindowsDaclDefaultedExperiment:
             identity_before = self._reader.query_identity(handle)
             if identity_before.is_directory or identity_before.attributes & 0x00000400:
                 raise DaclExperimentError("created probe handle is a directory or reparse point")
-            before = self._reader.read_dacl(handle)
+            original_snapshot = capture_original_snapshot_from_handle(
+                self._reader, handle, str(uuid.uuid4())
+            )
+            if not original_snapshot.verify_integrity():
+                raise DaclExperimentError("immutable original snapshot integrity verification failed")
+            if (
+                original_snapshot.target_identity.volume_serial != identity_before.volume_serial
+                or original_snapshot.target_identity.file_id != identity_before.file_id.casefold()
+            ):
+                raise DaclExperimentError("target identity changed before original snapshot capture")
+            before = original_snapshot.descriptor
             if defaulted and before.dacl_defaulted is not True:
                 raise DaclDefaultedNotExercised(
                     "NTFS did not retain DaclDefaulted=TRUE at creation; TRUE-state writer case NOT EXERCISED",
@@ -323,6 +343,8 @@ class WindowsDaclDefaultedExperiment:
                         "control_flags_after_create": before.dacl_control_flags,
                         "dacl_bytes_after_create_hex": before.dacl_bytes.hex(),
                         "inherited_ace_count_after_create": self._inherited_ace_count(before),
+                        "original_snapshot_transaction_id": original_snapshot.transaction_id,
+                        "original_snapshot_integrity_sha256": original_snapshot.integrity_sha256,
                     },
                 )
             if not before.dacl_present or before.dacl_is_null:
@@ -359,6 +381,7 @@ class WindowsDaclDefaultedExperiment:
             rollback_error = None
             rollback_read_error = None
             restored = None
+            restoration_verification = None
             if rollback:
                 try:
                     self._write_dacl(
@@ -368,8 +391,19 @@ class WindowsDaclDefaultedExperiment:
                     rollback_error = exc
                 try:
                     restored = self._reader.read_dacl(handle)
-                    if self._reader.query_identity(handle) != identity_before:
+                    identity_after_rollback = self._reader.query_identity(handle)
+                    if identity_after_rollback != identity_before:
                         raise DaclExperimentError("retained handle identity changed after rollback")
+                    restoration_verification = verify_restoration_readback(
+                        original_snapshot,
+                        transaction_id=original_snapshot.transaction_id,
+                        target_identity=TargetObjectIdentity(
+                            identity_after_rollback.volume_serial,
+                            identity_after_rollback.file_id,
+                        ),
+                        readback=restored,
+                        comparison_profile=DaclComparisonProfile.STRICT_DESCRIPTOR_EQUALITY,
+                    )
                 except Exception as exc:
                     rollback_read_error = exc
             write_verified = bool(
@@ -379,10 +413,8 @@ class WindowsDaclDefaultedExperiment:
                 and after.dacl_control_flags == before.dacl_control_flags
             )
             rollback_equal = bool(
-                restored is not None
-                and restored.dacl_bytes == before.dacl_bytes
-                and restored.dacl_defaulted == before.dacl_defaulted
-                and restored.dacl_control_flags == before.dacl_control_flags
+                restoration_verification is not None
+                and restoration_verification.state == "RESTORED_EXACT"
             )
             api_errors = tuple(
                 str(error) for error in
@@ -431,6 +463,14 @@ class WindowsDaclDefaultedExperiment:
                 rollback_attempted=bool(rollback),
                 control_flags_after_each_write=tuple(write_control_flags),
                 native_write_calls=native_write_calls,
+                original_snapshot_transaction_id=original_snapshot.transaction_id,
+                original_snapshot_integrity_sha256=original_snapshot.integrity_sha256,
+                restoration_verification_state=(
+                    restoration_verification.state if restoration_verification is not None else None
+                ),
+                restoration_verification_mismatches=(
+                    restoration_verification.mismatches if restoration_verification is not None else ()
+                ),
             )
         except Exception as exc:
             primary_error = exc
@@ -506,4 +546,8 @@ class WindowsDaclDefaultedExperiment:
             rollback_attempted=result.rollback_attempted,
             control_flags_after_each_write=result.control_flags_after_each_write,
             native_write_calls=result.native_write_calls,
+            original_snapshot_transaction_id=result.original_snapshot_transaction_id,
+            original_snapshot_integrity_sha256=result.original_snapshot_integrity_sha256,
+            restoration_verification_state=result.restoration_verification_state,
+            restoration_verification_mismatches=result.restoration_verification_mismatches,
         )
