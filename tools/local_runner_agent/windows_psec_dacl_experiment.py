@@ -236,8 +236,9 @@ class WindowsDaclDefaultedExperiment:
             if ace_flags & 0x10:  # INHERITED_ACE
                 inherited += 1
             offset += ace_size
-        if offset != declared_size:
-            raise DaclExperimentError("ACE traversal does not end at ACL declared size")
+        # A valid ACL may have unused capacity after the last ACE. The ACL
+        # header size bounds the buffer; ACE traversal must stay within it,
+        # but need not consume AclBytesFree.
         return inherited
 
     def _write_dacl(self, handle, snapshot):
