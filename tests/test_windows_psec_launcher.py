@@ -13,6 +13,7 @@ from tools.local_runner_agent.windows_psec_launcher import (
     WindowsPsecProcess,
     _apply_sandbox_profile_environment,
     _environment_block,
+    _require_app_container_token,
 )
 
 
@@ -139,6 +140,48 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
         )
         self.assertIs(process.token_diagnostics, evidence)
         process.close()
+
+    @staticmethod
+    def _captured_app_container_token():
+        return {
+            "state": "CAPTURED",
+            "captured_before_resume": True,
+            "is_app_container": True,
+            "app_container_sid": "S-1-15-2-123-456",
+            "user_sid": "S-1-5-21-1-2-3-1001",
+            "integrity_sid": "S-1-16-4096",
+            "elevation_type": 1,
+            "groups": [{"sid": "S-1-5-32-545", "attributes": 4}],
+            "capabilities": [],
+        }
+
+    def test_app_container_token_validation_accepts_complete_identity(self):
+        token = self._captured_app_container_token()
+        self.assertIs(_require_app_container_token(token), token)
+
+    def test_app_container_token_validation_rejects_incomplete_identity(self):
+        token = self._captured_app_container_token()
+        token.pop("capabilities")
+        with self.assertRaisesRegex(WindowsPsecError, "incomplete"):
+            _require_app_container_token(token)
+
+    def test_app_container_token_validation_rejects_non_app_container(self):
+        token = self._captured_app_container_token()
+        token["is_app_container"] = False
+        with self.assertRaisesRegex(WindowsPsecError, "not an AppContainer"):
+            _require_app_container_token(token)
+
+    def test_app_container_token_validation_rejects_invalid_package_sid(self):
+        token = self._captured_app_container_token()
+        token["app_container_sid"] = "S-1-15-2-not-a-sid"
+        with self.assertRaisesRegex(WindowsPsecError, "Package SID is invalid"):
+            _require_app_container_token(token)
+
+    def test_app_container_token_validation_requires_pre_resume_capture(self):
+        token = self._captured_app_container_token()
+        token["captured_before_resume"] = False
+        with self.assertRaisesRegex(WindowsPsecError, "before resume"):
+            _require_app_container_token(token)
 
     def test_process_termination_uses_job_object(self):
         kernel = FakeKernel32(active_processes=1)
