@@ -10,7 +10,13 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Protocol, Sequence
-\nfrom tools.local_runner_agent.windows_psec_dacl_comparison import (\n    DaclComparisonProfile,\n    dacl_states_equal,\n    resolve_dacl_comparison_profile,\n)\n
+
+from tools.local_runner_agent.windows_psec_dacl_comparison import (
+    DaclComparisonProfile,
+    dacl_states_equal,
+    resolve_dacl_comparison_profile,
+)
+
 
 _PACKAGE_SID_RE = re.compile(
     r"^S-1-15-2-(?:0|[1-9][0-9]{0,9})(?:-(?:0|[1-9][0-9]{0,9})){0,14}$",
