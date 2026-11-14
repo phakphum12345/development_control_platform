@@ -51,7 +51,14 @@ After the policy-creation probe reports READY, run the separate host acceptance 
 powershell -ExecutionPolicy Bypass -File .\scripts\Run-DCP-Windows-PSEC-Host-Acceptance.ps1
 ```
 
-Before running acceptance, set `DCP_PSEC_ACCEPTANCE_PARENT` to an existing writable directory on a local drive that does not overlap any denied root (for example, a dedicated directory on a separate data volume). The harness rejects a missing or overlapping parent before launching the payload; it does not weaken or remove any deny rule. Keep the host `%TEMP%` unchanged so it remains explicitly denied.
+Before running acceptance, create a dedicated writable directory on a local volume that is outside all denied roots, then set `DCP_PSEC_ACCEPTANCE_PARENT` to that directory. For example, when `D:\` is a writable data volume:
+
+```powershell
+New-Item -ItemType Directory -Force -Path 'D:\\DCP-PSEC-Acceptance' | Out-Null
+$env:DCP_PSEC_ACCEPTANCE_PARENT = 'D:\\DCP-PSEC-Acceptance'
+```
+
+The harness rejects a missing or overlapping parent before launching the payload; it does not weaken or remove any deny rule. Keep the host `%TEMP%` unchanged so it remains explicitly denied.
 
 The harness launches only fixed test payloads through `WindowsPsecLauncher`. It checks Project Workspace read access and write denial, per-job scratch write access, denial of a temporary canary file in the host user profile, loopback network denial (after verifying host loopback works outside the sandbox), and Job Object tracking/termination of a spawned descendant. It removes the canary and temporary directories in cleanup. The PowerShell wrapper records the JSON under artifacts/ with the exact repository HEAD and runner exit code; it does not commit or upload the evidence.
 
@@ -71,10 +78,10 @@ Microsoft's MXC process-container support matrix lists Windows 11 26H2 build 263
 
 ## Current blockers
 
-- No target Windows host process has yet been launched and accepted under PSEC by this repository.
-- Workspace read-only, scratch-only write, host-secret denial, network denial, Job Object descendant cleanup, timeout/cancellation, and Runner-crash cleanup require adversarial host tests.
-- PSEC's effective access-control semantics for denied parent paths with explicitly allowed workspace/scratch descendants must be verified on the target Windows build.
-- Windows host acceptance has not been run on the target machine.
+- Target Windows host acceptance ran on Windows 11 build 10.0.26300 at repository HEAD `48213cf42537b84bdd1885501793c893a8ec6b1c` and returned FAIL.
+- On that run, `workspace_read` and `scratch_write` both returned `PermissionError [Errno 13]`; host-profile denial, loopback denial, and Job Object descendant checks passed. Workspace read-only remains FAIL because the read prerequisite failed.
+- The acceptance fixture placed Workspace and Scratch under the host temporary directory, while the launcher explicitly denies that directory and the host profile. The harness now requires a separate, non-overlapping acceptance parent to isolate this path-overlap variable without weakening deny rules.
+- The updated acceptance harness must be rerun on the target Windows build and exact current branch HEAD. Timeout/cancellation and Runner-crash cleanup still require separate adversarial tests.
 - Built-in Terminal templates remain disabled. No direct-process fallback is permitted.
 
 ## References
