@@ -203,7 +203,6 @@ def _walk(source: Path, limits: ProjectionLimits, started: float
         except OSError as exc:
             raise ProjectionError("workspace directory cannot be enumerated") from exc
         _ensure_unique_names([entry.name for entry in entries])
-        _reject_alternate_data_streams(directory)
         for entry in entries:
             if time.monotonic() - started > limits.max_copy_seconds:
                 raise ProjectionError("workspace projection exceeded its time limit")
@@ -231,11 +230,14 @@ def _walk(source: Path, limits: ProjectionLimits, started: float
                 stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400
             ):
                 raise ProjectionError("workspace contains a symlink or reparse point")
-            _reject_alternate_data_streams(path)
             if stat.S_ISDIR(info.st_mode):
+                # FindFirstStreamW does not enumerate directory streams on
+                # Windows (it reports ERROR_HANDLE_EOF for directories).
+                # Enumerate named streams on regular files below instead.
                 yield path, relative, info
                 stack.append((path, relative))
             elif stat.S_ISREG(info.st_mode):
+                _reject_alternate_data_streams(path)
                 link_count = getattr(info, "st_nlink", 0)
                 if link_count != 1:
                     detail = ("cannot verify file hard-link count"
