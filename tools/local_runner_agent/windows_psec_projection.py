@@ -236,6 +236,9 @@ def create_workspace_projection(
         for src, relative, info in discovered:
             if stat.S_ISDIR(info.st_mode):
                 (projection / Path(relative)).mkdir(parents=True, exist_ok=True)
+                manifest.append(ManifestEntry(
+                    relative, "directory", 0, hashlib.sha256(b"").hexdigest()
+                ))
 
         for src, relative, before in discovered:
             if not stat.S_ISREG(before.st_mode):
@@ -281,9 +284,17 @@ def create_workspace_projection(
             staged = projection / Path(item.path)
             if staged.is_symlink() or _is_reparse(staged):
                 raise ProjectionError("staged projection contains a reparse point")
-            staged_hash, staged_size = _hash_file(staged, limits.chunk_bytes, deadline)
-            if staged_hash != item.sha256 or staged_size != item.size:
-                raise ProjectionError("staged projection manifest verification failed")
+            if item.kind == "directory":
+                if not staged.is_dir():
+                    raise ProjectionError("staged projection directory verification failed")
+            elif item.kind == "file":
+                if not staged.is_file():
+                    raise ProjectionError("staged projection file verification failed")
+                staged_hash, staged_size = _hash_file(staged, limits.chunk_bytes, deadline)
+                if staged_hash != item.sha256 or staged_size != item.size:
+                    raise ProjectionError("staged projection manifest verification failed")
+            else:
+                raise ProjectionError("projection manifest contains an unknown object type")
             verified.append(item)
         entries = tuple(sorted(verified, key=lambda value: value.path.casefold()))
         return WorkspaceProjection(
