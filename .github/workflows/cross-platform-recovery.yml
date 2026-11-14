@@ -11,6 +11,7 @@ on:
       - "tests/test_local_runner_pipeline_e2e.py"
       - "tests/test_local_auth_proxy.py"
       - "tests/test_local_runner_execution.py"
+      - "tests/test_linux_sandbox.py"
   push:
     branches: [main]
     paths:
@@ -70,6 +71,9 @@ jobs:
 
       - name: Run Flutter executor policy and platform acceptance tests
         run: python -m unittest tests.test_local_runner_execution -v
+
+      - name: Run Linux bubblewrap launcher policy tests
+        run: python -m unittest tests.test_linux_sandbox -v
 
       - name: Report host identity
         shell: bash
