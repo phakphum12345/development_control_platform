@@ -53,13 +53,13 @@ The implementation must model, at minimum:
 - descriptor revision and control flags;
 - DACL-present state;
 - DACL pointer state (NULL versus non-NULL);
-- DACL defaulted/protected/auto-inherited control state;
+- DACL defaulted state returned by `GetSecurityDescriptorDacl`, plus protected/auto-inherited descriptor control state;
 - ACL revision, size, ACE count, and exact bytes;
 - each ACE's type, flags, size, trustee SID (when the ACE format supports one), and access mask (when the ACE format supports one).
 
 Do not equate a NULL DACL with an empty DACL. Do not assume every ACE contains a conventional SID at a fixed offset. ACE decoding must be type-aware. If a descriptor contains a construct that the implementation cannot preserve exactly, reject the entire transaction before the first mutation.
 
-Snapshots should preserve the exact original DACL bytes and the descriptor control information required to restore protection/inheritance semantics. Do not serialize and later reconstruct the original policy from lossy SDDL text.
+Snapshots and candidates must preserve the exact original DACL bytes, the separate `dacl_defaulted` boolean, and descriptor control information required to restore protection/inheritance semantics. Read-back and rollback equality includes all three. Do not serialize and later reconstruct the original policy from lossy SDDL text.
 
 ## 5. Native API contract
 
