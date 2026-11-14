@@ -92,7 +92,7 @@ def _environment() -> dict[str, str]:
 
 def _read_only_network_payload() -> str:
     return r'''
-import json, pathlib, socket, sys
+import json, os, pathlib, socket, sys
 workspace = pathlib.Path(sys.argv[1])
 scratch = pathlib.Path(sys.argv[2])
 canary = pathlib.Path(sys.argv[3])
@@ -265,8 +265,10 @@ try:
             })
         child_token["privileges"] = privileges
         child_token["elevation_type"] = token_dword(token_handle, 18)  # TokenElevationType
-        child_token["elevated"] = bool(token_dword(token_handle, 20))  # TokenElevation
-        child_token["is_app_container"] = bool(token_dword(token_handle, 29))  # TokenIsAppContainer
+        elevation_value = token_dword(token_handle, 20)  # TokenElevation
+        app_container_value = token_dword(token_handle, 29)  # TokenIsAppContainer
+        child_token["elevated"] = bool(elevation_value) if elevation_value is not None else None
+        child_token["is_app_container"] = bool(app_container_value) if app_container_value is not None else None
     finally:
         kernel32.CloseHandle(token_handle)
     result["child_token"] = child_token
