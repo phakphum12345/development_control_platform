@@ -22,7 +22,7 @@ This inventory distinguishes implemented code, automated tests, CI evidence, and
 | WP-00D | Documentation reconciliation | Added INDEX, IMPLEMENTATION-STATUS and REQUIREMENTS-TRACEABILITY; existing roadmap/backlog/continuity still require full reconciliation | IN_PROGRESS |
 | WP-18A | Linux bubblewrap isolation launcher | Added a Linux-only bubblewrap command builder and network-deny seccomp BPF policy with unit tests; not yet integrated into TerminalScriptExecutor and not host-accepted | IN_PROGRESS |
 | WP-18B | Windows AppContainer/LPAC launcher | Native helper and capability policy absent | BLOCKED |
-| WP-18C | Process-tree containment and cleanup | taskkill/process-group termination and workspace cleanup exist; independent descendant/host cleanup acceptance absent | IN_PROGRESS |
+| WP-18C | Process-tree containment and cleanup | Linux bubblewrap parent-death containment now has a detached-descendant timeout test; authenticated Gateway cleanup attestation and conservative terminal-workspace reconciliation added. UNKNOWN, lease-expired, active, mismatched and retained workspaces are preserved; user-host/Windows acceptance remains absent | PARTIAL / IN_PROGRESS |
 | WP-18D | Adversarial security and host acceptance | Contract/unit tests exist; actual filesystem/network/process escape acceptance absent | PENDING |
 | WP-18E | Isolation CI, security review and documentation | Cross-platform recovery workflow exists; no platform sandbox acceptance matrix or independent host evidence | IN_PROGRESS |
 | WP-19 | Windows host and Dashboard → Local Auth Proxy → Gateway acceptance | Unit/integration contracts exist; live supported Windows-host evidence not present in the reviewed ledger | UNKNOWN |
