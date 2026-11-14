@@ -159,6 +159,16 @@ class DaclCandidateBuilderTests(unittest.TestCase):
         with self.assertRaises(DaclCandidateBuildError):
             build_dacl_candidate(_acl(), PACKAGE_SID, "workspace", is_directory=False, max_acl_bytes=8)
 
+    def test_rejects_control_flags_outside_native_word(self):
+        for flags in (-1, 0x10000, True):
+            with self.subTest(flags=flags), self.assertRaisesRegex(
+                DaclCandidateBuildError, "16-bit control field"
+            ):
+                build_dacl_candidate(
+                    _acl(), PACKAGE_SID, "workspace", is_directory=False,
+                    dacl_control_flags=flags,
+                )
+
     def test_input_is_immutable_and_candidate_is_deterministic(self):
         source = _acl(_ace(1, _sid(5, 18), 1))
         first = build_dacl_candidate(source, PACKAGE_SID, "scratch", is_directory=True)
