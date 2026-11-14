@@ -65,6 +65,8 @@ class OriginalDescriptorSnapshot:
         selected_limits = limits or TransactionLimits()
         try:
             _validate_transaction_id(self.transaction_id)
+            if not isinstance(self.target_identity, TargetObjectIdentity):
+                return False
             self.target_identity.validate()
             _validate_descriptor(self.descriptor, selected_limits)
             expected = _snapshot_digest(
