@@ -247,6 +247,7 @@ def _run_policy_acceptance(launcher, workspace: Path, scratch: Path, canary: Pat
             raise WindowsPsecError("PSEC policy acceptance payload exited non-zero")
         lines = [line for line in output.decode("utf-8", "replace").splitlines() if line.strip()]
         result = json.loads(lines[-1])
+        result["child_process_token"] = process.token_diagnostics
         if accepted:
             result["network_loopback_deny"] = "FAIL"
         return result
@@ -338,7 +339,10 @@ def main() -> int:
             )
 
         results = {**policy_results, **tree_results}
-        diagnostics = {"child_token": results.pop("child_token", {})}
+        diagnostics = {
+            "child_token": results.pop("child_token", {}),
+            "child_process_token": results.pop("child_process_token", {}),
+        }
         failures = [name for name, state in results.items() if state != "PASS"]
         output = {
             "state": "PASS" if not failures else "FAIL",
