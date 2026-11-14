@@ -59,3 +59,14 @@
 3. Open a Draft PR targeting the PR #134 branch, preserving the dependency stack.
 4. Inspect exact-head workflow results and logs.
 5. Keep this experiment unmerged until review and CI audit are complete.
+
+
+## Implementation audit update — 2026-11-15
+
+**Audited branch head before this checkpoint amendment:** `dd96e91caad7928b33c16817bd021e7d0e4ce8c4`
+
+- Kept the four-entry mapping immutable and used a frozen typed encoding record.
+- Corrected the square diagnostic to run under the declared Decimal precision context.
+- Corrected the test fixture to use the canonical eight-byte empty ACL representation.
+- Local execution remains NOT RUN; these source corrections are not represented as test passes.
+- The next exact commit after this checkpoint update must be used for PR and CI evidence.
