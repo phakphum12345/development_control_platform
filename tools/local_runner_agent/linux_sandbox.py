@@ -22,9 +22,9 @@ class LinuxSandboxError(RuntimeError):
 # Linux syscall numbers for supported 64-bit architectures. Unknown architectures
 # are rejected rather than silently receiving a weaker network policy.
 _NETWORK_SYSCALLS = {
-    "x86_64": (41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 288),
+    "x86_64": (41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 288, 299, 307),
     "amd64": (41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 288),
-    "aarch64": (198, 203, 202, 206, 207, 211, 212, 210, 200, 201, 204, 205, 199, 242),
+    "aarch64": (198, 203, 202, 206, 207, 211, 212, 210, 200, 201, 204, 205, 199, 242, 243, 269),
     "arm64": (198, 203, 202, 206, 207, 211, 212, 210, 200, 201, 204, 205, 199, 242),
 }
 
@@ -80,13 +80,18 @@ def _trusted_directory(path: str | os.PathLike, label: str) -> Path:
     raw = Path(path)
     if not raw.is_absolute():
         raise LinuxSandboxError(f"{label} must be an absolute path")
+    current = Path(raw.anchor)
+    for part in raw.parts[1:]:
+        current = current / part
+        if current.is_symlink():
+            raise LinuxSandboxError(f"{label} path contains a symlink")
     try:
         resolved = raw.resolve(strict=True)
         info = resolved.stat()
     except OSError:
         raise LinuxSandboxError(f"{label} is unavailable") from None
-    if not stat.S_ISDIR(info.st_mode) or raw.is_symlink():
-        raise LinuxSandboxError(f"{label} must be a real directory, not a symlink")
+    if not stat.S_ISDIR(info.st_mode):
+        raise LinuxSandboxError(f"{label} must be a real directory")
     return resolved
 
 
