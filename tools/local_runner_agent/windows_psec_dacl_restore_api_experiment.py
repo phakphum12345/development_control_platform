@@ -176,7 +176,7 @@ class WindowsDaclRestoreApiExperiment(WindowsDaclDefaultedExperiment):
             return int(code), (None if code == 0 else f"SetNamedSecurityInfoW returned {int(code)}")
 
         if candidate == "setfilesecurity_original_control":
-            descriptor, keepalive_acl = self._build_absolute_dacl_descriptor(
+            descriptor, keepalive_acl = self._build_self_relative_dacl_descriptor(
                 snapshot, auto_inherit_req=False
             )
             success = self._advapi32.SetFileSecurityW(
@@ -189,7 +189,7 @@ class WindowsDaclRestoreApiExperiment(WindowsDaclDefaultedExperiment):
             return 1, None
 
         if candidate == "setfilesecurity_auto_inherit_req":
-            descriptor, keepalive_acl = self._build_absolute_dacl_descriptor(
+            descriptor, keepalive_acl = self._build_self_relative_dacl_descriptor(
                 snapshot, auto_inherit_req=True
             )
             success = self._advapi32.SetFileSecurityW(
