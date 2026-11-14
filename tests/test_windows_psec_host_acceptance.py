@@ -55,7 +55,10 @@ class WindowsPsecHostAcceptanceTests(unittest.TestCase):
         self.assertEqual(result["security_descriptor"]["state"], "CAPTURED")
         self.assertTrue(result["security_descriptor"]["dacl_protected"])
         self.assertEqual(run.call_count, 2)
-        self.assertEqual(run.call_args.args[0][0], r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")
+        self.assertEqual(
+            run.call_args.args[0][0],
+            str(host.Path(r"C:\Windows") / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"),
+        )
         self.assertFalse(run.call_args.kwargs["shell"])
         self.assertEqual(run.call_args.kwargs["check"], False)
         self.assertEqual(
