@@ -62,6 +62,7 @@ class WindowsSecurityDescriptorReaderRealHostTests(unittest.TestCase):
                 self.assertTrue(identity_before.is_directory)
                 self.assertTrue(first.dacl_present)
                 self.assertFalse(first.dacl_is_null)
+                self.assertIsInstance(first.dacl_defaulted, bool)
                 self.assertGreaterEqual(len(first.dacl_bytes), 8)
             finally:
                 if not self.kernel32.CloseHandle(wintypes.HANDLE(handle)):
@@ -79,6 +80,7 @@ class WindowsSecurityDescriptorReaderRealHostTests(unittest.TestCase):
                 self.assertFalse(identity.is_directory)
                 self.assertTrue(snapshot.dacl_present)
                 self.assertFalse(snapshot.dacl_is_null)
+                self.assertIsInstance(snapshot.dacl_defaulted, bool)
             finally:
                 if not self.kernel32.CloseHandle(wintypes.HANDLE(handle)):
                     raise OSError(ctypes.get_last_error(), "CloseHandle failed")
