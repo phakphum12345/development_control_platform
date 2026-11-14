@@ -50,6 +50,7 @@ class DaclCandidate:
     target_kind: str
     access_mask: int
     inheritance_flags: int
+    dacl_control_flags: int
     inserted: bool
     original_ace_count: int
 
@@ -186,6 +187,7 @@ def build_dacl_candidate(
             target_kind=target_kind,
             access_mask=access_mask,
             inheritance_flags=inheritance_flags,
+            dacl_control_flags=dacl_control_flags,
             inserted=False,
             original_ace_count=parsed.ace_count,
         )
@@ -236,6 +238,7 @@ def build_dacl_candidate(
         target_kind=target_kind,
         access_mask=access_mask,
         inheritance_flags=inheritance_flags,
+        dacl_control_flags=dacl_control_flags,
         inserted=True,
         original_ace_count=parsed.ace_count,
     )
