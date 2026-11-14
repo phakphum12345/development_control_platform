@@ -27,9 +27,11 @@ class LinuxBubblewrapLauncherTests(unittest.TestCase):
             scratch = Path(root) / "scratch"
             workspace.mkdir()
             scratch.mkdir()
-            launcher = LinuxBubblewrapLauncher(executable_lookup=lambda _name: "/usr/bin/bwrap")
+            fake_bwrap = Path(root) / "bwrap"
+            fake_bwrap.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            fake_bwrap.chmod(0o700)
             with patch("tools.local_runner_agent.linux_sandbox.sys_platform_linux", return_value=True):
-                launcher = LinuxBubblewrapLauncher(executable_lookup=lambda _name: "/usr/bin/bwrap")
+                launcher = LinuxBubblewrapLauncher(executable_lookup=lambda _name: str(fake_bwrap))
             result = launcher.build(
                 executable="/usr/bin/python3",
                 argv=["--version"],
@@ -57,9 +59,11 @@ class LinuxBubblewrapLauncherTests(unittest.TestCase):
             workspace = Path(root) / "workspace"
             scratch = workspace / "scratch"
             scratch.mkdir(parents=True)
-            launcher = LinuxBubblewrapLauncher(executable_lookup=lambda _name: "/usr/bin/bwrap")
+            fake_bwrap = Path(root) / "bwrap"
+            fake_bwrap.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            fake_bwrap.chmod(0o700)
             with patch("tools.local_runner_agent.linux_sandbox.sys_platform_linux", return_value=True):
-                launcher = LinuxBubblewrapLauncher(executable_lookup=lambda _name: "/usr/bin/bwrap")
+                launcher = LinuxBubblewrapLauncher(executable_lookup=lambda _name: str(fake_bwrap))
             with self.assertRaisesRegex(LinuxSandboxError, "separate directory trees"):
                 launcher.build(
                     executable="/usr/bin/python3",
@@ -74,9 +78,11 @@ class LinuxBubblewrapLauncherTests(unittest.TestCase):
             scratch = Path(root) / "scratch"
             workspace.mkdir()
             scratch.mkdir()
-            launcher = LinuxBubblewrapLauncher(executable_lookup=lambda _name: "/usr/bin/bwrap")
+            fake_bwrap = Path(root) / "bwrap"
+            fake_bwrap.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            fake_bwrap.chmod(0o700)
             with patch("tools.local_runner_agent.linux_sandbox.sys_platform_linux", return_value=True):
-                launcher = LinuxBubblewrapLauncher(executable_lookup=lambda _name: "/usr/bin/bwrap")
+                launcher = LinuxBubblewrapLauncher(executable_lookup=lambda _name: str(fake_bwrap))
             with self.assertRaisesRegex(LinuxSandboxError, "absolute trusted path"):
                 launcher.build(executable="python3", argv=[], workspace=workspace, scratch=scratch)
             link = Path(root) / "workspace-link"
