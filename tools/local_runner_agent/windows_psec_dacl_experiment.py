@@ -80,6 +80,8 @@ class ExperimentResult:
     inherited_ace_count_after_write: int | None = None
     inherited_ace_count_after_rollback: int | None = None
     rollback_attempted: bool = True
+    control_flags_after_each_write: tuple[int, ...] = ()
+    native_write_calls: int = 0
 
 
 class _SECURITY_ATTRIBUTES(ctypes.Structure):
@@ -91,7 +93,7 @@ class _SECURITY_ATTRIBUTES(ctypes.Structure):
 
 
 class WindowsDaclDefaultedExperiment:
-    """Run exactly one disposable-file round-trip using a retained file handle."""
+    """Probe disposable NTFS DACL semantics using one retained file handle."""
 
     def __init__(self, *, reader=None):
         if os.name != "nt":
@@ -271,7 +273,12 @@ class WindowsDaclDefaultedExperiment:
     def run(
         self, *, defaulted=True, rollback=True,
         security_info_flags=DACL_AND_PROTECTED_SECURITY_INFO,
+        write_repetitions=1,
     ):
+        if not isinstance(write_repetitions, int) or not 0 <= write_repetitions <= 8:
+            raise DaclExperimentError("write_repetitions must be an integer from 0 through 8")
+        if write_repetitions == 0 and rollback:
+            raise DaclExperimentError("a no-write creation probe cannot request rollback")
         if security_info_flags not in (
             DACL_ONLY_SECURITY_INFO, DACL_AND_PROTECTED_SECURITY_INFO
         ):
@@ -321,21 +328,29 @@ class WindowsDaclDefaultedExperiment:
             if not before.dacl_present or before.dacl_is_null:
                 raise DaclExperimentError("created object did not expose an explicit non-NULL DACL")
 
-            write_error = None
-            try:
-                self._write_dacl(
-                    handle, before, security_info_flags=security_info_flags
-                )
-            except Exception as exc:
-                write_error = exc
-            after = None
+            write_errors = []
+            write_control_flags = []
+            native_write_calls = 0
+            after = before if write_repetitions == 0 else None
             readback_error = None
-            try:
-                after = self._reader.read_dacl(handle)
-                if self._reader.query_identity(handle) != identity_before:
-                    raise DaclExperimentError("retained handle identity changed after write")
-            except Exception as exc:
-                readback_error = exc
+            for _ in range(write_repetitions):
+                try:
+                    native_write_calls += 1
+                    self._write_dacl(
+                        handle, before, security_info_flags=security_info_flags
+                    )
+                except Exception as exc:
+                    write_errors.append(exc)
+                    break
+                try:
+                    after = self._reader.read_dacl(handle)
+                    if self._reader.query_identity(handle) != identity_before:
+                        raise DaclExperimentError("retained handle identity changed after write")
+                    write_control_flags.append(after.dacl_control_flags)
+                except Exception as exc:
+                    readback_error = exc
+                    break
+            write_error = "; ".join(str(error) for error in write_errors) or None
 
             # Rollback is unconditional in rollback mode after the write
             # attempt, including when write/read-back reports an error.
@@ -414,6 +429,8 @@ class WindowsDaclDefaultedExperiment:
                 inherited_ace_count_after_write=(self._inherited_ace_count(after) if after is not None else None),
                 inherited_ace_count_after_rollback=(self._inherited_ace_count(restored) if restored is not None else None),
                 rollback_attempted=bool(rollback),
+                control_flags_after_each_write=tuple(write_control_flags),
+                native_write_calls=native_write_calls,
             )
         except Exception as exc:
             primary_error = exc
@@ -487,4 +504,6 @@ class WindowsDaclDefaultedExperiment:
             inherited_ace_count_after_write=result.inherited_ace_count_after_write,
             inherited_ace_count_after_rollback=result.inherited_ace_count_after_rollback,
             rollback_attempted=result.rollback_attempted,
+            control_flags_after_each_write=result.control_flags_after_each_write,
+            native_write_calls=result.native_write_calls,
         )
