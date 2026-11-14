@@ -7,6 +7,7 @@ from tools.local_runner_agent.windows_psec import (
     PSE_SUPPORT_FS_DENY,
     PSE_SUPPORT_FS_ENUMERATE,
     PSE_SUPPORT_NETWORK_INGRESS,
+    PSEC_CREATE_FLAG_NONE,
     create_psec_environment,
     probe_psec,
 )
@@ -91,8 +92,9 @@ class WindowsPsecProbeTests(unittest.TestCase):
     def test_create_psec_environment_closes_successful_handle(self):
         closed = []
 
-        def create(specification, size, output):
+        def create(specification, size, creation_flags, output):
             self.assertEqual(size, len(b"PSEC-spec"))
+            self.assertEqual(creation_flags, PSEC_CREATE_FLAG_NONE)
             ctypes.cast(output, ctypes.POINTER(ctypes.c_void_p))[0] = 0x1234
             return 0
 
@@ -106,14 +108,15 @@ class WindowsPsecProbeTests(unittest.TestCase):
         self.assertTrue(create_psec_environment(Api(), b"PSEC-spec"))
         self.assertEqual(
             Api.CreateProcessSecurityEnvironment.argtypes,
-            [ctypes.c_void_p, ctypes.c_uint32, ctypes.POINTER(ctypes.c_void_p)],
+            [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.POINTER(ctypes.c_void_p)],
         )
         self.assertEqual(closed, [0x1234])
 
     def test_create_psec_environment_rejects_failed_hresult(self):
         closed = []
 
-        def create(specification, size, output):
+        def create(specification, size, creation_flags, output):
+            self.assertEqual(creation_flags, PSEC_CREATE_FLAG_NONE)
             return -2147024809
 
         class Api:
