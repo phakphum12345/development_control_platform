@@ -64,6 +64,12 @@ class ExperimentResult:
     control_flags_before: int
     control_flags_after_write: int | None
     control_flags_after_rollback: int | None
+    owned_handle_opened: bool = False
+    owned_handle_closed: bool = False
+    close_handle_succeeded: bool | None = None
+    inherited_ace_count_before: int = 0
+    inherited_ace_count_after_write: int | None = None
+    inherited_ace_count_after_rollback: int | None = None
 
 
 class _SECURITY_ATTRIBUTES(ctypes.Structure):
@@ -205,6 +211,34 @@ class WindowsDaclDefaultedExperiment:
             raise self._last_error("CreateFileW(CREATE_NEW)")
         return int(handle), (attrs, descriptor, acl)
 
+    @staticmethod
+    def _inherited_ace_count(snapshot):
+        """Parse only bounded ACE headers; do not interpret or copy SID payloads."""
+        if not snapshot.dacl_present or snapshot.dacl_is_null or not snapshot.dacl_bytes:
+            return 0
+        acl = snapshot.dacl_bytes
+        if len(acl) < 8:
+            raise DaclExperimentError("ACL is shorter than its header")
+        declared_size = int.from_bytes(acl[2:4], "little")
+        ace_count = int.from_bytes(acl[4:6], "little")
+        if declared_size != len(acl) or ace_count > 4096:
+            raise DaclExperimentError("ACL bounds/count invalid during ACE inheritance inspection")
+        offset = 8
+        inherited = 0
+        for _ in range(ace_count):
+            if offset + 4 > declared_size:
+                raise DaclExperimentError("truncated ACE header")
+            ace_flags = acl[offset + 1]
+            ace_size = int.from_bytes(acl[offset + 2:offset + 4], "little")
+            if ace_size < 4 or offset + ace_size > declared_size:
+                raise DaclExperimentError("ACE size exceeds ACL bounds")
+            if ace_flags & 0x10:  # INHERITED_ACE
+                inherited += 1
+            offset += ace_size
+        if offset != declared_size:
+            raise DaclExperimentError("ACE traversal does not end at ACL declared size")
+        return inherited
+
     def _write_dacl(self, handle, snapshot):
         if not snapshot.dacl_present or snapshot.dacl_is_null or not snapshot.dacl_bytes:
             raise DaclExperimentError("only an explicit non-NULL DACL can be tested")
@@ -228,6 +262,9 @@ class WindowsDaclDefaultedExperiment:
         root = None
         file_path = None
         handle = None
+        owned_handle_opened = False
+        owned_handle_closed = False
+        close_handle_succeeded = None
         cleanup_ok = False
         primary_error = None
         result = None
@@ -240,6 +277,7 @@ class WindowsDaclDefaultedExperiment:
             filesystem = self._require_ntfs(root)
             file_path = os.path.join(root, "probe-" + uuid.uuid4().hex + ".bin")
             handle, keepalive = self._create_file(file_path, defaulted=defaulted)
+            owned_handle_opened = True
             identity_before = self._reader.query_identity(handle)
             if identity_before.is_directory or identity_before.attributes & 0x00000400:
                 raise DaclExperimentError("created probe handle is a directory or reparse point")
@@ -331,13 +369,20 @@ class WindowsDaclDefaultedExperiment:
                 control_flags_after_rollback=(
                     restored.dacl_control_flags if restored is not None else None
                 ),
+                owned_handle_opened=owned_handle_opened,
+                inherited_ace_count_before=self._inherited_ace_count(before),
+                inherited_ace_count_after_write=(self._inherited_ace_count(after) if after is not None else None),
+                inherited_ace_count_after_rollback=(self._inherited_ace_count(restored) if restored is not None else None),
             )
         except Exception as exc:
             primary_error = exc
         finally:
             close_error = None
             if handle is not None:
-                if not self._kernel32.CloseHandle(wintypes.HANDLE(handle)):
+                close_handle_succeeded = bool(self._kernel32.CloseHandle(wintypes.HANDLE(handle)))
+                if close_handle_succeeded:
+                    owned_handle_closed = True
+                else:
                     close_error = self._last_error("CloseHandle")
                 handle = None
             delete_error = None
@@ -390,4 +435,10 @@ class WindowsDaclDefaultedExperiment:
             control_flags_before=result.control_flags_before,
             control_flags_after_write=result.control_flags_after_write,
             control_flags_after_rollback=result.control_flags_after_rollback,
+            owned_handle_opened=result.owned_handle_opened,
+            owned_handle_closed=owned_handle_closed,
+            close_handle_succeeded=close_handle_succeeded,
+            inherited_ace_count_before=result.inherited_ace_count_before,
+            inherited_ace_count_after_write=result.inherited_ace_count_after_write,
+            inherited_ace_count_after_rollback=result.inherited_ace_count_after_rollback,
         )
