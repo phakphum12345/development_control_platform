@@ -123,3 +123,30 @@ The reference is a legacy Windows Forms remote-administration GUI. It starts PsE
 **REFERENCE ONLY — NO CODE ADOPTION.** Do not install or run this GUI, PsExec, PAExec, or its helper binaries as part of PSEC acceptance. Do not enable SMB, ADMIN$, remote administrator accounts, firewall exceptions, or UAC token-filter registry changes. Continue the DCP design using the PSEC launcher and fail-closed Terminal execution gate documented above.
 
 For Microsoft's documented PsExec `-l` option, note that it strips the Administrators group and runs at Low Integrity on Windows Vista and later; this is still not equivalent to PSEC/AppContainer isolation. See [Microsoft PsExec documentation](https://learn.microsoft.com/en-us/sysinternals/downloads/psexec).
+
+## Latest Windows host acceptance evidence — 2026-11-14
+
+The latest user-provided Windows 11 build 26300 / Python 3.14.6 run remains **FAIL**:
+
+- PASS: PSEC API surface (0xF), PSEC v1.1 policy creation, host-profile canary denial, host-loopback denial, Job Object descendant tracking and termination.
+- FAIL: Workspace read, Scratch write, and consequently the derived Workspace read-only check.
+- workspace_write_probe=DENIED is **not a valid read-only proof in this run**, because the same token cannot read the workspace prerequisite. It may be denied by the ordinary DACL before the PSEC read-only rule is tested.
+- The token was captured from the exact suspended child before ResumeThread; is_app_container=true, with a concrete Package SID and one opaque capability SID. Do not infer the capability name from its hash alone.
+- The AppContainer Package SID is absent from the acceptance parent, temporary root, workspace directory, workspace file, and scratch directory ACL evidence. dacl_changed_during_psec_run=false for all captured objects. The temporary root has a protected DACL and the child directories inherit only SYSTEM, Administrators, and OWNER RIGHTS ACEs.
+- Therefore the evidence strongly supports an ordinary Windows AppContainer DACL authorization failure as the immediate cause of the read/write PermissionError: AppContainer access is evaluated using both the ordinary user/group grants and the AppContainer Package/Capability SID grants. The PSEC path policy does not make a missing DACL grant appear in these captured security descriptors. This is a root-cause diagnosis, not yet a verified fix.
+- whoami.exe returned 0xC0000142 (STATUS_DLL_INIT_FAILED). Token capture from PROCESS_INFORMATION.hProcess succeeded independently; the whoami failure is a separate diagnostic issue and must not be used to dismiss the captured token.
+- The opaque capability SID is recorded as evidence only. Network loopback denial passed in this run; do not add network capabilities or change the network policy to address filesystem failures.
+
+### Required next engineering step
+
+Do not weaken host ACLs or grant access to broad principals. Design and test a per-job, Package-SID-scoped filesystem authorization strategy:
+
+1. Provide only the minimum traversal/read grants needed for the read-only workspace and minimum modify grants for the per-job scratch path, scoped to the exact PSEC Package SID.
+2. Preserve and restore original security descriptors exactly, with failure-safe cleanup after the Job Object is empty; if safe restoration cannot be guaranteed (including abnormal Runner termination), reject the launch.
+3. Ensure protected child DACLs, reparse points, inherited ACEs, concurrent jobs, and cleanup races are handled explicitly. Do not assume one inheritable ACE on a root covers protected descendants.
+4. Re-run negative tests proving Workspace write, host profile, denied paths, and host loopback remain denied. A simple DENIED result without a successful Workspace read is insufficient.
+5. Keep the production VERIFIED gate and all built-in Terminal templates disabled until the full acceptance matrix passes on the exact source SHA.
+
+Microsoft documents the dual-principal AppContainer access check: both the ordinary user/group and Package/Capability SID permissions must permit access, and the effective permission is their intersection ([Launch an AppContainer](https://learn.microsoft.com/en-us/windows/win32/secauthz/implementing-an-appcontainer)). The MXC policy guide likewise requires validating representative allowed and denied file operations and rejecting startup when required access checks fail ([Author and validate an MXC policy](https://learn.microsoft.com/en-us/windows/apps/develop/mxc/policy)).
+
+**Evidence provenance:** user-provided JSON in the 2026-11-14 conversation. The run did not include git rev-parse HEAD; associate this result with a source revision only after the user confirms the exact local HEAD.
