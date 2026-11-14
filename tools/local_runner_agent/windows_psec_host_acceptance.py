@@ -175,6 +175,84 @@ def _filesystem_acl(path: Path) -> dict:
     return result
 
 
+
+def _app_container_profile_evidence(package_sid: str, child_token: dict) -> dict:
+    """Read the Windows-managed AppContainer LocalAppData path and its ACL.
+
+    GetAppContainerFolderPath is diagnostic only: the API returns a path, not
+    proof that a profile is registered, that the directory exists, or that
+    the child can access it. This function never creates a profile or changes
+    filesystem permissions.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    if not isinstance(package_sid, str) or not package_sid.startswith("S-1-"):
+        return {"state": "UNKNOWN", "reason": "Package SID is unavailable or invalid"}
+
+    try:
+        userenv = ctypes.WinDLL("userenv.dll", use_last_error=True)
+        ole32 = ctypes.WinDLL("ole32.dll", use_last_error=True)
+        get_folder = userenv.GetAppContainerFolderPath
+        get_folder.argtypes = [wintypes.LPCWSTR, ctypes.POINTER(ctypes.c_wchar_p)]
+        get_folder.restype = ctypes.c_long
+        free_memory = ole32.CoTaskMemFree
+        free_memory.argtypes = [ctypes.c_void_p]
+        free_memory.restype = None
+
+        folder = ctypes.c_wchar_p()
+        hr = int(get_folder(package_sid, ctypes.byref(folder)))
+        if hr != 0:
+            return {
+                "state": "UNKNOWN",
+                "hresult": f"0x{hr & 0xFFFFFFFF:08X}",
+                "reason": "GetAppContainerFolderPath did not return S_OK",
+            }
+        try:
+            value = folder.value
+            if not value:
+                return {"state": "UNKNOWN", "reason": "API returned an empty path"}
+            path = Path(value)
+            try:
+                exists = path.is_dir()
+            except OSError:
+                exists = False
+            environment = child_token.get("environment", {})
+            child_local_app_data = (
+                environment.get("LOCALAPPDATA")
+                if isinstance(environment, dict) else None
+            )
+            import ntpath
+            matches = (
+                ntpath.normcase(ntpath.normpath(child_local_app_data))
+                == ntpath.normcase(ntpath.normpath(value))
+                if isinstance(child_local_app_data, str) else None
+            )
+            return {
+                "state": "CAPTURED",
+                "path": value,
+                "directory_exists": exists,
+                "child_localappdata_matches": matches,
+                "acl": _filesystem_acl(path) if exists else {
+                    "state": "UNKNOWN",
+                    "reason": "AppContainer folder path does not currently resolve to a directory",
+                },
+                "interpretation": (
+                    "Path lookup only; profile registration and child access require "
+                    "independent verification."
+                ),
+            }
+        finally:
+            if folder:
+                free_memory(ctypes.cast(folder, ctypes.c_void_p))
+    except Exception as exc:
+        return {
+            "state": "ERROR",
+            "error_type": type(exc).__name__,
+            "error_message": str(exc),
+        }
+
+
 def _environment() -> dict[str, str]:
     system_root = os.environ.get("SYSTEMROOT") or os.environ.get("SystemRoot")
     if not system_root:
@@ -478,10 +556,18 @@ def main() -> int:
 
         results = {**policy_results, **tree_results}
         child_process_token = results.pop("child_process_token", {})
+        child_token = results.pop("child_token", {})
         diagnostics = {
-            "child_token": results.pop("child_token", {}),
+            "child_token": child_token,
             "child_process_token": child_process_token,
             "filesystem_acl": filesystem_acl,
+            "app_container_profile": (
+                _app_container_profile_evidence(app_container_sid, child_token)
+                if app_container_sid else {
+                    "state": "UNKNOWN",
+                    "reason": "Package SID was not captured",
+                }
+            ),
         }
         failures = [name for name, state in results.items() if state != "PASS"]
         output = {
