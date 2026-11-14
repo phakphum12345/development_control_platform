@@ -28,6 +28,7 @@ WRITE_DAC = 0x00040000
 INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
 SECURITY_DESCRIPTOR_REVISION = 1
 ACL_REVISION = 2
+SE_DACL_PROTECTED = 0x1000
 
 
 class DaclExperimentError(RuntimeError):
@@ -49,6 +50,9 @@ class ExperimentResult:
     cleanup_verified: bool
     volume_serial: int
     file_id: str
+    process_handles_before: int
+    process_handles_after: int
+    process_handle_delta: int
     outcome: str
     write_verified: bool
     rollback_verified: bool
@@ -111,6 +115,12 @@ class WindowsDaclDefaultedExperiment:
             wintypes.LPVOID, wintypes.BOOL, wintypes.LPVOID, wintypes.BOOL,
         ]
         a.SetSecurityDescriptorDacl.restype = wintypes.BOOL
+        a.SetSecurityDescriptorControl.argtypes = [wintypes.LPVOID, wintypes.WORD, wintypes.WORD]
+        a.SetSecurityDescriptorControl.restype = wintypes.BOOL
+        k.GetCurrentProcess.argtypes = []
+        k.GetCurrentProcess.restype = wintypes.HANDLE
+        k.GetProcessHandleCount.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+        k.GetProcessHandleCount.restype = wintypes.BOOL
         a.SetSecurityInfo.argtypes = [
             wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD,
             wintypes.LPVOID, wintypes.LPVOID, wintypes.LPVOID, wintypes.LPVOID,
@@ -163,6 +173,13 @@ class WindowsDaclDefaultedExperiment:
             descriptor, True, ctypes.cast(acl, wintypes.LPVOID), bool(defaulted)
         ):
             raise self._last_error("SetSecurityDescriptorDacl(defaulted flag)")
+        # Prevent inherited ACEs from the temp directory from being merged
+        # into this explicitly empty DACL. This keeps the test's ACL bytes
+        # deterministic and makes the inheritance boundary explicit.
+        if not self._advapi32.SetSecurityDescriptorControl(
+            descriptor, SE_DACL_PROTECTED, SE_DACL_PROTECTED
+        ):
+            raise self._last_error("SetSecurityDescriptorControl(SE_DACL_PROTECTED)")
         attrs = _SECURITY_ATTRIBUTES(
             ctypes.sizeof(_SECURITY_ATTRIBUTES),
             ctypes.cast(descriptor, wintypes.LPVOID),
@@ -198,7 +215,15 @@ class WindowsDaclDefaultedExperiment:
         if result != 0:
             raise DaclExperimentError(f"SetSecurityInfo(handle,DACL) failed (WinError {int(result)})")
 
+    def _process_handle_count(self):
+        count = wintypes.DWORD()
+        process = self._kernel32.GetCurrentProcess()
+        if not self._kernel32.GetProcessHandleCount(process, ctypes.byref(count)):
+            raise self._last_error("GetProcessHandleCount")
+        return int(count.value)
+
     def run(self, *, defaulted=True):
+        handles_before = self._process_handle_count()
         root = None
         file_path = None
         handle = None
@@ -286,6 +311,9 @@ class WindowsDaclDefaultedExperiment:
                 cleanup_verified=False,
                 volume_serial=identity_before.volume_serial,
                 file_id=identity_before.file_id,
+                process_handles_before=handles_before,
+                process_handles_after=-1,
+                process_handle_delta=-1,
                 outcome=outcome,
                 write_verified=write_verified,
                 rollback_verified=rollback_equal,
@@ -324,6 +352,11 @@ class WindowsDaclDefaultedExperiment:
                     )
             cleanup_ok = bool(root) and not os.path.exists(root)
             self.last_cleanup_verified = cleanup_ok
+            try:
+                handles_after = self._process_handle_count()
+            except Exception as exc:
+                handles_after = -1
+                primary_error = primary_error or exc
             if close_error or delete_error or not cleanup_ok:
                 cleanup_error = close_error or delete_error or DaclExperimentError(
                     "disposable root remains after cleanup"
@@ -343,6 +376,9 @@ class WindowsDaclDefaultedExperiment:
             cleanup_verified=True,
             volume_serial=result.volume_serial,
             file_id=result.file_id,
+            process_handles_before=result.process_handles_before,
+            process_handles_after=handles_after,
+            process_handle_delta=handles_after - result.process_handles_before,
             outcome=result.outcome,
             write_verified=result.write_verified,
             rollback_verified=result.rollback_verified,
