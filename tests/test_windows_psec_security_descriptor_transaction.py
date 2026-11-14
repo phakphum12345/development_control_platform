@@ -16,7 +16,7 @@ from tools.local_runner_agent.windows_psec_security_descriptor_transaction impor
 PACKAGE_SID = "S-1-15-2-123-456-789"
 IDENTITY_A = HandleIdentity(1, "00" * 16, True, 0x10, 0)
 IDENTITY_B = HandleIdentity(1, "11" * 16, False, 0x80, 0)
-ORIGINAL = DescriptorSnapshot(True, False, b"ACL-ORIGINAL-BYTES", 0x1000, 1, 2, 1)
+ORIGINAL = DescriptorSnapshot(True, False, b"ACL-ORIGINAL-BYTES", 0x1000, 1, 2, 1, True)
 
 
 class FakeHandleSecurityApi:
@@ -45,7 +45,7 @@ class FakeHandleSecurityApi:
             raise RuntimeError("injected plan failure")
         return DescriptorCandidate(
             True, False, snapshot.dacl_bytes + b"|PACKAGE-ACE|",
-            snapshot.dacl_control_flags, 1, 2, snapshot.ace_count + 1,
+            snapshot.dacl_control_flags, 1, 2, snapshot.ace_count + 1, snapshot.dacl_defaulted,
         )
 
     def write_dacl(self, handle, state):
@@ -171,6 +171,19 @@ class NativeSecurityDescriptorTransactionTests(unittest.TestCase):
         result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID)
         self.assertEqual(result.state, "ROLLED_BACK_VERIFIED")
         self.assertEqual(api.states, {10: ORIGINAL, 11: ORIGINAL})
+
+    def test_dacl_defaulted_state_is_preserved_in_candidate_and_rollback(self):
+        api = FakeHandleSecurityApi()
+        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID)
+        self.assertEqual(result.state, "APPLIED_VERIFIED")
+        for handle in (10, 11):
+            self.assertTrue(api.states[handle].dacl_defaulted)
+            self.assertTrue(api.writes[handle - 10][1].dacl_defaulted)
+
+    def test_rejects_malformed_dacl_defaulted_state(self):
+        malformed = replace(ORIGINAL, dacl_defaulted=1)
+        with self.assertRaisesRegex(NativeSecurityDescriptorTransactionError, "DACL defaulted"):
+            malformed.validate(max_descriptor_bytes=1024, max_aces=16)
 
     def test_rejects_control_flags_outside_native_word(self):
         for flags in (-1, 0x10000, True):
