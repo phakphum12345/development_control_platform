@@ -105,13 +105,70 @@ def _filesystem_acl(path: Path) -> dict:
             "error_type": type(exc).__name__,
             "error_message": str(exc),
         }
-    return {
+    result = {
         "state": "CAPTURED" if completed.returncode == 0 else "ERROR",
         "path": str(path),
         "returncode": int(completed.returncode),
         "stdout": completed.stdout[:12000],
         "stderr": completed.stderr[:4000],
     }
+
+    # icacls shows ACEs but not the security descriptor owner or whether the
+    # DACL is protected from inheritance. Capture those fields read-only.
+    powershell = Path(system_root) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    if not powershell.is_file():
+        result["security_descriptor"] = {
+            "state": "UNKNOWN",
+            "reason": "Windows PowerShell is unavailable",
+        }
+        return result
+    script = (
+        "$acl = Get-Acl -LiteralPath $args[0]; "
+        "[pscustomobject]@{ owner = $acl.Owner; "
+        "dacl_protected = $acl.AreAccessRulesProtected; "
+        "sddl = $acl.Sddl } | ConvertTo-Json -Compress"
+    )
+    try:
+        descriptor = subprocess.run(
+            [str(powershell), "-NoProfile", "-NonInteractive", "-Command", script, str(path)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+            check=False,
+            shell=False,
+        )
+        if descriptor.returncode == 0:
+            try:
+                parsed = json.loads(descriptor.stdout)
+                result["security_descriptor"] = {
+                    "state": "CAPTURED",
+                    "owner": parsed.get("owner"),
+                    "dacl_protected": parsed.get("dacl_protected"),
+                    "sddl": parsed.get("sddl"),
+                }
+            except (ValueError, AttributeError):
+                result["security_descriptor"] = {
+                    "state": "ERROR",
+                    "reason": "PowerShell returned invalid descriptor JSON",
+                    "stdout": descriptor.stdout[:4000],
+                }
+        else:
+            result["security_descriptor"] = {
+                "state": "ERROR",
+                "returncode": int(descriptor.returncode),
+                "stderr": descriptor.stderr[:4000],
+            }
+    except Exception as exc:
+        result["security_descriptor"] = {
+            "state": "ERROR",
+            "error_type": type(exc).__name__,
+            "error_message": str(exc),
+        }
+    return result
 
 
 def _environment() -> dict[str, str]:
