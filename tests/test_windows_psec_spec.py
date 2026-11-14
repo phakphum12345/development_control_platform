@@ -112,7 +112,7 @@ class WindowsPsecSpecTests(unittest.TestCase):
         with self.assertRaises(PsecSpecError):
             build_psec_spec(read_only_paths=(r"\\server\share",), read_write_paths=(r"C:\scratch",))
         with self.assertRaises(PsecSpecError):
-            build_psec_spec(read_only_paths=(r"C:\",), read_write_paths=(r"D:\scratch",))
+            build_psec_spec(read_only_paths=("C:\\",), read_write_paths=(r"D:\scratch",))
 
     def test_rejects_workspace_and_scratch_overlap(self):
         with self.assertRaisesRegex(PsecSpecError, "separate"):
