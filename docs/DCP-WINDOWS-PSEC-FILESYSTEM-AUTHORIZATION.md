@@ -269,3 +269,39 @@ created per-job ancestor whose own parent is already traversable under the
 actual token, or establish another documented safe mechanism. Handle-relative
 opens by the host do not, by themselves, grant the child access to PSEC policy
 paths. The child must still prove effective access.
+
+
+## 13. Target-host SDDL symbolic-rights finding
+
+The target Windows host ran the opt-in real Win32 ACL test and returned this
+job-root descriptor after the Package-SID traversal ACE was applied:
+
+```text
+D:PAI(A;;WP;;;S-1-15-2-4048921270-1110085035-832899681-549863699-8652410-2260480956-1408363724)(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;OW)
+```
+
+The native API call reached descriptor read-back and the Package-SID ACE was
+present. Verification failed because the SDDL parser accepted only numeric
+access masks, while Windows serialized the `0x00000020` mask as the symbolic
+rights token `WP`. The token's numeric bit is `0x20`; for this file-system
+object that bit is `FILE_TRAVERSE`. This is a serialization/parser mismatch,
+not evidence that the DACL write failed.
+
+The parser now:
+- recognizes documented two-character SDDL rights tokens and ORs their numeric
+  masks, including `WP`, `FR`, `FX`, and `FA`;
+- retains support for numeric hexadecimal masks;
+- checks symbolic tokens before bare hexadecimal parsing, because tokens such
+  as `FA` contain only hexadecimal characters;
+- rejects unknown symbolic tokens rather than silently ignoring an ACE.
+
+Regression tests cover the exact observed Windows descriptor, `WP` to
+`FILE_TRAVERSE`, `FRFX` composition, `FA` token precedence, numeric masks,
+unknown-token fail-closed behavior, and manager verification with a symbolic
+root ACE.
+
+**Validation remains pending:** the parser correction has not yet been rerun
+against the real Win32 API on the target host. GitHub Actions for the current
+PR head are also still running. A passing parser/unit test does not establish
+effective AppContainer access, ancestor traversal, handle-relative safety, or
+permission to integrate the manager into the launcher.
