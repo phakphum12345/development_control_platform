@@ -87,3 +87,16 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Source inspection confirmed Terminal executor calls the fail-closed verifier before workspace resolution/process launch; no production platform launcher exists. All seven templates remain disabled.
 - Current branch head after inventory document: `34499a2816e1bba514f4e838efbfda72619b259b`.
 - Next exact action: continue WP-00B/00C source-to-test mapping, then implement Linux-only WP-18A behind a fail-closed boundary. Do not merge without explicit approval.
+
+
+## 2026-11-14 — WP-18A Linux launcher builder checkpoint
+
+- Branch: `work/wp00-remaining-inventory-wp18a-linux-isolation`
+- Base SHA: `62d72bddd028399d0b96cd9c2f6e3b16a704b758`
+- Current branch head before PR creation: `e4205ef7465c3f7ed2954d64770616f078937118`
+- Added `tools/local_runner_agent/linux_sandbox.py`: Linux-only bubblewrap command builder, explicit read-only workspace, separate scratch, private user/PID/IPC/UTS/network namespaces, cleared environment, dropped capabilities, disabled nested user namespaces, and a seccomp BPF network-deny policy.
+- Added `tests/test_linux_sandbox.py`; added the test invocation to Cross-platform Recovery Acceptance.
+- Updated `docs/DCP-TERMINAL-OS-ISOLATION.md` and `docs/DCP-REMAINING-WORK-INVENTORY.md`.
+- Important limitation: this is a command builder and test coverage only. It is not yet wired into TerminalScriptExecutor; no bubblewrap runtime or adversarial host acceptance has been executed. Linux must remain BLOCKED for production execution; all seven templates remain disabled.
+- CI exact-head status: UNKNOWN until PR checks complete.
+- Next action: open a draft PR for review/CI, then fix any CI failures. After CI, integrate behind the existing fail-closed verifier and run Linux host acceptance. No merge authorized.
