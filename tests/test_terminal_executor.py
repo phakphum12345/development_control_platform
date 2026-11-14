@@ -20,8 +20,34 @@ from tools.local_runner_agent.terminal_executor import (
     TerminalOutputRedactor,
     redact_terminal_output,
 )
+from tools.local_runner_agent.linux_sandbox import LinuxBubblewrapLauncher, LinuxSandboxError
 
 
+class _TestOnlySandboxCommand:
+    """Explicit unit-test launcher stub; never used by the production Runner."""
+
+    def __init__(self, executable, argv):
+        self.argv = (executable, *argv)
+        self._fd = tempfile.TemporaryFile(mode="w+b")
+
+    @property
+    def seccomp_fd(self):
+        return self._fd.fileno()
+
+    def close(self):
+        self._fd.close()
+
+
+class _TestOnlyPassthroughLauncher:
+    """Exercise executor process handling without claiming OS isolation."""
+
+    def build(self, *, executable, argv, workspace, scratch, environment=None):
+        return _TestOnlySandboxCommand(executable, argv)
+
+
+
+
+@unittest.skipUnless(sys.platform.startswith("linux"), "Linux-only Terminal executor integration tests")
 class TerminalScriptExecutorTests(unittest.TestCase):
     def setUp(self):
         self.isolation_patch = patch(
@@ -39,6 +65,28 @@ class TerminalScriptExecutorTests(unittest.TestCase):
         )
         self.isolation_patch.start()
         self.addCleanup(self.isolation_patch.stop)
+        self.launcher_patch = patch(
+            "tools.local_runner_agent.terminal_executor.LinuxBubblewrapLauncher",
+            _TestOnlyPassthroughLauncher,
+        )
+        self.launcher_patch.start()
+        self.addCleanup(self.launcher_patch.stop)
+        # The test-only launcher accepts the host test interpreter as a stand-in
+        # for /usr/bin; production LinuxBubblewrapLauncher rejects other runtime roots.
+        original_which = shutil.which
+        self.original_which = original_which
+        def test_which(name, path=None):
+            if path == "/usr/bin":
+                return original_which(name) or (
+                    original_which("python3") if name == "python" else None
+                )
+            return original_which(name, path=path)
+        self.which_patch = patch(
+            "tools.local_runner_agent.terminal_executor.shutil.which",
+            side_effect=test_which,
+        )
+        self.which_patch.start()
+        self.addCleanup(self.which_patch.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.workspace = Path(self.temp.name) / "project"
         self.workspace.mkdir()
@@ -190,13 +238,16 @@ class TerminalScriptExecutorTests(unittest.TestCase):
             args=["git", "config"], returncode=0,
             stdout=b"filter.hostile.clean\0filter.Hostile.clean\0",
         )
-        with patch(
-            "tools.local_runner_agent.terminal_executor.subprocess.run",
-            return_value=listed,
-        ):
-            TerminalScriptExecutor._disable_repository_filters(
-                "git", self.workspace, env
-            )
+        with tempfile.TemporaryDirectory() as scratch:
+            with patch(
+                "tools.local_runner_agent.terminal_executor.subprocess.run",
+                return_value=listed,
+            ):
+                TerminalScriptExecutor._disable_repository_filters(
+                    "git", self.workspace, env,
+                    launcher=_TestOnlyPassthroughLauncher(),
+                    scratch=Path(scratch),
+                )
 
         self.assertEqual(env["GIT_CONFIG_COUNT"], "8")
         configured = {
@@ -259,6 +310,57 @@ class TerminalScriptExecutorTests(unittest.TestCase):
                 str(uuid.uuid4()), "runner-local", self.workspace,
                 "python_version", {}, template_version_digest("python_version", {}),
             )
+
+    @unittest.skipUnless(
+        sys.platform.startswith("linux")
+        and shutil.which("bwrap", path="/usr/bin")
+        and (shutil.which("python", path="/usr/bin") or shutil.which("python3", path="/usr/bin")),
+        "Linux bubblewrap runtime or /usr/bin Python is unavailable",
+    )
+    def test_real_bubblewrap_executor_launches_catalog_command_with_seccomp_fd(self):
+        template = dict(preview_template("python_version", {}), execution_enabled=True)
+        executor = TerminalScriptExecutor(enabled=True)
+        with patch(
+            "tools.local_runner_agent.terminal_executor.preview_template",
+            return_value=template,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.LinuxBubblewrapLauncher",
+            LinuxBubblewrapLauncher,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.shutil.which",
+            side_effect=self.original_which,
+        ):
+            result = executor.run(
+                str(uuid.uuid4()), "runner-local", self.workspace,
+                "python_version", {}, template_version_digest("python_version", {}),
+            )
+        self.assertEqual(result.outcome, "succeeded", result)
+        self.assertEqual(result.return_code, 0)
+        self.assertGreater(result.output_bytes, 0)
+        self.assertTrue(Path(result.command[0]).resolve().is_relative_to(Path("/usr/bin").resolve()))
+        self.assertEqual(sorted(item.name for item in self.workspace.iterdir()), ["README.md"])
+
+    def test_sandbox_construction_failure_never_falls_back_to_host_process(self):
+        template = dict(preview_template("python_version", {}), execution_enabled=True)
+        executor = TerminalScriptExecutor(enabled=True)
+        with patch(
+            "tools.local_runner_agent.terminal_executor.preview_template",
+            return_value=template,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.template_version_digest",
+            return_value="b" * 64,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.LinuxBubblewrapLauncher",
+            side_effect=LinuxSandboxError("bwrap unavailable"),
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.subprocess.Popen"
+        ) as popen:
+            with self.assertRaisesRegex(TerminalExecutionError, "could not be constructed safely"):
+                executor.run(
+                    str(uuid.uuid4()), "runner-local", self.workspace,
+                    "python_version", {}, "b" * 64,
+                )
+            popen.assert_not_called()
 
     def test_runs_catalog_python_version_in_selected_project_workspace(self):
         template = preview_template("python_version", {})
