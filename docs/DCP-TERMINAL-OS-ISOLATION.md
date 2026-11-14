@@ -58,7 +58,7 @@ Run these commands from the repository root on the target Windows Runner host:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\Install-DCP-Windows-PSEC.ps1
-py -3 -m tools.local_runner_agent.windows_psec_host_acceptance
+powershell -ExecutionPolicy Bypass -File .\scripts\Run-DCP-Windows-PSEC-Host-Acceptance.ps1
 ```
 
 The first command installs the pinned optional FlatBuffers serializer and probes PSEC v1.1 API/features plus policy creation. The second launches fixed test payloads through the PSEC launcher and checks workspace read-only behavior, scratch-only writes, host-profile canary denial, loopback network denial (after a host-side loopback baseline), and Job Object descendant termination.

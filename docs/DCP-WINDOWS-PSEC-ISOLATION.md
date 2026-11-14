@@ -48,10 +48,10 @@ The optional installer installs the pinned FlatBuffers serializer dependency and
 After the policy-creation probe reports READY, run the separate host acceptance harness on the target Windows machine:
 
 ```powershell
-py -3 -m tools.local_runner_agent.windows_psec_host_acceptance
+powershell -ExecutionPolicy Bypass -File .\scripts\Run-DCP-Windows-PSEC-Host-Acceptance.ps1
 ```
 
-The harness launches only fixed test payloads through `WindowsPsecLauncher`. It checks Project Workspace read access and write denial, per-job scratch write access, denial of a temporary canary file in the host user profile, loopback network denial (after verifying host loopback works outside the sandbox), and Job Object tracking/termination of a spawned descendant. It removes the canary and temporary directories in cleanup.
+The harness launches only fixed test payloads through `WindowsPsecLauncher`. It checks Project Workspace read access and write denial, per-job scratch write access, denial of a temporary canary file in the host user profile, loopback network denial (after verifying host loopback works outside the sandbox), and Job Object tracking/termination of a spawned descendant. It removes the canary and temporary directories in cleanup. The PowerShell wrapper records the JSON under artifacts/ with the exact repository HEAD and runner exit code; it does not commit or upload the evidence.
 
 A PASS from this harness is evidence for that exact host/build and this exact branch revision only. It does not automatically change `terminal_isolation` to VERIFIED or enable any Terminal template; review the JSON output and the exact commit SHA first.
 
