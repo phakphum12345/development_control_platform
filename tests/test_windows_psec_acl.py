@@ -48,6 +48,21 @@ class WindowsPsecAclManagerTests(unittest.TestCase):
         sddl = f"D:(A;;WP;;;{PACKAGE_SID})"
         self.assertEqual(_parse_allow_aces(sddl, PACKAGE_SID), [("", FILE_TRAVERSE)])
 
+    def test_sddl_symbolic_file_all_rights_is_not_misread_as_hex(self):
+        sddl = f"D:(A;;FA;;;{PACKAGE_SID})"
+        self.assertEqual(_parse_allow_aces(sddl, PACKAGE_SID), [("", 0x001F01FF)])
+
+    def test_sddl_actual_windows_root_descriptor_is_parsed(self):
+        sddl = (
+            "D:PAI"
+            f"(A;;WP;;;{PACKAGE_SID})"
+            "(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;OW)"
+        )
+        self.assertEqual(
+            _parse_allow_aces(sddl, PACKAGE_SID),
+            [("", FILE_TRAVERSE)],
+        )
+
     def test_sddl_symbolic_file_rights_combine_to_expected_mask(self):
         sddl = f"D:(A;;FRFX;;;{PACKAGE_SID})"
         self.assertEqual(
