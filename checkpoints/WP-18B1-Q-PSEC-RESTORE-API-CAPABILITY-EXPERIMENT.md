@@ -24,7 +24,7 @@ Test whether alternate documented Windows file-security APIs can restore S0 afte
 
 1. SetSecurityInfo with UNPROTECTED_DACL_SECURITY_INFORMATION.
 2. SetNamedSecurityInfoW with UNPROTECTED_DACL_SECURITY_INFORMATION.
-3. Obsolete SetFileSecurityW with the original protected control state in an absolute descriptor.
+3. Obsolete SetFileSecurityW with the original protected control state in a self-relative descriptor.
 4. SetFileSecurityW with SE_DACL_AUTO_INHERIT_REQ set, to isolate the request-bit effect.
 
 SetFileSecurityW is a documented but obsolete API and is not proposed for production use. It is included only as an isolated compatibility probe.
