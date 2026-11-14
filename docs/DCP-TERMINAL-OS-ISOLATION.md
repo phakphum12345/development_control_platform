@@ -18,7 +18,7 @@ because a helper binary is installed or a process starts successfully.
 | Platform | Candidate backend | Required boundary | Current state |
 |---|---|---|---|
 | Windows 10/11 | Native AppContainer or LPAC launcher + Job Object | Restricted token/package SID, explicit read-only workspace and runtime capabilities, no network capability, child-process containment and verified cleanup | BLOCKED — native launcher and host acceptance not implemented |
-| Linux | bubblewrap + user/mount/PID/IPC/UTS/network namespaces + seccomp | Empty namespace root, explicit read-only runtime mounts, assigned workspace only, per-job scratch, private network namespace, reviewed syscall policy, child cleanup | BLOCKED — preflight contract only; no verified launcher |
+| Linux | bubblewrap + user/mount/PID/IPC/UTS/network namespaces + seccomp | Empty namespace root, explicit read-only runtime mounts, assigned workspace only, per-job scratch, private network namespace, reviewed syscall policy, child cleanup | READY_FOR_ACCEPTANCE when bwrap is present; integrated launcher is not host-verified |
 | macOS | Signed App Sandbox helper with explicit entitlements | Signed helper, explicit file access, network client/server entitlements disabled, process lifecycle and cleanup evidence | BLOCKED — helper and signing/entitlement acceptance not implemented |
 
 Windows AppContainer/LPAC is the selected Windows security boundary. Job Objects
@@ -40,9 +40,14 @@ Do not use the deprecated sandbox-exec interface as a production substitute.
 - Windows and macOS remain blocked until their native helper implementations exist.
 - require_verified_isolation() rejects every state except a complete VERIFIED
   assessment with all three enforcement claims.
-- TerminalScriptExecutor now calls require_verified_isolation() before workspace resolution or process launch. The default platform assessment cannot return VERIFIED, so the executor fails closed on every host until a trusted verifier is implemented and accepted.
-- Unit tests inject a test-only VERIFIED assessment to exercise the executor's existing process-control behavior; this is not production evidence.
-- This module is a gate contract, not a process launcher and not a security boundary.
+- TerminalScriptExecutor calls require_verified_isolation() before workspace resolution or process launch. The default platform assessment cannot return VERIFIED, so production execution remains blocked.
+- WP-18A now connects the Linux executor path to LinuxBubblewrapLauncher: it resolves only tools from the approved /usr/bin runtime, mounts the assigned workspace read-only and per-job scratch separately, passes the seccomp descriptor with pass_fds, and closes the parent descriptor immediately after process creation.
+- The Linux executor does not fall back to a host Popen command if bubblewrap is missing, command construction fails, or the seccomp descriptor cannot be inherited. Non-Linux VERIFIED assessments are also rejected until their native launchers are integrated.
+- The bubblewrap host process receives only the executor's template-allowlisted environment and fixed safety settings, never the ambient host environment or Runner credentials; the workload environment is reconstructed after --clearenv.
+- Git repository filter discovery also runs as a fixed `git config --name-only` command inside bubblewrap before the requested Git command. No Git process is launched on the host against project-controlled repository configuration.
+- Both backend detection and launcher construction resolve bubblewrap only from the approved /usr/bin runtime. The launcher rejects a resolved bubblewrap binary outside that runtime tree.
+- Executor unit tests use an explicitly test-only passthrough launcher to exercise bounded process/output/cancellation behavior. They do not assert or prove OS isolation.
+- terminal_isolation.py remains the gate contract; linux_sandbox.py constructs the candidate launch boundary. Neither module promotes a host to VERIFIED.
 
 ## Mandatory acceptance matrix
 
@@ -106,7 +111,7 @@ on that actual host and exact helper build:
 - The user namespace is mapped to UID/GID 0 inside the namespace, all capabilities are dropped, and further user namespaces are disabled/asserted disabled. The host-side workspace remains read-only and scratch remains job-scoped.
 - Added `tests/test_linux_sandbox.py` for argument policy, seccomp program alignment, unsupported architectures, path validation and workspace/scratch separation. These are command-construction tests, not proof that the kernel accepted or enforced the sandbox.
 - Added the Linux policy tests to the Ubuntu/Windows Cross-platform Recovery Acceptance matrix. Windows marks this Linux-only test class skipped; that skip is not a Windows pass for Linux isolation.
-- The command builder is not yet integrated into TerminalScriptExecutor and no actual host acceptance has been run. Linux remains BLOCKED/READY_FOR_ACCEPTANCE only; `require_verified_isolation()` still blocks production execution. All seven built-in templates remain disabled.
+- The command builder is now integrated into TerminalScriptExecutor, including seccomp FD inheritance and fail-closed launch errors. No user-host acceptance has been run. Linux remains BLOCKED/READY_FOR_ACCEPTANCE only; `require_verified_isolation()` still blocks production execution. All seven built-in templates remain disabled.
 - Upstream behavior reference: bubblewrap's own option parser documents `--unshare-user`, `--uid`, `--gid`, `--unshare-net`, `--seccomp`, `--disable-userns` and `--cap-drop`: https://github.com/containers/bubblewrap/blob/main/bubblewrap.c
 
 

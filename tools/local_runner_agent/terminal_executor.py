@@ -26,6 +26,10 @@ from tools.local_runner_agent.terminal_isolation import (
     assess_isolation_backend,
     require_verified_isolation,
 )
+from tools.local_runner_agent.linux_sandbox import (
+    LinuxBubblewrapLauncher,
+    LinuxSandboxError,
+)
 
 
 class TerminalExecutionError(RuntimeError):
@@ -243,21 +247,52 @@ class TerminalScriptExecutor:
         return [resolved, *command_args]
 
     @staticmethod
+    def _sandbox_environment(env: dict[str, str]) -> dict[str, str]:
+        """Return only fixed/template-approved workload variables for bubblewrap."""
+        return {
+            name: value for name, value in env.items()
+            if name not in {"PATH", "HOME", "USERPROFILE", "SYSTEMROOT"}
+        }
+
+    @staticmethod
     def _disable_repository_filters(
-        resolved: str, workspace: Path, env: dict[str, str]
+        resolved: str,
+        workspace: Path,
+        env: dict[str, str],
+        *,
+        launcher: LinuxBubblewrapLauncher,
+        scratch: Path,
     ) -> None:
-        """Disable repository-defined clean/smudge/process filters before Git inspection."""
+        """Inspect repository filter names inside the same OS sandbox as the job."""
+        sandbox = None
         try:
-            result = subprocess.run(
-                [resolved, "config", "--name-only", "--null", "--list"],
-                cwd=str(workspace), env=env, stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                shell=False, close_fds=True, timeout=5, check=False,
+            sandbox = launcher.build(
+                executable=resolved,
+                argv=["config", "--name-only", "--null", "--list"],
+                workspace=workspace,
+                scratch=scratch,
+                environment=TerminalScriptExecutor._sandbox_environment(env),
             )
-        except (OSError, subprocess.TimeoutExpired):
+            result = subprocess.run(
+                list(sandbox.argv),
+                cwd=str(workspace),
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                shell=False,
+                close_fds=True,
+                timeout=5,
+                check=False,
+                pass_fds=(sandbox.seccomp_fd,) if os.name == "posix" else (),
+            )
+        except (OSError, subprocess.TimeoutExpired, LinuxSandboxError, ValueError):
             raise TerminalExecutionError(
                 "Git repository filter configuration could not be inspected safely"
             ) from None
+        finally:
+            if sandbox is not None:
+                sandbox.close()
         if result.returncode != 0:
             raise TerminalExecutionError(
                 "Git repository filter configuration could not be inspected safely"
@@ -339,12 +374,19 @@ class TerminalScriptExecutor:
     ) -> TerminalExecutionResult:
         if not self.enabled:
             raise TerminalExecutionError("Terminal execution is disabled on this Runner")
+        assessment = assess_isolation_backend()
         try:
-            require_verified_isolation(assess_isolation_backend())
+            require_verified_isolation(assessment)
         except RuntimeError:
             raise TerminalExecutionError(
                 "Terminal execution is blocked: verified OS isolation is unavailable"
             ) from None
+        # WP-18A currently integrates only the Linux bubblewrap backend. A future
+        # Windows/macOS VERIFIED result must not fall through to host Popen.
+        if assessment.platform != "linux":
+            raise TerminalExecutionError(
+                "Terminal execution is blocked: this Runner has no integrated isolation launcher for the host platform"
+            )
         workspace = self._trusted_directory(workspace_path)
         try:
             template = preview_template(template_id, parameters)
@@ -364,9 +406,25 @@ class TerminalScriptExecutor:
                 or len(argv) > 32 or any(not isinstance(arg, str) or "\x00" in arg for arg in argv)):
             raise TerminalExecutionError("Terminal template resolved an unsafe command")
         safe_path = self._safe_path(workspace)
-        resolved = shutil.which(executable, path=safe_path)
+        # bubblewrap exposes only the system-managed /usr/bin runtime tree. Do
+        # not select tools from /usr/local, a user PATH, or the project itself.
+        linux_names = {
+            "git": ("git",),
+            "python": ("python", "python3"),
+            "node": ("node",),
+        }
+        resolved = next(
+            (
+                candidate
+                for name in linux_names[executable]
+                if (candidate := shutil.which(name, path="/usr/bin"))
+            ),
+            None,
+        )
         if not resolved:
-            raise TerminalExecutionError("Required Terminal executable is unavailable")
+            raise TerminalExecutionError(
+                "Required Terminal executable is unavailable in the approved /usr/bin runtime"
+            )
         resolved_path = Path(resolved).resolve(strict=True)
         if (not resolved_path.is_file() or resolved_path.suffix.lower() in (".bat", ".cmd")):
             raise TerminalExecutionError("Terminal executable is not a trusted native binary")
@@ -394,27 +452,59 @@ class TerminalScriptExecutor:
             shutil.rmtree(job_home, ignore_errors=True)
             raise TerminalExecutionError("Temporary Terminal environment could not be secured") from None
         env = self._environment(template, job_home, safe_path)
+        try:
+            launcher = LinuxBubblewrapLauncher()
+        except (LinuxSandboxError, OSError, ValueError):
+            shutil.rmtree(job_home, ignore_errors=True)
+            raise TerminalExecutionError(
+                "Linux bubblewrap sandbox could not be constructed safely"
+            ) from None
         if executable == "git":
             try:
-                self._disable_repository_filters(resolved, workspace, env)
+                self._disable_repository_filters(
+                    resolved, workspace, env, launcher=launcher, scratch=job_home
+                )
             except TerminalExecutionError:
                 shutil.rmtree(job_home, ignore_errors=True)
                 raise
         timeout = min(int(template["timeout_seconds"]), self.timeout_ceiling_seconds)
         output_limit = min(int(template["max_output_bytes"]), self.output_ceiling_bytes)
         command = self._build_command(resolved, executable, argv)
+        try:
+            sandbox_command = launcher.build(
+                executable=resolved,
+                argv=command[1:],
+                workspace=workspace,
+                scratch=job_home,
+                environment=self._sandbox_environment(env),
+            )
+        except (LinuxSandboxError, OSError, ValueError):
+            shutil.rmtree(job_home, ignore_errors=True)
+            raise TerminalExecutionError(
+                "Linux bubblewrap sandbox could not be constructed safely"
+            ) from None
+
+        # _environment() contains only the template allowlist and fixed safety
+        # settings, never the ambient host environment or Runner credentials.
+        # bubblewrap reconstructs the workload environment after --clearenv.
         creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
         started = time.monotonic()
         try:
             process = subprocess.Popen(
-                command, cwd=str(workspace), env=env, stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=False,
-                close_fds=True, start_new_session=(os.name != "nt"),
-                creationflags=creationflags, bufsize=0,
+                list(sandbox_command.argv), cwd=str(workspace), env=env,
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, shell=False, close_fds=True,
+                start_new_session=(os.name != "nt"), creationflags=creationflags,
+                bufsize=0,
+                pass_fds=(sandbox_command.seccomp_fd,) if os.name == "posix" else (),
             )
-        except OSError:
+        except (OSError, ValueError):
             shutil.rmtree(job_home, ignore_errors=True)
-            raise TerminalExecutionError("Terminal executable could not be started") from None
+            raise TerminalExecutionError("Linux bubblewrap launcher could not be started") from None
+        finally:
+            # The child inherited only the explicitly passed seccomp descriptor.
+            # Closing the parent's copy prevents an FD leak across subsequent jobs.
+            sandbox_command.close()
 
         chunks: queue.Queue[bytes | None] = queue.Queue(maxsize=8)
 
@@ -512,4 +602,9 @@ class TerminalScriptExecutor:
             reader.join(timeout=1)
             raise
         finally:
+            try:
+                if process.stdout is not None and not process.stdout.closed:
+                    process.stdout.close()
+            except OSError:
+                pass
             shutil.rmtree(job_home, ignore_errors=True)

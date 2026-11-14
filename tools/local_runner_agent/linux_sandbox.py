@@ -98,16 +98,23 @@ def _trusted_directory(path: str | os.PathLike, label: str) -> Path:
 class LinuxBubblewrapLauncher:
     """Construct a private-network, read-only-workspace bubblewrap command."""
 
-    def __init__(self, *, executable_lookup=shutil.which):
+    def __init__(self, *, executable_lookup=shutil.which, runtime_bin_dir="/usr/bin"):
         if not sys_platform_linux():
             raise LinuxSandboxError("bubblewrap launcher is supported only on Linux")
-        candidate = executable_lookup("bwrap")
+        try:
+            runtime_root = Path(runtime_bin_dir).resolve(strict=True)
+        except OSError:
+            raise LinuxSandboxError("approved runtime binary directory is unavailable") from None
+        if not runtime_root.is_dir():
+            raise LinuxSandboxError("approved runtime binary directory is not a directory")
+        candidate = executable_lookup("bwrap", path=str(runtime_root))
         if not candidate:
-            raise LinuxSandboxError("bubblewrap executable is unavailable")
+            raise LinuxSandboxError("bubblewrap executable is unavailable in the approved runtime")
         try:
             resolved = Path(candidate).resolve(strict=True)
-        except OSError:
-            raise LinuxSandboxError("bubblewrap executable is unavailable") from None
+            resolved.relative_to(runtime_root)
+        except (OSError, ValueError):
+            raise LinuxSandboxError("bubblewrap executable is outside the approved runtime") from None
         if not resolved.is_file() or not os.access(resolved, os.X_OK):
             raise LinuxSandboxError("bubblewrap executable is not an executable regular file")
         self.bwrap = str(resolved)
