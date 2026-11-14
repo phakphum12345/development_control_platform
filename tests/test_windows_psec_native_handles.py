@@ -8,6 +8,7 @@ from tools.local_runner_agent.windows_psec_native_handles import (
     HandleIdentity,
     NativeHandleAclError,
     OpenedObject,
+    validate_parent_identity,
     validate_relative_component,
 )
 
@@ -40,6 +41,24 @@ class NativeHandlePreflightTests(unittest.TestCase):
         for value in ("CON", "nul.txt", "COM1", "LPT9.log"):
             with self.subTest(value=value), self.assertRaises(NativeHandleAclError):
                 validate_relative_component(value)
+
+    def test_parent_identity_must_match_retained_handle(self):
+        expected = HandleIdentity(7, "00" * 16, True, FILE_ATTRIBUTE_DIRECTORY, 0)
+        validate_parent_identity(expected, expected)
+        changed = HandleIdentity(7, "11" * 16, True, FILE_ATTRIBUTE_DIRECTORY, 0)
+        with self.assertRaisesRegex(NativeHandleAclError, "identity changed"):
+            validate_parent_identity(changed, expected)
+
+    def test_parent_identity_must_be_directory_and_not_reparse(self):
+        expected = HandleIdentity(7, "00" * 16, True, FILE_ATTRIBUTE_DIRECTORY, 0)
+        file_identity = HandleIdentity(7, "00" * 16, False, 0, 0)
+        reparse_identity = HandleIdentity(
+            7, "00" * 16, True,
+            FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT, 0xA0000003,
+        )
+        for actual in (file_identity, reparse_identity):
+            with self.subTest(actual=actual), self.assertRaisesRegex(NativeHandleAclError, "parent handle"):
+                validate_parent_identity(actual, actual)
 
     def test_identity_captures_full_file_id_and_object_kind(self):
         identity = HandleIdentity(
