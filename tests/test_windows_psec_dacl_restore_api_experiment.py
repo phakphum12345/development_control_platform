@@ -48,6 +48,7 @@ class WindowsDaclRestoreApiRealHostTests(unittest.TestCase):
                 self.assertTrue(result.cleanup_verified)
                 self.assertEqual(len(result.snapshot_integrity_sha256), 64)
                 self.assertTrue(result.transaction_id)
+                self.assertIsNotNone(result.api_return_code)
                 self.assertIsNotNone(result.control_flags_s0)
                 self.assertIsNotNone(result.control_flags_s1)
                 self.assertIsNotNone(result.control_flags_s2)
