@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import unittest
 from unittest.mock import patch
-from unittest.mock import patch
 
 from tools.local_runner_agent.windows_psec_dacl_experiment import (
     DaclExperimentError,
@@ -26,6 +25,8 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         self.assertTrue(result.dacl_defaulted_before)
         self.assertTrue(result.dacl_bytes_equal_after_rollback)
         self.assertTrue(result.cleanup_verified)
+        self.assertGreater(result.volume_serial, 0)
+        self.assertEqual(len(result.file_id), 32)
         # This is the measurement under test, not a pre-assumed success.
         self.assertIn(result.dacl_defaulted_after_write, (True, False))
 
@@ -53,6 +54,8 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         self.assertFalse(result.dacl_defaulted_before)
         self.assertTrue(result.dacl_bytes_equal_after_rollback)
         self.assertTrue(result.cleanup_verified)
+        self.assertGreater(result.volume_serial, 0)
+        self.assertEqual(len(result.file_id), 32)
         self.assertIn(result.dacl_defaulted_after_write, (True, False))
 
 
