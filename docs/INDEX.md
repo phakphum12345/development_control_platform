@@ -76,6 +76,7 @@
 - [PSEC DACL State Semantics Protocol v1.0](DCP-PSEC-DACL-STATE-PROTOCOL-v1.md) — draft comparison profiles for DACL content, construction metadata and OS-managed control state; does not authorize native writes.
 - [PSEC DACL Protocol v1.0 Consumer Conformance](DCP-PSEC-DACL-PROTOCOL-V1-CONSUMER-CONFORMANCE.md) — maps Protocol v1 comparison profiles to the existing Reader/Transaction code and records pre-writer conformance gaps.
 - [PSEC DACL Comparison Profiles Implementation](DCP-PSEC-DACL-COMPARISON-PROFILES-IMPLEMENTATION.md) — pure comparator, required per-operation profile selection, and non-native verification boundary.
+- [PSEC Mathematical Profile Adapter Experiment](DCP-PSEC-DACL-MATHEMATICAL-PROFILE-ADAPTER.md) — reversible Decimal diagnostics for the same four Protocol v1 profiles; no new profiles or comparator changes.
 - [Linux Host Acceptance](DCP-LINUX-HOST-ACCEPTANCE.md) — target-host evidence harness and acceptance criteria.
 - [Windows PSEC Isolation](DCP-WINDOWS-PSEC-ISOLATION.md) — PSEC v1.1 policy probe, CreateProcessW/Job Object launcher, and target-host acceptance steps.
 - [Windows PSEC Filesystem Authorization](DCP-WINDOWS-PSEC-FILESYSTEM-AUTHORIZATION.md) — WP-18B.1 per-job projection, Package SID authorization, lifecycle and adversarial acceptance design.
