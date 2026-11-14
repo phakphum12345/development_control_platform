@@ -49,6 +49,7 @@ class DaclCandidateBuilderTests(unittest.TestCase):
         self.assertTrue(result.inserted)
         self.assertEqual(result.access_mask, READ_EXECUTE)
         self.assertEqual(result.inheritance_flags, OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE)
+        self.assertEqual(result.dacl_control_flags, 0x1000)
         self.assertEqual(parsed.aces[0].raw, existing)
         self.assertEqual(parsed.aces[1].sid, PACKAGE_SID)
         self.assertEqual(parsed.aces[1].access_mask, READ_EXECUTE)
