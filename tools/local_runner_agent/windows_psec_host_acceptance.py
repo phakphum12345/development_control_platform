@@ -113,6 +113,7 @@ def _filesystem_acl(path: Path) -> dict:
         "stderr": completed.stderr[:4000],
     }
 
+
 def _environment() -> dict[str, str]:
     system_root = os.environ.get("SYSTEMROOT") or os.environ.get("SystemRoot")
     if not system_root:
