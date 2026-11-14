@@ -39,20 +39,20 @@ class FILE_ID_128(ctypes.Structure):
 
 class FILE_ID_EXTD_DIR_INFO(ctypes.Structure):
     _fields_ = [
-        ("NextEntryOffset", wintypes.DWORD),
-        ("FileIndex", wintypes.DWORD),
+        ("NextEntryOffset", ctypes.c_uint32),
+        ("FileIndex", ctypes.c_uint32),
         ("CreationTime", ctypes.c_longlong),
         ("LastAccessTime", ctypes.c_longlong),
         ("LastWriteTime", ctypes.c_longlong),
         ("ChangeTime", ctypes.c_longlong),
         ("EndOfFile", ctypes.c_longlong),
         ("AllocationSize", ctypes.c_longlong),
-        ("FileAttributes", wintypes.DWORD),
-        ("FileNameLength", wintypes.DWORD),
-        ("EaSize", wintypes.DWORD),
-        ("ReparsePointTag", wintypes.DWORD),
+        ("FileAttributes", ctypes.c_uint32),
+        ("FileNameLength", ctypes.c_uint32),
+        ("EaSize", ctypes.c_uint32),
+        ("ReparsePointTag", ctypes.c_uint32),
         ("FileId", FILE_ID_128),
-        ("FileName", wintypes.WCHAR * 1),
+        ("FileName", ctypes.c_uint16 * 1),
     ]
 
 
