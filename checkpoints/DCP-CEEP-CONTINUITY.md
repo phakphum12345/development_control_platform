@@ -131,3 +131,17 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Exact-head checks on the previous code head `6a0210b557af258125521124949034481f2bb044` were in progress at last inspection. The current documentation-only head needs fresh PR checks to satisfy the exact-SHA rule.
 - No merge authorization exists. Keep PR #116 draft; keep all seven Terminal templates disabled.
 - Next exact action: trigger all required workflows for documentation/checkpoint changes, then verify every check on the final head SHA. If checks pass, continue the executor integration as a separate WP-18A implementation slice; do not merge until reviewed and approved.
+
+
+## 2026-11-14 — WP-18A executor integration and WP-18C recovery continuation
+
+- Repository: `phakphum12345/development_control_platform`; protocol: DCP-CEEP v1.0.
+- PR #116 remains OPEN / DRAFT / NOT MERGED; exact head `c811f0fee91f5ad43850359f4adfae506c3a502a`; its three exact-head workflows passed.
+- PR #117 — Linux bubblewrap executor integration — remains OPEN / DRAFT / NOT MERGED, stacked on PR #116's branch. Exact head `45b1650e740b4f4667ca21c793fab0d670c84a73`.
+- PR #117 exact-head checks: Cross-platform Recovery Acceptance #167 PASS; Validate Control Plane #745 PASS; Local-first Minimal Emulator #531 PASS. Windows runner acceptance matrix SKIPPED because no eligible self-hosted acceptance Runner was available; SKIPPED is not PASS.
+- PR #117 integrates the Linux bubblewrap launcher into TerminalScriptExecutor, passes the seccomp FD, pins bubblewrap/workload executables to /usr/bin, performs Git filter discovery inside the sandbox, and retains the VERIFIED gate. All seven built-in templates remain disabled. No user-host acceptance is claimed.
+- Started stacked branch `work/wp18c-terminal-recovery` from PR #117 head `45b1650e740b4f4667ca21c793fab0d670c84a73`.
+- WP-18C implementation in progress: runner-authenticated cleanup status endpoint; conservative reconciliation only for old terminal_script workspaces with matching ownership and Gateway `cleanup_safe=true`; UNKNOWN, lease-expired, active, mismatched, recent, unavailable and preview-retained workspaces are preserved.
+- Added Linux-only detached-child timeout test using bubblewrap parent-death/PID-namespace containment. Exact-head CI for this WP-18C branch has not yet run.
+- Current WP-18C branch head: `3fb72e498d7b3b1decda44a16f054532e04ce50f`.
+- No merge, deployment, template enablement or deletion is authorized. Continue with tests, exact-head CI, Draft PR and evidence reconciliation; do not merge without separate explicit approval.
