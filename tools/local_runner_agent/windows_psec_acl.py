@@ -30,7 +30,7 @@ SDDL_REVISION_1 = 1
 ERROR_SUCCESS = 0
 
 _SID_RE = re.compile(r"^S-1-15-2-(?:0|[1-9][0-9]{0,9})(?:-(?:0|[1-9][0-9]{0,9})){0,14}$", re.ASCII)
-_ACE_RE = re.compile(r"\\((A|D);([^;]*);([^;]+);;;([^)]*)\\)")
+_ACE_RE = re.compile(r"\((A|D);([^;]*);([^;]+);;;([^)]*)\)")
 
 # SDDL rights are two-character tokens, not necessarily hexadecimal masks.
 # Several object-specific rights share bit values with file-system rights:
@@ -52,21 +52,23 @@ def _parse_sddl_access_mask(value: str) -> int:
     """Normalize a numeric or concatenated SDDL rights field to an access mask."""
     if value.startswith(("0x", "0X")):
         return int(value, 16)
+    token_string = value.upper()
+    token_pairs = (
+        [token_string[offset:offset + 2] for offset in range(0, len(token_string), 2)]
+        if len(token_string) % 2 == 0 else []
+    )
+    if token_pairs and all(token in _SDDL_RIGHTS for token in token_pairs):
+        mask = 0
+        for token in token_pairs:
+            mask |= _SDDL_RIGHTS[token]
+        return mask
     if re.fullmatch(r"[0-9a-fA-F]+", value, re.ASCII):
         # Preserve support for numeric masks emitted by test adapters and tools.
         return int(value, 16)
-    token_string = value.upper()
-    if len(token_string) % 2:
+    if not token_pairs:
         raise WindowsPsecAclError("unsupported SDDL access-mask encoding")
-    mask = 0
-    for offset in range(0, len(token_string), 2):
-        token = token_string[offset:offset + 2]
-        if token not in _SDDL_RIGHTS:
-            raise WindowsPsecAclError(
-                f"unsupported SDDL access-right token: {token}"
-            )
-        mask |= _SDDL_RIGHTS[token]
-    return mask
+    unknown = next((token for token in token_pairs if token not in _SDDL_RIGHTS), token_pairs[0])
+    raise WindowsPsecAclError(f"unsupported SDDL access-right token: {unknown}")
 
 
 class WindowsPsecAclError(RuntimeError):
