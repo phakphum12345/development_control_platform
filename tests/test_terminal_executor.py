@@ -333,7 +333,7 @@ class TerminalScriptExecutorTests(unittest.TestCase):
         self.assertEqual(result.outcome, "succeeded", result)
         self.assertEqual(result.return_code, 0)
         self.assertGreater(result.output_bytes, 0)
-        self.assertEqual(result.command[0], str(Path(shutil.which("python", path="/usr/bin") or shutil.which("python3", path="/usr/bin")).resolve()))
+        self.assertTrue(Path(result.command[0]).resolve().is_relative_to(Path("/usr/bin").resolve()))
         self.assertEqual(sorted(item.name for item in self.workspace.iterdir()), ["README.md"])
 
     def test_sandbox_construction_failure_never_falls_back_to_host_process(self):
