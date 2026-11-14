@@ -212,6 +212,7 @@ def capture_original_snapshot_from_handle(
     either query fails or the object identity changes, no snapshot is issued.
     This function is read-only and never resolves a path or performs a write.
     """
+    _validate_transaction_id(transaction_id)
     if isinstance(handle, bool) or not isinstance(handle, int) or handle <= 0:
         raise ReversibleStateError("a valid retained integer handle is required")
     if not callable(getattr(reader, "query_identity", None)) or not callable(
