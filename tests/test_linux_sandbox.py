@@ -1,4 +1,6 @@
 import os
+import shutil
+import subprocess
 import tempfile
 import sys
 import unittest
@@ -89,6 +91,52 @@ class LinuxBubblewrapLauncherTests(unittest.TestCase):
             link.symlink_to(workspace, target_is_directory=True)
             with self.assertRaisesRegex(LinuxSandboxError, "real directory"):
                 launcher.build(executable="/usr/bin/python3", argv=[], workspace=link, scratch=scratch)
+
+
+    @unittest.skipUnless(sys.platform.startswith("linux") and shutil.which("bwrap"), "bubblewrap runtime unavailable")
+    def test_actual_bubblewrap_enforces_filesystem_network_and_scratch_boundaries(self):
+        with tempfile.TemporaryDirectory() as root:
+            root_path = Path(root)
+            workspace = root_path / "workspace"
+            scratch = root_path / "scratch"
+            workspace.mkdir()
+            scratch.mkdir()
+            (workspace / "visible.txt").write_text("workspace-ok", encoding="utf-8")
+            secret = root_path / "host-secret.txt"
+            secret.write_text("host-secret", encoding="utf-8")
+            script = (
+                "import pathlib,socket,sys; "
+                "w=pathlib.Path('/workspace'); "
+                "assert (w/'visible.txt').read_text() == 'workspace-ok'; "
+                "p=pathlib.Path(sys.argv[1]); "
+                "exec(\"try: p.read_text(); raise AssertionError('host file visible')\\nexcept FileNotFoundError: pass\"); "
+                "exec(\"try: (w/'forbidden.txt').write_text('bad'); raise AssertionError('workspace writable')\\nexcept PermissionError: pass\"); "
+                "exec(\"try: socket.socket(); raise AssertionError('socket allowed')\\nexcept PermissionError: pass\"); "
+                "pathlib.Path('/tmp/scratch-proof.txt').write_text('scratch-ok')"
+            )
+            launcher = LinuxBubblewrapLauncher()
+            sandbox = launcher.build(
+                executable="/usr/bin/python3",
+                argv=["-c", script, str(secret)],
+                workspace=workspace,
+                scratch=scratch,
+            )
+            try:
+                result = subprocess.run(
+                    sandbox.argv,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=15,
+                    check=False,
+                    pass_fds=(sandbox.seccomp_fd,),
+                )
+            finally:
+                sandbox.close()
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+            self.assertFalse((workspace / "forbidden.txt").exists())
+            self.assertEqual((scratch / "scratch-proof.txt").read_text(encoding="utf-8"), "scratch-ok")
 
 
 if __name__ == "__main__":
