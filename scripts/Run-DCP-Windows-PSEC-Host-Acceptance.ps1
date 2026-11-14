@@ -34,7 +34,7 @@ try {
     $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
     $artifactPath = Join-Path $artifactDirectory "windows-psec-host-acceptance-$stamp-$($head.Substring(0,12)).json"
     $json = $evidence | ConvertTo-Json -Depth 20
-    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
     [System.IO.File]::WriteAllText($artifactPath, $json, $utf8NoBom)
 
     Write-Output "Evidence file: $artifactPath"
