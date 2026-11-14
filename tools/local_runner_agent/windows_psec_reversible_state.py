@@ -25,6 +25,7 @@ from tools.local_runner_agent.windows_psec_dacl_comparison import (
 )
 from tools.local_runner_agent.windows_psec_security_descriptor_transaction import (
     DescriptorSnapshot,
+    NativeSecurityDescriptorTransactionError,
     TransactionLimits,
 )
 
@@ -103,10 +104,13 @@ def _validate_descriptor(
 ) -> None:
     if not isinstance(descriptor, DescriptorSnapshot):
         raise ReversibleStateError("original descriptor snapshot has an invalid type")
-    descriptor.validate(
-        max_descriptor_bytes=limits.max_descriptor_bytes,
-        max_aces=limits.max_aces_per_descriptor,
-    )
+    try:
+        descriptor.validate(
+            max_descriptor_bytes=limits.max_descriptor_bytes,
+            max_aces=limits.max_aces_per_descriptor,
+        )
+    except NativeSecurityDescriptorTransactionError as exc:
+        raise ReversibleStateError(str(exc)) from exc
 
 
 def _snapshot_digest(
