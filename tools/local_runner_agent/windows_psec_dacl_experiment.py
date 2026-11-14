@@ -447,7 +447,11 @@ class WindowsDaclDefaultedExperiment:
             file_id=result.file_id,
             process_handles_before=result.process_handles_before,
             process_handles_after=handles_after,
-            process_handle_delta=handles_after - result.process_handles_before,
+            process_handle_delta=(
+                handles_after - result.process_handles_before
+                if handles_after >= 0 and result.process_handles_before >= 0
+                else -1
+            ),
             outcome=result.outcome,
             write_verified=result.write_verified,
             rollback_verified=result.rollback_verified,
