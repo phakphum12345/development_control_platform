@@ -371,10 +371,20 @@ def _query_process_token(kernel32, process_handle: HANDLE) -> dict:
 
 
 def _valid_sid_string(value: object) -> bool:
-    if not isinstance(value, str) or not value.startswith("S-1-"):
+    if not isinstance(value, str):
         return False
     parts = value.split("-")
-    return len(parts) >= 4 and all(part.isdecimal() for part in parts[1:])
+    if (len(parts) < 4 or len(parts) > 18 or parts[:2] != ["S", "1"]
+            or any(not part.isascii() or not part.isdecimal() for part in parts[2:])):
+        return False
+    try:
+        authority = int(parts[2], 10)
+        subauthorities = [int(part, 10) for part in parts[3:]]
+    except ValueError:
+        return False
+    return 0 <= authority <= 0xFFFFFFFFFFFF and all(
+        0 <= item <= 0xFFFFFFFF for item in subauthorities
+    )
 
 
 def _require_app_container_token(token: object) -> dict:
@@ -399,7 +409,8 @@ def _require_app_container_token(token: object) -> dict:
         raise WindowsPsecError("PSEC AppContainer Package SID is invalid")
     if not _valid_sid_string(token["user_sid"]) or not _valid_sid_string(token["integrity_sid"]):
         raise WindowsPsecError("PSEC process token contains an invalid user or integrity SID")
-    if isinstance(token["elevation_type"], bool) or not isinstance(token["elevation_type"], int):
+    if (isinstance(token["elevation_type"], bool)
+            or token["elevation_type"] not in (1, 2, 3)):
         raise WindowsPsecError("PSEC process token elevation type is invalid")
     if not isinstance(token["groups"], list) or not isinstance(token["capabilities"], list):
         raise WindowsPsecError("PSEC process token SID collections are invalid")
