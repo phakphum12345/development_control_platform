@@ -131,3 +131,16 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Exact-head checks on the previous code head `6a0210b557af258125521124949034481f2bb044` were in progress at last inspection. The current documentation-only head needs fresh PR checks to satisfy the exact-SHA rule.
 - No merge authorization exists. Keep PR #116 draft; keep all seven Terminal templates disabled.
 - Next exact action: trigger all required workflows for documentation/checkpoint changes, then verify every check on the final head SHA. If checks pass, continue the executor integration as a separate WP-18A implementation slice; do not merge until reviewed and approved.
+
+
+## 2026-11-14 — WP-18B.1-K DACL defaulted Native API experiment checkpoint
+
+- PR #130 remains a separate OPEN / DRAFT / NOT MERGED Reader/Transaction checkpoint; do not add experiment code to it.
+- Experiment branch: `work/wp18b1k-dacl-defaulted-native-api-experiment`.
+- Exact base: `main` at `cb9322b3bbffafeed3a46fceb4ee0177fa924e48` (merge commit for PR #116).
+- Initial design commit: `fbf6814df8540ad08175cb6705e2e27bf2b3d244` is the docs index update; experiment design was added immediately before it on the same branch.
+- Added `docs/DCP-WINDOWS-PSEC-DACL-DEFAULTED-NATIVE-API-EXPERIMENT.md` defining disposable NTFS-only cases, retained-handle read-back, binary/control-state comparison, rollback, cleanup, and fail-closed evidence vocabulary.
+- Microsoft API review confirms `GetSecurityDescriptorDacl` reports the DACL-defaulted state; `SetSecurityDescriptorDacl` can set the flag only in an in-memory absolute descriptor; `SetSecurityInfo` accepts a handle and DACL pointer but no explicit `bDaclDefaulted` parameter, and Microsoft says it updates descriptor control bits as appropriate. `SetKernelObjectSecurity` is explicitly not for file-system objects.
+- No native API call, ACL mutation, Windows-host test, or rollback experiment has been executed in this work package. Design only; implementation and host evidence remain UNKNOWN / IN_PROGRESS.
+- No PR has been opened yet. No merge or deployment is authorized.
+- Next exact action: implement a Windows-only disposable-object harness and portable mocked tests on this branch; then run the Windows acceptance only on a verified disposable NTFS root. Preserve PR #130 unchanged and keep Native Writer / Terminal BLOCKED.
