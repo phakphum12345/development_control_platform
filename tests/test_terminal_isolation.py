@@ -9,7 +9,7 @@ from tools.local_runner_agent.terminal_isolation import (
 
 class TerminalIsolationContractTests(unittest.TestCase):
     def test_linux_without_bubblewrap_is_blocked(self):
-        result = assess_isolation_backend("linux", executable_lookup=lambda _name: None)
+        result = assess_isolation_backend("linux", executable_lookup=lambda _name, path=None: None)
         self.assertEqual(result.platform, "linux")
         self.assertEqual(result.backend, "bubblewrap-namespaces-seccomp")
         self.assertEqual(result.state, "BLOCKED")
@@ -20,7 +20,7 @@ class TerminalIsolationContractTests(unittest.TestCase):
 
     def test_linux_with_bubblewrap_is_only_ready_for_acceptance(self):
         result = assess_isolation_backend(
-            "linux", executable_lookup=lambda _name: "/usr/bin/bwrap"
+            "linux", executable_lookup=lambda _name, path=None: "/usr/bin/bwrap"
         )
         self.assertEqual(result.state, "READY_FOR_ACCEPTANCE")
         self.assertTrue(result.available)

@@ -43,7 +43,8 @@ Do not use the deprecated sandbox-exec interface as a production substitute.
 - TerminalScriptExecutor calls require_verified_isolation() before workspace resolution or process launch. The default platform assessment cannot return VERIFIED, so production execution remains blocked.
 - WP-18A now connects the Linux executor path to LinuxBubblewrapLauncher: it resolves only tools from the approved /usr/bin runtime, mounts the assigned workspace read-only and per-job scratch separately, passes the seccomp descriptor with pass_fds, and closes the parent descriptor immediately after process creation.
 - The Linux executor does not fall back to a host Popen command if bubblewrap is missing, command construction fails, or the seccomp descriptor cannot be inherited. Non-Linux VERIFIED assessments are also rejected until their native launchers are integrated.
-- The bubblewrap host process receives a minimal environment; the workload environment is reconstructed after --clearenv from the template allowlist and fixed safety settings.
+- The bubblewrap host process receives only the executor's template-allowlisted environment and fixed safety settings, never the ambient host environment or Runner credentials; the workload environment is reconstructed after --clearenv.
+- Both backend detection and launcher construction resolve bubblewrap only from the approved /usr/bin runtime. The launcher rejects a resolved bubblewrap binary outside that runtime tree.
 - Executor unit tests use an explicitly test-only passthrough launcher to exercise bounded process/output/cancellation behavior. They do not assert or prove OS isolation.
 - terminal_isolation.py remains the gate contract; linux_sandbox.py constructs the candidate launch boundary. Neither module promotes a host to VERIFIED.
 

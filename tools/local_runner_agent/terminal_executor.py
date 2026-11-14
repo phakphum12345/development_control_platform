@@ -449,20 +449,14 @@ class TerminalScriptExecutor:
                 "Linux bubblewrap sandbox could not be constructed safely"
             ) from None
 
-        # The host-side bubblewrap process receives no inherited credentials or
-        # ambient PATH. The workload environment is reconstructed after --clearenv.
-        if os.name == "nt":  # test harness only; production assessment blocks Windows.
-            launch_environment = {"PATH": str(Path(resolved).parent)}
-            system_root = os.environ.get("SYSTEMROOT") or os.environ.get("SystemRoot")
-            if system_root:
-                launch_environment["SYSTEMROOT"] = system_root
-        else:
-            launch_environment = {"PATH": "/usr/bin", "LANG": "C.UTF-8"}
+        # _environment() contains only the template allowlist and fixed safety
+        # settings, never the ambient host environment or Runner credentials.
+        # bubblewrap reconstructs the workload environment after --clearenv.
         creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
         started = time.monotonic()
         try:
             process = subprocess.Popen(
-                list(sandbox_command.argv), cwd=str(workspace), env=launch_environment,
+                list(sandbox_command.argv), cwd=str(workspace), env=env,
                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT, shell=False, close_fds=True,
                 start_new_session=(os.name != "nt"), creationflags=creationflags,
