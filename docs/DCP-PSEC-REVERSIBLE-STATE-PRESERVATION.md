@@ -85,15 +85,35 @@ This protocol adds immutable state preservation and restoration verification. It
 
 ## 8. Windows Native API Capability Boundary
 
-The existing Windows Server 2025 / NTFS experiment observed:
+The Windows Server 2025 / NTFS experiment now uses the immutable S0 envelope and records:
 
-- Original control word: 0x9004.
-- After the first SetSecurityInfo call: 0x9404.
-- After the rollback write: 0x9404.
-- DACL bytes and observed DaclDefaulted=FALSE remained unchanged in this later probe.
+- S0 control word: 0x9004.
+- S1 control word after SetSecurityInfo: 0x9404.
+- S2 control word after rollback through the same SetSecurityInfo path: 0x9404.
+- S0, S1, and S2 DACL bytes: identical empty ACL bytes (0200080000000000).
+- DaclDefaulted: FALSE at all three observations.
+- Restoration verification: RESTORE_NOT_EXACT with control_flags_mismatch.
 - The 0x0400 delta is SE_DACL_AUTO_INHERITED; the experiment observed zero inherited ACEs.
+- Snapshot transaction identity and SHA-256 digest are emitted as evidence.
 
-This is evidence that the currently tested SetSecurityInfo DACL write path did not restore the original control word on that host. It is not proof that every Windows version or every supported API behaves identically.
+This proves that the tested SetSecurityInfo write-and-rollback sequence does not restore the original strict control state on the tested host. It does not prove that every documented file-security API has the same behavior.
+
+### Documented API distinctions to investigate
+
+- SetSecurityInfo is the documented handle-based API for NTFS objects and applies ACE inheritance processing when DACL/SACL information is set.
+- SetNamedSecurityInfo is the documented name-based counterpart and also applies inheritance processing.
+- SetSecurityDescriptorControl modifies control bits on a SECURITY_DESCRIPTOR structure in memory; it is not itself an object-persistence API.
+- SetKernelObjectSecurity is explicitly not the API to use for file-system objects; Microsoft directs file-system callers to SetSecurityInfo or SetNamedSecurityInfo.
+- SetFileSecurityW is documented as obsolete, with SetNamedSecurityInfo recommended instead. A Microsoft External Staff Moderator has described a possible legacy descriptor-control restoration behavior, but that report is only a candidate lead and has not been reproduced by this experiment.
+
+References:
+- SECURITY_DESCRIPTOR_CONTROL: https://learn.microsoft.com/en-us/windows/win32/secauthz/security-descriptor-control
+- SetSecurityDescriptorControl: https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-setsecuritydescriptorcontrol
+- Security Descriptor Operations: https://learn.microsoft.com/en-us/windows/win32/secauthz/security-descriptor-operations
+- SetSecurityInfo: https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-setsecurityinfo
+- SetKernelObjectSecurity: https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-setkernelobjectsecurity
+- SetFileSecurityW: https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-setfilesecurityw
+- Microsoft Q&A API behavior lead: https://learn.microsoft.com/en-us/answers/questions/6008962/setfilesecurityw-changes-control-bits-from-0x8404
 
 The protocol therefore separates:
 
@@ -102,6 +122,8 @@ The protocol therefore separates:
 - Verification capability: independently read back and compare the result.
 
 A field that cannot be restored through the tested API remains a restoration limitation. The implementation MUST NOT bypass this limitation by masking the field or silently selecting a weaker profile.
+
+The next API-capability probe is limited to the same newly created disposable NTFS object and immutable S0. It will isolate candidate SetFileSecurityW and SetNamedSecurityInfoW behaviors, retain the same object identity checks, and verify every resulting S2 with STRICT_DESCRIPTOR_EQUALITY. No candidate API is promoted to a production writer by this protocol.
 
 No undocumented API, privilege expansion, alternate object target, or production ACL mutation is introduced by this experiment.
 
