@@ -91,9 +91,12 @@ def resolve_comparison_level(level_id: int) -> DaclComparisonProfile:
 def comparison_level_diagnostics(level_id: int) -> dict[str, str | int]:
     """Return exact diagnostic strings; never use them as comparator inputs."""
     encoded = encode_comparison_level(level_id)
+    with localcontext() as context:
+        context.prec = _DECIMAL_PRECISION
+        square = encoded.square_root * encoded.square_root
     return {
         "level_id": encoded.level_id,
         "square_root": str(encoded.square_root),
-        "square": str(encoded.square_root * encoded.square_root),
+        "square": str(square),
         "normalized": str(encoded.normalized),
     }
