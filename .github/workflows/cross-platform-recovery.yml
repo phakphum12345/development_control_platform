@@ -88,6 +88,10 @@ jobs:
         if: runner.os == 'Linux'
         run: python -m unittest tests.test_terminal_executor -v
 
+      - name: Run Linux host acceptance harness (ephemeral CI host)
+        if: runner.os == 'Linux'
+        run: python -m tools.local_runner_agent.linux_host_acceptance
+
       - name: Report host identity
         shell: bash
         run: |
