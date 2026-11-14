@@ -4,8 +4,8 @@
 **Repository:** `phakphum12345/development_control_platform`  
 **Protocol:** DCP-CEEP v1.0  
 **Related checkpoint:** PR #130 (`fix(psec): preserve DACL defaulted state in snapshots`)  
-**Branch:** `work/wp18b1k-dacl-defaulted-native-api-experiment`  
-**Base:** `main` at `cb9322b3bbffafeed3a46fceb4ee0177fa924e48`
+**Branch:** `work/wp18b1k-dacl-native-api-experiment-stack`  
+**Base:** PR #130 head `a2e336eb034fdb2afc4340fe8228e87164afca9d` (stacked experiment base)
 
 ## 1. Objective
 
@@ -120,7 +120,8 @@ PR #130 remains a separate Reader/Transaction checkpoint. Native Writer semantic
 - Added `tests/test_windows_psec_dacl_experiment.py`.
 - The harness creates a unique temporary directory under the OS temp root, verifies the backing volume is NTFS, creates one file with `CREATE_NEW`, retains the handle, and builds an explicit empty DACL in an absolute security descriptor with the requested defaulted flag.
 - The only mutation call is `SetSecurityInfo` on that retained file handle. The same captured DACL bytes are supplied for the write and rollback attempt.
-- Read-back uses the existing `WindowsHandleSecurityReader` on the same handle. Rollback compares DACL bytes, `DaclDefaulted`, and descriptor control flags.
+- Read-back uses the existing `WindowsHandleSecurityReader` on the same handle. The harness captures volume serial and full 128-bit file ID, rejects directory/reparse targets, and rechecks identity after write and rollback. Rollback compares DACL bytes, `DaclDefaulted`, and descriptor control flags.
+- Rollback is unconditional after every write attempt, including when read-back itself fails; primary write, read-back, rollback-write, and rollback-read errors are retained in the failure diagnostic.
 - Cleanup closes the retained handle, deletes only the exact harness-created file, and removes only its exact empty temporary directory. Any cleanup failure blocks a successful result.
 - The CI workflow now invokes this test module on Ubuntu and Windows. The native cases are skipped off Windows; the Windows CI result is GitHub-hosted runner evidence, not the user's local Windows-host acceptance.
 - No experiment has been executed in this authoring session. No native round-trip result is claimed.
