@@ -12,8 +12,10 @@ import json
 import os
 import platform
 import sys
-from dataclasses import asdict, dataclass
+import tempfile
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
+from pathlib import Path
 
 
 LOAD_LIBRARY_SEARCH_SYSTEM32 = 0x00000800
@@ -48,6 +50,7 @@ class PsecAssessment:
     supported_features: tuple[str, ...]
     missing_features: tuple[str, ...]
     reason: str
+    spec_created: bool | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -176,8 +179,85 @@ def probe_psec(*, platform_name: str | None = None, dll_loader=None) -> PsecAsse
     )
 
 
+def create_psec_environment(dll, specification: bytes):
+    """Create and immediately close a PSEC handle to validate the serialized policy."""
+    if not isinstance(specification, bytes) or not specification:
+        raise ValueError("PSEC specification must be non-empty bytes")
+    create = dll.CreateProcessSecurityEnvironment
+    create.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+        ctypes.POINTER(ctypes.c_void_p),
+    ]
+    create.restype = ctypes.c_long
+    close = dll.CloseProcessSecurityEnvironment
+    close.argtypes = [ctypes.c_void_p]
+    close.restype = None
+
+    buffer = ctypes.create_string_buffer(specification, len(specification))
+    environment = ctypes.c_void_p()
+    hr = int(create(
+        ctypes.cast(buffer, ctypes.c_void_p),
+        len(specification),
+        0,
+        ctypes.byref(environment),
+    ))
+    if hr < 0 or not environment.value:
+        raise RuntimeError(
+            f"CreateProcessSecurityEnvironment failed with HRESULT 0x{hr & 0xffffffff:08x}"
+        )
+    close(environment)
+    return True
+
+
+def probe_psec_spec() -> tuple[bool, str]:
+    """Validate that the host accepts a real PSEC v1.1 spec; does not launch a process."""
+    try:
+        from tools.local_runner_agent.windows_psec_spec import build_psec_spec
+
+        with tempfile.TemporaryDirectory(prefix="dcp-psec-probe-") as temporary:
+            root = Path(temporary)
+            workspace = root / "workspace"
+            scratch = root / "scratch"
+            workspace.mkdir()
+            scratch.mkdir()
+            denied = []
+            for value in (os.environ.get("USERPROFILE"), os.environ.get("PROGRAMDATA")):
+                if value and Path(value).is_dir():
+                    denied.append(str(Path(value).resolve(strict=True)))
+            specification = build_psec_spec(
+                read_only_paths=(str(workspace.resolve(strict=True)),),
+                read_write_paths=(str(scratch.resolve(strict=True)),),
+                denied_paths=tuple(denied),
+                enumerate_paths=(
+                    str(workspace.resolve(strict=True)),
+                    str(scratch.resolve(strict=True)),
+                ),
+                disallow_win32k_system_calls=True,
+                ui_restrictions=0x3FF,
+            )
+        dll = _load_processmodel()
+        create_psec_environment(dll, specification)
+        return True, "PSEC v1.1 policy accepted by CreateProcessSecurityEnvironment"
+    except Exception as exc:
+        return False, f"PSEC policy creation probe failed: {type(exc).__name__}"
+
+
 def main() -> int:
     assessment = probe_psec()
+    if assessment.state == "READY_FOR_ACCEPTANCE":
+        created, reason = probe_psec_spec()
+        if created:
+            assessment = replace(assessment, spec_created=True, reason=reason)
+        else:
+            assessment = replace(
+                assessment,
+                state="BLOCKED",
+                available=False,
+                spec_created=False,
+                reason=reason,
+            )
     result = {
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "platform": platform.platform(),
@@ -188,7 +268,7 @@ def main() -> int:
         **assessment.to_dict(),
     }
     print(json.dumps(result, indent=2, sort_keys=True))
-    return 0 if assessment.state == "READY_FOR_ACCEPTANCE" else 2
+    return 0 if assessment.state == "READY_FOR_ACCEPTANCE" and assessment.spec_created is True else 2
 
 
 if __name__ == "__main__":
