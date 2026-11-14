@@ -27,6 +27,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install optional Windows PSEC FlatBuffer serializer
+        run: python -m pip install -r requirements-windows-psec.txt
+
       - name: Install validators and local MCP SDK
         run: |
           python -m pip install --disable-pip-version-check PyYAML jsonschema
