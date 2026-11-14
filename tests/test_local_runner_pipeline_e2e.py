@@ -4,6 +4,7 @@ import tempfile
 import threading
 import unittest
 import uuid
+from contextlib import ExitStack
 from unittest.mock import patch
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -51,6 +52,26 @@ class _FixtureCheckout:
         if self.cancel_job:
             self.cancel_job(job_id)
         return source
+
+
+class _TestOnlyTerminalSandboxCommand:
+    """Process test stub; deliberately provides no OS isolation."""
+
+    def __init__(self, executable, argv):
+        self.argv = (executable, *argv)
+        self._fd = tempfile.TemporaryFile(mode="w+b")
+
+    @property
+    def seccomp_fd(self):
+        return self._fd.fileno()
+
+    def close(self):
+        self._fd.close()
+
+
+class _TestOnlyTerminalLauncher:
+    def build(self, *, executable, argv, workspace, scratch, environment=None):
+        return _TestOnlyTerminalSandboxCommand(executable, argv)
 
 
 class RunnerPipelineEndToEndTests(unittest.TestCase):
@@ -593,10 +614,36 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
             process_tree_contained=True,
             reason="test-only fixture; not production isolation evidence",
         )
-        with patch("tools.local_runner_agent.terminal_executor.preview_template", return_value=template), \
-             patch("tools.cloud_gateway.terminal_execution_contract.preview_template", return_value=template), \
-             patch("tools.local_runner_agent.terminal_executor.assess_isolation_backend", return_value=test_verified_isolation):
+        with ExitStack() as stack:
+            stack.enter_context(patch(
+                "tools.local_runner_agent.terminal_executor.preview_template",
+                return_value=template,
+            ))
+            stack.enter_context(patch(
+                "tools.cloud_gateway.terminal_execution_contract.preview_template",
+                return_value=template,
+            ))
+            stack.enter_context(patch(
+                "tools.local_runner_agent.terminal_executor.assess_isolation_backend",
+                return_value=test_verified_isolation,
+            ))
+            if os.name != "nt":
+                # This test covers grant/workspace wiring, not kernel isolation.
+                stack.enter_context(patch(
+                    "tools.local_runner_agent.terminal_executor.LinuxBubblewrapLauncher",
+                    _TestOnlyTerminalLauncher,
+                ))
             result = pipeline.run_once()
+
+        if os.name == "nt":
+            # Windows AppContainer/LPAC is not implemented. Even a test-injected
+            # VERIFIED assessment must not permit a direct host-process fallback.
+            self.assertEqual(result["outcome"], "failed", result)
+            self.assertEqual(result["job"]["state"], "failed")
+            self.assertEqual(result["job"]["error_code"], "RUNNER_POLICY_OR_BUILD_ERROR")
+            self.assertEqual(readme.read_text(encoding="utf-8"), "unchanged project workspace\n")
+            self.assertEqual(sorted(item.name for item in project_path.iterdir()), ["README.md"])
+            return
 
         self.assertEqual(result["outcome"], "succeeded", result)
         self.assertEqual(result["job"]["id"], job["id"])
