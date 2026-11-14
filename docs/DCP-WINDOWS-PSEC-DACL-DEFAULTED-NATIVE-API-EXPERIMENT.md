@@ -175,3 +175,30 @@ The follow-up implementation changes the acceptance instrumentation without chan
 - The ambiguous-write test still injects an error after the native write call and proves the rollback path is attempted. It also asserts harness-owned handle closure and disposable-root cleanup.
 
 **Validation status:** these are source changes only at this checkpoint. They have not yet been run on a Windows host. Exact-head CI and the designated user-host acceptance remain pending. The TRUE case must still be classified NOT EXERCISED if the newly created NTFS file does not expose `DaclDefaulted=TRUE`. Do not treat `OBSERVED`, SKIPPED, or an old run as PASS.
+
+
+## 14. Native SecurityInfo flag-isolation matrix — 2026-11-15
+
+The Windows evidence on the current branch showed an unchanged empty DACL and unchanged `DaclDefaulted=FALSE`, while the descriptor control word changed from `0x9004` to `0x9404`. The `0x0400` delta is `SE_DACL_AUTO_INHERITED`; this is a descriptor capability/state bit and is not equivalent to observing an inherited ACE in the ACL.
+
+Microsoft documents that `SetSecurityInfo` may set or clear descriptor control bits as appropriate, and that it supports automatic propagation of inheritable ACEs. Therefore the observed bit transition is a legitimate native API observation, not evidence by itself that an inherited ACE was added.
+
+The follow-up isolates the two allowed flag combinations, each on a new disposable NTFS file:
+
+| Case | SetSecurityInfo SecurityInfo | Purpose |
+|---|---:|---|
+| F1 | `DACL_SECURITY_INFORMATION (0x00000004)` | DACL-only baseline |
+| F2 | `DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION (0x80000004)` | Existing protected-DACL request |
+
+Both are write-only observations first. The existing round-trip test continues to use F2 and retains exact byte/defaulted/control-flag acceptance. The ambiguous-write rollback test also uses F2. No result is treated as PASS merely because the API call succeeds.
+
+Evidence now records the exact SecurityInfo flags in decimal and hexadecimal. Compare the control word before/after, `SE_DACL_PROTECTED`, `SE_DACL_AUTO_INHERITED`, DACL bytes, `DaclDefaulted`, inherited ACE count, API errors, and cleanup independently. A fresh disposable file is used for each flag combination; the matrix never reuses an object after a native mutation.
+
+**Interpretation constraint:** if F1 and F2 both add `SE_DACL_AUTO_INHERITED`, the bit transition is not isolated to the protected flag. If only F2 adds it, the result is correlated with the combined flag set but still requires cautious interpretation. This matrix does not test `SE_DACL_PROTECTED` creation-time policy, parent-directory propagation, or a TRUE-defaulted state; those remain separate questions.
+
+Microsoft references:
+- https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-setsecurityinfo
+- https://learn.microsoft.com/en-us/windows/win32/secauthz/security-descriptor-operations
+- https://learn.microsoft.com/en-us/windows/win32/secauthz/security-descriptor-control
+
+**Status:** implementation pending exact-head CI and Windows execution. Native Writer, Terminal, and built-in templates remain BLOCKED.
