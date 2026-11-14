@@ -190,7 +190,7 @@ class _WindowsAclApi:
         self.kernel32.LocalFree.restype = wintypes.LPVOID
 
     def _sddl_from_path(self, path: Path) -> str:
-        owner = group = dacl = sacl = descriptor = wintypes.LPVOID()
+        owner = wintypes.LPVOID()\n        group = wintypes.LPVOID()\n        dacl = wintypes.LPVOID()\n        sacl = wintypes.LPVOID()\n        descriptor = wintypes.LPVOID()
         result = self.advapi32.GetNamedSecurityInfoW(
             str(path), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION,
             ctypes.byref(owner), ctypes.byref(group), ctypes.byref(dacl),
@@ -219,7 +219,7 @@ class _WindowsAclApi:
 
     def add_allow_ace(self, path: Path, package_sid: str, mask: int, inheritance: int) -> None:
         sid = wintypes.LPVOID()
-        old_descriptor = old_owner = old_group = old_dacl = old_sacl = wintypes.LPVOID()
+        old_descriptor = wintypes.LPVOID()\n        old_owner = wintypes.LPVOID()\n        old_group = wintypes.LPVOID()\n        old_dacl = wintypes.LPVOID()\n        old_sacl = wintypes.LPVOID()
         new_acl = wintypes.LPVOID()
         try:
             if not self.advapi32.ConvertStringSidToSidW(package_sid, ctypes.byref(sid)):
@@ -269,12 +269,18 @@ class WindowsPsecAclManager:
         work, temp, job_root = _validate_private_roots(workspace, scratch)
         api = self._api or _WindowsAclApi()
 
-        # Snapshot the parent but never modify it. A protected/shared parent
-        # must not receive an ACE as a workaround for a failed child access.
-        parent_before = api.read_sddl(job_root)
+        # The job root is itself disposable and receives traversal only. Its
+        # parent is snapshotted but never modified (it may be a shared runner
+        # or acceptance directory).
+        shared_parent_before = api.read_sddl(job_root.parent)
+        api.add_allow_ace(job_root, package_sid, FILE_TRAVERSE, 0)
+        root_aces = _parse_allow_aces(api.read_sddl(job_root), package_sid)
+        if ("", FILE_TRAVERSE) not in root_aces:
+            raise WindowsPsecAclError("Package-SID traversal ACE verification failed on job root")
+
         targets = [
-            *((path, READ_EXECUTE) for path, is_dir in _tree_targets(work) if is_dir or not is_dir),
-            *((path, MODIFY) for path, is_dir in _tree_targets(temp) if is_dir or not is_dir),
+            *((path, READ_EXECUTE) for path, _ in _tree_targets(work)),
+            *((path, MODIFY) for path, _ in _tree_targets(temp)),
         ]
         for path, mask in targets:
             try:
@@ -301,14 +307,15 @@ class WindowsPsecAclManager:
                 raise WindowsPsecAclError(f"Package SID has an overbroad allow ACE on {path.name}")
             verified.append({"path": str(path), "mask": f"0x{mask:08x}", "sddl": sddl})
 
-        parent_after = api.read_sddl(job_root)
-        if parent_before != parent_after:
-            raise WindowsPsecAclError("private job parent DACL changed during ACL application")
+        shared_parent_after = api.read_sddl(job_root.parent)
+        if shared_parent_before != shared_parent_after:
+            raise WindowsPsecAclError("shared parent DACL changed during ACL application")
         return {
             "state": "VERIFIED",
             "package_sid": package_sid,
             "workspace_targets": sum(1 for path, mask in targets if mask == READ_EXECUTE),
             "scratch_targets": sum(1 for path, mask in targets if mask == MODIFY),
-            "job_parent_sddl_unchanged": True,
+            "job_root_traverse_only": True,
+            "shared_parent_sddl_unchanged": True,
             "targets": verified,
         }
