@@ -25,6 +25,14 @@ class UnifiedLocalRunnerLauncherContractTests(unittest.TestCase):
         self.assertIn("@('--serve')", SCRIPT)
         self.assertIn("DCP_RUNNER_WORKSPACE_ROOT", SCRIPT)
 
+
+    def test_launcher_enforces_the_operator_gateway_repository_allowlist(self):
+        self.assertIn("gateway-local-settings.json", SCRIPT)
+        self.assertIn("allowed_repositories", SCRIPT)
+        self.assertIn("-cnotcontains", SCRIPT)
+        self.assertIn("ReparsePoint", SCRIPT)
+        self.assertIn("Trusted repositories must be unique", SCRIPT)
+
     def test_launcher_does_not_enable_playwright_implicitly(self):
         self.assertIn("Remove-Item Env:DCP_RUNNER_PLAYWRIGHT_ENABLED", SCRIPT)
         self.assertIn("Remove-Item Env:DCP_RUNNER_CAPABILITIES", SCRIPT)
