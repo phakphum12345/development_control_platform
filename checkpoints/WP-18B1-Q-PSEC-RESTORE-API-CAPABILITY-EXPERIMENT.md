@@ -5,7 +5,8 @@
 **Base:** WP-18B1-P / PR #136 head d3f7e62fc9992474f42ddf475ab39fa751a59bbd  
 **PR:** https://github.com/phakphum12345/development_control_platform/pull/137  
 **Candidate-matrix evidence head:** 7fefb06fa4222e5b2188913b543572a115859e8a  
-**CI isolation head:** f19541673ef1af02a3560a04fbcd6303f0e5e950
+**CI isolation baseline:** f19541673ef1af02a3560a04fbcd6303f0e5e950  
+**CI guard hardening head:** 2d1e31fce46efec34075ec0047d7019f7578cfd2
 
 ## Objective
 
@@ -37,9 +38,10 @@ SetFileSecurityW is obsolete and remains a compatibility-only experimental lead.
 - Local-first Minimal Emulator: PASS.
 - Validate Control Plane: PASS.
 - Historical pre-isolation run at the earlier head: **FAIL** at `test_explicit_defaulted_false_round_trip_on_disposable_ntfs_file`; retain this as historical evidence.  
-- Current exact-head CI at `f19541673ef1af02a3560a04fbcd6303f0e5e950`: Cross-platform Recovery Acceptance, Local-first Minimal Emulator, and Validate Control Plane all **SUCCESS**. The named false-state real-host test is the only test skipped by the new local-only guard. The TRUE-state test separately reports `NOT_EXERCISED` because hosted NTFS did not retain `DaclDefaulted=TRUE` at creation; this is a setup limitation, not a pass.  
+- Current exact-head CI at `f19541673ef1af02a3560a04fbcd6303f0e5e950`: Cross-platform Recovery Acceptance, Local-first Minimal Emulator, and Validate Control Plane all **SUCCESS**. The named false-state real-host test is the only test skipped by the new local-only guard. The guard now recognizes common truthy values (`1`, `true`, `yes`, case-insensitively) in either `CI` or `GITHUB_ACTIONS`. The TRUE-state test separately reports `NOT_EXERCISED` because hosted NTFS did not retain `DaclDefaulted=TRUE` at creation; this is a setup limitation, not a pass.  
 - The ambiguous-write test still records `outcome=FAIL`, `RESTORE_NOT_EXACT`, and `control_flags_mismatch`; its test passes because it verifies that failure is surfaced and cleanup occurs.  
-- Local Windows 11 acceptance remains **NOT RUN**; no claim of native rollback success is made.
+- Local Windows 11 acceptance remains **NOT RUN**; no claim of native rollback success is made.  
+- The CI-guard hardening commit `2d1e31fce46efec34075ec0047d7019f7578cfd2` was pushed after the successful baseline; a fresh workflow run for this exact head has not yet appeared at checkpoint time.
 - Local unittest on user's machine: NOT RUN.
 - Local Windows 11 acceptance: NOT RUN.
 
