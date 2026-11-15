@@ -332,6 +332,7 @@ class WindowsDaclDefaultedExperiment:
             ):
                 raise DaclExperimentError("target identity changed before original snapshot capture")
             before = original_snapshot.descriptor
+            before = self._reader.read_dacl(handle)
             if defaulted and before.dacl_defaulted is not True:
                 raise DaclDefaultedNotExercised(
                     "NTFS did not retain DaclDefaulted=TRUE at creation; TRUE-state writer case NOT EXERCISED",
