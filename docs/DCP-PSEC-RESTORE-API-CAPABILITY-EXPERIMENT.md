@@ -1,7 +1,7 @@
 # PSEC Disposable NTFS Restore API Capability Experiment
 
 **Protocol family:** PSEC DACL Protocol v1  
-**Status:** EXPERIMENTAL — hosted Windows NTFS matrix completed; local Windows 11 acceptance pending  
+**Status:** EXPERIMENTAL — hosted Windows NTFS matrix completed; exact-head CI isolation verified; local Windows 11 acceptance pending  
 **Target:** Newly created harness-owned NTFS files only  
 **Production writer:** BLOCKED
 
@@ -39,7 +39,8 @@ Every candidate uses its own new object. No candidate inherits state from a prio
 
 ## 4. Hosted Windows NTFS Evidence
 
-Exact-head Cross-platform Recovery Acceptance run: `43639897237`, Windows job `132584952391`, commit `7fefb06fa4222e5b2188913b543572a115859e8a`.
+Candidate-matrix evidence: Cross-platform Recovery Acceptance run `43639897237`, Windows job `132584952391`, commit `7fefb06fa4222e5b2188913b543572a115859e8a`.  
+Current CI-isolation head: `f19541673ef1af02a3560a04fbcd6303f0e5e950`.
 
 All four candidate calls returned success, all four independent read-backs completed, and cleanup was verified. Results:
 
@@ -95,8 +96,10 @@ A candidate is experimentally capable for this tested scenario only if its API c
 
 - Hosted Windows candidate matrix: all four candidates exercised; C and D restored exactly, A and B did not.
 - Ubuntu candidate matrix: contract path passed; native Windows API calls are not exercised on Linux.
-- Windows Recovery Acceptance overall: **FAIL** remains, because the separate existing FALSE defaulted-state strict round-trip test still fails. This is not masked by the candidate findings.
-- Local Windows 11 acceptance: **NOT RUN**.
+- Historical pre-isolation run: **FAIL** at the independent `test_explicit_defaulted_false_round_trip_on_disposable_ntfs_file` assertion; retain that result as historical evidence.
+- Current exact-head CI at `f19541673ef1af02a3560a04fbcd6303f0e5e950`: Cross-platform Recovery Acceptance, Local-first Minimal Emulator, and Validate Control Plane all **SUCCESS**. The named false-state real-host test is skipped by its local-only guard; the other tests in that module still execute. The TRUE-state setup test separately reports `NOT_EXERCISED` because hosted NTFS did not preserve `DaclDefaulted=TRUE` at creation.
+- The ambiguous-write test continues to report `outcome=FAIL`, `RESTORE_NOT_EXACT`, and `control_flags_mismatch`; the unittest validates that this failure is surfaced and cleanup is verified.
+- Local Windows 11 acceptance: **NOT RUN**; native rollback success is not claimed.
 - Native Writer and Transactional ACL Mutation: **BLOCKED**.
 
-A result on one hosted Windows NTFS environment is not universal support evidence. Production use requires local Windows 11 acceptance, additional supported-build coverage, code review, security review, and separate authorization.
+A result on one hosted Windows NTFS environment is not universal support evidence. Production use requires local Windows 11 acceptance, additional supported-build coverage, code review, security review, and separate authorization. Until then, keep Native Writer and Transactional ACL Mutation BLOCKED.
