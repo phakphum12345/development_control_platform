@@ -169,16 +169,35 @@ input,select,textarea{border-color:#dbe3f0;background:#fff}
   <button type="button" data-quick-tab="pr" data-tone="violet">◇ Pull Request Review</button>
   <button type="button" data-quick-tab="evidence" data-tone="teal">✓ SHA & Evidence</button>
   <button type="button" data-quick-tab="gates" data-tone="green">▣ Quality Gates</button>
-  <button type="button" data-quick-tab="document-generator" data-tone="blue">▤ Document Generator</button><button type="button" data-quick-tab="audit" data-tone="amber">◎ Audit & Safety</button>
+  <button type="button" data-quick-tab="document-generator" data-tone="blue">▤ Document Generator</button><button type="button" data-quick-tab="audit" data-tone="amber">◎ Audit & Safety</button><button type="button" data-quick-tab="contact" data-tone="blue">✉ Contact</button>
  </div>
- <div class="control-center-meta"><span>Navigation: <strong id="dcp-nav-count">21 tools</strong></span><span>GitHub write actions: <strong>0 · Disabled</strong></span><span>Evidence default: <strong>UNKNOWN</strong></span><span>Mode: <strong>REPO READ-ONLY · LOCAL DOC WRITE GATED</strong></span></div>
+ <div class="control-center-meta"><span>Navigation: <strong id="dcp-nav-count">22 tools</strong></span><span>GitHub write actions: <strong>0 · Disabled</strong></span><span>Evidence default: <strong>UNKNOWN</strong></span><span>Mode: <strong>REPO READ-ONLY · LOCAL DOC WRITE GATED</strong></span></div>
  <div class="dcp-selfcheck" id="dcp-selfcheck" data-status="UNKNOWN" role="status" aria-live="polite">UI self-check: UNKNOWN — ยังไม่ได้ตรวจสอบเมนู</div>
  <div class="quick-actions"><button type="button" id="dcp-selfcheck-run" class="primary">Run UI self-check</button><button type="button" id="dcp-nav-reset">Clear search / Reset menu</button></div>
 </section>
 
 <div class="layout"><nav class="nav" aria-label="Tools">
 <button class="active" data-tab="home">Overview</button> <button data-tab="account">Password Login</button> <button data-tab="project-import">Project Import</button> <button data-tab="terminal-studio">Terminal Studio</button> <button data-tab="code-navigator">Code Navigator</button><button data-tab="cloud-runners">Cloud Runner Control</button> <button data-tab="infrastructure">Infrastructure Manager</button> <button data-tab="dev-tools">Emulators & VS Code</button> <button data-tab="ui-routes">UI Route Manager</button><button data-tab="ui-simulator">UI Simulator</button><button data-tab="route-colors">Route Color Manager</button><button data-tab="github-api">Research OS API</button><button data-tab="repo-selector">Account & Repo</button><button data-tab="repo">Repository Explorer</button><button data-tab="pr">Pull Request Review</button><button data-tab="user">User Explorer</button><button data-tab="workspace">GitHub Workspace</button><button data-tab="evidence">SHA & Evidence</button><button data-tab="gates">Quality Gate Planner</button><button data-tab="checkpoint">Checkpoint Builder</button><button data-tab="document-generator">Document Generator</button><button data-tab="audit">Audit & Safety</button>
+<button data-tab="contact">Contact</button>
 </nav><div>
+<section class="view" id="contact">
+ <div class="panel">
+  <h2>Contact</h2>
+  <p>Prepare a message in your default email app. Review it and press Send there; this dashboard does not send or track email.</p>
+  <p>Contact email: <a id="contact-direct-email" href="mailto:phakphoum54@gmail.com">phakphoum54@gmail.com</a></p>
+  <form id="contact-form">
+   <div class="grid">
+    <div class="field"><label for="contact-name">Name</label><input id="contact-name" name="name" autocomplete="name" maxlength="100" required></div>
+    <div class="field"><label for="contact-email">Your email</label><input id="contact-email" name="email" type="email" autocomplete="email" maxlength="254" required></div>
+   </div>
+   <div class="field"><label for="contact-subject">Subject</label><input id="contact-subject" name="subject" maxlength="160" required></div>
+   <div class="field"><label for="contact-message">Message</label><textarea id="contact-message" name="message" rows="7" maxlength="5000" required></textarea></div>
+   <div class="actions"><button class="primary" id="contact-compose" type="submit">Prepare email</button><button id="contact-clear" type="reset">Clear</button></div>
+  </form>
+  <div id="contact-status" class="output" role="status" aria-live="polite">No email draft prepared.</div>
+  <a id="contact-email-link" hidden>Open prepared email</a>
+ </div>
+</section>
 <section class="view" id="dev-tools">
 <div class="panel"><h2>Emulators & VS Code</h2><p>This page provides local commands and readiness guidance. A browser cannot inspect or launch processes on your computer; run these tasks from the repository in VS Code. Results from local checks are not automatically uploaded or treated as CI evidence.</p><div class="warn"><b>Safety:</b> emulator launch is explicit and local. The helper never installs SDKs, changes PATH, edits Android/iOS projects, or launches an app without an app-specific project being present.</div></div>
 <div class="grid">
@@ -1089,6 +1108,7 @@ $("ros-api-disconnect").addEventListener("click", async () => {
 // Code Navigator mapping registry. Every entry points to a real dashboard view,
 // control, file, or test. Missing call edges are intentionally reported UNKNOWN.
 const CODE_NAV_MAPPINGS=[
+{id:"contact",label:"Contact",path:"workflow",target:"contact",file:"dashboard/index.html",elements:["contact","contact-form","contact-name","contact-email","contact-subject","contact-message","contact-compose","contact-clear","contact-status","contact-email-link"],handlers:["initContactUI","contact-form submit and reset handlers"],service:"User-reviewed mailto draft opened by the browser's configured email app; no server or delivery tracking",state:"Contact form fields and prepared mailto link in the current page only",tests:["tests/test_dashboard_contract.py::test_contact_form_prepares_mailto_without_claiming_delivery","tests/browser_smoke.mjs"],evidence:"The browser can prepare a draft but cannot prove that the email app opened or the message was delivered."},
 {id:"home",label:"Overview",path:"workflow",target:"home",file:"dashboard/index.html",elements:["home","selected","evidence-stat"],handlers:[],service:"GitHub public REST API (when invoked by other tools); no dedicated Overview handler declared",state:"Dashboard DOM + browser-local registries",tests:["tests/test_dashboard_contract.py::test_all_tool_views_exist","tests/browser_smoke.mjs"],evidence:"CI result is external; this navigator does not fetch it."},
 {id:"dev-tools",label:"Emulators & VS Code",path:"developer",target:"dev-tools",file:"dashboard/index.html",elements:["dev-tools","dev-tools-copy-status"],handlers:["[data-copy-command] click handler"],service:"Local tools/dev_environment.py via copied commands; browser does not execute them",state:"Browser-rendered readiness guidance; local command output is user-run",tests:["tests/test_dashboard_contract.py::DevEnvironmentDashboardContractTests","tests/browser_smoke.mjs"],evidence:"Local output is not uploaded or CI evidence."},
 {id:"ui-routes",label:"UI Route Manager",path:"workflow",target:"ui-routes",file:"dashboard/index.html",elements:["ui-routes","route-add","route-registry-table","route-visual-map","route-edge-list"],handlers:["initRouteManager","renderRouteRegistry","validateRouteRegistry","beginRouteEdit","cancelRouteEdit"],service:"Browser-local route registry and edges; not production routing",state:"localStorage keys dcp.ui-route-registry.v1 and dcp.ui-route-edges.v1",tests:["tests/test_dashboard_contract.py::test_ui_route_manager_and_sandbox_simulator_contract","tests/test_dashboard_contract.py::test_route_validation_detects_parent_cycles_duplicate_edges_and_disabled_targets","tests/browser_smoke.mjs"],evidence:"Local registry only; no deployed-router proof."},
@@ -1129,18 +1149,51 @@ function codeNavRunChecks(){const m=codeNavFind(codeNavSelected);if(!m)return;co
 function codeNavCheckpoint(){const m=codeNavFind(codeNavSelected);if(!m)return;const md="# Code Navigator checkpoint — "+m.label+"\n\n- Route: "+m.id+"\n- UI target: #"+m.target+"\n- Feature path: "+codeNavPathLabel(m.path)+"\n- File: "+m.file+"\n- Elements: "+m.elements.join(", ")+"\n- Handlers: "+(m.handlers.join(", ")||"UNKNOWN")+"\n- Service/API: "+m.service+"\n- State/data: "+m.state+"\n- Tests: "+m.tests.join(", ")+"\n- Evidence: "+m.evidence+"\n- CI SHA/result: UNKNOWN — verify in GitHub Actions.";const blob=new Blob([md],{type:"text/markdown;charset=utf-8"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="code-navigator-"+m.id+"-checkpoint.md";a.click();URL.revokeObjectURL(url);codeNavShowResult("Checkpoint generated",md)}
 function initCodeNavigator(){$("code-nav-search").addEventListener("input",codeNavRenderList);$("code-nav-filter").addEventListener("change",codeNavRenderList);$("code-nav-trace-ui").addEventListener("click",codeNavTraceUI);$("code-nav-trace-calls").addEventListener("click",codeNavTraceCalls);$("code-nav-show-ui").addEventListener("click",codeNavShowUI);$("code-nav-compare").addEventListener("click",codeNavCompare);$("code-nav-run-checks").addEventListener("click",codeNavRunChecks);$("code-nav-checkpoint").addEventListener("click",codeNavCheckpoint);codeNavRender()}
 
+function initContactUI(){
+ const form=$("contact-form"),link=$("contact-email-link"),status=$("contact-status");
+ form.addEventListener("submit",event=>{
+  event.preventDefault();
+  if(!form.reportValidity())return;
+  const values=new FormData(form);
+  const subject="DCP: "+String(values.get("subject")).trim();
+  const body=["Name: "+String(values.get("name")).trim(),"Reply-to: "+String(values.get("email")).trim(),"",String(values.get("message")).trim()].join("\n");
+  link.href="mailto:phakphoum54@gmail.com?"+new URLSearchParams({subject,body}).toString();
+  link.hidden=false;
+  status.textContent="Email draft prepared. Open it in your email app and press Send; delivery cannot be verified here.";
+ });
+ form.addEventListener("reset",()=>{
+  link.hidden=true;
+  link.removeAttribute("href");
+  status.textContent="No email draft prepared.";
+ });
+}
+
 initCodeNavigator();
+initContactUI();
 initPWA();
 initPasswordAuth();
 
 let pwaInstallPrompt=null;
 function initPWA(){
  const install=$("pwa-install"),state=$("pwa-state");
- if("serviceWorker" in navigator && location.protocol==="https:"){
-  navigator.serviceWorker.register("./sw.js",{scope:"./"}).then(()=>{state.textContent="Offline-ready shell";}).catch(()=>{state.textContent="Online mode";});
+ if("serviceWorker" in navigator && (location.protocol==="https:"||location.hostname==="localhost"||location.hostname==="127.0.0.1")){
+  navigator.serviceWorker.register("./sw.js",{scope:"./"}).then(()=>navigator.serviceWorker.ready).then(()=>{state.textContent="Offline-ready shell";}).catch(()=>{state.textContent="Online mode";});
  } else {state.textContent="Online mode";}
  window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();pwaInstallPrompt=e;install.hidden=false;});
- install.addEventListener("click",async()=>{if(!pwaInstallPrompt)return;await pwaInstallPrompt.prompt();await pwaInstallPrompt.userChoice;pwaInstallPrompt=null;install.hidden=true;});
+ install.addEventListener("click",async()=>{
+  if(!pwaInstallPrompt){state.textContent="Install prompt unavailable";return;}
+  const prompt=pwaInstallPrompt;
+  try{
+   await prompt.prompt();
+   const choice=await prompt.userChoice;
+   state.textContent=choice.outcome==="accepted"?"Install accepted":"Install dismissed";
+  }catch(error){
+   state.textContent="Install failed: "+(error&&error.message?error.message:String(error));
+  }finally{
+   pwaInstallPrompt=null;
+   install.hidden=true;
+  }
+ });
  window.addEventListener("appinstalled",()=>{state.textContent="Installed";install.hidden=true;});
 }
 async function initPasswordAuth(){

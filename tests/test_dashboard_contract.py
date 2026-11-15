@@ -9,12 +9,23 @@ SERVER = (ROOT / "tools" / "cloud_gateway" / "server.py").read_text(encoding="ut
 
 class DashboardContractTests(unittest.TestCase):
     def test_all_tool_views_exist(self):
-        for view in ("home", "account", "project-import", "terminal-studio", "repo", "pr", "user", "workspace", "evidence", "gates", "checkpoint", "audit", "route-colors", "ui-routes", "ui-simulator", "dev-tools", "code-navigator"):
+        for view in ("home", "account", "contact", "project-import", "terminal-studio", "repo", "pr", "user", "workspace", "evidence", "gates", "checkpoint", "audit", "route-colors", "ui-routes", "ui-simulator", "dev-tools", "code-navigator"):
             with self.subTest(view=view):
                 self.assertIn('id="' + view + '"', HTML)
         for control in ("repo-load", "pr-load", "user-load", "ws-load", "ws-repo", "ws-branch", "ws-permission", "ws-branches", "ev-check", "gate-eval", "cp-build", "audit-eval", "route-color-save", "route-color-reset", "route-color-export", "route-add", "route-reset", "route-export", "edge-add", "edge-clear", "sim-run", "sim-reset", "sim-download", "dev-tools-copy-status", "code-nav-search", "code-nav-filter", "code-nav-trace-ui", "code-nav-trace-calls", "code-nav-show-ui", "code-nav-compare", "code-nav-run-checks", "code-nav-checkpoint", "code-nav-route-list", "code-nav-mapping", "code-nav-evidence", "terminal-load-templates", "terminal-template-select", "terminal-preview", "terminal-preview-output"):
             with self.subTest(control=control):
                 self.assertIn('id="' + control + '"', HTML)
+
+    def test_contact_form_prepares_mailto_without_claiming_delivery(self):
+        for expected in (
+            'id="contact"', 'id="contact-form"', 'id="contact-compose"',
+            'id="contact-clear"', 'id="contact-email-link"',
+            'mailto:phakphoum54@gmail.com', 'type="email"',
+            'new URLSearchParams({subject,body})',
+            'delivery cannot be verified here.',
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, HTML)
 
     def test_independent_infrastructure_gate_controls_are_backend_driven(self):
         for control in (
@@ -302,6 +313,8 @@ class DashboardContractTests(unittest.TestCase):
             'credentials:"same-origin"', 'X-CSRF-Token', 'csrfToken=null', 'data.csrfToken', 'Sign-in blocked: missing server-issued CSRF token', 'type="password"',
             'GitHub Pages remains static-only',
             'Start-DCP-Local.cmd',
+            'location.protocol==="https:"||location.hostname==="localhost"||location.hostname==="127.0.0.1"',
+            'Install failed:',
         ):
             with self.subTest(expected=expected):
                 self.assertIn(expected, HTML)
@@ -426,7 +439,7 @@ class DashboardControlCenterV2Tests(unittest.TestCase):
 
     def test_code_navigator_covers_all_dashboard_views(self):
         expected = {
-            "home", "account", "code-navigator", "cloud-runners", "infrastructure", "terminal-studio",
+            "home", "account", "contact", "code-navigator", "cloud-runners", "infrastructure", "terminal-studio",
             "dev-tools", "ui-routes", "ui-simulator", "route-colors", "github-api",
             "repo-selector", "repo", "pr", "user", "workspace", "evidence",
             "gates", "checkpoint", "audit",
