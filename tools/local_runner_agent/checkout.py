@@ -68,8 +68,8 @@ class LocalProjectCheckout:
             for name in sorted(files):
                 source_file = current_path / name
                 info = source_file.lstat()
-                if not stat.S_ISREG(info.st_mode):
-                    raise CheckoutError("local snapshot contains a symlink or special file")
+                if not stat.S_ISREG(info.st_mode) or getattr(info, "st_nlink", 1) != 1:
+                    raise CheckoutError("local snapshot contains a symlink, special, or hardlinked file")
                 relative = source_file.relative_to(root)
                 if any(part in ("", ".", "..") for part in relative.parts):
                     raise CheckoutError("local snapshot contains an unsafe path")
@@ -89,8 +89,8 @@ class LocalProjectCheckout:
                 copied = 0
                 with os.fdopen(source_fd, "rb") as source_handle, os.fdopen(output_fd, "wb") as output_handle:
                     opened = os.fstat(source_handle.fileno())
-                    if not stat.S_ISREG(opened.st_mode):
-                        raise CheckoutError("local snapshot file changed type")
+                    if not stat.S_ISREG(opened.st_mode) or getattr(opened, "st_nlink", 1) != 1:
+                        raise CheckoutError("local snapshot file is hardlinked or changed type")
                     while True:
                         chunk = source_handle.read(1024 * 1024)
                         if not chunk:
@@ -105,8 +105,8 @@ class LocalProjectCheckout:
                     os.fsync(output_handle.fileno())
                 if (opened.st_ino, opened.st_size, opened.st_mtime_ns) != (
                     after.st_ino, after.st_size, after.st_mtime_ns
-                ) or copied != after.st_size:
-                    raise CheckoutError("local snapshot changed during writable copy")
+                ) or copied != after.st_size or getattr(after, "st_nlink", 1) != 1:
+                    raise CheckoutError("local snapshot changed or became hardlinked during writable copy")
                 os.chmod(output_file, 0o600)
         return total
 
