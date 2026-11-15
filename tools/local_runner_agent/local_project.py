@@ -16,6 +16,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
+from .file_safety import open_verified_regular_file
+
 
 class LocalProjectError(RuntimeError):
     """Local project enrollment, lookup, or snapshot validation failed."""
@@ -212,7 +214,7 @@ class LocalProjectRegistry:
                     continue
                 path = Path(entry.path)
                 try:
-                    info = entry.stat(follow_symlinks=False)
+                    info = os.stat(path, follow_symlinks=False)
                 except OSError:
                     raise LocalProjectError("project entry cannot be inspected") from None
                 if stat.S_ISLNK(info.st_mode):
@@ -221,6 +223,8 @@ class LocalProjectRegistry:
                 if stat.S_ISDIR(info.st_mode):
                     stack.append(path)
                 elif stat.S_ISREG(info.st_mode):
+                    if getattr(info, "st_nlink", 1) != 1:
+                        raise LocalProjectError("project contains a hardlinked file; snapshot rejected")
                     if _ignored_project_file(relative):
                         continue
                     entries.append((relative, path))
@@ -230,38 +234,21 @@ class LocalProjectRegistry:
         if len(entries) > self.max_files:
             raise LocalProjectError("project file-count limit exceeded")
         for relative, path in entries:
-            try:
-                before = path.lstat()
-                if not stat.S_ISREG(before.st_mode):
-                    raise LocalProjectError("project file changed type during fingerprint")
-                file_hash = hashlib.sha256()
-                size = 0
-                flags = os.O_RDONLY
-                if hasattr(os, "O_NOFOLLOW"):
-                    flags |= os.O_NOFOLLOW
-                descriptor = os.open(path, flags)
-                with os.fdopen(descriptor, "rb") as handle:
-                    opened = os.fstat(handle.fileno())
-                    if not stat.S_ISREG(opened.st_mode) or (
-                        before.st_ino and opened.st_ino and before.st_ino != opened.st_ino
-                    ):
-                        raise LocalProjectError("project file changed during fingerprint")
-                    while True:
-                        chunk = handle.read(1024 * 1024)
-                        if not chunk:
-                            break
-                        size += len(chunk)
-                        total_bytes += len(chunk)
-                        if total_bytes > self.max_bytes:
-                            raise LocalProjectError("project snapshot byte limit exceeded")
-                        file_hash.update(chunk)
-                    after = os.fstat(handle.fileno())
-                if (opened.st_ino, opened.st_size, opened.st_mtime_ns) != (
-                    after.st_ino, after.st_size, after.st_mtime_ns
-                ) or size != after.st_size:
-                    raise LocalProjectError("project changed while snapshot was fingerprinted")
-            except OSError:
-                raise LocalProjectError("project file cannot be read safely") from None
+            file_hash = hashlib.sha256()
+            size = 0
+            with open_verified_regular_file(path, LocalProjectError, "project file") as handle:
+                opened = os.fstat(handle.fileno())
+                while True:
+                    chunk = handle.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    size += len(chunk)
+                    total_bytes += len(chunk)
+                    if total_bytes > self.max_bytes:
+                        raise LocalProjectError("project snapshot byte limit exceeded")
+                    file_hash.update(chunk)
+            if size != opened.st_size:
+                raise LocalProjectError("project changed while snapshot was fingerprinted")
             digest.update(relative.encode("utf-8", "surrogateescape"))
             digest.update(b"\0")
             digest.update(str(size).encode("ascii"))
@@ -374,7 +361,7 @@ class LocalProjectRegistry:
                     continue
                 path = Path(entry.path)
                 try:
-                    info = entry.stat(follow_symlinks=False)
+                    info = os.stat(path, follow_symlinks=False)
                 except OSError:
                     raise LocalProjectError("project entry cannot be inspected") from None
                 if stat.S_ISLNK(info.st_mode):
@@ -382,6 +369,8 @@ class LocalProjectRegistry:
                 if stat.S_ISDIR(info.st_mode):
                     stack.append(path)
                 elif stat.S_ISREG(info.st_mode):
+                    if getattr(info, "st_nlink", 1) != 1:
+                        raise LocalProjectError("project contains a hardlinked file; snapshot rejected")
                     relative = path.relative_to(project).as_posix()
                     if _ignored_project_file(relative):
                         continue
@@ -409,39 +398,32 @@ class LocalProjectRegistry:
                 resolved_parent = output_file.parent.resolve(strict=True)
                 if resolved_parent != target.resolve(strict=True) and target.resolve(strict=True) not in resolved_parent.parents:
                     raise LocalProjectError("snapshot output path escaped destination")
-                source_flags = os.O_RDONLY
-                output_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                output_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
                 if hasattr(os, "O_NOFOLLOW"):
-                    source_flags |= os.O_NOFOLLOW
                     output_flags |= os.O_NOFOLLOW
-                source_fd = os.open(source_file, source_flags)
-                try:
-                    output_fd = os.open(output_file, output_flags, 0o600)
-                except Exception:
-                    os.close(source_fd)
-                    raise
+                output_fd = os.open(output_file, output_flags, 0o600)
                 file_hash = hashlib.sha256()
                 copied = 0
-                with os.fdopen(source_fd, "rb") as source_handle, os.fdopen(output_fd, "wb") as output_handle:
-                    opened = os.fstat(source_handle.fileno())
-                    if not stat.S_ISREG(opened.st_mode):
-                        raise LocalProjectError("source file changed type during snapshot")
-                    while True:
-                        chunk = source_handle.read(1024 * 1024)
-                        if not chunk:
-                            break
-                        copied += len(chunk)
-                        copied_total += len(chunk)
-                        if copied > self.max_bytes or copied_total > self.max_bytes:
-                            raise LocalProjectError("snapshot byte limit exceeded")
-                        output_handle.write(chunk)
-                        file_hash.update(chunk)
-                    source_after = os.fstat(source_handle.fileno())
-                    output_handle.flush()
-                    os.fsync(output_handle.fileno())
-                if (opened.st_ino, opened.st_size, opened.st_mtime_ns) != (
-                    source_after.st_ino, source_after.st_size, source_after.st_mtime_ns
-                ) or copied != source_after.st_size:
+                try:
+                    with os.fdopen(output_fd, "wb") as output_handle:
+                        with open_verified_regular_file(source_file, LocalProjectError, "source file") as source_handle:
+                            opened = os.fstat(source_handle.fileno())
+                            while True:
+                                chunk = source_handle.read(1024 * 1024)
+                                if not chunk:
+                                    break
+                                copied += len(chunk)
+                                copied_total += len(chunk)
+                                if copied > self.max_bytes or copied_total > self.max_bytes:
+                                    raise LocalProjectError("snapshot byte limit exceeded")
+                                output_handle.write(chunk)
+                                file_hash.update(chunk)
+                        output_handle.flush()
+                        os.fsync(output_handle.fileno())
+                except Exception:
+                    output_file.unlink(missing_ok=True)
+                    raise
+                if copied != opened.st_size:
                     raise LocalProjectError("source file changed while snapshot was copied")
                 os.chmod(output_file, 0o400)
 
