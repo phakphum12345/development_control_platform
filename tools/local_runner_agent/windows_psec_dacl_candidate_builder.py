@@ -154,8 +154,12 @@ def build_dacl_candidate(
     """
     if not dacl_present or dacl_is_null:
         raise DaclCandidateBuildError("absent or NULL DACL is not eligible for candidate construction")
-    if not isinstance(dacl_control_flags, int) or dacl_control_flags < 0:
-        raise DaclCandidateBuildError("DACL control flags are invalid")
+    if (
+        isinstance(dacl_control_flags, bool)
+        or not isinstance(dacl_control_flags, int)
+        or not 0 <= dacl_control_flags <= 0xFFFF
+    ):
+        raise DaclCandidateBuildError("DACL control flags must fit the native 16-bit control field")
     if not _valid_package_sid(package_sid):
         raise DaclCandidateBuildError("Package SID is invalid")
     access_mask, inheritance_flags = _policy(target_kind, is_directory)
