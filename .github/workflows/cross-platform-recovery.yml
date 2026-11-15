@@ -71,6 +71,9 @@ jobs:
       - name: Run Local Runner interruption and recovery pipeline tests
         run: python -m unittest tests.test_local_runner_pipeline_e2e -v
 
+      - name: Run Local Runner hardlink containment tests
+        run: python -m unittest tests.test_local_runner_hardlink_containment -v
+
       - name: Run Local Auth Proxy authentication and recovery integration tests
         run: python -m unittest tests.test_local_auth_proxy -v
 
