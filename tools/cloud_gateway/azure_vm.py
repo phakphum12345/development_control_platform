@@ -23,9 +23,14 @@ class AzureArmClient:
  def resource_id(self,provider,resource_type,name):
   return "/subscriptions/"+self.subscription_id+"/resourceGroups/"+self.resource_group+"/providers/"+provider+"/"+resource_type+"/"+name
  def request_with_metadata(self,method,url,payload=None):
-  parsed=urlparse(url)
-  if (parsed.scheme!="https" or parsed.hostname!="management.azure.com" or parsed.port not in (None,443)
-      or parsed.username is not None or parsed.password is not None or parsed.fragment):
+  try:
+   parsed=urlparse(url); port=parsed.port
+  except (TypeError,ValueError) as exc:
+   raise AzureProvisionError("Azure Resource Manager URL is not trusted") from exc
+  expected_path="/subscriptions/"+self.subscription_id.lower()+"/"
+  if (parsed.scheme!="https" or parsed.hostname!="management.azure.com" or port not in (None,443)
+      or parsed.username is not None or parsed.password is not None or parsed.fragment
+      or not parsed.path.lower().startswith(expected_path)):
    raise AzureProvisionError("Azure Resource Manager URL is not trusted")
   token=self.credential.get_token("https://management.azure.com/")
   if not isinstance(token,str) or not token or len(token)>8192 or "\r" in token or "\n" in token:
