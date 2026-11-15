@@ -214,7 +214,7 @@ def inspect_environment(env: Mapping[str, str] | None = None) -> dict:
                     flows_valid = False
                     break
                 network = ipaddress.ip_network(destination, strict=False)
-                if network.version != 4 or network.prefixlen == 0 or network.is_multicast or network.is_unspecified or network.is_reserved:
+                if network.version != 4 or network.prefixlen == 0 or not network.is_global or network.is_multicast or network.is_unspecified:
                     flows_valid = False
                     break
                 key = (protocol, port, str(network))
