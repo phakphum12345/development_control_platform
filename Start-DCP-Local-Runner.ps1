@@ -4,7 +4,8 @@ param(
     [string]$WorkerId = 'windows-local-01',
     [switch]$EnableExecution,
     [switch]$Once,
-    [string[]]$TrustedRepository = @()
+    [string[]]$TrustedRepository = @(),
+    [string[]]$TrustedLocalProject = @()
 )
 
 $ErrorActionPreference = 'Stop'
