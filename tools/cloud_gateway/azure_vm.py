@@ -67,10 +67,11 @@ class AzureVMProvider:
  budget_provider="azure"
  requires_runner_cleanup=True
  requires_budget_guard=True
- def __init__(self,arm,location,subnet_id,nsg_id,vm_sizes,image_references,bootstrap_factory,runner_online_checker=None,network_policy_checker=None):
+ def __init__(self,arm,location,subnet_id,nsg_id,vm_sizes,image_references,bootstrap_factory,runner_online_checker=None,network_policy_checker=None,effective_network_policy_verifier=None):
   self.arm=arm; self.location=location; self.subnet_id=subnet_id; self.nsg_id=nsg_id
   self.vm_sizes=dict(vm_sizes); self.image_references={k:dict(v) for k,v in image_references.items()}
   self.bootstrap_factory=bootstrap_factory; self.online=runner_online_checker; self.network_policy=network_policy_checker
+  self.effective_network_policy=effective_network_policy_verifier
   sub=arm.subscription_id; scope=r"^/subscriptions/"+re.escape(sub)+r"/resourceGroups/[A-Za-z0-9_.()-]+/providers/Microsoft\.Network/"
   if not re.match(scope,subnet_id,re.I) or "/virtualNetworks/" not in subnet_id or "/subnets/" not in subnet_id: raise ValueError("Subnet must be a resource ID in the configured subscription")
   if not re.match(scope,nsg_id,re.I) or "/networkSecurityGroups/" not in nsg_id: raise ValueError("NSG must be a resource ID in the configured subscription")
@@ -99,7 +100,9 @@ class AzureVMProvider:
    if isinstance(detail,str) and detail:
     message += ": "+detail[:240]
    return {"ready":False,"message":message}
-  return {"ready":True,"message":"Protected bootstrap, runner-online check, and network policy are configured"}
+  if not callable(getattr(self.effective_network_policy,"verify_nic",None)):
+   return {"ready":False,"message":"ARM-backed effective NIC NSG and route verification is not configured"}
+  return {"ready":True,"message":"Firewall egress, effective NIC NSG/route, protected bootstrap, and runner-online checks are configured"}
  def _url(self,provider,kind,name,version=API_COMPUTE): return self.arm.resource_url(provider,kind,name,version)
  def _names(self,run_id):
   suffix=uuid.uuid4().hex[:8]; return "dcp-"+str(run_id)+"-"+suffix,"dcpnic"+suffix
@@ -109,32 +112,41 @@ class AzureVMProvider:
   if payload.get("ephemeral") is not True or payload.get("network_policy")!="restricted-egress": raise AzureProvisionError("Runner must be ephemeral with restricted egress")
   gate=self.readiness(os_name)
   if gate.get("ready") is not True: raise AzureProvisionError("Azure runner provider is not ready: "+str(gate.get("message","readiness check failed")))
-  vm_name,nic_name=self._names(payload["workflow_run_id"]); bootstrap=self.bootstrap_factory(vm_name,os_name,payload)
-  if not isinstance(bootstrap,dict) or not isinstance(bootstrap.get("os_profile"),dict) or not isinstance(bootstrap.get("extension"),dict): raise AzureProvisionError("Protected bootstrap factory returned an invalid contract")
-  extension_name=bootstrap["extension"].get("name")
-  props=bootstrap["extension"].get("properties",{})
-  if not isinstance(extension_name,str) or not re.fullmatch(r"dcp-[a-z0-9-]{1,50}",extension_name):
-   raise AzureProvisionError("Runner bootstrap extension name is invalid")
-  if not isinstance(props,dict) or not props.get("protectedSettings"): raise AzureProvisionError("Runner bootstrap must use protected extension settings")
-  if props.get("settings") not in (None,{}): raise AzureProvisionError("Public extension settings must be empty; bootstrap data belongs in protectedSettings")
-  tags={"managed-by":"dcp-cloud-runner","runner-id":vm_name,"repository":payload["repository"],"workflow-run-id":str(payload["workflow_run_id"]),"commit-sha":payload["commit_sha"],"target-os":os_name,"ephemeral":"true","bootstrap-extension":extension_name}
+  vm_name,nic_name=self._names(payload["workflow_run_id"])
+  tags={"managed-by":"dcp-cloud-runner","runner-id":vm_name,"repository":payload["repository"],"workflow-run-id":str(payload["workflow_run_id"]),"commit-sha":payload["commit_sha"],"target-os":os_name,"ephemeral":"true"}
   nic_url=self._url("Microsoft.Network","networkInterfaces",nic_name,API_NETWORK)
   nic_id=self.arm.resource_id("Microsoft.Network","networkInterfaces",nic_name)
   nic_body={"location":self.location,"tags":tags,"properties":{"networkSecurityGroup":{"id":self.nsg_id},"ipConfigurations":[{"name":"primary","properties":{"primary":True,"privateIPAllocationMethod":"Dynamic","subnet":{"id":self.subnet_id}}}]}}
-  extension=dict(bootstrap["extension"])
-  extension["location"]=self.location
-  extension["type"]="Microsoft.Compute/virtualMachines/extensions"
-  vm_body={"location":self.location,"tags":tags,"properties":{
-   "hardwareProfile":{"vmSize":self.vm_sizes[os_name]},
-   "storageProfile":{"imageReference":self.image_references[os_name],"osDisk":{"name":vm_name+"-os","createOption":"FromImage","caching":"ReadOnly","managedDisk":{"storageAccountType":"Standard_LRS"},"diffDiskSettings":{"option":"Local"}}},
-   "osProfile":bootstrap["os_profile"],"networkProfile":{"networkInterfaces":[{"id":nic_id,"properties":{"primary":True}}]},
-   "securityProfile":{"uefiSettings":{"secureBootEnabled":True,"vTpmEnabled":True},"securityType":"TrustedLaunch"},
-   "extensionsTimeBudget":"PT45M"
-  },"resources":[extension]}
   vm_url=self._url("Microsoft.Compute","virtualMachines",vm_name)
   vm_create_started=False
   try:
    self.arm.request("PUT",nic_url,nic_body)
+   if self.effective_network_policy.verify_nic(nic_id,self.nsg_id,self.subnet_id) is not True:
+    raise AzureProvisionError("Effective Azure NIC egress policy was not verified")
+   # Mint the short-lived GitHub runner registration credential only after
+   # the actual NIC's effective NSG and default route have passed verification.
+   bootstrap=self.bootstrap_factory(vm_name,os_name,payload)
+   if not isinstance(bootstrap,dict) or not isinstance(bootstrap.get("os_profile"),dict) or not isinstance(bootstrap.get("extension"),dict):
+    raise AzureProvisionError("Protected bootstrap factory returned an invalid contract")
+   extension_name=bootstrap["extension"].get("name")
+   props=bootstrap["extension"].get("properties",{})
+   if not isinstance(extension_name,str) or not re.fullmatch(r"dcp-[a-z0-9-]{1,50}",extension_name):
+    raise AzureProvisionError("Runner bootstrap extension name is invalid")
+   if not isinstance(props,dict) or not isinstance(props.get("protectedSettings"),dict) or not props.get("protectedSettings"):
+    raise AzureProvisionError("Runner bootstrap must use protected extension settings")
+   if props.get("settings") not in (None,{}):
+    raise AzureProvisionError("Public extension settings must be empty; bootstrap data belongs in protectedSettings")
+   tags["bootstrap-extension"]=extension_name
+   extension=dict(bootstrap["extension"])
+   extension["location"]=self.location
+   extension["type"]="Microsoft.Compute/virtualMachines/extensions"
+   vm_body={"location":self.location,"tags":tags,"properties":{
+    "hardwareProfile":{"vmSize":self.vm_sizes[os_name]},
+    "storageProfile":{"imageReference":self.image_references[os_name],"osDisk":{"name":vm_name+"-os","createOption":"FromImage","caching":"ReadOnly","managedDisk":{"storageAccountType":"Standard_LRS"},"diffDiskSettings":{"option":"Local"}}},
+    "osProfile":bootstrap["os_profile"],"networkProfile":{"networkInterfaces":[{"id":nic_id,"properties":{"primary":True}}]},
+    "securityProfile":{"uefiSettings":{"secureBootEnabled":True,"vTpmEnabled":True},"securityType":"TrustedLaunch"},
+    "extensionsTimeBudget":"PT45M"
+   },"resources":[extension]}
    vm_create_started=True
    self.arm.request("PUT",vm_url,vm_body)
   except Exception as original:
@@ -156,6 +168,7 @@ class AzureVMProvider:
     raise error from original
    raise
   return RunnerInstance(vm_name,"provisioning",vm_name,tuple(payload.get("labels",[])),"Azure VM create accepted; runner registration pending")
+
  def status(self,provider_id):
   if not isinstance(provider_id,str) or not re.fullmatch(r"dcp-[0-9]+-[a-f0-9]{8}",provider_id): raise AzureProvisionError("Invalid DCP Azure VM identifier")
   data=self.arm.request("GET",self._url("Microsoft.Compute","virtualMachines",provider_id)+"&$expand=instanceView",allow_missing=True)
