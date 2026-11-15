@@ -74,6 +74,7 @@ class FakeGitHubApp:
         self.removals.append((repository, runner_id))
         if self.runner and self.runner["id"] == runner_id:
             self.runner = None
+        return True
 
 
 class FakeProvider:
