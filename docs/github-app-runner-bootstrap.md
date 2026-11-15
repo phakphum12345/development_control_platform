@@ -63,3 +63,8 @@ GitHub App exists, is installed, or has the required permissions.
 This PR does not read production secrets, configure an App, activate a provider,
 enable provisioning, or deploy an OIDC ingress. Provider integration and
 independent GitHub runner-online verification remain subsequent phases.
+
+
+## Provider API credential transport
+
+The control-plane-to-cloud-runner-gateway adapter uses the shared bounded HTTP transport. Bearer credentials are sent only in request headers; redirects are rejected, request timeouts are bounded to 1–30 seconds, non-empty responses must declare JSON media type, and response bodies are capped at 64 KiB for provider API calls. Provider URLs must be HTTPS origins without embedded credentials, paths, queries, or fragments. Errors exposed to callers contain only a safe exception category and never include request URLs, response bodies, or bearer credentials.
