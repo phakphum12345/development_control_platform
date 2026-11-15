@@ -9,6 +9,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is not available.' }
 $project = [System.IO.Path]::GetFullPath($PSScriptRoot)
 $credentialFile = Join-Path $env:LOCALAPPDATA 'DCP\runner-tokens.json'
 $python = Get-Command py.exe -ErrorAction SilentlyContinue
@@ -26,7 +27,7 @@ if ($null -eq $credentialMap -or $credentialMap -isnot [pscustomobject]) {
     throw 'Local Runner credential file must be a JSON object.'
 }
 $property = $credentialMap.PSObject.Properties[$WorkerId]
-if ($null -eq $property -or $property.Value -isnot [string] -or $property.Value.Length -lt 32) {
+if ($null -eq $property -or $property.Value -isnot [string] -or $property.Value.Length -lt 32 -or $property.Value.Length -gt 256) {
     throw "Worker '$WorkerId' is not configured. Run Setup-DCP-Local-Runner.ps1."
 }
 if ($Once -and -not $EnableExecution) {
@@ -37,12 +38,37 @@ if ($EnableExecution) {
         throw 'Execution requires at least one explicit -TrustedRepository or -TrustedLocalProject.'
     }
     foreach ($repository in $TrustedRepository) {
-        if ($repository -notmatch '^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$') {
+        $parts = $repository.Split('/')
+        if ($repository -notmatch '^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$' -or
+            $parts.Count -ne 2 -or $parts -contains '.' -or $parts -contains '..') {
             throw "Invalid trusted repository name: $repository"
         }
     }
     if (@($TrustedRepository | Select-Object -Unique).Count -ne $TrustedRepository.Count) {
         throw 'Trusted repositories must be unique.'
+    }
+    if ($TrustedRepository.Count -gt 0) {
+        $settingsFile = Join-Path $env:LOCALAPPDATA 'DCP\gateway-local-settings.json'
+        $settingsItem = Get-Item -LiteralPath $settingsFile -Force -ErrorAction SilentlyContinue
+        if ($null -eq $settingsItem -or
+            (($settingsItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -or
+            $settingsItem.PSIsContainer -or $settingsItem.Length -gt 16384) {
+            throw 'Gateway repository allowlist is missing or unsafe. Create gateway-local-settings.json under %LOCALAPPDATA%\DCP.'
+        }
+        try { $gatewaySettings = Get-Content -LiteralPath $settingsFile -Raw | ConvertFrom-Json }
+        catch { throw 'Gateway repository allowlist file is invalid JSON.' }
+        if ($null -eq $gatewaySettings -or $gatewaySettings -isnot [pscustomobject] -or
+            @($gatewaySettings.PSObject.Properties).Count -ne 1 -or
+            $null -eq $gatewaySettings.PSObject.Properties['allowed_repositories'] -or
+            $gatewaySettings.allowed_repositories -isnot [System.Array] -or
+            $gatewaySettings.allowed_repositories.Count -gt 20) {
+            throw 'Gateway repository allowlist file has an invalid schema.'
+        }
+        foreach ($repository in $TrustedRepository) {
+            if ($gatewaySettings.allowed_repositories -cnotcontains $repository) {
+                throw "Repository '$repository' is not in the Gateway allowlist."
+            }
+        }
     }
     foreach ($projectId in $TrustedLocalProject) {
         if ($projectId -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') {

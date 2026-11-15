@@ -405,7 +405,8 @@ jobs:
           $scriptPaths = @(
             (Join-Path $env:RUNNER_TEMP "dcp-windows-bootstrap.ps1"),
             (Join-Path $env:GITHUB_WORKSPACE "Setup-DCP-Local-Runner.ps1"),
-            (Join-Path $env:GITHUB_WORKSPACE "Start-DCP-Gateway-Runner.ps1")
+            (Join-Path $env:GITHUB_WORKSPACE "Start-DCP-Gateway-Runner.ps1"),
+            (Join-Path $env:GITHUB_WORKSPACE "Start-DCP-Local-Runner.ps1")
           )
           foreach ($scriptPath in $scriptPaths) {
             $tokens = $null
@@ -418,6 +419,11 @@ jobs:
               throw "Invalid PowerShell script: $scriptPath"
             }
           }
+
+      - name: Test PR #62 Local Runner and Owner Reset regression contracts
+        shell: pwsh
+        run: |
+          python -m unittest tests.test_local_auth_proxy.GatewayLocalSettingsTests tests.test_local_auth_proxy.LocalRunnerCredentialFileTests tests.test_local_runner_launcher_contract tests.test_local_runner_legacy_launcher_contract tests.test_reset_owner_password -v
 
       - name: Exercise protected local Runner credential setup
         shell: pwsh

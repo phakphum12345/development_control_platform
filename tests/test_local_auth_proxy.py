@@ -1047,5 +1047,51 @@ class LocalRunnerCredentialFileTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, "size limit"):
                 auth.load_runner_tokens(path)
 
+
+class GatewayLocalSettingsTests(unittest.TestCase):
+    def test_loads_operator_approved_repository_allowlist(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "gateway-local-settings.json"
+            path.write_text(json.dumps({
+                "allowed_repositories": ["owner/project", "team/private-app"]
+            }), encoding="utf-8")
+            self.assertEqual(auth.load_gateway_local_settings(path), {
+                "allowed_repositories": ["owner/project", "team/private-app"]
+            })
+
+    def test_rejects_duplicate_or_invalid_repository_entries(self):
+        invalid_values = [
+            {"allowed_repositories": ["owner/project", "OWNER/PROJECT"]},
+            {"allowed_repositories": ["owner/../project"]},
+            {"allowed_repositories": "owner/project"},
+            {"unexpected": []},
+        ]
+        for value in invalid_values:
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as temp:
+                path = Path(temp) / "gateway-local-settings.json"
+                path.write_text(json.dumps(value), encoding="utf-8")
+                with self.assertRaises(SystemExit):
+                    auth.load_gateway_local_settings(path)
+
+    def test_rejects_oversized_settings_file(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "gateway-local-settings.json"
+            path.write_text(" " * (auth.MAX_GATEWAY_LOCAL_SETTINGS_BYTES + 1), encoding="utf-8")
+            with self.assertRaises(SystemExit):
+                auth.load_gateway_local_settings(path)
+
+    def test_gateway_child_environment_exports_allowlist(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "gateway-local-settings.json"
+            path.write_text(json.dumps({
+                "allowed_repositories": ["owner/project"]
+            }), encoding="utf-8")
+            with patch.object(auth, "GATEWAY_LOCAL_SETTINGS_FILE", path), \
+                 patch.object(auth, "load_runner_tokens", return_value={}):
+                env = auth.gateway_child_environment({})
+            self.assertEqual(env["DCP_GATEWAY_ALLOWED_REPOSITORIES"], "owner/project")
+            self.assertTrue(env["DCP_RUNNER_WORKSPACE_ROOT"].endswith("workspaces"))
+
+
 if __name__ == "__main__":
     unittest.main()
