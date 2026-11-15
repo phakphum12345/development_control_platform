@@ -11,7 +11,7 @@ class CredentialTests(unittest.TestCase):
   with self.assertRaises(IdentityError): ManagedIdentityCredential(env={}).get_token("https://vault.azure.net")
  def test_identity_endpoint_uses_local_header_and_resource(self):
   env={"IDENTITY_ENDPOINT":"http://localhost:42356/msi/token","IDENTITY_HEADER":"header-value"}
-  response=MagicMock(); response.__enter__.return_value=response; response.read.return_value=json.dumps({"access_token":"opaque-token"}).encode()
+  response=MagicMock(); response.__enter__.return_value=response; response.read.return_value=json.dumps({"access_token":"opaque-token","token_type":"Bearer","expires_on":str(int(datetime.now(timezone.utc).timestamp())+300)}).encode()
   with patch("tools.cloud_gateway.azure_identity.urlopen",return_value=response) as call:
    self.assertEqual(ManagedIdentityCredential(env).get_token("https://vault.azure.net"),"opaque-token")
   req=call.call_args.args[0]; self.assertEqual(req.get_header("X-identity-header"),"header-value"); self.assertTrue(any(k.lower()=="x-identity-header" for k in req.unredirected_hdrs)); self.assertIn("resource=https%3A%2F%2Fvault.azure.net",req.full_url)
