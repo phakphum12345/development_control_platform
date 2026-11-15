@@ -36,7 +36,7 @@ class AzureArmClientTests(unittest.TestCase):
    with self.assertRaises(AzureProvisionError): client.request("GET","https://management.azure.com/subscriptions/"+SUB+"/resourceGroups/dcp-runners/providers/Microsoft.Network/networkInterfaces/nic?api-version=2025-05-01")
  def test_rejects_invalid_token_timeout_and_untrusted_arm_url(self):
   with self.assertRaises(ValueError): self.make_client(timeout=31)
-  with self.assertRaises(AzureProvisionError): self.make_client(token="bad\\r\\nheader").request("GET","https://management.azure.com/subscriptions/"+SUB+"/resourceGroups/dcp-runners/providers/Microsoft.Network/networkInterfaces/nic?api-version=2025-05-01")
+  with self.assertRaises(AzureProvisionError): self.make_client(token="bad\r\nheader").request("GET","https://management.azure.com/subscriptions/"+SUB+"/resourceGroups/dcp-runners/providers/Microsoft.Network/networkInterfaces/nic?api-version=2025-05-01")
   with self.assertRaises(AzureProvisionError): self.make_client().request("GET","https://attacker.example/subscriptions/"+SUB+"/resourceGroups/dcp-runners/providers/Microsoft.Network/networkInterfaces/nic?api-version=2025-05-01")
  def test_allow_missing_maps_only_http_404_to_none(self):
   client=self.make_client()
