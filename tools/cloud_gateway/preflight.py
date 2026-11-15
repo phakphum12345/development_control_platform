@@ -31,12 +31,7 @@ def _managed_identity_configuration_valid(values: Mapping[str, str]) -> bool:
             return False
         try:
             parsed = urlparse(endpoint)
-            port = parsed.port
-            endpoint_valid = (
-                parsed.scheme == "http"
-                and parsed.hostname in ("localhost", "127.0.0.1", "::1")
-                and port in (None, 80, 1024, 65535) or False
-            )
+            _ = parsed.port
             endpoint_valid = (
                 parsed.scheme == "http"
                 and parsed.hostname in ("localhost", "127.0.0.1", "::1")
@@ -50,9 +45,9 @@ def _managed_identity_configuration_valid(values: Mapping[str, str]) -> bool:
         endpoint_valid = True
     client_id = values.get("AZURE_CLIENT_ID", "")
     client_id_valid = (
-        not client_id
-        or (isinstance(client_id, str) and len(client_id) <= 256
-            and "\r" not in client_id and "\n" not in client_id)
+        isinstance(client_id, str)
+        and (not client_id or (len(client_id) <= 256
+            and "\r" not in client_id and "\n" not in client_id))
     )
     return endpoint_valid and client_id_valid
 
