@@ -33,7 +33,7 @@ class OrkaProvider:
   self.budget_readiness_checker=budget_readiness_checker
  def _request(self,method,path,payload=None,allow_missing=False):
   token=self.secret_reader.get_secret(self.secret_name)
-  if not isinstance(token,str) or not token or len(token)>8192 or "\\r" in token or "\\n" in token: raise OrkaError("Orka API credential is invalid")
+  if not isinstance(token,str) or not token or len(token)>8192 or "\r" in token or "\n" in token: raise OrkaError("Orka API credential is invalid")
   body=None if payload is None else json.dumps(payload,separators=(",",":")).encode()
   req=Request(self.base+path,data=body,method=method,headers={"Accept":"application/json","Content-Type":"application/json","User-Agent":"DCP-Orka-Adapter/1.0"})
   req.add_unredirected_header("Authorization","Bearer "+token)
