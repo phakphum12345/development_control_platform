@@ -4,6 +4,8 @@ import os
 import tempfile
 import unittest
 import uuid
+from types import SimpleNamespace
+from unittest.mock import patch
 from pathlib import Path
 
 from tools.local_runner_agent.artifacts import ArtifactPackageError, FlutterArtifactPackager
@@ -137,6 +139,32 @@ class LocalProjectHardlinkContainmentTests(HardlinkTestSupport):
                 record["snapshot_sha256"],
             )
         self.assertFalse((self.workspace / "snapshot").exists())
+
+    def test_fingerprint_uses_real_windows_link_count_not_direntry_cached_zero(self):
+        registry, project, record = self._registered_project()
+        real_scandir = os.scandir
+
+        class ZeroLinkDirEntry:
+            def __init__(self, entry):
+                self._entry = entry
+                self.name = entry.name
+                self.path = entry.path
+
+            def is_dir(self, *, follow_symlinks=True):
+                return self._entry.is_dir(follow_symlinks=follow_symlinks)
+
+            def stat(self, *, follow_symlinks=True):
+                info = self._entry.stat(follow_symlinks=follow_symlinks)
+                return SimpleNamespace(st_mode=info.st_mode, st_nlink=0)
+
+        def windows_scandir(path):
+            with real_scandir(path) as entries:
+                return [ZeroLinkDirEntry(entry) for entry in entries]
+
+        with patch("tools.local_runner_agent.local_project.os.scandir", side_effect=windows_scandir):
+            fingerprint, count, _size = registry._fingerprint(project)
+        self.assertEqual(fingerprint, record["snapshot_sha256"])
+        self.assertEqual(count, 1)
 
     def test_ignored_secret_hardlink_is_still_rejected(self):
         approved = self.root / "approved"

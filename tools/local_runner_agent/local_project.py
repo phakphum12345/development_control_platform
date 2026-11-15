@@ -214,7 +214,7 @@ class LocalProjectRegistry:
                     continue
                 path = Path(entry.path)
                 try:
-                    info = entry.stat(follow_symlinks=False)
+                    info = os.stat(path, follow_symlinks=False)
                 except OSError:
                     raise LocalProjectError("project entry cannot be inspected") from None
                 if stat.S_ISLNK(info.st_mode):
@@ -361,7 +361,7 @@ class LocalProjectRegistry:
                     continue
                 path = Path(entry.path)
                 try:
-                    info = entry.stat(follow_symlinks=False)
+                    info = os.stat(path, follow_symlinks=False)
                 except OSError:
                     raise LocalProjectError("project entry cannot be inspected") from None
                 if stat.S_ISLNK(info.st_mode):
