@@ -28,9 +28,9 @@ def build_github_app_runtime(settings, env=None):
         return None, None, None
     if not all(configured):
         raise ValueError("GitHub App runtime configuration is incomplete")
-    # In GitHub App mode, the installation catalog is the source of truth;
-    # legacy static allowlists must not silently hide installed repositories.
-    repositories = ()
+    # The private installation catalog is authoritative. The configured static
+    # allowlist may narrow it, but is never used as an authorization fallback.
+    repositories = tuple(getattr(settings, "allowed_repositories", ()) or ())
     installation_raw = values["DCP_GITHUB_APP_INSTALLATION_ID"]
     if not re.fullmatch(r"[0-9]{1,20}", installation_raw):
         raise ValueError("GitHub App installation ID must be numeric")
