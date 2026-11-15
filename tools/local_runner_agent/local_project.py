@@ -223,6 +223,8 @@ class LocalProjectRegistry:
                 elif stat.S_ISREG(info.st_mode):
                     if _ignored_project_file(relative):
                         continue
+                    if getattr(info, "st_nlink", 1) != 1:
+                        raise LocalProjectError("project contains a hardlinked file; snapshot rejected")
                     entries.append((relative, path))
                 else:
                     raise LocalProjectError("project contains a special filesystem entry")
@@ -232,8 +234,8 @@ class LocalProjectRegistry:
         for relative, path in entries:
             try:
                 before = path.lstat()
-                if not stat.S_ISREG(before.st_mode):
-                    raise LocalProjectError("project file changed type during fingerprint")
+                if not stat.S_ISREG(before.st_mode) or getattr(before, "st_nlink", 1) != 1:
+                    raise LocalProjectError("project file is hardlinked or changed type during fingerprint")
                 file_hash = hashlib.sha256()
                 size = 0
                 flags = os.O_RDONLY
@@ -242,10 +244,9 @@ class LocalProjectRegistry:
                 descriptor = os.open(path, flags)
                 with os.fdopen(descriptor, "rb") as handle:
                     opened = os.fstat(handle.fileno())
-                    if not stat.S_ISREG(opened.st_mode) or (
-                        before.st_ino and opened.st_ino and before.st_ino != opened.st_ino
-                    ):
-                        raise LocalProjectError("project file changed during fingerprint")
+                    if (not stat.S_ISREG(opened.st_mode) or getattr(opened, "st_nlink", 1) != 1
+                            or (before.st_ino and opened.st_ino and before.st_ino != opened.st_ino)):
+                        raise LocalProjectError("project file is hardlinked or changed during fingerprint")
                     while True:
                         chunk = handle.read(1024 * 1024)
                         if not chunk:
@@ -258,8 +259,8 @@ class LocalProjectRegistry:
                     after = os.fstat(handle.fileno())
                 if (opened.st_ino, opened.st_size, opened.st_mtime_ns) != (
                     after.st_ino, after.st_size, after.st_mtime_ns
-                ) or size != after.st_size:
-                    raise LocalProjectError("project changed while snapshot was fingerprinted")
+                ) or size != after.st_size or getattr(after, "st_nlink", 1) != 1:
+                    raise LocalProjectError("project changed or became hardlinked while snapshot was fingerprinted")
             except OSError:
                 raise LocalProjectError("project file cannot be read safely") from None
             digest.update(relative.encode("utf-8", "surrogateescape"))
@@ -385,6 +386,8 @@ class LocalProjectRegistry:
                     relative = path.relative_to(project).as_posix()
                     if _ignored_project_file(relative):
                         continue
+                    if getattr(info, "st_nlink", 1) != 1:
+                        raise LocalProjectError("project contains a hardlinked file; snapshot rejected")
                     if "\\" in relative:
                         raise LocalProjectError("project path contains a platform-ambiguous separator")
                     posix = PurePosixPath(relative)
@@ -424,8 +427,8 @@ class LocalProjectRegistry:
                 copied = 0
                 with os.fdopen(source_fd, "rb") as source_handle, os.fdopen(output_fd, "wb") as output_handle:
                     opened = os.fstat(source_handle.fileno())
-                    if not stat.S_ISREG(opened.st_mode):
-                        raise LocalProjectError("source file changed type during snapshot")
+                    if not stat.S_ISREG(opened.st_mode) or getattr(opened, "st_nlink", 1) != 1:
+                        raise LocalProjectError("source file is hardlinked or changed type during snapshot")
                     while True:
                         chunk = source_handle.read(1024 * 1024)
                         if not chunk:
@@ -441,8 +444,8 @@ class LocalProjectRegistry:
                     os.fsync(output_handle.fileno())
                 if (opened.st_ino, opened.st_size, opened.st_mtime_ns) != (
                     source_after.st_ino, source_after.st_size, source_after.st_mtime_ns
-                ) or copied != source_after.st_size:
-                    raise LocalProjectError("source file changed while snapshot was copied")
+                ) or copied != source_after.st_size or getattr(source_after, "st_nlink", 1) != 1:
+                    raise LocalProjectError("source file changed or became hardlinked while snapshot was copied")
                 os.chmod(output_file, 0o400)
 
             source_after_sha, source_after_count, source_after_bytes = self._fingerprint(project)
