@@ -58,7 +58,7 @@ class FakeArm:
    if method=="DELETE": return {}
   return self.get_result if method=="GET" else {}
 def bootstrap(vm,os_name,payload):
- os_profile={"computerName":vm,"adminUsername":"dcpadmin"}
+ os_profile={"computerName":vm if os_name=="linux" else "DCPW"+vm.rsplit("-",1)[-1].upper(),"adminUsername":"dcpadmin"}
  if os_name=="linux": os_profile["linuxConfiguration"]={"disablePasswordAuthentication":True}
  else: os_profile["adminPassword"]="test-only-password"
  return {"os_profile":os_profile,"extension":{"name":"dcp-bootstrap","properties":{"publisher":"Microsoft.Azure.Extensions","type":"CustomScript","typeHandlerVersion":"2.1","settings":{},"protectedSettings":{"script":"base64-one-time-bootstrap"}}}}
