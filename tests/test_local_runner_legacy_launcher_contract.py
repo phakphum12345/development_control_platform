@@ -14,6 +14,7 @@ class LegacyLocalRunnerLauncherContractTests(unittest.TestCase):
         self.assertIn("$EnableExecution", SCRIPT)
         self.assertIn("$Once", SCRIPT)
         self.assertIn("$TrustedRepository", SCRIPT)
+        self.assertIn("$TrustedLocalProject", SCRIPT)
 
 
 if __name__ == "__main__":
