@@ -9,6 +9,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is not available.' }
 $project = [System.IO.Path]::GetFullPath($PSScriptRoot)
 $credentialFile = Join-Path $env:LOCALAPPDATA 'DCP\runner-tokens.json'
 $python = Get-Command py.exe -ErrorAction SilentlyContinue
