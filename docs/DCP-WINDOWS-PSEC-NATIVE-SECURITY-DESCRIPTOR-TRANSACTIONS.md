@@ -53,13 +53,20 @@ The implementation must model, at minimum:
 - descriptor revision and control flags;
 - DACL-present state;
 - DACL pointer state (NULL versus non-NULL);
-- DACL defaulted/protected/auto-inherited control state;
+- DACL defaulted state returned by `GetSecurityDescriptorDacl`, plus protected/auto-inherited descriptor control state;
 - ACL revision, size, ACE count, and exact bytes;
 - each ACE's type, flags, size, trustee SID (when the ACE format supports one), and access mask (when the ACE format supports one).
 
 Do not equate a NULL DACL with an empty DACL. Do not assume every ACE contains a conventional SID at a fixed offset. ACE decoding must be type-aware. If a descriptor contains a construct that the implementation cannot preserve exactly, reject the entire transaction before the first mutation.
 
-Snapshots should preserve the exact original DACL bytes and the descriptor control information required to restore protection/inheritance semantics. Do not serialize and later reconstruct the original policy from lossy SDDL text.
+Snapshots and candidates must preserve the exact original DACL bytes, the separate `dacl_defaulted` boolean, and descriptor control information required to restore protection/inheritance semantics. Read-back and rollback equality includes all three.
+
+### Win32 defaulted-state limitation — mandatory native-writer gate
+
+The read API exposes `DaclDefaulted` through `GetSecurityDescriptorDacl`, but `SetSecurityInfo` accepts a DACL pointer and `SECURITY_INFORMATION`; it has no `bDaclDefaulted` parameter. Microsoft documents that `SetSecurityInfo` sets or clears descriptor control bits as appropriate, while `SetSecurityDescriptorDacl` is the API that explicitly accepts `bDaclDefaulted`. Therefore, the transaction model's ability to carry and compare this bit does **not** prove that a native `SetSecurityInfo` writer can restore a prior TRUE value.
+
+Until a disposable Windows-host experiment proves the exact round-trip semantics, a future native adapter must reject a preflight snapshot with `dacl_defaulted == true` before the first write. It must not claim rollback equivalence for such an object, attempt a path-based or undocumented workaround, or silently drop the state. Native-writer implementation and acceptance remain BLOCKED on this question. See [GetSecurityDescriptorDacl](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-getsecuritydescriptordacl), [SetSecurityInfo](https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-setsecurityinfo), and [SetSecurityDescriptorDacl](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-setsecuritydescriptordacl).
+ Do not serialize and later reconstruct the original policy from lossy SDDL text.
 
 ## 5. Native API contract
 
