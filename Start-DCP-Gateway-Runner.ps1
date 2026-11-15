@@ -27,8 +27,7 @@ if ($null -eq $credentialMap -or $credentialMap -isnot [pscustomobject]) {
     throw 'Local Runner credential file must be a JSON object.'
 }
 $property = $credentialMap.PSObject.Properties[$WorkerId]
-if ($null -eq $property -or $property.Value -isnot [string] -or
-    $property.Value.Length -lt 32 -or $property.Value.Length -gt 256) {
+if ($null -eq $property -or $property.Value -isnot [string] -or $property.Value.Length -lt 32 -or $property.Value.Length -gt 256) {
     throw "Worker '$WorkerId' is not configured. Run Setup-DCP-Local-Runner.ps1."
 }
 if ($Once -and -not $EnableExecution) {
@@ -106,7 +105,7 @@ try {
     }
 }
  -or
-            $parts -contains '.' -or $parts -contains '..') {
+            $parts.Count -ne 2 -or $parts -contains '.' -or $parts -contains '..') {
             throw "Invalid trusted repository name: $repository"
         }
     }
@@ -119,7 +118,7 @@ try {
         if ($null -eq $settingsItem -or
             (($settingsItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -or
             $settingsItem.PSIsContainer -or $settingsItem.Length -gt 16384) {
-            throw 'Gateway repository allowlist is missing or unsafe. Configure it with Setup-DCP-Local-Runner.ps1, then restart DCP.'
+            throw 'Gateway repository allowlist is missing or unsafe. Create a bounded gateway-local-settings.json under %LOCALAPPDATA%\DCP.'
         }
         try { $gatewaySettings = Get-Content -LiteralPath $settingsFile -Raw | ConvertFrom-Json }
         catch { throw 'Gateway repository allowlist file is invalid JSON.' }
@@ -132,7 +131,7 @@ try {
         }
         foreach ($repository in $TrustedRepository) {
             if ($gatewaySettings.allowed_repositories -cnotcontains $repository) {
-                throw "Repository '$repository' is not in the Gateway allowlist. Configure it with Setup-DCP-Local-Runner.ps1 and restart DCP."
+                throw "Repository '$repository' is not in the Gateway allowlist."
             }
         }
     }
