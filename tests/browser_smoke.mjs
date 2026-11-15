@@ -3,10 +3,23 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { chromium } from "playwright";
 
-const html = await readFile(new URL("../dashboard/index.html", import.meta.url), "utf8");
-const server = createServer((_req, res) => {
-  res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-  res.end(html);
+const dashboard = new URL("../dashboard/", import.meta.url);
+const assets = new Map([
+  ["/", { body: await readFile(new URL("index.html", dashboard)), type: "text/html; charset=utf-8" }],
+  ["/index.html", { body: await readFile(new URL("index.html", dashboard)), type: "text/html; charset=utf-8" }],
+  ["/manifest.webmanifest", { body: await readFile(new URL("manifest.webmanifest", dashboard)), type: "application/manifest+json" }],
+  ["/sw.js", { body: await readFile(new URL("sw.js", dashboard)), type: "text/javascript; charset=utf-8" }],
+  ["/icons/dcp.svg", { body: await readFile(new URL("icons/dcp.svg", dashboard)), type: "image/svg+xml" }],
+]);
+const server = createServer((req, res) => {
+  const asset = assets.get(new URL(req.url, "http://127.0.0.1").pathname);
+  if (!asset) {
+    res.writeHead(404);
+    res.end("Not found");
+    return;
+  }
+  res.writeHead(200, { "content-type": asset.type });
+  res.end(asset.body);
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const address = server.address();
@@ -18,11 +31,41 @@ try {
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.goto(`http://127.0.0.1:${address.port}/`);
   await page.getByRole("heading", { name: "Development Control Platform" }).waitFor();
+  await page.waitForFunction(() => document.querySelector("#pwa-state")?.textContent === "Offline-ready shell");
+
+  // The install button should show a real outcome and handle a declined native prompt.
+  await page.evaluate(() => {
+    const prompt = new Event("beforeinstallprompt", { cancelable: true });
+    Object.assign(prompt, {
+      prompt: async () => {},
+      userChoice: Promise.resolve({ outcome: "accepted" }),
+    });
+    window.dispatchEvent(prompt);
+  });
+  assert.equal(await page.locator("#pwa-install").isVisible(), true);
+  await page.locator("#pwa-install").click();
+  await page.waitForFunction(() => document.querySelector("#pwa-state")?.textContent === "Install accepted");
 
   // Control Center v2: structural self-check, searchable navigation,
   // quick actions, reset behavior, and keyboard shortcuts.
   await page.locator("#dcp-selfcheck-run").click();
   assert.match(await page.locator("#dcp-selfcheck").textContent(), /UI self-check: PASS/);
+  await page.locator('[data-tab="contact"]').click();
+  await page.locator("#contact-name").fill("Test User");
+  await page.locator("#contact-email").fill("test@example.com");
+  await page.locator("#contact-subject").fill("Feature request");
+  await page.locator("#contact-message").fill("Please consider this feature.");
+  await page.locator("#contact-compose").click();
+  assert.equal(await page.locator("#contact-email-link").isVisible(), true);
+  const mailto = new URL(await page.locator("#contact-email-link").getAttribute("href"));
+  assert.equal(mailto.protocol, "mailto:");
+  assert.equal(mailto.pathname, "phakphoum54@gmail.com");
+  assert.equal(mailto.searchParams.get("subject"), "DCP: Feature request");
+  assert.match(mailto.searchParams.get("body"), /Reply-to: test@example.com/);
+  assert.match(await page.locator("#contact-status").textContent(), /cannot be verified/i);
+  await page.locator("#contact-clear").click();
+  assert.equal(await page.locator("#contact-email-link").isVisible(), false);
+  assert.equal(await page.locator("#contact-direct-email").getAttribute("href"), "mailto:phakphoum54@gmail.com");
   await page.locator("#dcp-nav-search").fill("Repository");
   assert.equal(await page.locator('[data-tab="repo"]').isVisible(), true);
   assert.equal(await page.locator('[data-tab="pr"]').isVisible(), false);
@@ -137,7 +180,7 @@ try {
   // PWA assets and password-login client must be present; static hosting must
   // fail closed rather than invent a client-side authenticated session.
   assert.equal(await page.locator('link[rel="manifest"]').getAttribute("href"), "./manifest.webmanifest");
-  assert.equal(await page.locator("#pwa-install").isVisible(), false);
+  assert.equal(await page.locator("#pwa-install").count(), 1);
   await page.locator('[data-tab="account"]').click();
   assert.equal(await page.locator("#auth-submit").isDisabled(), true);
   await page.waitForFunction(() => document.querySelector("#auth-backend-status")?.textContent.includes("Local authentication service unavailable"));
@@ -201,7 +244,7 @@ try {
   });
 
   assert.deepEqual(pageErrors, [], "dashboard should not raise uncaught browser errors");
-  console.log("Browser smoke tests passed: route colors, registry CRUD, connections, sandbox, route preview, Code Navigator, PWA metadata, and fail-closed authentication UI.");
+  console.log("Browser smoke tests passed: Contact mailto flow, PWA install prompt, route colors, registry CRUD, connections, sandbox, route preview, Code Navigator, and fail-closed authentication UI.");
 } finally {
   await browser.close();
   await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));

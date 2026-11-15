@@ -1,0 +1,52 @@
+name: Package Development Control Platform
+
+on:
+  pull_request:
+    paths:
+      - "dashboard/**"
+      - "packaging/**"
+      - ".github/workflows/package-release.yml"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Three-part package version, for example 1.2.3"
+        required: true
+        default: "0.1.0"
+        type: string
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+        shell: pwsh
+
+      - name: Build PWA, portable ZIP, and Windows installer
+        env:
+          DCP_PACKAGE_VERSION: ${{ github.event.release.tag_name || inputs.version || '0.1.0' }}
+        shell: pwsh
+        run: |
+          $version = $env:DCP_PACKAGE_VERSION.TrimStart('v')
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Package version must be three numeric components; got '$version'."
+          }
+          ./packaging/package-release.ps1 -Version $version
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: dcp-packages-${{ github.event.release.tag_name || inputs.version || github.run_number }}
+          path: |
+            dist/DCP-PWA-*.zip
+            dist/DCP-Portable-Windows-*.zip
+            dist/Development-Control-Platform-Setup-*.exe
+          if-no-files-found: error

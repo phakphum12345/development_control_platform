@@ -1,5 +1,5 @@
 "use strict";
-const CACHE_NAME = "dcp-shell-v1";
+const CACHE_NAME = "dcp-shell-v2";
 const SHELL = ["./index.html", "./manifest.webmanifest", "./icons/dcp.svg"];
 const scopeURL = new URL(self.registration.scope);
 const apiPrefix = new URL("./api/", scopeURL).pathname;

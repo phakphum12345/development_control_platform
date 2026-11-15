@@ -39,29 +39,30 @@ Counts are tied to the exact baseline above. New files on an unmerged feature br
 
 ## 3. Dashboard view inventory
 
-The current Dashboard declares 21 views in `dashboard/index.html`:
+The current Dashboard declares 22 views in `dashboard/index.html`:
 
 1. `dev-tools`
 2. `account`
-3. `project-import`
-4. `infrastructure`
-5. `cloud-runners`
-6. `github-api`
-7. `repo-selector`
-8. `repo`
-9. `pr`
-10. `user`
-11. `workspace`
-12. `evidence`
-13. `gates`
-14. `checkpoint`
-15. `document-generator`
-16. `terminal-studio`
-17. `code-navigator`
-18. `ui-routes`
-19. `ui-simulator`
-20. `route-colors`
-21. `audit`
+3. `contact`
+4. `project-import`
+5. `infrastructure`
+6. `cloud-runners`
+7. `github-api`
+8. `repo-selector`
+9. `repo`
+10. `pr`
+11. `user`
+12. `workspace`
+13. `evidence`
+14. `gates`
+15. `checkpoint`
+16. `document-generator`
+17. `terminal-studio`
+18. `code-navigator`
+19. `ui-routes`
+20. `ui-simulator`
+21. `route-colors`
+22. `audit`
 
 The view count is not equivalent to complete feature acceptance. Several views are explicitly local-only, metadata-only, prototype-only or read-only.
 
