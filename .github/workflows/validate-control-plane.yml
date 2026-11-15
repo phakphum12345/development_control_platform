@@ -423,12 +423,7 @@ jobs:
       - name: Test PR #62 Local Runner and Owner Reset regression contracts
         shell: pwsh
         run: |
-          python -m unittest \
-            tests.test_local_auth_proxy.GatewayLocalSettingsTests \
-            tests.test_local_auth_proxy.LocalRunnerCredentialFileTests \
-            tests.test_local_runner_launcher_contract \
-            tests.test_local_runner_legacy_launcher_contract \
-            tests.test_reset_owner_password -v
+          python -m unittest tests.test_local_auth_proxy.GatewayLocalSettingsTests tests.test_local_auth_proxy.LocalRunnerCredentialFileTests tests.test_local_runner_launcher_contract tests.test_local_runner_legacy_launcher_contract tests.test_reset_owner_password -v
 
       - name: Exercise protected local Runner credential setup
         shell: pwsh
