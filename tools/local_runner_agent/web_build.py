@@ -190,6 +190,8 @@ class WebBuildExecutor:
                 if stat.S_ISLNK(info.st_mode):
                     raise ExecutionError("static source contains a symlink")
                 if stat.S_ISREG(info.st_mode):
+                    if getattr(info, "st_nlink", 1) != 1:
+                        raise ExecutionError("static source contains a hardlinked file")
                     if info.st_size > self.max_artifact_bytes:
                         raise ExecutionError("static source file exceeds size limit")
                     shutil.copyfile(item, destination / item.name)
@@ -207,8 +209,8 @@ class WebBuildExecutor:
                             if not safe_public_name(filename):
                                 continue
                             meta = path.lstat()
-                            if not stat.S_ISREG(meta.st_mode):
-                                raise ExecutionError("static source contains a non-regular file")
+                            if not stat.S_ISREG(meta.st_mode) or getattr(meta, "st_nlink", 1) != 1:
+                                raise ExecutionError("static source contains a non-regular or hardlinked file")
                             relative = path.relative_to(source)
                             if meta.st_size > self.max_artifact_bytes:
                                 raise ExecutionError("static source file exceeds size limit")
@@ -334,8 +336,8 @@ class WebArtifactPackager:
             for filename in files:
                 path = base / filename
                 info = path.lstat()
-                if not stat.S_ISREG(info.st_mode):
-                    raise ExecutionError("web artifact contains a non-regular file")
+                if not stat.S_ISREG(info.st_mode) or getattr(info, "st_nlink", 1) != 1:
+                    raise ExecutionError("web artifact contains a non-regular or hardlinked file")
                 relative = path.relative_to(output)
                 total += info.st_size
                 entries.append((path, relative))
