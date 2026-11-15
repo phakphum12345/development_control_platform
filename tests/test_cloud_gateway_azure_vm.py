@@ -1,9 +1,48 @@
 """Mock-only Azure VM provisioner tests. No ARM resources are created."""
 import unittest
-from tools.cloud_gateway.azure_vm import AzureVMProvider,AzureProvisionError
+from unittest.mock import MagicMock, patch
+from urllib.error import HTTPError
+from tools.cloud_gateway.azure_vm import AzureArmClient, AzureVMProvider, AzureProvisionError
 from tools.runner_backend.manager import PLATFORM_PROFILES
 SUB="00000000-0000-0000-0000-000000000000"
 IMAGES={"linux":{"publisher":"Canonical","offer":"ubuntu-24_04-lts","sku":"server","version":"24.04.202501150"},"windows":{"publisher":"MicrosoftWindowsServer","offer":"WindowsServer","sku":"2025-datacenter-g2","version":"20348.1.250101"}}
+
+class FakeCredential:
+ def __init__(self,token="arm-test-token"): self.token=token
+ def get_token(self,scope): return self.token
+class AzureArmClientTests(unittest.TestCase):
+ def make_response(self,status=200,body=b'{"ok":true}',headers=None):
+  response=MagicMock(); response.__enter__.return_value=response
+  response.status=status; response.headers=headers or {"Content-Type":"application/json"}
+  response.read.return_value=body
+  return response
+ def make_client(self,timeout=20,token="arm-test-token"):
+  return AzureArmClient(SUB,"dcp-runners",FakeCredential(token),timeout=timeout)
+ def test_uses_no_redirect_transport_and_unredirected_bearer(self):
+  client=self.make_client()
+  response=self.make_response(202,b"",{"Location":"https://management.azure.com/subscriptions/"+SUB+"/operation"})
+  with patch("tools.cloud_gateway.azure_vm.urlopen",return_value=response) as opener:
+   status,headers,body=client.request_with_metadata("POST","https://management.azure.com/subscriptions/"+SUB+"/resourceGroups/dcp-runners/providers/Microsoft.Network/networkInterfaces/nic?api-version=2025-05-01",{})
+  request=opener.call_args.args[0]
+  self.assertEqual(status,202)
+  self.assertEqual(request.unredirected_hdrs.get("Authorization"),"Bearer arm-test-token")
+  self.assertNotIn("Authorization",request.headers)
+ def test_rejects_redirects_and_non_json_response_media_type(self):
+  client=self.make_client()
+  with patch("tools.cloud_gateway.azure_vm.urlopen",side_effect=HTTPError("https://management.azure.com/",302,"redirect",{},None)):
+   with self.assertRaises(AzureProvisionError): client.request("GET","https://management.azure.com/subscriptions/"+SUB+"/resourceGroups/dcp-runners/providers/Microsoft.Network/networkInterfaces/nic?api-version=2025-05-01")
+  response=self.make_response(200,b'{"ok":true}',{"Content-Type":"text/plain"})
+  with patch("tools.cloud_gateway.azure_vm.urlopen",return_value=response):
+   with self.assertRaises(AzureProvisionError): client.request("GET","https://management.azure.com/subscriptions/"+SUB+"/resourceGroups/dcp-runners/providers/Microsoft.Network/networkInterfaces/nic?api-version=2025-05-01")
+ def test_rejects_invalid_token_timeout_and_untrusted_arm_url(self):
+  with self.assertRaises(ValueError): self.make_client(timeout=31)
+  with self.assertRaises(AzureProvisionError): self.make_client(token="bad\\r\\nheader").request("GET","https://management.azure.com/subscriptions/"+SUB+"/resourceGroups/dcp-runners/providers/Microsoft.Network/networkInterfaces/nic?api-version=2025-05-01")
+  with self.assertRaises(AzureProvisionError): self.make_client().request("GET","https://attacker.example/subscriptions/"+SUB+"/resourceGroups/dcp-runners/providers/Microsoft.Network/networkInterfaces/nic?api-version=2025-05-01")
+ def test_allow_missing_maps_only_http_404_to_none(self):
+  client=self.make_client()
+  with patch("tools.cloud_gateway.azure_vm.urlopen",side_effect=HTTPError("https://management.azure.com/",404,"not found",{},None)):
+   self.assertIsNone(client.request("GET","https://management.azure.com/subscriptions/"+SUB+"/resourceGroups/dcp-runners/providers/Microsoft.Network/networkInterfaces/nic?api-version=2025-05-01",allow_missing=True))
+
 class FakeArm:
  subscription_id=SUB; resource_group="dcp"
  def __init__(self):
