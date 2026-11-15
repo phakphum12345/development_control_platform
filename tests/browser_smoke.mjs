@@ -169,10 +169,10 @@ try {
   assert.doesNotMatch(await page.locator("#ros-api-status").textContent(), /API URL must use HTTPS/);
   assert.equal(await page.locator("#ros-api-load").isDisabled(), true, "a non-API local server must not enable authenticated data loading");
 
-  // Project Import remains disabled on a static shell without the local owner session.
+  // Project Import remains disabled when the static shell has no local API.
   await page.locator('[data-tab="project-import"]').click();
   assert.equal(await page.locator("#project-import").evaluate((el) => el.classList.contains("active")), true);
-  await page.waitForFunction(() => document.querySelector("#project-import-status")?.textContent.includes("Owner sign-in required"));
+  await page.waitForFunction(() => document.querySelector("#project-import-status")?.textContent.includes("Local Auth Proxy / Gateway unavailable"));
   assert.equal(await page.locator("#project-import-github-refresh").isDisabled(), true);
   assert.equal(await page.locator("#project-import-local-refresh").isDisabled(), true);
   assert.equal(await page.locator("#project-import-inspect").isDisabled(), true);
