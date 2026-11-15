@@ -48,6 +48,8 @@ def valid_environment():
             f"/subscriptions/{SUBSCRIPTION}/resourceGroups/network/providers/"
             "Microsoft.Network/firewallPolicies/dcp-egress"
         ),
+        "DCP_AZURE_EXPECTED_FIREWALL_IP": "10.20.0.4",
+        "DCP_AZURE_REQUIRED_OUTBOUND_FLOWS_JSON": '[{"protocol":"Tcp","port":443,"destination":"13.64.0.0/11"}]',
         "DCP_AZURE_BUDGET_NAME": "dcp-monthly",
         "DCP_AZURE_PROJECTED_RUN_COST_USD": "1.25",
         "DCP_AZURE_LINUX_VM_SIZE": "Standard_D2s_v5",
@@ -94,7 +96,7 @@ class GatewayPreflightTests(unittest.TestCase):
             "gateway_api_token", "trusted_proxy", "owner_approval",
             "repository_allowlist", "github_app_configuration",
             "azure_configuration_presence", "azure_guest_profile_configuration",
-            "azure_network_configuration", "azure_extra_egress_domains",
+            "azure_network_configuration", "azure_effective_network_configuration", "azure_extra_egress_domains",
             "azure_provider_opt_in", "orka_configuration_presence",
         ):
             self.assertEqual(checks[name]["status"], "PASS", name)
@@ -188,6 +190,23 @@ class GatewayPreflightTests(unittest.TestCase):
         self.assertEqual(checks["github_app_configuration"]["status"], "FAIL")
         self.assertEqual(result["overall"], "FAIL")
 
+
+    def test_effective_network_preflight_rejects_public_firewall_and_unbounded_flows(self):
+        env = valid_environment()
+        env["DCP_AZURE_EXPECTED_FIREWALL_IP"] = "8.8.8.8"
+        checks = {item["check"]: item for item in inspect_environment(env)["checks"]}
+        self.assertEqual(checks["azure_effective_network_configuration"]["status"], "FAIL")
+        self.assertEqual(checks["azure_configuration_presence"]["status"], "FAIL")
+
+        env = valid_environment()
+        env["DCP_AZURE_REQUIRED_OUTBOUND_FLOWS_JSON"] = '[{"protocol":"Tcp","port":443,"destination":"0.0.0.0/0"}]'
+        checks = {item["check"]: item for item in inspect_environment(env)["checks"]}
+        self.assertEqual(checks["azure_effective_network_configuration"]["status"], "FAIL")
+
+        env = valid_environment()
+        env["DCP_AZURE_REQUIRED_OUTBOUND_FLOWS_JSON"] = '[{"protocol":"Tcp","port":443,"destination":"13.64.0.0/11"},{"protocol":"Tcp","port":443,"destination":"13.64.0.0/11"}]'
+        checks = {item["check"]: item for item in inspect_environment(env)["checks"]}
+        self.assertEqual(checks["azure_effective_network_configuration"]["status"], "FAIL")
 
 if __name__ == "__main__":
     unittest.main()
