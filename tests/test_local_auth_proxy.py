@@ -1047,9 +1047,6 @@ class LocalRunnerCredentialFileTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, "size limit"):
                 auth.load_runner_tokens(path)
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class GatewayLocalSettingsTests(unittest.TestCase):
     def test_loads_operator_approved_repository_allowlist(self):
@@ -1094,3 +1091,7 @@ class GatewayLocalSettingsTests(unittest.TestCase):
                 env = auth.gateway_child_environment({})
             self.assertEqual(env["DCP_GATEWAY_ALLOWED_REPOSITORIES"], "owner/project")
             self.assertTrue(env["DCP_RUNNER_WORKSPACE_ROOT"].endswith("workspaces"))
+
+
+if __name__ == "__main__":
+    unittest.main()
