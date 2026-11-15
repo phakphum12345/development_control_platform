@@ -73,7 +73,7 @@ class AzureEffectiveNetworkPolicyVerifier:
             raise ValueError("Outbound flow destination must be an IPv4 CIDR string")
         network = ipaddress.ip_network(destination, strict=False)
         if (network.version != 4 or network.prefixlen == 0
-                or network.is_multicast or network.is_unspecified or network.is_reserved):
+                or not network.is_global or network.is_multicast or network.is_unspecified):
             raise ValueError("Outbound flow destination must be a bounded IPv4 CIDR")
         return {"protocol": protocol, "port": port, "destination": network}
 
