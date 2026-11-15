@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .execution import ExecutionError
 from .workspace import WorkspaceManager
+from .file_safety import open_verified_regular_file, copy_verified_regular_file
 
 
 class ArtifactPackageError(RuntimeError):
@@ -75,7 +76,7 @@ class FlutterArtifactPackager:
             if (not stat.S_ISREG(info.st_mode) or getattr(info, "st_nlink", 1) != 1
                     or info.st_size < 1 or info.st_size > self.max_bytes):
                 raise ArtifactPackageError("Flutter output file is outside allowed bounds or hardlinked")
-            shutil.copyfile(output, destination)
+            copy_verified_regular_file(output, destination, ArtifactPackageError, "Flutter output file")
             destination.chmod(0o600)
         elif output.is_dir():
             entries = []
@@ -99,9 +100,17 @@ class FlutterArtifactPackager:
                         raise ArtifactPackageError("Flutter output exceeds artifact limits")
             if not entries:
                 raise ArtifactPackageError("Flutter output directory is empty")
-            with zipfile.ZipFile(destination, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as bundle:
-                for item, relative in entries:
-                    bundle.write(item, arcname=relative.as_posix())
+            try:
+                with zipfile.ZipFile(destination, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as bundle:
+                    for item, relative in entries:
+                        archive_info = zipfile.ZipInfo(relative.as_posix())
+                        archive_info.compress_type = zipfile.ZIP_DEFLATED
+                        with open_verified_regular_file(item, ArtifactPackageError, "Flutter output file") as source_file:
+                            with bundle.open(archive_info, "w") as archive_file:
+                                shutil.copyfileobj(source_file, archive_file, 1024 * 1024)
+            except Exception:
+                destination.unlink(missing_ok=True)
+                raise
             if destination.stat().st_size > self.max_bytes:
                 destination.unlink(missing_ok=True)
                 raise ArtifactPackageError("compressed Flutter output exceeds artifact limit")

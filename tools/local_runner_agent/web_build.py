@@ -23,6 +23,7 @@ from typing import Callable
 
 from .execution import BuildResult, ExecutionError
 from .workspace import WorkspaceManager
+from .file_safety import open_verified_regular_file, copy_verified_regular_file
 
 
 class WebBuildExecutor:
@@ -194,7 +195,7 @@ class WebBuildExecutor:
                         raise ExecutionError("static source contains a hardlinked file")
                     if info.st_size > self.max_artifact_bytes:
                         raise ExecutionError("static source file exceeds size limit")
-                    shutil.copyfile(item, destination / item.name)
+                    copy_verified_regular_file(item, destination / item.name, ExecutionError, "static source file")
                 elif stat.S_ISDIR(info.st_mode):
                     for current, dirs, files in os.walk(item, followlinks=False):
                         current_path = Path(current)
@@ -216,7 +217,7 @@ class WebBuildExecutor:
                                 raise ExecutionError("static source file exceeds size limit")
                             out = destination / relative
                             out.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-                            shutil.copyfile(path, out)
+                            copy_verified_regular_file(path, out, ExecutionError, "static source file")
             self.workspaces.check_quota(job_id, worker_id)
             self.log("system", "Static web files copied to dist/; no source code executed")
             return BuildResult("succeeded", command, 0, round(time.monotonic() - started, 3), 0)
@@ -345,9 +346,17 @@ class WebArtifactPackager:
                     raise ExecutionError("web artifact exceeds configured limits")
         if not entries:
             raise ExecutionError("web build output is empty")
-        with zipfile.ZipFile(destination, "x", zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
-            for path, relative in entries:
-                archive.write(path, relative.as_posix())
+        try:
+            with zipfile.ZipFile(destination, "x", zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+                for path, relative in entries:
+                    archive_info = zipfile.ZipInfo(relative.as_posix())
+                    archive_info.compress_type = zipfile.ZIP_DEFLATED
+                    with open_verified_regular_file(path, ExecutionError, "web artifact file") as source_file:
+                        with archive.open(archive_info, "w") as archive_file:
+                            shutil.copyfileobj(source_file, archive_file, 1024 * 1024)
+        except Exception:
+            destination.unlink(missing_ok=True)
+            raise
         if destination.stat().st_size > self.max_bytes:
             destination.unlink(missing_ok=True)
             raise ExecutionError("compressed web artifact exceeds configured limit")

@@ -15,6 +15,7 @@ from pathlib import Path, PurePosixPath
 
 from .workspace import WorkspaceError, WorkspaceManager
 from .local_project import LocalProjectError, LocalProjectRegistry
+from .file_safety import open_verified_regular_file
 
 
 class CheckoutError(RuntimeError):
@@ -75,38 +76,31 @@ class LocalProjectCheckout:
                     raise CheckoutError("local snapshot contains an unsafe path")
                 output_file = destination.joinpath(*relative.parts)
                 output_file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-                source_flags = os.O_RDONLY
-                output_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                output_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
                 if hasattr(os, "O_NOFOLLOW"):
-                    source_flags |= os.O_NOFOLLOW
                     output_flags |= os.O_NOFOLLOW
-                source_fd = os.open(source_file, source_flags)
-                try:
-                    output_fd = os.open(output_file, output_flags, 0o600)
-                except Exception:
-                    os.close(source_fd)
-                    raise
+                output_fd = os.open(output_file, output_flags, 0o600)
                 copied = 0
-                with os.fdopen(source_fd, "rb") as source_handle, os.fdopen(output_fd, "wb") as output_handle:
-                    opened = os.fstat(source_handle.fileno())
-                    if not stat.S_ISREG(opened.st_mode) or getattr(opened, "st_nlink", 1) != 1:
-                        raise CheckoutError("local snapshot file is hardlinked or changed type")
-                    while True:
-                        chunk = source_handle.read(1024 * 1024)
-                        if not chunk:
-                            break
-                        copied += len(chunk)
-                        total += len(chunk)
-                        if total > self.max_bytes:
-                            raise CheckoutError("local snapshot copy exceeds byte limit")
-                        output_handle.write(chunk)
-                    after = os.fstat(source_handle.fileno())
-                    output_handle.flush()
-                    os.fsync(output_handle.fileno())
-                if (opened.st_ino, opened.st_size, opened.st_mtime_ns) != (
-                    after.st_ino, after.st_size, after.st_mtime_ns
-                ) or copied != after.st_size or getattr(after, "st_nlink", 1) != 1:
-                    raise CheckoutError("local snapshot changed or became hardlinked during writable copy")
+                try:
+                    with os.fdopen(output_fd, "wb") as output_handle:
+                        with open_verified_regular_file(source_file, CheckoutError, "local snapshot file") as source_handle:
+                            opened = os.fstat(source_handle.fileno())
+                            while True:
+                                chunk = source_handle.read(1024 * 1024)
+                                if not chunk:
+                                    break
+                                copied += len(chunk)
+                                total += len(chunk)
+                                if total > self.max_bytes:
+                                    raise CheckoutError("local snapshot copy exceeds byte limit")
+                                output_handle.write(chunk)
+                        output_handle.flush()
+                        os.fsync(output_handle.fileno())
+                except Exception:
+                    output_file.unlink(missing_ok=True)
+                    raise
+                if copied != opened.st_size:
+                    raise CheckoutError("local snapshot changed during writable copy")
                 os.chmod(output_file, 0o600)
         return total
 
