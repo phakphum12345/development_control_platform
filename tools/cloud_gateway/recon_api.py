@@ -9,7 +9,13 @@ import base64
 import json
 import re
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import Request
+
+from tools.cloud_gateway.safe_http import open_no_redirect, read_bounded, require_json_content_type
+
+
+def urlopen(request, timeout=8):
+    return open_no_redirect(request, timeout=timeout)
 
 REPOSITORY = "phakphum12345/Drive-letter"
 API_ROOT = "https://api.github.com"
@@ -68,9 +74,9 @@ def _read_upstream(url: str) -> dict:
     }, method="GET")
     try:
         with urlopen(request, timeout=8) as response:
-            raw = response.read(MAX_CONFIG_BYTES + 1)
-            if len(raw) > MAX_CONFIG_BYTES:
-                raise ReconAPIError(502, "Recon upstream response exceeded its size limit")
+            raw = read_bounded(response, MAX_CONFIG_BYTES)
+            if raw:
+                require_json_content_type(response)
     except HTTPError as exc:
         if exc.code == 404:
             raise ReconAPIError(404, "Recon source record not found") from exc
@@ -79,6 +85,10 @@ def _read_upstream(url: str) -> dict:
         raise ReconAPIError(502, "Recon source service returned an error") from exc
     except (URLError, TimeoutError, OSError) as exc:
         raise ReconAPIError(502, "Recon source service is temporarily unavailable") from exc
+    except ValueError as exc:
+        if "size limit" in str(exc):
+            raise ReconAPIError(502, "Recon upstream response exceeded its size limit") from exc
+        raise ReconAPIError(502, "Recon source response failed validation") from exc
 
     try:
         value = json.loads(raw.decode("utf-8"))
