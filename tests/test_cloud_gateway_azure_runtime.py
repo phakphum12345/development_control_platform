@@ -20,6 +20,9 @@ def valid_environment():
             f"/subscriptions/{SUBSCRIPTION}/resourceGroups/network/providers/"
             "Microsoft.Network/virtualNetworks/dcp-vnet/subnets/runners"
         ),
+        "DCP_AZURE_ROUTE_TABLE_ID": f"/subscriptions/{SUBSCRIPTION}/resourceGroups/network/providers/Microsoft.Network/routeTables/runner-rt",
+        "DCP_AZURE_FIREWALL_ID": f"/subscriptions/{SUBSCRIPTION}/resourceGroups/network/providers/Microsoft.Network/azureFirewalls/runner-fw",
+        "DCP_AZURE_FIREWALL_POLICY_ID": f"/subscriptions/{SUBSCRIPTION}/resourceGroups/network/providers/Microsoft.Network/firewallPolicies/runner-policy",
         "DCP_AZURE_NSG_ID": (
             f"/subscriptions/{SUBSCRIPTION}/resourceGroups/network/providers/"
             "Microsoft.Network/networkSecurityGroups/dcp-runners"
@@ -39,7 +42,7 @@ def valid_environment():
         "DCP_AZURE_KEY_VAULT_URL": "https://dcp-vault.vault.azure.net",
         "DCP_AZURE_EXPECTED_FIREWALL_IP": "10.20.0.4",
         "DCP_AZURE_REQUIRED_OUTBOUND_FLOWS_JSON": (
-            '[{"protocol":"Tcp","port":443,"destination":"198.51.100.0/24"}]'
+            '[{"protocol":"Tcp","port":443,"destination":"13.64.0.0/11"}]'
         ),
         "DCP_AZURE_LINUX_ADMIN_USERNAME": "dcplinux",
         "DCP_AZURE_LINUX_SSH_PUBLIC_KEY_SECRET_NAME": "dcp-linux-ssh-public",
@@ -58,6 +61,7 @@ class AzureRuntimeTests(unittest.TestCase):
             patch.object(azure_runtime, "AzureArmClient"),
             patch.object(azure_runtime, "KeyVaultSecretReader"),
             patch.object(azure_runtime, "AzureRunnerBootstrapFactory"),
+            patch.object(azure_runtime, "AzureEgressPolicyVerifier"),
             patch.object(azure_runtime, "AzureEffectiveNetworkPolicyVerifier"),
             patch.object(azure_runtime, "AzureVMProvider"),
         )
@@ -138,6 +142,7 @@ class AzureRuntimeTests(unittest.TestCase):
             patch.object(azure_runtime, "AzureArmClient") as arm_type,
             patch.object(azure_runtime, "KeyVaultSecretReader") as secret_type,
             patch.object(azure_runtime, "AzureRunnerBootstrapFactory") as bootstrap_type,
+            patch.object(azure_runtime, "AzureEgressPolicyVerifier") as egress_type,
             patch.object(azure_runtime, "AzureEffectiveNetworkPolicyVerifier") as network_type,
             patch.object(azure_runtime, "AzureVMProvider") as provider_type,
         ):
@@ -160,9 +165,10 @@ class AzureRuntimeTests(unittest.TestCase):
             secret_type.assert_called_once_with("https://dcp-vault.vault.azure.net", credential)
             secret_reader.get_secret.assert_not_called()
             bootstrap_type.assert_called_once()
+            egress_type.from_environment.assert_called_once_with(arm, env)
             network_type.assert_called_once_with(
                 arm, env["DCP_AZURE_NSG_ID"],
-                [{"protocol": "Tcp", "port": 443, "destination": "198.51.100.0/24"}],
+                [{"protocol": "Tcp", "port": 443, "destination": "13.64.0.0/11"}],
                 "10.20.0.4",
             )
             provider_type.assert_called_once()
@@ -203,7 +209,8 @@ class AzureRuntimeTests(unittest.TestCase):
                 },
                 bootstrap_factory=bootstrap_type.return_value,
                 runner_online_checker=online_checker,
-                network_policy_checker=network_type.return_value,
+                network_policy_checker=egress_type.from_environment.return_value,
+                effective_network_policy_verifier=network_type.return_value,
             )
 
 
