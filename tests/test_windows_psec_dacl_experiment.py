@@ -224,8 +224,10 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
     @unittest.skipUnless(
         os.name == "nt"
         and os.environ.get("DCP_RUN_WINDOWS_PSEC_REAL_HOST") == "1"
-        and os.environ.get("CI") != "true"
-        and os.environ.get("GITHUB_ACTIONS") != "true",
+        and not any(
+            os.environ.get(name, "").strip().lower() in {"1", "true", "yes"}
+            for name in ("CI", "GITHUB_ACTIONS")
+        ),
         "real NTFS DACL rollback experiment is local-only; explicitly set "
         "DCP_RUN_WINDOWS_PSEC_REAL_HOST=1 on a local Windows NTFS host",
     )
