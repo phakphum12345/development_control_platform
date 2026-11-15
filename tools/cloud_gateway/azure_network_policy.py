@@ -86,11 +86,15 @@ class AzureEffectiveNetworkPolicyVerifier:
             location = headers.get("Location") or headers.get("location")
             if not isinstance(location, str) or not location:
                 raise EffectiveNetworkPolicyError("Azure returned 202 without an operation Location")
-            parsed = urlparse(location)
+            try:
+                parsed = urlparse(location)
+                port = parsed.port
+            except (TypeError, ValueError) as exc:
+                raise EffectiveNetworkPolicyError("Azure returned an untrusted async-operation URL") from exc
             expected_scope = "/subscriptions/" + self.arm.subscription_id.lower() + "/"
             if (parsed.scheme != "https" or parsed.hostname != "management.azure.com"
-                    or parsed.port not in (None, 443) or parsed.username or parsed.password
-                    or parsed.fragment or expected_scope not in parsed.path.lower()
+                    or port not in (None, 443) or parsed.username is not None or parsed.password is not None
+                    or parsed.fragment or not parsed.path.lower().startswith(expected_scope)
                     or "/providers/microsoft.network/" not in parsed.path.lower()):
                 raise EffectiveNetworkPolicyError("Azure returned an untrusted async-operation URL")
             deadline = self.clock() + self.timeout_seconds
