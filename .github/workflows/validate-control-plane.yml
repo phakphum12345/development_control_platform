@@ -54,13 +54,19 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import re
-          html = Path("dashboard/index.html").read_text(encoding="utf-8")
-          scripts = re.findall(r"<script>(.*?)</script>", html, flags=re.S)
-          assert len(scripts) == 1, f"Expected exactly one inline script; got {len(scripts)}"
-          Path("dashboard-inline.js").write_text(scripts[0], encoding="utf-8")
+          targets = {
+              "dashboard/index.html": "dashboard-inline.js",
+              "dashboard/recon-back-box/index.html": "recon-back-box-inline.js",
+          }
+          for source, output in targets.items():
+              html = Path(source).read_text(encoding="utf-8")
+              scripts = re.findall(r"<script>(.*?)</script>", html, flags=re.S)
+              assert len(scripts) == 1, f"{source}: expected exactly one inline script; got {len(scripts)}"
+              Path(output).write_text(scripts[0], encoding="utf-8")
           PY
           node --check dashboard-inline.js
-          python -c "from pathlib import Path; Path('dashboard-inline.js').unlink()"
+          node --check recon-back-box-inline.js
+          python -c "from pathlib import Path; Path('dashboard-inline.js').unlink(); Path('recon-back-box-inline.js').unlink()"
 
       - name: Validate dashboard and Python contracts
         run: python -m unittest discover -s tests -v
