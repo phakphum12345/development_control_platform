@@ -18,6 +18,44 @@ from .azure_guest_profile import AzureGuestProfileError, AzureGuestProfileFactor
 from .azure_egress import _valid_fqdn_pattern
 
 
+
+def _managed_identity_configuration_valid(values: Mapping[str, str]) -> bool:
+    use_imds = values.get("DCP_AZURE_USE_IMDS", "false")
+    if not isinstance(use_imds, str) or use_imds.lower() not in ("true", "false"):
+        return False
+    endpoint = values.get("IDENTITY_ENDPOINT", "")
+    identity_header = values.get("IDENTITY_HEADER", "")
+    endpoint_valid = False
+    if endpoint or identity_header:
+        if not isinstance(endpoint, str) or not isinstance(identity_header, str) or not identity_header or len(identity_header) > 4096 or "\r" in identity_header or "\n" in identity_header:
+            return False
+        try:
+            parsed = urlparse(endpoint)
+            port = parsed.port
+            endpoint_valid = (
+                parsed.scheme == "http"
+                and parsed.hostname in ("localhost", "127.0.0.1", "::1")
+                and port in (None, 80, 1024, 65535) or False
+            )
+            endpoint_valid = (
+                parsed.scheme == "http"
+                and parsed.hostname in ("localhost", "127.0.0.1", "::1")
+                and parsed.username is None and parsed.password is None
+                and parsed.fragment == "" and parsed.query == ""
+                and parsed.path.startswith("/")
+            )
+        except (TypeError, ValueError):
+            endpoint_valid = False
+    elif use_imds.lower() == "true":
+        endpoint_valid = True
+    client_id = values.get("AZURE_CLIENT_ID", "")
+    client_id_valid = (
+        not client_id
+        or (isinstance(client_id, str) and len(client_id) <= 256
+            and "\r" not in client_id and "\n" not in client_id)
+    )
+    return endpoint_valid and client_id_valid
+
 def _present(env: Mapping[str, str], name: str) -> bool:
     value = env.get(name, "")
     return isinstance(value, str) and bool(value.strip())
@@ -281,9 +319,17 @@ def inspect_environment(env: Mapping[str, str] | None = None) -> dict:
     provider_enabled_raw = values.get("DCP_AZURE_PROVIDER_ENABLED", "false").strip().lower()
     provider_enabled_valid = provider_enabled_raw in ("true", "false")
     provider_enabled = provider_enabled_raw == "true"
+    managed_identity_valid = _managed_identity_configuration_valid(values)
+    add(
+        "azure_managed_identity_configuration",
+        "PASS" if (provider_enabled_valid and not provider_enabled) or managed_identity_valid else "FAIL",
+        "Azure provider is disabled or a trusted local identity endpoint/explicit IMDS mode is configured"
+        if (provider_enabled_valid and not provider_enabled) or managed_identity_valid
+        else "Azure provider opt-in requires a trusted local identity endpoint with header or DCP_AZURE_USE_IMDS=true",
+    )
     provider_opt_in_ok = (
         provider_enabled_valid
-        and (not provider_enabled or (azure_valid and github_valid))
+        and (not provider_enabled or (azure_valid and github_valid and managed_identity_valid))
         and not (enabled and not provider_enabled)
     )
     add(
