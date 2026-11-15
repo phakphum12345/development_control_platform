@@ -6,6 +6,7 @@ services, or provisions infrastructure.
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import math
 import os
@@ -133,7 +134,8 @@ def inspect_environment(env: Mapping[str, str] | None = None) -> dict:
         "DCP_AZURE_SUBSCRIPTION_ID", "DCP_AZURE_RESOURCE_GROUP",
         "DCP_AZURE_LOCATION", "DCP_AZURE_SUBNET_ID", "DCP_AZURE_NSG_ID",
         "DCP_AZURE_ROUTE_TABLE_ID", "DCP_AZURE_FIREWALL_ID",
-        "DCP_AZURE_FIREWALL_POLICY_ID", "DCP_AZURE_BUDGET_NAME", "DCP_AZURE_PROJECTED_RUN_COST_USD",
+        "DCP_AZURE_FIREWALL_POLICY_ID", "DCP_AZURE_EXPECTED_FIREWALL_IP",
+        "DCP_AZURE_REQUIRED_OUTBOUND_FLOWS_JSON", "DCP_AZURE_BUDGET_NAME", "DCP_AZURE_PROJECTED_RUN_COST_USD",
         "DCP_AZURE_LINUX_VM_SIZE", "DCP_AZURE_WINDOWS_VM_SIZE",
         "DCP_AZURE_LINUX_IMAGE_PUBLISHER", "DCP_AZURE_LINUX_IMAGE_OFFER",
         "DCP_AZURE_LINUX_IMAGE_SKU", "DCP_AZURE_LINUX_IMAGE_VERSION",
@@ -185,6 +187,51 @@ def inspect_environment(env: Mapping[str, str] | None = None) -> dict:
         "Subnet, NSG, route table, firewall and firewall policy IDs are valid and isolated from the runner resource group"
         if network_resource_ids_valid else "Separate, valid Azure network resource IDs are required; configured values are not echoed",
     )
+    expected_firewall_ip = values.get("DCP_AZURE_EXPECTED_FIREWALL_IP", "")
+    try:
+        firewall_address = ipaddress.ip_address(expected_firewall_ip)
+        firewall_ip_valid = (
+            firewall_address.version == 4 and firewall_address.is_private
+            and not (firewall_address.is_loopback or firewall_address.is_link_local
+                     or firewall_address.is_multicast or firewall_address.is_unspecified
+                     or firewall_address.is_reserved)
+        )
+    except (TypeError, ValueError):
+        firewall_ip_valid = False
+    flows_present = _present(values, "DCP_AZURE_REQUIRED_OUTBOUND_FLOWS_JSON")
+    flows_valid = False
+    try:
+        flows = json.loads(values.get("DCP_AZURE_REQUIRED_OUTBOUND_FLOWS_JSON", ""))
+        if isinstance(flows, list) and 1 <= len(flows) <= 64:
+            seen_flows = set()
+            flows_valid = True
+            for flow in flows:
+                if not isinstance(flow, dict) or set(flow) != {"protocol", "port", "destination"}:
+                    flows_valid = False
+                    break
+                protocol, port, destination = flow["protocol"], flow["port"], flow["destination"]
+                if protocol not in ("Tcp", "Udp") or isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535 or not isinstance(destination, str):
+                    flows_valid = False
+                    break
+                network = ipaddress.ip_network(destination, strict=False)
+                if network.version != 4 or network.prefixlen == 0 or network.is_multicast or network.is_unspecified or network.is_reserved:
+                    flows_valid = False
+                    break
+                key = (protocol, port, str(network))
+                if key in seen_flows:
+                    flows_valid = False
+                    break
+                seen_flows.add(key)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        flows_valid = False
+    effective_network_present = _present(values, "DCP_AZURE_EXPECTED_FIREWALL_IP") and flows_present
+    effective_network_valid = firewall_ip_valid and flows_valid
+    add(
+        "azure_effective_network_configuration",
+        "PASS" if effective_network_valid else ("UNKNOWN" if not effective_network_present else "FAIL"),
+        "Private firewall IPv4 and a bounded, unique TCP/UDP CIDR/port allowlist are syntactically valid"
+        if effective_network_valid else "Requires a private IPv4 firewall next hop and 1..64 unique bounded TCP/UDP CIDR/port flows",
+    )
     extra_fqdns = tuple(
         item.strip() for item in values.get("DCP_AZURE_EGRESS_EXTRA_FQDNS", "").split(",")
         if item.strip()
@@ -205,6 +252,7 @@ def inspect_environment(env: Mapping[str, str] | None = None) -> dict:
         and bool(re.fullmatch(r"[A-Za-z0-9_.()-]{1,90}", values.get("DCP_AZURE_RESOURCE_GROUP", "")))
         and bool(re.fullmatch(r"[a-z0-9]+", values.get("DCP_AZURE_LOCATION", "")))
         and network_resource_ids_valid
+        and effective_network_valid
         and bool(re.fullmatch(r"[A-Za-z0-9_.-]{1,63}", values.get("DCP_AZURE_BUDGET_NAME", "")))
         and _valid_amount(values.get("DCP_AZURE_PROJECTED_RUN_COST_USD", ""))
         and all(re.fullmatch(r"[A-Za-z0-9_]+", values.get(name, "")) for name in
@@ -229,7 +277,7 @@ def inspect_environment(env: Mapping[str, str] | None = None) -> dict:
         "Azure resource IDs, budget projection, VM sizes, and pinned runner artifacts are syntactically valid"
         if azure_valid else "Azure configuration is missing or contains invalid identifiers/values; values are not echoed")
     add("azure_network_policy", "UNKNOWN",
-        "Live ARM inspection must verify subnet/NSG/UDR, Azure Firewall policy, DNS proxy and current GitHub Actions FQDN allowlist")
+        "Live ARM inspection must verify subnet/NSG/UDR, Firewall FQDN policy, DNS proxy, and each created NIC effective NSG/default route before VM creation")
     provider_enabled_raw = values.get("DCP_AZURE_PROVIDER_ENABLED", "false").strip().lower()
     provider_enabled_valid = provider_enabled_raw in ("true", "false")
     provider_enabled = provider_enabled_raw == "true"
