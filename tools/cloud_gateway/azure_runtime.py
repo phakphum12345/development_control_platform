@@ -13,6 +13,7 @@ import re
 from collections.abc import Mapping
 from urllib.parse import urlparse
 
+from .azure_egress import AzureEgressPolicyVerifier
 from .azure_identity import ManagedIdentityCredential
 from .azure_network_policy import AzureEffectiveNetworkPolicyVerifier
 from .azure_vm import AzureArmClient, AzureVMProvider
@@ -30,6 +31,9 @@ _REQUIRED = (
     "DCP_AZURE_LOCATION",
     "DCP_AZURE_SUBNET_ID",
     "DCP_AZURE_NSG_ID",
+    "DCP_AZURE_ROUTE_TABLE_ID",
+    "DCP_AZURE_FIREWALL_ID",
+    "DCP_AZURE_FIREWALL_POLICY_ID",
     "DCP_AZURE_BUDGET_NAME",
     "DCP_AZURE_PROJECTED_RUN_COST_USD",
     "DCP_AZURE_LINUX_VM_SIZE",
@@ -273,7 +277,8 @@ def build_azure_provider_from_env(env, github_app, runner_online_checker):
             config["DCP_RUNNER_WINDOWS_SHA256"],
             os_profile_factory,
         )
-        network_policy = AzureEffectiveNetworkPolicyVerifier(
+        network_policy = AzureEgressPolicyVerifier.from_environment(arm, values)
+        effective_network_policy = AzureEffectiveNetworkPolicyVerifier(
             arm,
             config["DCP_AZURE_NSG_ID"],
             flows,
@@ -292,6 +297,7 @@ def build_azure_provider_from_env(env, github_app, runner_online_checker):
             bootstrap_factory=bootstrap_factory,
             runner_online_checker=runner_online_checker,
             network_policy_checker=network_policy,
+            effective_network_policy_verifier=effective_network_policy,
         )
     except AzureRuntimeConfigurationError:
         raise
