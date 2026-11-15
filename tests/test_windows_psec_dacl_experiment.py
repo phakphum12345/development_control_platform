@@ -203,6 +203,16 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         self.assertTrue(result.owned_handle_closed)
         self.assertIs(result.close_handle_succeeded, True)
 
+    @unittest.skipUnless(
+        os.name == "nt"
+        and os.environ.get("DCP_RUN_WINDOWS_PSEC_REAL_HOST") == "1"
+        and not any(
+            os.environ.get(name, "").strip().lower() in {"1", "true", "yes"}
+            for name in ("CI", "GITHUB_ACTIONS")
+        ),
+        "real NTFS DACL rollback experiment is local-only; explicitly set "
+        "DCP_RUN_WINDOWS_PSEC_REAL_HOST=1 on a local Windows NTFS host",
+    )
     def test_explicit_defaulted_false_round_trip_on_disposable_ntfs_file(self):
         result = WindowsDaclDefaultedExperiment().run(defaulted=False)
         _emit_evidence("FALSE_ROUND_TRIP", result)
