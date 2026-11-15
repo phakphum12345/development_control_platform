@@ -13,7 +13,7 @@ FW="10.20.0.4"
 def nsg_body(access="Allow", include_rules=True):
     rules=[] if not include_rules else [{
         "name":"allow-runner-https","direction":"Outbound","access":access,
-        "protocol":"Tcp","sourceAddressPrefix":"10.1.0.0/16","destinationPortRange":"443","destinationAddressPrefix":"198.51.100.0/24",
+        "protocol":"Tcp","sourceAddressPrefix":"10.1.0.0/16","destinationPortRange":"443","destinationAddressPrefix":"13.64.0.0/11",
         "priority":100
     }]
     return {"value":[{
@@ -57,7 +57,7 @@ class VerifierTests(unittest.TestCase):
     def make(self,arm=None,**kwargs):
         return AzureEffectiveNetworkPolicyVerifier(
             arm or FakeArm(),NSG,
-            [{"protocol":"Tcp","port":443,"destination":"198.51.100.0/24"}],
+            [{"protocol":"Tcp","port":443,"destination":"13.64.0.0/11"}],
             FW,**kwargs
         )
     def test_allows_explicit_outbound_allow_and_firewall_route(self):
@@ -77,7 +77,7 @@ class VerifierTests(unittest.TestCase):
             self.make(FakeArm(nsg=default_rule)).verify_nic(NIC,NSG,SUBNET)
     def test_broader_destination_allow_does_not_satisfy_exact_allowlist(self):
         body=nsg_body()
-        body["value"][0]["effectiveSecurityRules"][0]["destinationAddressPrefix"]="198.51.0.0/16"
+        body["value"][0]["effectiveSecurityRules"][0]["destinationAddressPrefix"]="13.64.0.0/10"
         with self.assertRaises(EffectiveNetworkPolicyError):
             self.make(FakeArm(nsg=body)).verify_nic(NIC,NSG,SUBNET)
     def test_outbound_allow_rule_must_match_actual_nic_source_ip(self):
@@ -158,6 +158,29 @@ class VerifierTests(unittest.TestCase):
         body["value"][0]["effectiveSecurityRules"]=[{"direction":"Outbound","access":"Allow"}]
         with self.assertRaises(EffectiveNetworkPolicyError):
             self.make(FakeArm(nsg=body)).verify_nic(NIC,NSG,SUBNET)
+
+
+    def test_rejects_public_firewall_and_unbounded_or_reserved_flow_destinations(self):
+        for firewall in ("8.8.8.8", "::1", "127.0.0.1"):
+            with self.subTest(firewall=firewall), self.assertRaises(ValueError):
+                AzureEffectiveNetworkPolicyVerifier(
+                    FakeArm(), NSG,
+                    [{"protocol": "Tcp", "port": 443, "destination": "13.64.0.0/11"}],
+                    firewall,
+                )
+        for destination in ("0.0.0.0/0", "198.51.100.0/24", "::/0", 123):
+            with self.subTest(destination=destination), self.assertRaises(ValueError):
+                AzureEffectiveNetworkPolicyVerifier(
+                    FakeArm(), NSG,
+                    [{"protocol": "Tcp", "port": 443, "destination": destination}],
+                    FW,
+                )
+        with self.assertRaises(ValueError):
+            AzureEffectiveNetworkPolicyVerifier(
+                FakeArm(), NSG,
+                [{"protocol": "Tcp", "port": 443, "destination": "13.64.0.0/11"}] * 65,
+                FW,
+            )
 
 if __name__=="__main__":
     unittest.main()
