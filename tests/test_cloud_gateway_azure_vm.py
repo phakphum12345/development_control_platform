@@ -25,16 +25,23 @@ def bootstrap(vm,os_name,payload):
  return {"os_profile":os_profile,"extension":{"name":"dcp-bootstrap","properties":{"publisher":"Microsoft.Azure.Extensions","type":"CustomScript","typeHandlerVersion":"2.1","settings":{},"protectedSettings":{"script":"base64-one-time-bootstrap"}}}}
 def payload(os_name):
  p=PLATFORM_PROFILES[os_name]; return {"repository":"phakphum12345/generated-A4-pdf","workflow_run_id":123,"commit_sha":"a"*40,"target_os":os_name,"image":p["image"],"labels":list(p["labels"]),"ephemeral":True,"max_runtime_minutes":30,"network_policy":"restricted-egress","registration_token_handling":"provider-side-only"}
+class FakeEffectiveNetworkPolicy:
+ def __init__(self,result=True): self.result=result; self.calls=[]
+ def verify_nic(self,nic_id,nsg_id,subnet_id):
+  self.calls.append((nic_id,nsg_id,subnet_id))
+  return self.result
 class AzureVMTests(unittest.TestCase):
- def make(self,checker=None,network=None):
-  arm=FakeArm(); p=AzureVMProvider(arm,"eastus",f"/subscriptions/{SUB}/resourceGroups/net/providers/Microsoft.Network/virtualNetworks/vnet/subnets/runners",f"/subscriptions/{SUB}/resourceGroups/net/providers/Microsoft.Network/networkSecurityGroups/runner-nsg",{"linux":"Standard_D2s_v5","windows":"Standard_D4s_v5"},IMAGES,bootstrap,checker,network); return p,arm
+ def make(self,checker=None,network=None,effective=True):
+  arm=FakeArm(); verifier=FakeEffectiveNetworkPolicy(effective) if isinstance(effective,bool) else effective
+  p=AzureVMProvider(arm,"eastus",f"/subscriptions/{SUB}/resourceGroups/net/providers/Microsoft.Network/virtualNetworks/vnet/subnets/runners",f"/subscriptions/{SUB}/resourceGroups/net/providers/Microsoft.Network/networkSecurityGroups/runner-nsg",{"linux":"Standard_D2s_v5","windows":"Standard_D4s_v5"},IMAGES,bootstrap,checker,network,verifier); return p,arm,verifier
  def test_requires_existing_subnet_nsg_and_both_vm_sizes(self):
   with self.assertRaises(ValueError): AzureVMProvider(FakeArm(),"eastus","bad","bad",{"linux":"D2"},IMAGES,bootstrap)
  def test_rejects_latest_image_version(self):
   with self.assertRaises(ValueError): AzureVMProvider(FakeArm(),"eastus",f"/subscriptions/{SUB}/resourceGroups/net/providers/Microsoft.Network/virtualNetworks/vnet/subnets/runners",f"/subscriptions/{SUB}/resourceGroups/net/providers/Microsoft.Network/networkSecurityGroups/nsg",{"linux":"D2","windows":"D4"},{**IMAGES,"linux":{**IMAGES["linux"],"version":"latest"}},bootstrap)
  def test_provision_uses_ephemeral_disk_private_nic_and_tags(self):
   for os_name in ("linux","windows"):
-   p,arm=self.make(lambda *args:True,lambda *args:True); result=p.provision(payload(os_name)); self.assertEqual(result.state,"provisioning")
+   p,arm,verifier=self.make(lambda *args:True,lambda *args:True); result=p.provision(payload(os_name)); self.assertEqual(result.state,"provisioning")
+   self.assertEqual(len(verifier.calls),1)
    nic=arm.calls[0][2]; vm=arm.calls[1][2]; self.assertNotIn("publicIPAddress",str(nic))
    self.assertEqual(vm["properties"]["storageProfile"]["osDisk"]["diffDiskSettings"]["option"],"Local")
    self.assertEqual(vm["properties"]["extensionsTimeBudget"],"PT45M")
@@ -57,11 +64,11 @@ class AzureVMTests(unittest.TestCase):
  def test_runner_online_requires_independent_checker(self):
   p,_=self.make(lambda *args:True,lambda *args:True); vm=p.provision(payload("linux")); self.assertEqual(p.status(vm.provider_id).state,"online")
  def test_runner_waits_for_vm_provisioning_success(self):
-  p,arm=self.make(lambda *args:True,lambda *args:True); vm=p.provision(payload("linux"))
+  p,arm,_=self.make(lambda *args:True,lambda *args:True); vm=p.provision(payload("linux"))
   arm.get_result["properties"]["provisioningState"]="Creating"
   self.assertEqual(p.status(vm.provider_id).state,"provisioning")
  def test_runner_waits_for_bootstrap_extension_and_deletes_on_extension_failure(self):
-  p,arm=self.make(lambda *args:True,lambda *args:True); vm=p.provision(payload("linux"))
+  p,arm,_=self.make(lambda *args:True,lambda *args:True); vm=p.provision(payload("linux"))
   arm.get_result["resources"][0]["properties"]["provisioningState"]="Creating"
   self.assertEqual(p.status(vm.provider_id).state,"provisioning")
   arm.get_result["resources"][0]["properties"]["provisioningState"]="Failed"
@@ -89,8 +96,10 @@ class AzureVMTests(unittest.TestCase):
   self.assertFalse(p.readiness("linux")["ready"])
   p,_=self.make(lambda _:True)
   self.assertFalse(p.readiness("linux")["ready"])
-  p,_=self.make(lambda *args:True,lambda os_name,subnet,nsg: True)
+  p,_,_=self.make(lambda *args:True,lambda os_name,subnet,nsg: True)
   self.assertTrue(p.readiness("linux")["ready"])
+  p,_,_=self.make(lambda *args:True,lambda *args:True,effective=False)
+  self.assertFalse(p.readiness("linux")["ready"])
   self.assertFalse(p.readiness("macos")["ready"])
  def test_provision_rechecks_readiness_before_any_arm_write(self):
   p,arm=self.make(lambda *args:True,lambda *args:False)
@@ -99,4 +108,17 @@ class AzureVMTests(unittest.TestCase):
  def test_missing_protected_bootstrap_is_rejected(self):
   p,_=self.make(lambda *args:True,lambda *args:True); p.bootstrap_factory=lambda *a:{"os_profile":{},"extension":{"properties":{"settings":{}}}}
   with self.assertRaises(AzureProvisionError): p.provision(payload("linux"))
+
+ def test_effective_network_failure_prevents_bootstrap_and_vm_create(self):
+  p,arm,verifier=self.make(lambda *args:True,lambda *args:True,effective=False)
+  calls=[]
+  def bootstrap_spy(*args):
+   calls.append(args)
+   return bootstrap(*args)
+  p.bootstrap_factory=bootstrap_spy
+  with self.assertRaises(AzureProvisionError): p.provision(payload("linux"))
+  self.assertEqual(calls,[])
+  self.assertFalse(any(call[0]=="PUT" and "Microsoft.Compute/virtualMachines/" in call[1] for call in arm.calls))
+  self.assertTrue(any(call[0]=="DELETE" and "networkInterfaces/" in call[1] for call in arm.calls))
+  self.assertEqual(len(verifier.calls),1)
 if __name__=="__main__": unittest.main()
