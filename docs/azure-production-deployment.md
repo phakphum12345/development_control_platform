@@ -180,3 +180,6 @@ Mock tests prove parser and fail-closed behavior only; they do not prove Azure h
 8. Obtain owner sign-off for the exact allowlist, firewall IP, region, resource group, budget, and test evidence.
 
 Required evidence includes sanitized ARM responses, timestamps/request IDs, effective rules/routes, firewall policy export, guest positive/negative connectivity results, CI report, and owner approval. Never include tokens, guest credentials, bootstrap payloads, or secrets.
+
+
+The effective-NIC verifier runs after the private NIC is created but before the bootstrap factory is called. GitHub runner registration tokens are therefore not minted until the actual NIC's effective outbound rules and default route pass. The Azure resource/runner ID remains unchanged; Windows guest `computerName` is derived as `DCPW` plus the eight-character VM suffix to stay within Azure's 15-character Windows limit, and the bootstrap factory validates this mapping before token creation.
