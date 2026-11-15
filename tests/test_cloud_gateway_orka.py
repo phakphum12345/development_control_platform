@@ -8,7 +8,7 @@ from tools.runner_backend.manager import PLATFORM_PROFILES
 def request():
  p=PLATFORM_PROFILES["macos"]; return {"repository":"phakphum12345/generated-A4-pdf","workflow_run_id":123,"commit_sha":"a"*40,"target_os":"macos","image":p["image"],"labels":list(p["labels"]),"ephemeral":True,"max_runtime_minutes":30,"network_policy":"restricted-egress","registration_token_handling":"provider-side-only"}
 def response(data):
- r=MagicMock(); r.__enter__.return_value=r; r.read.return_value=json.dumps(data).encode(); return r
+ r=MagicMock(); r.__enter__.return_value=r; r.read.return_value=json.dumps(data).encode(); r.headers={"Content-Type":"application/json"}; return r
 class SecretReader:
  def get_secret(self,name): return "mock-bearer"
 class OrkaTests(unittest.TestCase):
@@ -96,4 +96,21 @@ class OrkaTests(unittest.TestCase):
   with patch("tools.cloud_gateway.orka.urlopen",side_effect=HTTPError("url",401,"denied",{},None)):
    with self.assertRaises(OrkaError) as caught: p.provision(request())
   self.assertNotIn("mock-bearer",str(caught.exception))
+
+ def test_rejects_invalid_timeout_and_api_credentials(self):
+  for timeout in (0,31,True):
+   with self.assertRaises(ValueError): OrkaProvider("https://orka.example.test","dcp","macos15-arm64",SecretReader(),timeout=timeout)
+  class InvalidSecretReader:
+   def get_secret(self,name): return "bad\\ncredential"
+  p=OrkaProvider("https://orka.example.test","dcp","macos15-arm64",InvalidSecretReader())
+  with self.assertRaises(OrkaError): p.status("dcp-123-aaaaaaaa")
+ def test_rejects_non_json_response_content_type(self):
+  p=self.make(); r=response({"status":"Running"}); r.headers={"Content-Type":"text/plain"}
+  with patch("tools.cloud_gateway.orka.urlopen",return_value=r):
+   with self.assertRaises(OrkaError): p.status("dcp-123-aaaaaaaa")
+ def test_uses_no_redirect_transport(self):
+  p=self.make()
+  with patch("tools.cloud_gateway.orka.open_no_redirect",return_value=response({"status":"Running"})) as opener:
+   p.status("dcp-123-aaaaaaaa")
+  self.assertEqual(opener.call_args.kwargs["timeout"],20)
 if __name__=="__main__": unittest.main()
