@@ -49,7 +49,7 @@ class AzureRunnerBootstrapTests(unittest.TestCase):
                         "path": "/home/dcpadmin/.ssh/authorized_keys",
                         "keyData": "ssh-ed25519 " + base64.b64encode(
                             len(b"ssh-ed25519").to_bytes(4, "big") + b"ssh-ed25519"
-                            + (32).to_bytes(4, "big") + b"\\x01" * 32
+                            + (32).to_bytes(4, "big") + bytes(range(1, 33))
                         ).decode("ascii") + " test-key",
                     }]},
                 },
