@@ -101,7 +101,7 @@ class OrkaTests(unittest.TestCase):
   for timeout in (0,31,True):
    with self.assertRaises(ValueError): OrkaProvider("https://orka.example.test","dcp","macos15-arm64",SecretReader(),timeout=timeout)
   class InvalidSecretReader:
-   def get_secret(self,name): return "bad\\ncredential"
+   def get_secret(self,name): return "bad\ncredential"
   p=OrkaProvider("https://orka.example.test","dcp","macos15-arm64",InvalidSecretReader())
   with self.assertRaises(OrkaError): p.status("dcp-123-aaaaaaaa")
  def test_rejects_non_json_response_content_type(self):
