@@ -1,6 +1,7 @@
 import base64
 import json
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from tools.cloud_gateway import recon_api
@@ -9,6 +10,7 @@ from tools.cloud_gateway import recon_api
 class FakeResponse:
     def __init__(self, payload):
         self.payload = payload
+        self.headers = {"Content-Type": "application/json"}
 
     def __enter__(self):
         return self
@@ -83,6 +85,31 @@ class ReconPublicAPIAdapterTests(unittest.TestCase):
             recon_api.fetch_recon_resource("/api/recon/repository")
         self.assertEqual(caught.exception.status, 404)
         self.assertEqual(caught.exception.public_message, "Recon source record not found")
+
+    @patch("tools.cloud_gateway.recon_api.open_no_redirect")
+    def test_rejects_redirect_responses_and_non_json_content(self, mocked_open):
+        from urllib.error import HTTPError
+        mocked_open.side_effect = HTTPError("https://api.github.com/", 302, "redirect", {}, None)
+        with self.assertRaises(recon_api.ReconAPIError) as caught:
+            recon_api.fetch_recon_resource("/api/recon/repository")
+        self.assertEqual(caught.exception.status, 502)
+
+        response = FakeResponse(b'{"full_name":"phakphum12345/Drive-letter"}')
+        response.headers = {"Content-Type": "text/plain"}
+        mocked_open.side_effect = None
+        mocked_open.return_value = response
+        with self.assertRaises(recon_api.ReconAPIError) as caught:
+            recon_api.fetch_recon_resource("/api/recon/repository")
+        self.assertEqual(caught.exception.status, 502)
+
+    def test_recon_dashboard_uses_authenticated_same_origin_api(self):
+        page = (Path(__file__).resolve().parents[1] / "dashboard" / "recon-back-box" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('fetch("/api/recon"+route', page)
+        self.assertIn('fetch("/api/recon/config/"', page)
+        self.assertIn('credentials:"same-origin"', page)
+        self.assertNotIn('fetch("https://api.github.com"+p', page)
+        self.assertNotIn("raw.githubusercontent.com", page)
+        self.assertIn('BRANCH="main"', page)
 
 
 if __name__ == "__main__":
