@@ -27,15 +27,29 @@ class AzureEffectiveNetworkPolicyVerifier:
                  clock=time.monotonic, sleep=time.sleep):
         self.arm = arm
         self.expected_nsg_id = self._resource_id(expected_nsg_id)
-        self.expected_firewall_ip = str(ipaddress.ip_address(expected_firewall_ip))
+        try:
+            firewall = ipaddress.ip_address(expected_firewall_ip)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Expected firewall IP must be a private IPv4 address") from exc
+        if (firewall.version != 4 or not firewall.is_private or firewall.is_loopback
+                or firewall.is_link_local or firewall.is_multicast or firewall.is_unspecified
+                or firewall.is_reserved):
+            raise ValueError("Expected firewall IP must be a private IPv4 address")
+        self.expected_firewall_ip = str(firewall)
         self.timeout_seconds = timeout_seconds
         self.poll_interval = poll_interval
         self.clock = clock
         self.sleep = sleep
-        if not isinstance(required_outbound_flows, (list, tuple)) or not required_outbound_flows:
-            raise ValueError("An explicit non-empty outbound allowlist is required")
-        self.required_outbound_flows = tuple(self._flow(item) for item in required_outbound_flows)
-        if timeout_seconds <= 0 or poll_interval < 0:
+        if not isinstance(required_outbound_flows, (list, tuple)) or not 1 <= len(required_outbound_flows) <= 64:
+            raise ValueError("An explicit outbound allowlist of 1..64 flows is required")
+        flows = tuple(self._flow(item) for item in required_outbound_flows)
+        keys = {(item["protocol"], item["port"], str(item["destination"])) for item in flows}
+        if len(keys) != len(flows):
+            raise ValueError("Outbound flow allowlist contains duplicates")
+        self.required_outbound_flows = flows
+        if (isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float))
+                or not 1 <= timeout_seconds <= 300 or isinstance(poll_interval, bool)
+                or not isinstance(poll_interval, (int, float)) or not 0 <= poll_interval <= 10):
             raise ValueError("Invalid effective-network polling limits")
 
     @staticmethod
@@ -54,7 +68,13 @@ class AzureEffectiveNetworkPolicyVerifier:
         port = value["port"]
         if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
             raise ValueError("Outbound flow port is invalid")
-        network = ipaddress.ip_network(value["destination"], strict=False)
+        destination = value["destination"]
+        if not isinstance(destination, str):
+            raise ValueError("Outbound flow destination must be an IPv4 CIDR string")
+        network = ipaddress.ip_network(destination, strict=False)
+        if (network.version != 4 or network.prefixlen == 0
+                or network.is_multicast or network.is_unspecified or network.is_reserved):
+            raise ValueError("Outbound flow destination must be a bounded IPv4 CIDR")
         return {"protocol": protocol, "port": port, "destination": network}
 
     def _arm_result(self, method, url, payload=None):
@@ -182,7 +202,7 @@ class AzureEffectiveNetworkPolicyVerifier:
                     candidates = []
                     for rule in outbound:
                         protocol = rule.get("protocol")
-                        if protocol not in (flow["protocol"], "All"):
+                        if protocol not in (flow["protocol"], "All", "*"):
                             continue
                         if not self._port_matches(rule, flow["port"]):
                             continue
@@ -257,9 +277,12 @@ class AzureEffectiveNetworkPolicyVerifier:
                         properties = configuration.get("properties", {}) if isinstance(configuration, dict) else {}
                         address = properties.get("privateIPAddress")
                         try:
-                            addresses.append(ipaddress.ip_address(address))
-                        except ValueError as exc:
+                            parsed_address = ipaddress.ip_address(address)
+                        except (TypeError, ValueError) as exc:
                             raise EffectiveNetworkPolicyError("Azure NIC private IP is missing or invalid") from exc
+                        if parsed_address.version != 4 or not parsed_address.is_private:
+                            raise EffectiveNetworkPolicyError("Azure NIC must use private IPv4 addresses")
+                        addresses.append(parsed_address)
                         if properties.get("primary") is True:
                             primary_count += 1
                     if primary_count != 1:
