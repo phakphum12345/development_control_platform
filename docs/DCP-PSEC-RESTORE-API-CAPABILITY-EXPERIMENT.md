@@ -124,3 +124,9 @@ For path-based candidates B/C/D, the harness verifies the generated path is not 
 The dedicated Windows NTFS job uses `DCP_RUN_WINDOWS_PSEC_CI=1` for the FALSE-state experiment. The test no longer depends on the user's PC being on. The TRUE input-descriptor test is separate; TRUE object read-back remains NOT EXERCISED when NTFS does not retain TRUE.
 
 `SetFileSecurityW` remains obsolete and compatibility-only. Even the exact S2 result is a host-specific experimental finding, not production authorization. Native Writer and production ACL mutation remain BLOCKED.
+
+## 10. Final hosted Windows validation — 2026-11-16
+
+Exact head `0cbaa2d11aa038f7eba4271f2529f31458c0a2eb` passed all required workflows: Cross-platform Recovery Acceptance, Local-first Minimal Emulator and Validate Control Plane. On Windows Server 2025 / NTFS, the four candidate matrix tests ran and passed with the asserted S0/S1/S2 results; Linux correctly did not execute native Windows calls. The dedicated FALSE DACL round-trip ran under `DCP_RUN_WINDOWS_PSEC_CI=1`. The TRUE object-persistence probe remained NOT EXERCISED and was not counted as PASS.
+
+The initial secondary path-pin handle attempt failed with WinError 5 because the deliberately empty DACL denied a second open. That approach was removed. The final implementation checks for reparse points before/after name-based calls and verifies S1/S2 identity through the retained handle; it does not claim same-user path-replacement prevention.
