@@ -532,4 +532,6 @@ class WindowsDaclDefaultedExperiment:
             rollback_attempted=result.rollback_attempted,
             control_flags_after_each_write=result.control_flags_after_each_write,
             native_write_calls=result.native_write_calls,
+            auto_inherited_changed_after_write=result.auto_inherited_changed_after_write,
+            auto_inherited_changed_after_rollback=result.auto_inherited_changed_after_rollback,
         )
