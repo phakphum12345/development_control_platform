@@ -282,12 +282,23 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
 
     @unittest.skipUnless(
         os.name == "nt"
-        and os.environ.get("DCP_RUN_WINDOWS_PSEC_REAL_HOST") == "1"
-        and not any(
-            os.environ.get(name, "").strip().lower() in {"1", "true", "yes"}
-            for name in ("CI", "GITHUB_ACTIONS")
+        and (
+            (
+                os.environ.get("DCP_RUN_WINDOWS_PSEC_CI") == "1"
+                and any(
+                    os.environ.get(name, "").strip().lower() in {"1", "true", "yes"}
+                    for name in ("CI", "GITHUB_ACTIONS")
+                )
+            )
+            or (
+                os.environ.get("DCP_RUN_WINDOWS_PSEC_REAL_HOST") == "1"
+                and not any(
+                    os.environ.get(name, "").strip().lower() in {"1", "true", "yes"}
+                    for name in ("CI", "GITHUB_ACTIONS")
+                )
+            )
         ),
-        "real NTFS DACL rollback experiment is local-only; explicitly set "
+        "set DCP_RUN_WINDOWS_PSEC_CI=1 in the dedicated Windows CI job or "
         "DCP_RUN_WINDOWS_PSEC_REAL_HOST=1 on a local Windows NTFS host",
     )
     def test_explicit_defaulted_false_round_trip_on_disposable_ntfs_file(self):
