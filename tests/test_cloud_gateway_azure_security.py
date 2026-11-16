@@ -23,7 +23,7 @@ class AzureArmHeaderTests(unittest.TestCase):
   credential=MagicMock(); credential.get_token.return_value="arm-token"
   response=MagicMock(); response.__enter__.return_value=response; response.read.return_value=b"{}"
   with patch("tools.cloud_gateway.azure_vm.urlopen",return_value=response) as call:
-   AzureArmClient("00000000-0000-0000-0000-000000000000","dcp",credential).request("GET","https://management.azure.com/subscriptions/test")
+   AzureArmClient("00000000-0000-0000-0000-000000000000","dcp",credential).request("GET","https://management.azure.com/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/dcp/providers/Microsoft.Compute/virtualMachines/vm?api-version=2025-04-01")
   req=call.call_args.args[0]
   self.assertEqual(req.get_header("Authorization"),"Bearer arm-token")
   self.assertTrue(any(k.lower()=="authorization" for k in req.unredirected_hdrs))
