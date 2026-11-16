@@ -135,7 +135,7 @@ class AzureEffectiveNetworkPolicyVerifier:
         return False
 
     @staticmethod
-    def _address_matches(rule, destination):
+    def _address_matches(rule, destination, *, overlap=False):
         prefixes = rule.get("destinationAddressPrefixes")
         if prefixes is None:
             prefixes = [rule.get("destinationAddressPrefix")]
@@ -146,7 +146,10 @@ class AzureEffectiveNetworkPolicyVerifier:
             if not isinstance(prefix, str):
                 continue
             try:
-                if destination == ipaddress.ip_network(prefix, strict=False):
+                network = ipaddress.ip_network(prefix, strict=False)
+                if network.version == destination.version and (
+                    network.overlaps(destination) if overlap else destination == network
+                ):
                     return True
             except ValueError:
                 continue
@@ -212,7 +215,9 @@ class AzureEffectiveNetworkPolicyVerifier:
                             continue
                         if not self._source_matches(rule, source_ip):
                             continue
-                        if self._address_matches(rule, flow["destination"]):
+                        if self._address_matches(
+                            rule, flow["destination"], overlap=rule.get("access") != "Allow"
+                        ):
                             priority = rule.get("priority")
                             if isinstance(priority, int) and not isinstance(priority, bool):
                                 candidates.append((priority, rule.get("access")))
@@ -226,42 +231,78 @@ class AzureEffectiveNetworkPolicyVerifier:
         routes = body.get("value")
         if not isinstance(routes, list) or not routes:
             raise EffectiveNetworkPolicyError("Effective route table is missing")
-        defaults = []
+        active_defaults = []
+        active_routes = 0
         for route in routes:
             if not isinstance(route, dict):
                 raise EffectiveNetworkPolicyError("Effective route entry is malformed")
-            prefixes = route.get("addressPrefix")
-            if isinstance(prefixes, str):
-                prefixes = [prefixes]
-            if not isinstance(prefixes, list) or any(not isinstance(item, str) for item in prefixes):
-                continue
-            if "0.0.0.0/0" in prefixes:
-                defaults.append(route)
-        if not defaults:
-            raise EffectiveNetworkPolicyError("No effective IPv4 default route was returned")
-        active_defaults = []
-        for route in defaults:
             state = route.get("state")
             if state == "Invalid":
                 continue
             if state not in ("Active", "active"):
-                raise EffectiveNetworkPolicyError("Default route state is unknown")
-            active_defaults.append(route)
-            if route.get("nextHopType") != "VirtualAppliance":
-                raise EffectiveNetworkPolicyError("Active default route bypasses the approved firewall")
-            next_hops = route.get("nextHopIpAddress")
-            if isinstance(next_hops, str):
-                next_hops = [next_hops]
-            if not isinstance(next_hops, list) or len(next_hops) != 1 or not isinstance(next_hops[0], str):
-                raise EffectiveNetworkPolicyError("Default route must identify exactly one firewall next hop")
-            try:
-                if ipaddress.ip_address(next_hops[0]) != ipaddress.ip_address(self.expected_firewall_ip):
-                    raise EffectiveNetworkPolicyError("Default route next hop does not match the approved firewall")
-            except ValueError as exc:
-                raise EffectiveNetworkPolicyError("Default route next hop is missing or invalid") from exc
+                raise EffectiveNetworkPolicyError("Default or public route state is unknown")
+            active_routes += 1
+            prefixes = route.get("addressPrefix")
+            if isinstance(prefixes, str):
+                prefixes = [prefixes]
+            if not isinstance(prefixes, list) or not prefixes or any(
+                not isinstance(item, str) for item in prefixes
+            ):
+                raise EffectiveNetworkPolicyError("Effective route address prefix is malformed")
+
+            is_public_egress_route = False
+            is_default_route = False
+            for prefix in prefixes:
+                try:
+                    network = ipaddress.ip_network(prefix, strict=False)
+                except ValueError as exc:
+                    raise EffectiveNetworkPolicyError("Effective route contains an invalid address prefix") from exc
+                if network.version == 6:
+                    if network.prefixlen == 0 or network.is_global:
+                        raise EffectiveNetworkPolicyError(
+                            "Active public IPv6 route is outside the configured IPv4 firewall policy"
+                        )
+                    continue
+                if network.prefixlen == 0:
+                    is_default_route = True
+                    is_public_egress_route = True
+                elif (
+                    not network.is_private
+                    and not network.is_loopback
+                    and not network.is_link_local
+                    and not network.is_multicast
+                    and not network.is_unspecified
+                ):
+                    is_public_egress_route = True
+
+            if is_default_route:
+                active_defaults.append(route)
+            if is_public_egress_route:
+                if route.get("nextHopType") != "VirtualAppliance":
+                    raise EffectiveNetworkPolicyError(
+                        "Active public/default route bypasses the approved firewall"
+                    )
+                next_hops = route.get("nextHopIpAddress")
+                if isinstance(next_hops, str):
+                    next_hops = [next_hops]
+                if not isinstance(next_hops, list) or len(next_hops) != 1 or not isinstance(next_hops[0], str):
+                    raise EffectiveNetworkPolicyError(
+                        "Public/default route must identify exactly one firewall next hop"
+                    )
+                try:
+                    if ipaddress.ip_address(next_hops[0]) != ipaddress.ip_address(self.expected_firewall_ip):
+                        raise EffectiveNetworkPolicyError(
+                            "Public/default route next hop does not match the approved firewall"
+                        )
+                except ValueError as exc:
+                    raise EffectiveNetworkPolicyError(
+                        "Public/default route next hop is missing or invalid"
+                    ) from exc
+
+        if not active_routes:
+            raise EffectiveNetworkPolicyError("No active effective routes were returned")
         if not active_defaults:
             raise EffectiveNetworkPolicyError("No active effective IPv4 default route was returned")
-
     def _wait_for_nic(self, nic_name):
         url = self.arm.resource_url(
             "Microsoft.Network", "networkInterfaces", nic_name, API_NETWORK
