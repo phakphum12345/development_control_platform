@@ -62,7 +62,7 @@ No merge, deployment, production enablement, privilege expansion, or real-file A
 - Rebased onto current PR #136 head `c89da8337213da09086c83c0a4dff629921254eb`; exact new head is pending CI.
 - The Windows matrix test now asserts the known candidate-specific outcomes: A/B return 0 but end RESTORE_NOT_EXACT at S2=0x8404 with three inherited ACEs; C/D return nonzero success and RESTORED_EXACT at S2=0x9004 with zero inherited ACEs.
 - Every candidate must preserve the same retained target identity, produce unique transaction/file identities, return no API/read-back error, and verify cleanup.
-- Name-based candidates B/C/D now pin the path with a second handle opened using OPEN_REPARSE_POINT and no FILE_SHARE_DELETE, then compare the pinned identity to the retained target. Candidate A remains handle-based.
+- Name-based candidates B/C/D verify the generated path is not a reparse point immediately before and after the call; the retained target handle identity is independently checked before and after S1/S2. A second identity-pin handle is denied by the empty DACL (WinError 5), so no path-pinning guarantee is claimed. The experiment remains confined to a unique harness-owned temporary directory.
 - The obsolete SetFileSecurityW candidate remains experimental only; no production recommendation or writer enablement.
 - The dedicated Windows NTFS job now runs the FALSE-state round-trip with `DCP_RUN_WINDOWS_PSEC_CI=1`, independent of the user's local PC.
 - TRUE object persistence remains NOT EXERCISED if NTFS does not retain TRUE at creation.
