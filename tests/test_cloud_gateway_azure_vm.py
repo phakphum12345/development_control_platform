@@ -138,7 +138,9 @@ class AzureVMTests(unittest.TestCase):
   p,_,_=self.make(lambda *args:True,lambda os_name,subnet,nsg: True)
   self.assertTrue(p.readiness("linux")["ready"])
   p,_,_=self.make(lambda *args:True,lambda *args:True,effective=False)
-  self.assertFalse(p.readiness("linux")["ready"])
+  # Readiness validates that the effective-policy verifier is configured;
+  # the live NIC policy result is checked after NIC creation during provision.
+  self.assertTrue(p.readiness("linux")["ready"])
   self.assertFalse(p.readiness("macos")["ready"])
  def test_provision_rechecks_readiness_before_any_arm_write(self):
   p,arm,_=self.make(lambda *args:True,lambda *args:False)
