@@ -33,6 +33,7 @@ WRITE_DAC = 0x00040000
 INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
 SECURITY_DESCRIPTOR_REVISION = 1
 ACL_REVISION = 2
+SE_DACL_DEFAULTED = 0x0008
 SE_DACL_PROTECTED = 0x1000
 SE_DACL_AUTO_INHERITED = 0x0400
 
@@ -148,6 +149,10 @@ class WindowsDaclDefaultedExperiment:
             wintypes.LPVOID, wintypes.BOOL, wintypes.LPVOID, wintypes.BOOL,
         ]
         a.SetSecurityDescriptorDacl.restype = wintypes.BOOL
+        a.GetSecurityDescriptorControl.argtypes = [
+            wintypes.LPVOID, ctypes.POINTER(wintypes.WORD), ctypes.POINTER(wintypes.DWORD),
+        ]
+        a.GetSecurityDescriptorControl.restype = wintypes.BOOL
         a.SetSecurityDescriptorControl.argtypes = [wintypes.LPVOID, wintypes.WORD, wintypes.WORD]
         a.SetSecurityDescriptorControl.restype = wintypes.BOOL
         k.GetCurrentProcess.argtypes = []
@@ -189,6 +194,17 @@ class WindowsDaclDefaultedExperiment:
                 f"refusing experiment on non-NTFS volume: {fs_name.value!r}"
             )
         return fs_name.value
+
+    def _security_descriptor_control(self, descriptor) -> int:
+        control = wintypes.WORD()
+        revision = wintypes.DWORD()
+        if not self._advapi32.GetSecurityDescriptorControl(
+            ctypes.cast(descriptor, wintypes.LPVOID),
+            ctypes.byref(control),
+            ctypes.byref(revision),
+        ):
+            raise self._last_error("GetSecurityDescriptorControl")
+        return int(control.value)
 
     def _security_attributes(self, *, defaulted: bool):
         # An empty, non-NULL DACL is intentionally used only on the newly
