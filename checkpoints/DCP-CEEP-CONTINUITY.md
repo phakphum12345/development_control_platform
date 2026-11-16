@@ -191,3 +191,118 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - PR #119 remains OPEN / DRAFT / NOT MERGED; PR #118 remains OPEN / DRAFT / NOT MERGED; PR #117 and #116 remain OPEN / DRAFT / NOT MERGED. These are stacked dependencies; do not merge a child before its base.
 - WP-18D is PARTIAL pending the target Linux host run. WP-18B Windows native process isolation and LPAC remain BLOCKED pending implementation and host acceptance. Terminal templates remain disabled.
 - This checkpoint follows code/test head `a497117adfcdb68f9e6a52b385f28fbec21ec621`; re-check exact-head CI on the resulting checkpoint commit before treating it as current.
+
+
+## 2026-11-14 — WP-18B.1-K disposable DACL defaulted-state experiment
+
+- Protocol: DCP-CEEP v1.0; protocol file was read before implementation.
+- PR #130 remains OPEN / DRAFT / NOT MERGED at head `a2e336eb034fdb2afc4340fe8228e87164afca9d`.
+- Separate stacked experiment PR: #131, OPEN / DRAFT / NOT MERGED; base is PR #130 head branch `work/wp18b1j-preserve-dacl-defaulted-state`.
+- Experiment branch: `work/wp18b1k-dacl-native-api-experiment-stack`; current implementation head at checkpoint creation: `638be7b55bc8d08247faca247a60b47d40045a5d`.
+- Added `tools/local_runner_agent/windows_psec_dacl_experiment.py`: Windows-only ctypes harness; unique temp directory, NTFS volume check, CREATE_NEW disposable file, explicit empty DACL with caller-selected DACL_DEFAULTED TRUE/FALSE, retained-handle SetSecurityInfo, same-handle read-back, unconditional rollback attempt after write/read-back errors, and handle identity rechecks.
+- Added `tests/test_windows_psec_dacl_experiment.py`: off-Windows fail-closed contract test; Windows TRUE/FALSE disposable NTFS cases; ambiguous post-write error injection that asserts rollback and cleanup.
+- Updated `.github/workflows/cross-platform-recovery.yml` to invoke the test module on Ubuntu and Windows; non-Windows native cases are expected to report SKIPPED, not PASS.
+- Updated `docs/DCP-WINDOWS-PSEC-DACL-DEFAULTED-NATIVE-API-EXPERIMENT.md` and `docs/INDEX.md`.
+- No code was executed in this authoring environment. No native experiment result or test pass is claimed.
+- Exact-head CI for PR #131: UNKNOWN at checkpoint; workflow-run query returned no runs and combined status returned no statuses for the then-current head. Recheck after branch updates.
+- Potential risk to resolve during CI/review: Windows behavior for opening a newly created file with an explicit empty DACL and owner READ_CONTROL/WRITE_DAC rights; cleanup uses the exact random file path inside the harness-created temporary root after closing the retained handle.
+- User-host Windows acceptance, TRUE-state round-trip semantics, Native Writer, Terminal and all seven built-in templates remain BLOCKED.
+- No merge authorization exists. Next action: inspect current PR #131 exact head and CI; fix all failures, then run the same test on the designated Windows host and retain complete logs.
+
+
+### WP-18B.1-K follow-up reconciliation
+
+- Latest PR #131 head after the harness safety/error-reporting revisions: `83d8dfbd8b3517225c0b9868726a720fa2af46f5`.
+- The TRUE-state setup now raises a dedicated `DaclDefaultedNotExercised`; the Windows test classifies this condition as SKIPPED / NOT EXERCISED rather than treating it as a writer pass.
+- On write/read-back/rollback failure, diagnostics retain the observed post-write `DaclDefaulted`, DACL byte-equality, control flags, rollback result and error stages.
+- Rollback is attempted unconditionally after a write attempt, even if the post-write read-back fails.
+- The test records volume serial and 128-bit file ID from the retained handle and rechecks handle identity after write and rollback.
+- Latest exact-head CI query for `83d8dfbd8b3517225c0b9868726a720fa2af46f5`: no workflow runs and no combined status entries returned. CI remains UNKNOWN; this is not a pass.
+- PR #131 connector reports `mergeable=false`; investigate the GitHub mergeability state before any merge consideration. PR remains Draft / OPEN / NOT MERGED.
+
+
+## 2026-11-14 — WP-18B.1-K Windows evidence and inheritance-boundary correction
+
+- PR #131 remains OPEN / DRAFT / NOT MERGED; PR #130 remains OPEN / DRAFT / NOT MERGED. PR #131 is mergeable according to GitHub; no merge was performed.
+- GitHub-hosted Windows run #43609971342 completed with all jobs green on PR head `4c11a6bdb4c91faf51cd7e17081ee9596d3e07bb` (merge checkout `36554d3f995a741ecac023b99e39da935b287d12`). This was the previous test implementation; do not use it as validation of later corrections.
+- Windows host: Windows Server 2025 Datacenter build 10.0.26100; CPython 3.12.10 x64; NTFS; volume serial 9823700658284110452; probe File ID 8cb7040000006f000000000000000000.
+- DACL TRUE setup was NOT EXERCISED: NTFS did not retain DaclDefaulted=TRUE at object creation.
+- DACL FALSE experiment reported DaclDefaulted=false before, after write and after rollback; no API errors; cleanup verified. However, DACL bytes changed from 8-byte empty ACL `0200080000000000` to 72-byte ACL `020048000300000000101400ff011f0001010000000000051200000000101800ff011f000102000000000005200000002002000000101400ff011f00010100000000000304000000` and remained changed after rollback.
+- Descriptor control flags changed from 0x9004 to 0x8404; evidence shows protected-DACL state was lost and auto-inherited state appeared. This is consistent with inherited ACEs being applied during SetSecurityInfo, but the exact mechanism remains a hypothesis until re-tested.
+- Corrective change in subsequent code: set SE_DACL_PROTECTED on the creation descriptor and pass PROTECTED_DACL_SECURITY_INFORMATION with DACL_SECURITY_INFORMATION on write/rollback. This is intended to keep the test object's inheritance boundary stable.
+- Closed a prior acceptance gap: TRUE and FALSE native cases now require outcome PASS; an observed FAIL can no longer leave the unittest green. Added GetProcessHandleCount before/after and require zero delta. This only verifies process handles; native heap/memory leak acceptance remains PARTIAL.
+- Reader's GetSecurityInfo descriptor allocation is released with LocalFree in finally, and LocalFree failure is surfaced. Repeated-run memory stability remains unverified.
+- Latest code/test head at this checkpoint before the documentation/ledger-only commits: `f3694994e844302a9ca03ef27065cccc701d378b`. GitHub checks then running: Validate Control Plane and Local-first Minimal Emulator; Windows dynamic-port launcher integration still in progress. The dedicated Cross-platform Recovery Acceptance workflow was not yet visible on this exact SHA; exact-head DACL validation remains UNKNOWN.
+- GitHub-hosted Windows CI is not the designated user's Windows-host acceptance. User-host run remains PENDING; no remote execution on the user's PC was performed.
+- Native Writer remains BLOCKED; Terminal remains BLOCKED; all seven built-in templates remain DISABLED. No merge or deployment authorized.
+
+
+## 2026-11-14 — WP-18B.1-K corrective instrumentation checkpoint
+
+- PR #131 only; branch `work/wp18b1k-dacl-native-api-experiment-stack`. PR #130 is unchanged. PR #131 remains OPEN / DRAFT / NOT MERGED; no merge or deployment performed.
+- Fixed evidence ordering: TRUE/FALSE/ambiguous-error/write-only tests emit flushed `DACL_EXPERIMENT_EVIDENCE` immediately after harness return and before assertions.
+- Split native observation from rollback: a `rollback=False` run records the immediate post-`SetSecurityInfo` state and reports `OBSERVED`; a separate default run uses a fresh disposable object and attempts rollback. The write-only test does not assert that the write preserved bytes; it records the actual result.
+- Added bounded ACE-header parsing to report `INHERITED_ACE` counts after creation, after write, and after rollback where available. SID payloads are not parsed.
+- Added harness-owned handle lifecycle evidence (`owned_handle_opened`, `owned_handle_closed`, `close_handle_succeeded`) and direct assertions. Process-wide handle counts are best-effort diagnostics only and are no longer acceptance gates.
+- Added a distinct Windows write-only observation test. Existing FALSE round-trip and ambiguous-write-error tests remain separate disposable runs.
+- Source-level review completed; Windows native execution has NOT been performed by this authoring session. No test or CI pass is claimed here.
+- Next: run local syntax/portable tests and exact-head CI; inspect all workflow results against the final head SHA. Then provide the designated Windows-host PowerShell command and require the full pre-assertion evidence output. TRUE-state semantics remain UNKNOWN / NOT EXERCISED until the host actually retains TRUE at creation.
+- Native Writer remains BLOCKED; Terminal remains BLOCKED; all seven built-in templates remain DISABLED. No merge authorized.
+
+
+## 2026-11-14 — WP-18B.1-K evidence instrumentation revision
+
+- Code/test/docs state reviewed on code/test head `ffaf16868bbb593dcc98dd6e89dc7b8baa4e1f2a`; the following continuity-only commit records that state.
+- PR #131 remains OPEN / DRAFT / NOT MERGED; PR #130 remains unchanged. No merge, deployment, Native Writer, or Terminal enablement.
+- Test evidence is now emitted with flush before assertions. TRUE setup failure carries the post-create DACL snapshot and emits it before the test is classified SKIPPED / NOT EXERCISED.
+- Separate write-only observation mode (`rollback=False`) reports OBSERVED and records immediate post-write state. Round-trip mode uses a distinct fresh disposable file and unconditionally attempts rollback after write/read-back, including ambiguous error paths.
+- Harness-owned handle open/close success is directly tracked and asserted. Process-wide handle counts are best-effort diagnostics only.
+- Bounded ACE-header parsing records inherited ACE counts at create/write/rollback stages without parsing SID payloads.
+- Current code/test suite has one portable contract test and four Windows-native tests (TRUE, FALSE write-only, FALSE round-trip, ambiguous-write rollback). Windows-native tests have not yet been executed on the user's host.
+- GitHub Actions were queued on the preceding code/test head; this continuity-only commit changes the exact SHA, so all CI gates must be rechecked on the new final PR head. The self-hosted Windows runner acceptance matrix remains SKIPPED when no eligible runner is online; SKIPPED is not PASS.
+- Next: wait for exact-head CI, inspect Windows recovery job logs including `DACL_EXPERIMENT_EVIDENCE`, fix any issues, then run the same command on the designated user Windows host. A TRUE-state skip is not a TRUE acceptance pass.
+- Native Writer remains BLOCKED; Terminal remains BLOCKED; all seven built-in templates remain DISABLED.
+
+
+## 2026-11-15 — WP-18B.1-K SetSecurityInfo flag-isolation matrix
+
+- PR #131 only; branch `work/wp18b1k-dacl-native-api-experiment-stack`; based on PR #130. PR #130 remains unchanged.
+- Latest preceding evidence from Windows Server 2025 / NTFS: FALSE write-only and round-trip preserved the 8-byte empty DACL and `DaclDefaulted=FALSE`, but descriptor control flags changed from `0x9004` to `0x9404`. The delta is `SE_DACL_AUTO_INHERITED (0x0400)`; inherited ACE count remained zero.
+- Added an isolated write-only flag matrix using separate disposable files: `DACL_SECURITY_INFORMATION (0x4)` versus `DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION (0x80000004)`.
+- Evidence records the exact native `SecurityInfo` mask in decimal and hex. The existing round-trip and ambiguous-write rollback cases retain the combined protected-DACL mask and their strict assertions.
+- The matrix is diagnostic: neither write-only observation can pass the round-trip acceptance gate. It does not relax exact control-state comparison.
+- No native execution or CI result is claimed by this checkpoint. Next: run portable tests, inspect exact-head CI logs, and then run the native matrix on Windows Server/Windows host. Keep Native Writer, Terminal, and all built-in templates BLOCKED; no merge or deployment.
+
+
+## 2026-11-15 — WP-18B.1-K Windows flag matrix findings and test correction
+
+- Exact tested head: `90e48b693885363183f8990d1f8102ccc06cab30`; PR #131 only. PR #130 remains unchanged.
+- Windows Server 2025 / NTFS evidence: F1 (`0x4`) and F2 (`0x80000004`) both retained the 8-byte empty DACL and `DaclDefaulted=FALSE`, while control flags changed `0x9004 → 0x9404`. Both report zero inherited ACEs. The AUTO_INHERITED bit transition is therefore not isolated to the protected-DACL flag.
+- FALSE round-trip remains FAIL because rollback leaves control flags at `0x9404` instead of restoring `0x9004`; byte equality and FALSE state alone do not satisfy the exact descriptor-state gate.
+- TRUE setup remains NOT EXERCISED because NTFS did not retain TRUE at creation.
+- The ambiguous-write test did not actually reach the native write: its patched callback omitted the newly required keyword-only `security_info_flags` argument, so callback call count was zero. Corrected the callback signature and forwarding behavior; Windows rerun is required before accepting rollback-injection evidence.
+- Exact-head CI on this SHA: Local-first Minimal Emulator PASS; Validate Control Plane PASS; Cross-platform Recovery Acceptance FAIL. The Windows recovery failure includes the two findings above. New commit must receive fresh exact-head CI.
+- No merge. Native Writer, Terminal, and all seven built-in templates remain BLOCKED.
+
+
+## 2026-11-15 — WP-18B.1-K creation-only and repeated-write probes
+
+- Re-read Microsoft Learn: SE_DACL_DEFAULTED is used to compute the final DACL and is not physically stored in the security descriptor of a securable object. SetSecurityInfo has no bDaclDefaulted input; object read-back must not be described as persistence of the in-memory creation marker.
+- PR #131 only; branch work/wp18b1k-dacl-native-api-experiment-stack; expected parent HEAD 562b21ad5ba8dc7bd699e661039f5510f2643f34. PR #130 is unchanged.
+- Extended the disposable NTFS harness with a bounded write_repetitions parameter (0–8). Zero performs a creation-only read-back and is prohibited from requesting rollback. Three performs three sequential SetSecurityInfo calls on the same retained handle.
+- Added per-call control-word evidence (control_flags_after_each_write) and native call count (native_write_calls).
+- Added Windows-only tests for FALSE creation-only baseline and repeated same-handle SetSecurityInfo observations. Existing strict FALSE round-trip assertion remains unchanged and is still expected to report the observed exact-state limitation until further evidence justifies a protocol-level disposition.
+- No Windows execution or CI pass is claimed by this source update. New exact-head CI and native evidence are required.
+- Native Writer, Terminal and all seven built-in templates remain BLOCKED. No merge or deployment.
+
+
+## 2026-11-16 — WP-18B.1-K acceptance-scope clarification
+
+- PR #131 branch: `work/wp18b1k-dacl-native-api-experiment-stack`.
+- Clarification commit: `0a07b9df1da2fa222338688c3c0b10210d231d7d`.
+- The acceptance contract now separates (1) the in-memory input security descriptor TRUE/FALSE contract from (2) NTFS object-level persistence and round-trip behavior.
+- A TRUE input descriptor is accepted only when the same in-memory descriptor reads back TRUE and the paired FALSE descriptor reads back FALSE. This assertion does not claim NTFS persists TRUE on a file object.
+- The object-level TRUE writer round-trip is PASS only if the newly created NTFS object itself reads back TRUE before SetSecurityInfo. If NTFS does not retain TRUE at creation, classify that object-level case as NOT EXERCISED; do not count it as PASS or use the FALSE round-trip as a substitute.
+- The FALSE NTFS object write/read-back/rollback remains a separate native acceptance case.
+- The in-memory TRUE/FALSE test is implemented and exercised by the stacked PR #145; it must be revalidated on the final rebased stack.
+- Exact-head CI for this clarification commit is pending. Do not merge PR #131 until its exact-head workflows pass and the stack is reconciled.
