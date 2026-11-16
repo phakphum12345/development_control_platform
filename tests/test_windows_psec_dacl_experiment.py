@@ -1,3 +1,9 @@
+"""Disposable NTFS DACL experiment tests.
+
+The in-memory input-descriptor TRUE/FALSE contract is distinct from the NTFS
+object read-back probe. A skipped TRUE object case is NOT EXERCISED, never PASS.
+"""
+
 from __future__ import annotations
 
 import json

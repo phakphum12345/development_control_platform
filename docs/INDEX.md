@@ -7,6 +7,7 @@
 ## Operating and execution control
 - [DCP-CEEP v1.0 Protocol](DCP-CEEP-PROTOCOL.md) — mandatory execution, evidence, resilience, reporting, continuity and merge gates.
 - [Continuity Ledger](../checkpoints/DCP-CEEP-CONTINUITY.md) — latest resumable work checkpoint.
+- [WP-18B.1-M Protocol v1 Consumer Conformance Checkpoint](../checkpoints/WP-18B1-M-PROTOCOL-V1-CONSUMER-CONFORMANCE.md) — source-to-profile audit and exact-head CI baseline.
 - [CEEP Command Reference](DCP-CEEP-COMMAND-REFERENCE.md)
 - [CEEP Project Profile Template](templates/DCP-CEEP-PROJECT-PROFILE.md)
 - [CEEP v2.0 Proposal](DCP-CEEP-UNIVERSAL-v2.0.md) — proposal only; not adopted.
@@ -72,6 +73,7 @@
 - [Terminal OS Isolation](DCP-TERMINAL-OS-ISOLATION.md)
 - [PSEC DACL Defaulted Native API Experiment](DCP-WINDOWS-PSEC-DACL-DEFAULTED-NATIVE-API-EXPERIMENT.md) — disposable NTFS-only API experiment; host results are recorded separately from CI.
 - [PSEC DACL State Semantics Protocol v1.0](DCP-PSEC-DACL-STATE-PROTOCOL-v1.md) — draft comparison profiles for DACL content, construction metadata and OS-managed control state; does not authorize native writes.
+- [PSEC DACL Protocol v1.0 Consumer Conformance](DCP-PSEC-DACL-PROTOCOL-V1-CONSUMER-CONFORMANCE.md) — maps Protocol v1 comparison profiles to the existing Reader/Transaction code and records pre-writer conformance gaps.
 - [Linux Host Acceptance](DCP-LINUX-HOST-ACCEPTANCE.md) — target-host evidence harness and acceptance criteria.
 - [Windows PSEC Isolation](DCP-WINDOWS-PSEC-ISOLATION.md) — PSEC v1.1 policy probe, CreateProcessW/Job Object launcher, and target-host acceptance steps.
 - [Windows PSEC Filesystem Authorization](DCP-WINDOWS-PSEC-FILESYSTEM-AUTHORIZATION.md) — WP-18B.1 per-job projection, Package SID authorization, lifecycle and adversarial acceptance design.
