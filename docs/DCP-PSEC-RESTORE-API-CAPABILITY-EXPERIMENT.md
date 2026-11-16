@@ -119,7 +119,7 @@ The restore-API candidate matrix has been rebased onto the current PSEC stack. T
 
 The test also asserts S0=0x9004, S1=0x9404, unique transaction IDs and file identities, no API/read-back error, exact cleanup, and candidate-specific S0/S2 DACL byte equality. A different result on a future Windows runner is a CI failure requiring review, not a silent pass.
 
-For path-based candidates B/C/D, the harness now opens a second identity-pin handle with `OPEN_REPARSE_POINT` and without `FILE_SHARE_DELETE` while the name-based API runs. It verifies that the pinned path resolves to the same volume/file identity as the retained target handle. Candidate A remains handle-based. This narrows the path-replacement window for the disposable experiment; it does not make these name-based APIs suitable for production.
+For path-based candidates B/C/D, the harness verifies the generated path is not a reparse point immediately before and after the call using `GetFileAttributesW`, while independently checking the retained target handle identity before and after S1/S2. The target lives in a unique harness-owned temporary directory and no caller-supplied path is accepted. A second identity-pin handle cannot be opened after the experiment applies an empty DACL (Windows returns access denied), so this harness does NOT claim to prevent same-user path replacement. This limitation is another reason the name-based candidates remain experimental only.
 
 The dedicated Windows NTFS job uses `DCP_RUN_WINDOWS_PSEC_CI=1` for the FALSE-state experiment. The test no longer depends on the user's PC being on. The TRUE input-descriptor test is separate; TRUE object read-back remains NOT EXERCISED when NTFS does not retain TRUE.
 
