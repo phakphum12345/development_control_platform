@@ -14,7 +14,7 @@ from tools.local_runner_agent.windows_psec_dacl_restore_api_experiment import (
 
 
 class WindowsDaclRestoreApiContractTests(unittest.TestCase):
-    """Path APIs are tested with a pinned target identity handle and strict S2 read-back."""
+    """Path APIs use a harness-owned temporary path, non-reparse checks and strict retained-handle S2 read-back."""
     def test_candidate_allowlist_is_fixed_and_explicit(self):
         self.assertEqual(
             RESTORE_API_CANDIDATES,
