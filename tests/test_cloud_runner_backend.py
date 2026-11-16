@@ -77,7 +77,7 @@ class CloudAPIProviderTests(unittest.TestCase):
         self.assertEqual(json.loads(request.data),{"target_os":"linux"})
         self.assertEqual(result.state,"provisioning")
 
-    @patch("tools.runner_backend.cloud_api.urllib.request.urlopen")
+    @patch("tools.runner_backend.cloud_api.urlopen")
     def test_status_and_terminate_quote_provider_id(self,urlopen):
         urlopen.return_value=self.response({"id":"a/b","state":"online"})
         p=self.make_provider(); p.status("a/b")
