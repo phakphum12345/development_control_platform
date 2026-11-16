@@ -249,3 +249,87 @@ The API sequence is bounded to 0–8 writes. A zero-write probe cannot request r
 Evidence adds native_write_calls and control_flags_after_each_write. The existing exact round-trip assertion is deliberately unchanged: the FALSE case still reports FAIL if the complete control word cannot be restored. The new probes do not convert that result to PASS and do not authorize Native Writer.
 
 **Interpretation boundary:** a creation-only FALSE result is a baseline, not proof that TRUE can be stored. A TRUE setup that is not retained remains NOT EXERCISED. Repeated writes can characterize control-bit stability, but cannot prove that the original descriptor control word is writable or reversible through SetSecurityInfo.
+
+## 17. First-write control-bit transition — 2026-11-15
+
+Exact-head Windows evidence was inspected from Cross-platform Recovery Acceptance run
+[43626600331](https://github.com/phakphum12345/development_control_platform/actions/runs/43626600331),
+Windows job 132543717452, on PR head
+cf5e43aec6b6f7e72fc20b3c41fa052d585ff7e9 (workflow merge checkout
+aa32b6f79bd9b2b1e25a69f241ff0bb230276743). Host: Windows Server 2025
+build 10.0.26100, CPython 3.12.10, NTFS.
+
+The stage-by-stage observations are:
+
+| Stage / probe | Native SetSecurityInfo calls | Control word | DACL bytes | DaclDefaulted | Inherited ACEs |
+|---|---:|---:|---|---|---:|
+| FALSE creation-only baseline | 0 | 0x9004 | empty ACL, 0200080000000000 | FALSE | 0 |
+| FALSE repeated-write probe, after call 1 | 1 | 0x9404 | unchanged | FALSE | 0 |
+| FALSE repeated-write probe, after call 2 | 2 | 0x9404 | unchanged | FALSE | 0 |
+| FALSE repeated-write probe, after call 3 | 3 | 0x9404 | unchanged | FALSE | 0 |
+| FALSE round-trip, after first write | 1 | 0x9404 | unchanged | FALSE | 0 |
+| FALSE round-trip, after rollback | rollback attempted | 0x9404 | unchanged | FALSE | 0 |
+
+The repeated-write evidence records control_flags_after_each_write=[37892, 37892, 37892]
+(hex [0x9404, 0x9404, 0x9404]) against the creation baseline 0x9004.
+Therefore, on this Windows Server 2025 / NTFS host, the 0x0400
+(SE_DACL_AUTO_INHERITED) transition is first observed immediately after
+the first SetSecurityInfo call. The second and third calls leave the
+observed word unchanged. This is a measured call-order correlation; it does
+not establish undocumented internal implementation details.
+
+The flag-isolation probes show the same 0x9004 -> 0x9404 transition for
+both DACL_SECURITY_INFORMATION (0x4) and
+DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION
+(0x80000004). The transition is therefore not isolated to the protected
+flag. All these probes retain the same empty DACL bytes, report
+DaclDefaulted=FALSE, and count zero inherited ACEs. Do not infer that an
+inherited ACE was added from SE_DACL_AUTO_INHERITED alone.
+
+Rollback is separately observable: the round-trip case starts at
+0x9004, reads 0x9404 after its first write, then still reads
+0x9404 after the rollback SetSecurityInfo attempt. The DACL bytes
+and FALSE state remain unchanged, but the original control word is not
+restored. The strict exact-state test correctly remains FAIL.
+
+The corrected ambiguous-write injection also ran on this job. Its callback
+count was 2: the first native write returned, the injected error was raised,
+and the second callback invocation reached the rollback write. The result
+reports rollback_attempted=true, final control word 0x9404, unchanged DACL
+bytes, zero inherited ACEs, successful owned-handle close and cleanup.
+The result field native_write_calls counts the forward write loop and
+does not include the rollback call; use the callback count and
+rollback_attempted for this injected-path evidence, not that field as a
+total native-call count.
+
+**Architecture finding:** this experiment demonstrates that the supported
+handle-based SetSecurityInfo path on the tested host changes the object
+descriptor control word on its first DACL write and does not restore the
+original control word when the same DACL is written again for rollback.
+The experiment does not demonstrate a way to clear or restore the
+SE_DACL_AUTO_INHERITED bit through the currently permitted
+SetSecurityInfo interface. This is a bounded host-specific finding, not
+a universal claim about every Windows version or filesystem.
+
+**Disposition:** retain the strict FALSE round-trip FAIL and TRUE
+NOT EXERCISED / SKIPPED. No comparator change, no masking of 0x0400,
+no expected-outcome downgrade, and no Native Writer or transactional ACL
+mutation enablement. PR #134 remains untouched. A future API-capability
+investigation must be isolated and must not substitute undocumented or
+out-of-scope object mutation APIs.
+
+
+## 18. Superseding classification — 2026-11-16
+
+Section 17 is retained as the original strict-control-word observation and is not deleted from the evidence record. Its statement that the full raw control word could not be restored remains correct under `STRICT_DESCRIPTOR_EQUALITY`.
+
+A later, separately scoped disposable-NTFS experiment adds an explicit host-behavior comparison helper that permits only `SE_DACL_AUTO_INHERITED (0x0400)` to remain unchanged or transition from clear to set. It rejects clearing that bit and every other control-word delta. The experiment continues to require exact DACL bytes, exact observed `DaclDefaulted`, and protected-state preservation. This narrow allowance is not a general protocol comparator downgrade and is not used by the production transaction coordinator.
+
+The resulting classifications are deliberately separate:
+
+- FALSE NTFS object write/read-back/rollback: PASS under the experiment-specific OS-managed-bit allowance, with exact DACL bytes and `DaclDefaulted=FALSE` preserved.
+- Strict raw control-word equality for the same `0x9004 → 0x9404` transition: FAIL, as required by Protocol v1.
+- TRUE in-memory input descriptor: PASS only when the same descriptor reads back TRUE and the paired FALSE descriptor reads back FALSE.
+- TRUE NTFS object persistence/read-back: NOT EXERCISED when NTFS does not retain TRUE at creation; never counted as PASS.
+
+The evidence is host-specific to the tested Windows/NTFS runner. No production Native Writer, transaction policy relaxation, Terminal execution, or template enablement is authorized.
