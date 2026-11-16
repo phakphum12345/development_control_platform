@@ -75,6 +75,7 @@ jobs:
           }
           if ($pythonExitCode -eq 2 -and $result.state -eq "BLOCKED") {
             Write-Warning "PSEC API is BLOCKED on this GitHub-hosted Windows image. This probe is informational and is NOT an acceptance PASS; run target-host acceptance on a supported Windows host."
+            exit 0
           } elseif ($pythonExitCode -ne 0) {
             throw "Windows PSEC host probe failed with exit code $pythonExitCode (state=$($result.state))."
           } elseif ($result.state -ne "PASS") {
