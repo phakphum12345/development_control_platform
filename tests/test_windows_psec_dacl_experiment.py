@@ -135,8 +135,8 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         self.assertIs(result.close_handle_succeeded, True)
         self.assertIsNotNone(result.control_flags_after_write)
         self.assertEqual(
-            result.control_flags_before & 0xEFFF,
-            result.control_flags_after_write & 0xEFFF,
+            result.control_flags_before & 0xFBFF,
+            result.control_flags_after_write & 0xFBFF,
             "write-only probe changed control bits other than SE_DACL_AUTO_INHERITED",
         )
         self.assertEqual(
@@ -175,7 +175,7 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         self.assertEqual(result.outcome, "OBSERVED")
         self.assertEqual(result.native_write_calls, 3)
         self.assertTrue(all(
-            (flags & 0xEFFF) == (result.control_flags_before & 0xEFFF)
+            (flags & 0xFBFF) == (result.control_flags_before & 0xFBFF)
             for flags in result.control_flags_after_each_write
         ), "repeated writes changed control bits other than SE_DACL_AUTO_INHERITED")
         self.assertTrue(all(
@@ -259,13 +259,13 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
             "rollback changed SE_DACL_PROTECTED",
         )
         self.assertEqual(
-            result.control_flags_before & 0xEFFF,
-            result.control_flags_after_write & 0xEFFF,
+            result.control_flags_before & 0xFBFF,
+            result.control_flags_after_write & 0xFBFF,
             "write changed control bits other than SE_DACL_AUTO_INHERITED",
         )
         self.assertEqual(
-            result.control_flags_before & 0xEFFF,
-            result.control_flags_after_rollback & 0xEFFF,
+            result.control_flags_before & 0xFBFF,
+            result.control_flags_after_rollback & 0xFBFF,
             "rollback changed control bits other than SE_DACL_AUTO_INHERITED",
         )
         self.assertEqual(result.dacl_defaulted_after_rollback, False)
