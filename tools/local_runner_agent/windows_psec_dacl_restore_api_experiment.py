@@ -119,7 +119,7 @@ class WindowsDaclRestoreApiExperiment(WindowsDaclDefaultedExperiment):
         # candidate API resolves it. OPEN_REPARSE_POINT lets us reject a link.
         handle = self._kernel32.CreateFileW(
             file_path,
-            READ_CONTROL | WRITE_DAC,
+            0,  # metadata-only handle; the empty test DACL denies data/ACL access
             FILE_SHARE_READ | FILE_SHARE_WRITE,
             None,
             3,  # OPEN_EXISTING
