@@ -90,3 +90,16 @@ A successful content comparison is not an overall writer acceptance result. The 
 - [ ] Obtain security review before any production mutation behavior changes.
 
 **Disposition:** Consumer conformance is PARTIAL / REVIEW REQUIRED. The next code change must be a separately reviewed, non-native comparator/test slice. Native Writer remains BLOCKED.
+
+
+## 9. Subsequent evidence and current interpretation
+
+The findings in sections 2–8 are the audit baseline at creation time. The following later evidence refines interpretation without erasing the original source audit:
+
+- The original `0x9004 → 0x9404` observation remains a strict raw-control-word mismatch. `CONTROL_STATE_EQUALITY` and `STRICT_DESCRIPTOR_EQUALITY` therefore continue to report a mismatch for that pair.
+- A separate disposable NTFS experiment acceptance helper later allows only the OS-managed `SE_DACL_AUTO_INHERITED` bit to remain unchanged or transition clear-to-set. It still rejects clearing that bit and every other control-word change, and it continues to require exact DACL bytes and the observed `dacl_defaulted` state. This is an experiment-specific host-behavior allowance, not a Protocol v1 comparator downgrade and not production transaction policy.
+- The in-memory input security-descriptor TRUE/FALSE contract is tested separately from NTFS object persistence. A TRUE input descriptor must read TRUE before object creation; if the created NTFS object does not read TRUE, the object-level TRUE writer case is `NOT EXERCISED`, not PASS.
+- The FALSE NTFS object write/read-back/rollback case remains independently exercised on GitHub-hosted Windows NTFS CI. The ambiguous-write test verifies rollback and cleanup after an injected native write error.
+- PR #131 and PR #132 have been merged into their parent integration branch. This document's creation-time references to their OPEN/DRAFT state are historical.
+
+These later findings do not alter the core conformance requirement: the transaction coordinator must require an explicit named profile, validate snapshots structurally, preserve the raw control word in evidence, and never silently downgrade a requested profile. Native Writer and production ACL mutation remain BLOCKED pending separate security review and host acceptance.
