@@ -73,6 +73,7 @@
 - [Terminal Execution Architecture](DCP-TERMINAL-EXECUTION-ARCHITECTURE.md)
 - [Terminal Security](DCP-TERMINAL-SECURITY.md)
 - [Terminal OS Isolation](DCP-TERMINAL-OS-ISOLATION.md)
+- [PSEC Reversible State Preservation](DCP-PSEC-REVERSIBLE-STATE-PRESERVATION.md) — immutable S0 snapshot, transaction/object binding, integrity and exact read-back verification; native restore capability remains blocked.
 - [PSEC DACL Defaulted Native API Experiment](DCP-WINDOWS-PSEC-DACL-DEFAULTED-NATIVE-API-EXPERIMENT.md) — disposable NTFS-only API experiment; host results are recorded separately from CI.
 - [PSEC DACL State Semantics Protocol v1.0](DCP-PSEC-DACL-STATE-PROTOCOL-v1.md) — draft comparison profiles for DACL content, construction metadata and OS-managed control state; does not authorize native writes.
 - [PSEC DACL Protocol v1.0 Consumer Conformance](DCP-PSEC-DACL-PROTOCOL-V1-CONSUMER-CONFORMANCE.md) — maps Protocol v1 comparison profiles to the existing Reader/Transaction code and records pre-writer conformance gaps.
