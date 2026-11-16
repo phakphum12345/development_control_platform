@@ -54,3 +54,14 @@ Parent PR #132 head: `dce31f0dc7231074373ae866515a7a0b73c377dc`.
 - No merge, deployment, process resume, or privilege expansion authorized.
 
 **Audit disposition:** PARTIAL / REVIEW REQUIRED. The next implementation slice must be non-native comparator and contract tests only.
+
+
+## 2026-11-16 — Reconciliation and subsequent evidence
+
+- Consumer-conformance branch reconciled onto the updated Protocol v1 line by merge commit `989df05fe999ef5508d879467f522239c3318f6f`, with the current Protocol v1 head as first parent and the original consumer-audit head as second parent.
+- PR #131 and PR #132 have since been merged into their shared parent integration branch. This checkpoint's original OPEN/DRAFT statements above are historical creation-time status, not current PR status.
+- The historical strict `0x9004 → 0x9404` finding remains valid under `STRICT_DESCRIPTOR_EQUALITY` and `CONTROL_STATE_EQUALITY`.
+- A later, separate disposable-experiment audit (PR #145) permits only the OS-managed `SE_DACL_AUTO_INHERITED` transition for that experiment's acceptance check. It does not change the Protocol v1 strict comparator, does not normalize the raw control word, and does not enable production writes.
+- The input-descriptor TRUE/FALSE test and the NTFS object-level TRUE persistence probe remain separate. If NTFS does not retain TRUE on the object, the object-level case is `NOT EXERCISED`, not PASS.
+- PR #134 is the separate implementation slice for the explicit comparator; its exact-head CI and merge must be evaluated independently.
+- Native Writer, production transactional ACL mutation, Terminal execution and all seven built-in templates remain BLOCKED / disabled.
