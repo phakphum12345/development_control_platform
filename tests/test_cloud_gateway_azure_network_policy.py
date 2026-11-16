@@ -109,6 +109,53 @@ class VerifierTests(unittest.TestCase):
             }]
         })).verify_nic(NIC,NSG,SUBNET))
 
+    def test_more_specific_deny_rule_overrides_exact_outbound_allow(self):
+        body = nsg_body()
+        body["value"][0]["effectiveSecurityRules"].insert(0, {
+            "name": "deny-subprefix", "direction": "Outbound", "access": "Deny",
+            "protocol": "Tcp", "sourceAddressPrefix": "10.1.0.0/16",
+            "destinationPortRange": "443", "destinationAddressPrefix": "13.64.0.0/12",
+            "priority": 50,
+        })
+        with self.assertRaises(EffectiveNetworkPolicyError):
+            self.make(FakeArm(nsg=body)).verify_nic(NIC, NSG, SUBNET)
+
+    def test_more_specific_public_route_cannot_bypass_firewall(self):
+        for next_hop_type, next_hop_ip in (
+            ("Internet", []),
+            ("VirtualAppliance", ["10.20.0.9"]),
+        ):
+            routes = route_body()
+            routes["value"].append({
+                "addressPrefix": ["13.64.0.0/12"],
+                "nextHopType": next_hop_type,
+                "nextHopIpAddress": next_hop_ip,
+                "state": "Active",
+            })
+            with self.subTest(next_hop_type=next_hop_type), self.assertRaises(EffectiveNetworkPolicyError):
+                self.make(FakeArm(routes=routes)).verify_nic(NIC, NSG, SUBNET)
+
+    def test_active_public_ipv6_route_fails_closed_without_ipv6_firewall_policy(self):
+        routes = route_body()
+        routes["value"].append({
+            "addressPrefix": ["::/0"],
+            "nextHopType": "Internet",
+            "nextHopIpAddress": [],
+            "state": "Active",
+        })
+        with self.assertRaises(EffectiveNetworkPolicyError):
+            self.make(FakeArm(routes=routes)).verify_nic(NIC, NSG, SUBNET)
+
+    def test_private_vnet_route_does_not_count_as_public_firewall_bypass(self):
+        routes = route_body()
+        routes["value"].append({
+            "addressPrefix": ["10.0.0.0/8"],
+            "nextHopType": "VnetLocal",
+            "nextHopIpAddress": [],
+            "state": "Active",
+        })
+        self.assertTrue(self.make(FakeArm(routes=routes)).verify_nic(NIC, NSG, SUBNET))
+
     def test_multiple_firewall_next_hops_fail_closed(self):
         with self.assertRaises(EffectiveNetworkPolicyError):
             self.make(FakeArm(routes={
