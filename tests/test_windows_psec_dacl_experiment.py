@@ -13,6 +13,7 @@ from tools.local_runner_agent.windows_psec_dacl_experiment import (
     DACL_ONLY_SECURITY_INFO,
     DACL_AND_PROTECTED_SECURITY_INFO,
     WindowsDaclDefaultedExperiment,
+    _control_flags_match_with_os_managed_auto_inherited,
 )
 
 
@@ -78,6 +79,14 @@ def _emit_evidence(label, result):
 
 
 class WindowsDaclExperimentContractTests(unittest.TestCase):
+    def test_auto_inherited_is_the_only_one_way_os_managed_control_transition(self):
+        original = 0x9004  # SELF_RELATIVE | DACL_PRESENT | DACL_PROTECTED
+        self.assertTrue(_control_flags_match_with_os_managed_auto_inherited(original, original))
+        self.assertTrue(_control_flags_match_with_os_managed_auto_inherited(original, original | 0x0400))
+        self.assertFalse(_control_flags_match_with_os_managed_auto_inherited(original | 0x0400, original))
+        self.assertFalse(_control_flags_match_with_os_managed_auto_inherited(original, original | 0x0200))
+        self.assertFalse(_control_flags_match_with_os_managed_auto_inherited(original, original & ~0x1000))
+
     def test_constructor_fails_closed_off_windows(self):
         with patch("tools.local_runner_agent.windows_psec_dacl_experiment.os.name", "posix"):
             with self.assertRaisesRegex(DaclExperimentError, "Windows-only"):
@@ -126,6 +135,8 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         self.assertEqual(result.security_info_flags, security_info_flags)
         self.assertFalse(result.rollback_attempted)
         self.assertIsNotNone(result.dacl_bytes_after_write_hex)
+        self.assertEqual(result.dacl_bytes_after_write_hex, result.dacl_bytes_before_hex)
+        self.assertEqual(result.dacl_defaulted_after_write, result.dacl_defaulted_before)
         self.assertFalse(result.api_errors)
         self.assertIsNone(result.dacl_defaulted_after_rollback)
         self.assertIsNone(result.dacl_bytes_after_rollback_hex)
