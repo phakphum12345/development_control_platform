@@ -105,3 +105,22 @@ A candidate is experimentally capable for this tested scenario only if its API c
 - Native Writer and Transactional ACL Mutation: **BLOCKED**.
 
 A result on one hosted Windows NTFS environment is not universal support evidence. Production use requires local Windows 11 acceptance, additional supported-build coverage, code review, security review, and separate authorization. Until then, keep Native Writer and Transactional ACL Mutation BLOCKED.
+
+## 9. Reconciliation and strengthened acceptance — 2026-11-16
+
+The restore-API candidate matrix has been rebased onto the current PSEC stack. The test now asserts the exact hosted Windows NTFS observations rather than accepting either strict result:
+
+| Candidate | Expected API result | Expected S2 | Expected strict result |
+|---|---:|---:|---|
+| SetSecurityInfo + UNPROTECTED | 0 | 0x8404, 3 inherited ACEs | RESTORE_NOT_EXACT |
+| SetNamedSecurityInfoW + UNPROTECTED | 0 | 0x8404, 3 inherited ACEs | RESTORE_NOT_EXACT |
+| SetFileSecurityW + original control | 1 | 0x9004, 0 inherited ACEs | RESTORED_EXACT |
+| SetFileSecurityW + AUTO_INHERIT_REQ | 1 | 0x9004, 0 inherited ACEs | RESTORED_EXACT |
+
+The test also asserts S0=0x9004, S1=0x9404, unique transaction IDs and file identities, no API/read-back error, exact cleanup, and candidate-specific S0/S2 DACL byte equality. A different result on a future Windows runner is a CI failure requiring review, not a silent pass.
+
+For path-based candidates B/C/D, the harness now opens a second identity-pin handle with `OPEN_REPARSE_POINT` and without `FILE_SHARE_DELETE` while the name-based API runs. It verifies that the pinned path resolves to the same volume/file identity as the retained target handle. Candidate A remains handle-based. This narrows the path-replacement window for the disposable experiment; it does not make these name-based APIs suitable for production.
+
+The dedicated Windows NTFS job uses `DCP_RUN_WINDOWS_PSEC_CI=1` for the FALSE-state experiment. The test no longer depends on the user's PC being on. The TRUE input-descriptor test is separate; TRUE object read-back remains NOT EXERCISED when NTFS does not retain TRUE.
+
+`SetFileSecurityW` remains obsolete and compatibility-only. Even the exact S2 result is a host-specific experimental finding, not production authorization. Native Writer and production ACL mutation remain BLOCKED.
