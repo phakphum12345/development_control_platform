@@ -1,3 +1,5 @@
+"""Reversible state tests. Strict restoration verification remains distinct from experiment-specific OS-managed control-bit acceptance."""
+
 from __future__ import annotations
 
 import unittest
