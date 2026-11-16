@@ -56,3 +56,14 @@ SetFileSecurityW is obsolete and remains a compatibility-only experimental lead.
 7. Keep Native Writer and Transactional ACL Mutation BLOCKED pending independent review and explicit authorization.
 
 No merge, deployment, production enablement, privilege expansion, or real-file ACL testing is authorized.
+
+## 2026-11-16 — Reconciliation and strengthened candidate gates
+
+- Rebased onto current PR #136 head `c89da8337213da09086c83c0a4dff629921254eb`; exact new head is pending CI.
+- The Windows matrix test now asserts the known candidate-specific outcomes: A/B return 0 but end RESTORE_NOT_EXACT at S2=0x8404 with three inherited ACEs; C/D return nonzero success and RESTORED_EXACT at S2=0x9004 with zero inherited ACEs.
+- Every candidate must preserve the same retained target identity, produce unique transaction/file identities, return no API/read-back error, and verify cleanup.
+- Name-based candidates B/C/D now pin the path with a second handle opened using OPEN_REPARSE_POINT and no FILE_SHARE_DELETE, then compare the pinned identity to the retained target. Candidate A remains handle-based.
+- The obsolete SetFileSecurityW candidate remains experimental only; no production recommendation or writer enablement.
+- The dedicated Windows NTFS job now runs the FALSE-state round-trip with `DCP_RUN_WINDOWS_PSEC_CI=1`, independent of the user's local PC.
+- TRUE object persistence remains NOT EXERCISED if NTFS does not retain TRUE at creation.
+- Native Writer, transactional production ACL mutation, Terminal and all templates remain BLOCKED.
