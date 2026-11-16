@@ -68,6 +68,13 @@ jobs:
           node --check recon-back-box-inline.js
           python -c "from pathlib import Path; Path('dashboard-inline.js').unlink(); Path('recon-back-box-inline.js').unlink()"
 
+      - name: Audit declared Python dependencies
+        run: |
+          python -m pip install --disable-pip-version-check pip-audit
+          pip-audit -r requirements-cloud-gateway.txt
+          pip-audit -r requirements-mcp.txt
+          pip-audit -r requirements-windows-psec.txt
+
       - name: Validate dashboard and Python contracts
         run: python -m unittest discover -s tests -v
 
