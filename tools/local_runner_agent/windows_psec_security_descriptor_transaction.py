@@ -11,6 +11,12 @@ import re
 from dataclasses import dataclass
 from typing import Protocol, Sequence
 
+from tools.local_runner_agent.windows_psec_dacl_comparison import (
+    DaclComparisonProfile,
+    dacl_states_equal,
+    resolve_dacl_comparison_profile,
+)
+
 
 _PACKAGE_SID_RE = re.compile(
     r"^S-1-15-2-(?:0|[1-9][0-9]{0,9})(?:-(?:0|[1-9][0-9]{0,9})){0,14}$",
@@ -198,8 +204,19 @@ class NativeSecurityDescriptorTransaction:
         self._limits = limits or TransactionLimits()
 
     def apply(
-        self, targets: Sequence[TransactionTarget], package_sid: str
+        self,
+        targets: Sequence[TransactionTarget],
+        package_sid: str,
+        *,
+        comparison_profile: DaclComparisonProfile | str | None = None,
     ) -> TransactionResult:
+        try:
+            selected_profile = resolve_dacl_comparison_profile(comparison_profile)
+        except ValueError as exc:
+            # Fail before consulting the adapter: a missing or unknown profile
+            # must never reach a write-capable phase.
+            return TransactionResult("PREFLIGHT_REJECTED_BLOCKED", 0, 0, str(exc))
+
         if not _valid_package_sid(package_sid):
             return TransactionResult("PREFLIGHT_REJECTED_BLOCKED", 0, 0, "invalid Package SID")
         if not targets or len(targets) > self._limits.max_targets:
@@ -274,16 +291,34 @@ class NativeSecurityDescriptorTransaction:
                 # stability alone does not prove that another actor has not
                 # changed this object's DACL since the preflight snapshot.
                 current_snapshot = self._api.read_dacl(handle)
-                if current_snapshot != snapshot:
+                if not isinstance(current_snapshot, DescriptorSnapshot):
                     raise NativeSecurityDescriptorTransactionError(
-                        f"DACL changed after preflight for {target.target_id}"
+                        "adapter returned an invalid pre-write DACL snapshot"
+                    )
+                current_snapshot.validate(
+                    max_descriptor_bytes=self._limits.max_descriptor_bytes,
+                    max_aces=self._limits.max_aces_per_descriptor,
+                )
+                if not dacl_states_equal(snapshot, current_snapshot, selected_profile):
+                    raise NativeSecurityDescriptorTransactionError(
+                        f"DACL changed after preflight under {selected_profile.value} "
+                        f"for {target.target_id}"
                     )
                 attempted.append((target, snapshot))
                 self._api.write_dacl(handle, candidate)
                 read_back = self._api.read_dacl(handle)
-                if read_back != candidate.as_snapshot():
+                if not isinstance(read_back, DescriptorSnapshot):
                     raise NativeSecurityDescriptorTransactionError(
-                        f"DACL read-back mismatch for {target.target_id}"
+                        "adapter returned an invalid read-back DACL snapshot"
+                    )
+                read_back.validate(
+                    max_descriptor_bytes=self._limits.max_descriptor_bytes,
+                    max_aces=self._limits.max_aces_per_descriptor,
+                )
+                if not dacl_states_equal(candidate.as_snapshot(), read_back, selected_profile):
+                    raise NativeSecurityDescriptorTransactionError(
+                        f"DACL read-back mismatch under {selected_profile.value} "
+                        f"for {target.target_id}"
                     )
                 verified += 1
             except Exception as exc:
@@ -303,8 +338,18 @@ class NativeSecurityDescriptorTransaction:
                     raise NativeSecurityDescriptorTransactionError("identity changed before rollback")
                 self._api.write_dacl(handle, snapshot)
                 restored = self._api.read_dacl(handle)
-                if restored != snapshot:
-                    raise NativeSecurityDescriptorTransactionError("rollback read-back mismatch")
+                if not isinstance(restored, DescriptorSnapshot):
+                    raise NativeSecurityDescriptorTransactionError(
+                        "adapter returned an invalid rollback DACL snapshot"
+                    )
+                restored.validate(
+                    max_descriptor_bytes=self._limits.max_descriptor_bytes,
+                    max_aces=self._limits.max_aces_per_descriptor,
+                )
+                if not dacl_states_equal(snapshot, restored, selected_profile):
+                    raise NativeSecurityDescriptorTransactionError(
+                        f"rollback read-back mismatch under {selected_profile.value}"
+                    )
             except Exception as exc:
                 rollback_errors.append(f"{target.target_id}: {exc}")
 

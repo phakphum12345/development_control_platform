@@ -4,6 +4,7 @@ import unittest
 from dataclasses import replace
 
 from tools.local_runner_agent.windows_psec_native_handles import HandleIdentity
+from tools.local_runner_agent.windows_psec_dacl_comparison import DaclComparisonProfile
 from tools.local_runner_agent.windows_psec_security_descriptor_transaction import (
     DescriptorCandidate,
     DescriptorSnapshot,
@@ -16,7 +17,7 @@ from tools.local_runner_agent.windows_psec_security_descriptor_transaction impor
 PACKAGE_SID = "S-1-15-2-123-456-789"
 IDENTITY_A = HandleIdentity(1, "00" * 16, True, 0x10, 0)
 IDENTITY_B = HandleIdentity(1, "11" * 16, False, 0x80, 0)
-ORIGINAL = DescriptorSnapshot(True, False, b"ACL-ORIGINAL-BYTES", 0x1000, 1, 2, 1, True)
+ORIGINAL = DescriptorSnapshot(True, False, b"ACL-ORIGINAL-BYTES", 0x9004, 1, 2, 1, True)
 
 
 class FakeHandleSecurityApi:
@@ -73,7 +74,7 @@ def targets():
 class NativeSecurityDescriptorTransactionTests(unittest.TestCase):
     def test_applies_all_candidates_and_verifies_read_back(self):
         api = FakeHandleSecurityApi()
-        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID)
+        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID, comparison_profile=DaclComparisonProfile.STRICT_DESCRIPTOR_EQUALITY)
         self.assertEqual(result.state, "APPLIED_VERIFIED")
         self.assertEqual(result.attempted_targets, 2)
         self.assertEqual(result.verified_targets, 2)
@@ -82,14 +83,14 @@ class NativeSecurityDescriptorTransactionTests(unittest.TestCase):
     def test_completes_all_preflight_before_first_write(self):
         api = FakeHandleSecurityApi()
         api.fail_plan_for.add(11)
-        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID)
+        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID, comparison_profile=DaclComparisonProfile.STRICT_DESCRIPTOR_EQUALITY)
         self.assertEqual(result.state, "PREFLIGHT_REJECTED_BLOCKED")
         self.assertEqual(api.writes, [])
 
     def test_apply_failure_rolls_back_in_reverse_order(self):
         api = FakeHandleSecurityApi()
         api.fail_write_for.add(11)
-        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID)
+        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID, comparison_profile=DaclComparisonProfile.STRICT_DESCRIPTOR_EQUALITY)
         self.assertEqual(result.state, "ROLLED_BACK_VERIFIED")
         self.assertEqual([handle for handle, _ in api.writes], [10, 11, 11, 10])
         self.assertEqual(api.states, {10: ORIGINAL, 11: ORIGINAL})
@@ -97,7 +98,7 @@ class NativeSecurityDescriptorTransactionTests(unittest.TestCase):
     def test_ambiguous_write_failure_is_included_in_rollback_journal(self):
         api = FakeHandleSecurityApi()
         api.write_then_raise_for.add(11)
-        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID)
+        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID, comparison_profile=DaclComparisonProfile.STRICT_DESCRIPTOR_EQUALITY)
         self.assertEqual(result.state, "ROLLED_BACK_VERIFIED")
         self.assertEqual(api.states, {10: ORIGINAL, 11: ORIGINAL})
         self.assertEqual([handle for handle, _ in api.writes], [10, 11, 11, 10])
@@ -106,7 +107,7 @@ class NativeSecurityDescriptorTransactionTests(unittest.TestCase):
         api = FakeHandleSecurityApi()
         api.fail_write_for.add(11)
         api.fail_rollback_for.add(10)
-        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID)
+        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID, comparison_profile=DaclComparisonProfile.STRICT_DESCRIPTOR_EQUALITY)
         self.assertEqual(result.state, "ROLLBACK_INCOMPLETE_BLOCKED")
         self.assertTrue(result.rollback_errors)
         self.assertNotEqual(result.state, "APPLIED_VERIFIED")
@@ -114,7 +115,7 @@ class NativeSecurityDescriptorTransactionTests(unittest.TestCase):
     def test_identity_drift_before_write_causes_preflight_rejection(self):
         api = FakeHandleSecurityApi()
         api.identity_override[11] = replace(IDENTITY_B, file_id="22" * 16)
-        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID)
+        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID, comparison_profile=DaclComparisonProfile.STRICT_DESCRIPTOR_EQUALITY)
         self.assertEqual(result.state, "PREFLIGHT_REJECTED_BLOCKED")
         self.assertEqual(api.writes, [])
 
@@ -131,7 +132,7 @@ class NativeSecurityDescriptorTransactionTests(unittest.TestCase):
             return original_query(handle)
 
         api.query_identity = changing_query
-        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID)
+        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID, comparison_profile=DaclComparisonProfile.STRICT_DESCRIPTOR_EQUALITY)
         self.assertEqual(result.state, "ROLLED_BACK_VERIFIED")
         self.assertEqual([handle for handle, _ in api.writes], [10, 10])
 
@@ -149,7 +150,7 @@ class NativeSecurityDescriptorTransactionTests(unittest.TestCase):
             return original_read(handle)
 
         api.read_dacl = changing_read
-        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID)
+        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID, comparison_profile=DaclComparisonProfile.STRICT_DESCRIPTOR_EQUALITY)
         self.assertEqual(result.state, "ROLLED_BACK_VERIFIED")
         self.assertEqual([handle for handle, _ in api.writes], [10, 10])
         self.assertEqual(api.states[10], ORIGINAL)
@@ -168,13 +169,13 @@ class NativeSecurityDescriptorTransactionTests(unittest.TestCase):
             return original_read(handle)
 
         api.read_dacl = changing_read
-        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID)
+        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID, comparison_profile=DaclComparisonProfile.STRICT_DESCRIPTOR_EQUALITY)
         self.assertEqual(result.state, "ROLLED_BACK_VERIFIED")
         self.assertEqual(api.states, {10: ORIGINAL, 11: ORIGINAL})
 
     def test_dacl_defaulted_state_is_preserved_in_candidate_and_readback(self):
         api = FakeHandleSecurityApi()
-        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID)
+        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID, comparison_profile=DaclComparisonProfile.STRICT_DESCRIPTOR_EQUALITY)
         self.assertEqual(result.state, "APPLIED_VERIFIED")
         for handle in (10, 11):
             self.assertTrue(api.states[handle].dacl_defaulted)
@@ -183,7 +184,7 @@ class NativeSecurityDescriptorTransactionTests(unittest.TestCase):
     def test_dacl_defaulted_state_is_restored_after_apply_failure(self):
         api = FakeHandleSecurityApi()
         api.fail_write_for.add(11)
-        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID)
+        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID, comparison_profile=DaclComparisonProfile.STRICT_DESCRIPTOR_EQUALITY)
         self.assertEqual(result.state, "ROLLED_BACK_VERIFIED")
         self.assertTrue(api.states[10].dacl_defaulted)
         self.assertTrue(api.states[11].dacl_defaulted)
@@ -205,20 +206,20 @@ class NativeSecurityDescriptorTransactionTests(unittest.TestCase):
         api.build_candidate = lambda snapshot, target, sid: DescriptorCandidate(
             True, True, b"", snapshot.dacl_control_flags
         )
-        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID)
+        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID, comparison_profile=DaclComparisonProfile.STRICT_DESCRIPTOR_EQUALITY)
         self.assertEqual(result.state, "PREFLIGHT_REJECTED_BLOCKED")
         self.assertEqual(api.writes, [])
 
     def test_rejects_duplicate_handle_and_file_identity(self):
         api = FakeHandleSecurityApi()
         duplicate = targets() + [TransactionTarget("duplicate", 10, IDENTITY_A, 1)]
-        result = NativeSecurityDescriptorTransaction(api).apply(duplicate, PACKAGE_SID)
+        result = NativeSecurityDescriptorTransaction(api).apply(duplicate, PACKAGE_SID, comparison_profile=DaclComparisonProfile.STRICT_DESCRIPTOR_EQUALITY)
         self.assertEqual(result.state, "PREFLIGHT_REJECTED_BLOCKED")
         self.assertEqual(api.writes, [])
 
     def test_rejects_invalid_package_sid_without_adapter_calls(self):
         api = FakeHandleSecurityApi()
-        result = NativeSecurityDescriptorTransaction(api).apply(targets(), "S-1-5-18")
+        result = NativeSecurityDescriptorTransaction(api).apply(targets(), "S-1-5-18", comparison_profile=DaclComparisonProfile.STRICT_DESCRIPTOR_EQUALITY)
         self.assertEqual(result.state, "PREFLIGHT_REJECTED_BLOCKED")
         self.assertEqual(api.writes, [])
 
@@ -226,10 +227,64 @@ class NativeSecurityDescriptorTransactionTests(unittest.TestCase):
         api = FakeHandleSecurityApi()
         reparse = replace(IDENTITY_B, attributes=0x400)
         result = NativeSecurityDescriptorTransaction(api).apply(
-            [targets()[0], TransactionTarget("reparse", 11, reparse, 1)], PACKAGE_SID
+            [targets()[0], TransactionTarget("reparse", 11, reparse, 1)], PACKAGE_SID,
+            comparison_profile=DaclComparisonProfile.STRICT_DESCRIPTOR_EQUALITY,
         )
         self.assertEqual(result.state, "PREFLIGHT_REJECTED_BLOCKED")
         self.assertEqual(api.writes, [])
+
+
+    def test_missing_profile_is_rejected_before_any_write(self):
+        api = FakeHandleSecurityApi()
+        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID)
+        self.assertEqual(result.state, "PREFLIGHT_REJECTED_BLOCKED")
+        self.assertIn("explicit DACL comparison profile is required", result.error)
+        self.assertEqual(api.writes, [])
+
+    def test_unknown_profile_is_rejected_before_any_write(self):
+        api = FakeHandleSecurityApi()
+        result = NativeSecurityDescriptorTransaction(api).apply(
+            targets(), PACKAGE_SID, comparison_profile="CONTENT_EQUALITY"
+        )
+        self.assertEqual(result.state, "PREFLIGHT_REJECTED_BLOCKED")
+        self.assertIn("unknown DACL comparison profile", result.error)
+        self.assertEqual(api.writes, [])
+
+    def test_explicit_content_profile_does_not_silently_require_control_equality(self):
+        class AutoInheritedFlagApi(FakeHandleSecurityApi):
+            def write_dacl(self, handle, state):
+                super().write_dacl(handle, state)
+                current = self.states[handle]
+                self.states[handle] = replace(
+                    current, dacl_control_flags=current.dacl_control_flags | 0x0400
+                )
+
+        api = AutoInheritedFlagApi()
+        result = NativeSecurityDescriptorTransaction(api).apply(
+            targets(), PACKAGE_SID,
+            comparison_profile=DaclComparisonProfile.DACL_CONTENT_EQUALITY,
+        )
+        self.assertEqual(result.state, "APPLIED_VERIFIED")
+        self.assertEqual(api.states[10].dacl_bytes, ORIGINAL.dacl_bytes + b"|PACKAGE-ACE|")
+        self.assertEqual(api.states[10].dacl_control_flags, 0x9404)
+
+    def test_strict_profile_keeps_control_transition_fatal_through_rollback(self):
+        class AutoInheritedFlagApi(FakeHandleSecurityApi):
+            def write_dacl(self, handle, state):
+                super().write_dacl(handle, state)
+                current = self.states[handle]
+                self.states[handle] = replace(
+                    current, dacl_control_flags=current.dacl_control_flags | 0x0400
+                )
+
+        api = AutoInheritedFlagApi()
+        result = NativeSecurityDescriptorTransaction(api).apply(
+            targets(), PACKAGE_SID,
+            comparison_profile=DaclComparisonProfile.STRICT_DESCRIPTOR_EQUALITY,
+        )
+        self.assertEqual(result.state, "ROLLBACK_INCOMPLETE_BLOCKED")
+        self.assertTrue(result.rollback_errors)
+        self.assertNotEqual(result.state, "APPLIED_VERIFIED")
 
 
 if __name__ == "__main__":
