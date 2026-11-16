@@ -19,7 +19,8 @@ class LegacyLocalRunnerLauncherContractTests(unittest.TestCase):
                 self.assertIn(parameter, SCRIPT)
 
     def test_legacy_entry_point_keeps_safe_enrollment_and_explicit_execution(self):
-        self.assertIn("'DCP\\runner-tokens.json'", SCRIPT)
+        self.assertIn("$dataDir = Join-Path $env:LOCALAPPDATA 'DCP'", SCRIPT)
+        self.assertIn("$credentialFile = Join-Path $dataDir 'runner-tokens.json'", SCRIPT)
         self.assertIn("http://127.0.0.1:18790/healthz", SCRIPT)
         self.assertIn("'--enroll-only'", SCRIPT.lower())
         self.assertIn("Execution requires at least one explicit -TrustedRepository", SCRIPT)
