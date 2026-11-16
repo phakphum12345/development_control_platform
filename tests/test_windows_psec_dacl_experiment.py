@@ -95,6 +95,33 @@ class WindowsDaclExperimentContractTests(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "nt", "native DACL defaulted experiment requires Windows + NTFS")
 class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
+    def test_defaulted_true_is_set_on_input_descriptor_before_object_association(self):
+        experiment = WindowsDaclDefaultedExperiment()
+        true_attrs, true_descriptor, true_acl = experiment._security_attributes(defaulted=True)
+        false_attrs, false_descriptor, false_acl = experiment._security_attributes(defaulted=False)
+        true_control = experiment._security_descriptor_control(true_descriptor)
+        false_control = experiment._security_descriptor_control(false_descriptor)
+        evidence = {
+            "label": "INPUT_DESCRIPTOR_DEFAULTED_FLAG",
+            "windows_build": platform.platform(),
+            "python": sys.version,
+            "input_descriptor_control": {
+                "true_requested": true_control,
+                "false_requested": false_control,
+                "se_dacl_defaulted_mask": 0x0008,
+            },
+            "outcome": "PASS",
+            "scope": "in-memory input descriptor before association with an NTFS file",
+        }
+        print("DACL_EXPERIMENT_EVIDENCE=" + json.dumps(evidence, default=str), flush=True)
+        self.assertTrue(true_control & 0x0008, "TRUE input descriptor did not carry SE_DACL_DEFAULTED")
+        self.assertFalse(false_control & 0x0008, "FALSE input descriptor unexpectedly carried SE_DACL_DEFAULTED")
+        # Keep SECURITY_ATTRIBUTES and the ACL buffers alive through both reads.
+        self.assertIsNotNone(true_attrs)
+        self.assertIsNotNone(true_acl)
+        self.assertIsNotNone(false_attrs)
+        self.assertIsNotNone(false_acl)
+
     def test_explicit_defaulted_true_round_trip_on_disposable_ntfs_file(self):
         experiment = WindowsDaclDefaultedExperiment()
         try:
