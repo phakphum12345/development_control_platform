@@ -13,6 +13,7 @@ from tools.local_runner_agent.windows_psec_dacl_experiment import (
     DACL_ONLY_SECURITY_INFO,
     DACL_AND_PROTECTED_SECURITY_INFO,
     WindowsDaclDefaultedExperiment,
+    _control_flags_match_with_os_managed_auto_inherited,
 )
 
 
@@ -40,6 +41,10 @@ def _emit_evidence(label, result):
         "rollback_attempted": result.rollback_attempted,
         "control_flags_after_each_write": result.control_flags_after_each_write,
         "native_write_calls": result.native_write_calls,
+        "os_managed_control_flag_transitions": {
+            "se_dacl_auto_inherited_changed_after_write": result.auto_inherited_changed_after_write,
+            "se_dacl_auto_inherited_changed_after_rollback": result.auto_inherited_changed_after_rollback,
+        },
         "control_flags": {
             "after_create": result.control_flags_before,
             "after_write": result.control_flags_after_write,
@@ -74,6 +79,14 @@ def _emit_evidence(label, result):
 
 
 class WindowsDaclExperimentContractTests(unittest.TestCase):
+    def test_auto_inherited_is_the_only_one_way_os_managed_control_transition(self):
+        original = 0x9004  # SELF_RELATIVE | DACL_PRESENT | DACL_PROTECTED
+        self.assertTrue(_control_flags_match_with_os_managed_auto_inherited(original, original))
+        self.assertTrue(_control_flags_match_with_os_managed_auto_inherited(original, original | 0x0400))
+        self.assertFalse(_control_flags_match_with_os_managed_auto_inherited(original | 0x0400, original))
+        self.assertFalse(_control_flags_match_with_os_managed_auto_inherited(original, original | 0x0200))
+        self.assertFalse(_control_flags_match_with_os_managed_auto_inherited(original, original & ~0x1000))
+
     def test_constructor_fails_closed_off_windows(self):
         with patch("tools.local_runner_agent.windows_psec_dacl_experiment.os.name", "posix"):
             with self.assertRaisesRegex(DaclExperimentError, "Windows-only"):
@@ -82,6 +95,33 @@ class WindowsDaclExperimentContractTests(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "nt", "native DACL defaulted experiment requires Windows + NTFS")
 class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
+    def test_defaulted_true_is_set_on_input_descriptor_before_object_association(self):
+        experiment = WindowsDaclDefaultedExperiment()
+        true_attrs, true_descriptor, true_acl = experiment._security_attributes(defaulted=True)
+        false_attrs, false_descriptor, false_acl = experiment._security_attributes(defaulted=False)
+        true_control = experiment._security_descriptor_control(true_descriptor)
+        false_control = experiment._security_descriptor_control(false_descriptor)
+        evidence = {
+            "label": "INPUT_DESCRIPTOR_DEFAULTED_FLAG",
+            "windows_build": platform.platform(),
+            "python": sys.version,
+            "input_descriptor_control": {
+                "true_requested": true_control,
+                "false_requested": false_control,
+                "se_dacl_defaulted_mask": 0x0008,
+            },
+            "outcome": "PASS",
+            "scope": "in-memory input descriptor before association with an NTFS file",
+        }
+        print("DACL_EXPERIMENT_EVIDENCE=" + json.dumps(evidence, default=str), flush=True)
+        self.assertTrue(true_control & 0x0008, "TRUE input descriptor did not carry SE_DACL_DEFAULTED")
+        self.assertFalse(false_control & 0x0008, "FALSE input descriptor unexpectedly carried SE_DACL_DEFAULTED")
+        # Keep SECURITY_ATTRIBUTES and the ACL buffers alive through both reads.
+        self.assertIsNotNone(true_attrs)
+        self.assertIsNotNone(true_acl)
+        self.assertIsNotNone(false_attrs)
+        self.assertIsNotNone(false_acl)
+
     def test_explicit_defaulted_true_round_trip_on_disposable_ntfs_file(self):
         experiment = WindowsDaclDefaultedExperiment()
         try:
@@ -122,6 +162,8 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         self.assertEqual(result.security_info_flags, security_info_flags)
         self.assertFalse(result.rollback_attempted)
         self.assertIsNotNone(result.dacl_bytes_after_write_hex)
+        self.assertEqual(result.dacl_bytes_after_write_hex, result.dacl_bytes_before_hex)
+        self.assertEqual(result.dacl_defaulted_after_write, result.dacl_defaulted_before)
         self.assertFalse(result.api_errors)
         self.assertIsNone(result.dacl_defaulted_after_rollback)
         self.assertIsNone(result.dacl_bytes_after_rollback_hex)
@@ -129,6 +171,17 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         self.assertTrue(result.owned_handle_opened)
         self.assertTrue(result.owned_handle_closed)
         self.assertIs(result.close_handle_succeeded, True)
+        self.assertIsNotNone(result.control_flags_after_write)
+        self.assertEqual(
+            result.control_flags_before & 0xFBFF,
+            result.control_flags_after_write & 0xFBFF,
+            "write-only probe changed control bits other than SE_DACL_AUTO_INHERITED",
+        )
+        self.assertEqual(
+            result.control_flags_before & 0x1000,
+            result.control_flags_after_write & 0x1000,
+            "write-only probe changed SE_DACL_PROTECTED",
+        )
 
     def test_false_creation_state_without_native_write(self):
         experiment = WindowsDaclDefaultedExperiment()
@@ -159,6 +212,14 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         self.assertFalse(result.dacl_defaulted_before)
         self.assertEqual(result.outcome, "OBSERVED")
         self.assertEqual(result.native_write_calls, 3)
+        self.assertTrue(all(
+            (flags & 0xFBFF) == (result.control_flags_before & 0xFBFF)
+            for flags in result.control_flags_after_each_write
+        ), "repeated writes changed control bits other than SE_DACL_AUTO_INHERITED")
+        self.assertTrue(all(
+            (flags & 0x1000) == (result.control_flags_before & 0x1000)
+            for flags in result.control_flags_after_each_write
+        ), "repeated writes changed SE_DACL_PROTECTED")
         self.assertEqual(len(result.control_flags_after_each_write), 3)
         self.assertFalse(result.api_errors)
         self.assertTrue(result.cleanup_verified)
@@ -197,6 +258,22 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         self.assertEqual(calls["count"], 2, "rollback must run after an ambiguous write error")
         self.assertIn("injected error after native SetSecurityInfo", result.api_errors)
         self.assertEqual(result.outcome, "FAIL")
+        # The injected write error is expected, but rollback must still restore
+        # the original DACL bytes and DaclDefaulted state on the retained handle.
+        self.assertTrue(result.rollback_attempted)
+        self.assertTrue(result.rollback_verified)
+        self.assertTrue(result.dacl_bytes_equal_after_rollback)
+        self.assertEqual(result.dacl_defaulted_after_rollback, False)
+        self.assertEqual(
+            result.control_flags_before & 0xFBFF,
+            result.control_flags_after_rollback & 0xFBFF,
+            "ambiguous-write rollback changed control bits other than SE_DACL_AUTO_INHERITED",
+        )
+        self.assertEqual(
+            result.control_flags_before & 0x1000,
+            result.control_flags_after_rollback & 0x1000,
+            "ambiguous-write rollback changed SE_DACL_PROTECTED",
+        )
         self.assertTrue(experiment.last_cleanup_verified)
         self.assertTrue(result.cleanup_verified)
         self.assertTrue(result.owned_handle_opened)
@@ -218,7 +295,33 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         _emit_evidence("FALSE_ROUND_TRIP", result)
         self.assertEqual(result.filesystem.upper(), "NTFS")
         self.assertFalse(result.dacl_defaulted_before)
-        self.assertEqual(result.outcome, "PASS", "FALSE DACL state failed exact round-trip")
+        self.assertEqual(result.outcome, "PASS", "FALSE DACL state failed round-trip invariants")
+        self.assertTrue(result.write_verified)
+        self.assertTrue(result.rollback_verified)
+        self.assertTrue(result.dacl_bytes_equal_after_write)
+        self.assertTrue(result.dacl_bytes_equal_after_rollback)
+        self.assertEqual(result.dacl_defaulted_after_write, result.dacl_defaulted_before)
+        self.assertEqual(result.dacl_defaulted_after_rollback, result.dacl_defaulted_before)
+        self.assertEqual(
+            result.control_flags_before & 0x1000,
+            result.control_flags_after_write & 0x1000,
+            "write changed SE_DACL_PROTECTED",
+        )
+        self.assertEqual(
+            result.control_flags_before & 0x1000,
+            result.control_flags_after_rollback & 0x1000,
+            "rollback changed SE_DACL_PROTECTED",
+        )
+        self.assertEqual(
+            result.control_flags_before & 0xFBFF,
+            result.control_flags_after_write & 0xFBFF,
+            "write changed control bits other than SE_DACL_AUTO_INHERITED",
+        )
+        self.assertEqual(
+            result.control_flags_before & 0xFBFF,
+            result.control_flags_after_rollback & 0xFBFF,
+            "rollback changed control bits other than SE_DACL_AUTO_INHERITED",
+        )
         self.assertEqual(result.dacl_defaulted_after_rollback, False)
         self.assertTrue(result.cleanup_verified)
         self.assertTrue(result.owned_handle_opened)
