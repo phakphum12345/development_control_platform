@@ -34,6 +34,18 @@ INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
 SECURITY_DESCRIPTOR_REVISION = 1
 ACL_REVISION = 2
 SE_DACL_PROTECTED = 0x1000
+SE_DACL_AUTO_INHERITED = 0x0400
+
+
+def _control_flags_match_with_os_managed_auto_inherited(before: int, after: int) -> bool:
+    """Allow Windows to set AUTO_INHERITED, but never clear it or alter other bits."""
+    stable_mask = 0xFFFF ^ SE_DACL_AUTO_INHERITED
+    stable_bits_match = (before & stable_mask) == (after & stable_mask)
+    protected_state_matches = (before & SE_DACL_PROTECTED) == (after & SE_DACL_PROTECTED)
+    auto_inherited_before = bool(before & SE_DACL_AUTO_INHERITED)
+    auto_inherited_after = bool(after & SE_DACL_AUTO_INHERITED)
+    auto_inherited_transition_allowed = auto_inherited_before <= auto_inherited_after
+    return stable_bits_match and protected_state_matches and auto_inherited_transition_allowed
 
 
 class DaclExperimentError(RuntimeError):
@@ -82,6 +94,8 @@ class ExperimentResult:
     rollback_attempted: bool = True
     control_flags_after_each_write: tuple[int, ...] = ()
     native_write_calls: int = 0
+    auto_inherited_changed_after_write: bool = False
+    auto_inherited_changed_after_rollback: bool = False
 
 
 class _SECURITY_ATTRIBUTES(ctypes.Structure):
@@ -376,13 +390,17 @@ class WindowsDaclDefaultedExperiment:
                 after is not None
                 and after.dacl_bytes == before.dacl_bytes
                 and after.dacl_defaulted == before.dacl_defaulted
-                and after.dacl_control_flags == before.dacl_control_flags
+                and _control_flags_match_with_os_managed_auto_inherited(
+                    before.dacl_control_flags, after.dacl_control_flags
+                )
             )
             rollback_equal = bool(
                 restored is not None
                 and restored.dacl_bytes == before.dacl_bytes
                 and restored.dacl_defaulted == before.dacl_defaulted
-                and restored.dacl_control_flags == before.dacl_control_flags
+                and _control_flags_match_with_os_managed_auto_inherited(
+                    before.dacl_control_flags, restored.dacl_control_flags
+                )
             )
             api_errors = tuple(
                 str(error) for error in
@@ -431,6 +449,14 @@ class WindowsDaclDefaultedExperiment:
                 rollback_attempted=bool(rollback),
                 control_flags_after_each_write=tuple(write_control_flags),
                 native_write_calls=native_write_calls,
+                auto_inherited_changed_after_write=bool(
+                    after is not None
+                    and ((after.dacl_control_flags ^ before.dacl_control_flags) & SE_DACL_AUTO_INHERITED)
+                ),
+                auto_inherited_changed_after_rollback=bool(
+                    restored is not None
+                    and ((restored.dacl_control_flags ^ before.dacl_control_flags) & SE_DACL_AUTO_INHERITED)
+                ),
             )
         except Exception as exc:
             primary_error = exc
