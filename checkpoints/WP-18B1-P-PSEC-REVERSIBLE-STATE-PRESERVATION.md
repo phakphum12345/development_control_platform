@@ -47,3 +47,15 @@ Implement immutable preservation of the original DACL descriptor snapshot (S0), 
 ## Safety gates
 
 Native Writer, Transactional ACL Mutation, Terminal, and all seven built-in templates remain BLOCKED. No merge, deployment, process resume, or privilege expansion is authorized.
+
+## 2026-11-16 — Reconciliation and dual-status acceptance update
+
+- Current implementation head before this checkpoint update: `b5e9e8fbac3d75f6e69c71fc44bdf3ce4c51c252`.
+- Reconciliation parent includes PR #131, #132, #133, #134, #135, #145 and #146.
+- The initial strict FALSE round-trip finding remains valid as `RESTORE_NOT_EXACT` under `STRICT_DESCRIPTOR_EQUALITY`.
+- The later disposable NTFS experiment accepts only the one-way OS-managed `SE_DACL_AUTO_INHERITED (0x0400)` transition while requiring exact DACL bytes, `DaclDefaulted`, protected state and all other control bits. This is a separate experiment-only acceptance profile.
+- `outcome=PASS` / `rollback_verified=true` under that experiment profile does not change `restoration_verification_state=RESTORE_NOT_EXACT` under strict Protocol v1 equality.
+- The production transaction coordinator remains strict and has a regression test proving that the OS-managed control transition is rejected and rollback is attempted.
+- The dedicated Windows NTFS CI job ran without the user's local PC. FALSE round-trip and rollback passed under the experiment-specific allowance; TRUE object persistence remains NOT EXERCISED when NTFS does not retain TRUE.
+- Exact-head CI for `b5e9e8fbac3d75f6e69c71fc44bdf3ce4c51c252`: Windows NTFS acceptance, Windows/Ubuntu recovery, Local-first Windows E2E, Linux emulator and Validate Control Plane PASS; Windows runner matrix SKIPPED (not counted as PASS).
+- The current branch has been reconciled onto the shared DACL integration parent; no merge to main or production deployment has occurred.
