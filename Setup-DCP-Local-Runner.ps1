@@ -35,7 +35,18 @@ function Write-ProtectedJsonFile {
 }
 
 $dataDir = Join-Path $env:LOCALAPPDATA 'DCP'
+$existingDataDir = Get-Item -LiteralPath $dataDir -Force -ErrorAction SilentlyContinue
+if ($null -ne $existingDataDir -and
+    ((($existingDataDir.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -or
+     -not $existingDataDir.PSIsContainer)) {
+    throw 'Local DCP data directory is not a regular directory.'
+}
 New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
+$verifiedDataDir = Get-Item -LiteralPath $dataDir -Force
+if ((($verifiedDataDir.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -or
+    -not $verifiedDataDir.PSIsContainer) {
+    throw 'Local DCP data directory resolved to a reparse point or non-directory.'
+}
 $credentialFile = Join-Path $dataDir 'runner-tokens.json'
 $settingsFile = Join-Path $dataDir 'gateway-local-settings.json'
 $workerPattern = '^[a-z0-9_.:-]{1,100}$'
