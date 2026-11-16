@@ -25,7 +25,7 @@ New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
 $env:LOCALAPPDATA = $testRoot
 
 try {
-    & $setup -WorkerId 'ci-runner-01'
+    & $setup -WorkerId 'ci-runner-01' -TrustedRepository 'owner/mobile-app'
     if (-not $?) { throw 'Local Runner credential setup failed on first run.' }
     $credentialFile = Join-Path $testRoot 'DCP\runner-tokens.json'
     if (-not (Test-Path -LiteralPath $credentialFile -PathType Leaf)) {
@@ -44,7 +44,7 @@ try {
         throw 'Setup rotated an existing Runner token unexpectedly.'
     }
 
-    & $setup -WorkerId 'ci-runner-02'
+    & $setup -WorkerId 'ci-runner-02' -TrustedRepository 'org/another-app'
     if (-not $?) { throw 'Local Runner second-worker setup failed.' }
     $thirdMap = Get-Content -LiteralPath $credentialFile -Raw | ConvertFrom-Json
     if (@($thirdMap.PSObject.Properties).Count -ne 2) {
@@ -52,6 +52,20 @@ try {
     }
     if ($thirdMap.'ci-runner-02' -ceq $firstToken) {
         throw 'Runner workers must receive unique tokens.'
+    }
+
+    $settingsFile = Join-Path $testRoot 'DCP\gateway-local-settings.json'
+    $gatewaySettings = Get-Content -LiteralPath $settingsFile -Raw | ConvertFrom-Json
+    $allowedRepositories = @($gatewaySettings.allowed_repositories)
+    if ($allowedRepositories.Count -ne 2 -or
+        $allowedRepositories -notcontains 'owner/mobile-app' -or
+        $allowedRepositories -notcontains 'org/another-app') {
+        throw 'Gateway local repository allowlist was not persisted correctly.'
+    }
+
+    $settingsAcl = (& icacls.exe $settingsFile) -join [Environment]::NewLine
+    if ($LASTEXITCODE -ne 0 -or $settingsAcl -match 'Everyone|Authenticated Users|BUILTIN\Users') {
+        throw 'Gateway settings ACL grants access to a broad user group or could not be verified.'
     }
 
     $acl = (& icacls.exe $credentialFile) -join [Environment]::NewLine
