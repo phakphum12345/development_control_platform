@@ -474,7 +474,9 @@ class WindowsDaclDefaultedExperiment:
                 dacl_defaulted_after_rollback=(
                     restored.dacl_defaulted if restored is not None else None
                 ),
-                dacl_bytes_equal_after_rollback=rollback_equal,
+                dacl_bytes_equal_after_rollback=(
+                    restored is not None and restored.dacl_bytes == before.dacl_bytes
+                ),
                 cleanup_verified=False,
                 volume_serial=identity_before.volume_serial,
                 file_id=identity_before.file_id,
