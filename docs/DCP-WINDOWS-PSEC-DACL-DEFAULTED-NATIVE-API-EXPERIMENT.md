@@ -51,15 +51,14 @@ Run each case against a separate disposable file so a failed case cannot contami
 
 | Case | Initial state | Operation | Required observation |
 |---|---|---|---|
-| A | DACL explicitly specified; defaulted flag FALSE | Read twice, no write | Stable DACL bytes and FALSE state |
-| B | Security attributes contain a descriptor whose DACL is marked defaulted TRUE | Read immediately after creation | Record whether NTFS retains TRUE; if it does not, classify the TRUE-state writer test as NOT EXERCISED |
-| C | Case B object with observed TRUE state | Invoke `SetSecurityInfo` on retained handle using the same DACL bytes | Read back exact DACL bytes, `DaclDefaulted`, and relevant control bits |
-| D | Case C after attempted write | Restore original DACL through the same supported handle API | Read back and compare bytes and control state; no best-effort PASS |
-| E | Injected failure after the write attempt | Run the same rollback and cleanup path | Preserve primary and rollback errors; attempt cleanup even after failure |
+| A | DACL explicitly specified; defaulted flag FALSE | Read twice, then perform write/read-back/rollback on a disposable NTFS file | Stable DACL bytes, FALSE state, exact rollback, and cleanup |
+| B | Input security descriptor has DACL defaulted TRUE | Inspect the descriptor in memory before it is supplied to object creation | `GetSecurityDescriptorDacl` reports TRUE on that input descriptor; record descriptor control flags and DACL bytes |
+| C | Disposable NTFS object created from the TRUE input descriptor | Read immediately after creation; do not assume the flag survives association with the object | Record the object read-back. If NTFS does not retain TRUE, classify the object-level TRUE writer case as NOT EXERCISED |
+| D | Case C object, only if its retained-handle read actually reports TRUE | Invoke `SetSecurityInfo` on that exact retained handle | Read back exact DACL bytes, `DaclDefaulted`, and relevant control bits |
+| E | Case D after attempted write, only when D was exercisable | Restore original DACL through the same supported handle API | Read back and compare bytes and control state; no best-effort PASS |
+| F | Injected failure after the write attempt | Run the same rollback and cleanup path | Preserve primary and rollback errors; attempt cleanup even after failure |
 
-Case B is a setup probe, not proof that the filesystem supports a TRUE state. Case C is the decisive API observation only if Case B actually reads back TRUE before the write.
-
-The harness must not manufacture a TRUE observation by changing only an in-memory descriptor after the object has been created.
+The TRUE input-descriptor contract and the NTFS object-persistence behavior are separate assertions. A TRUE value observed on an in-memory input descriptor is valid evidence for descriptor construction, but it is not evidence that NTFS stores or reads back TRUE on the securable object. The object-level TRUE writer case is exercisable only if the retained-handle read immediately after creation reports TRUE.
 
 ## 5. Capture and comparison requirements
 
@@ -92,17 +91,24 @@ No production object may be used as a recovery target.
 
 Use only: PASS / FAIL / SKIPPED / UNKNOWN / IN_PROGRESS.
 
-The TRUE-state round-trip can be marked PASS only if all are true:
+The input-descriptor TRUE contract can be marked PASS only when the in-memory descriptor test proves all of the following before object creation:
 
-1. Case B creates an NTFS object whose retained-handle read reports `dacl_defaulted == true`.
-2. Case C executes the documented `SetSecurityInfo` call on that exact retained handle.
-3. Read-back proves the expected DACL bytes and the TRUE defaulted state.
-4. Case D restores the original bytes and TRUE state and verifies both.
-5. Case E demonstrates rollback/cleanup behavior under injected failure.
+1. `SetSecurityDescriptorDacl` accepts the explicit TRUE defaulted argument.
+2. `GetSecurityDescriptorDacl` on that same input descriptor reports TRUE.
+3. The corresponding control flag is present and the DACL bytes/presence state are captured.
+4. A paired FALSE input descriptor reports FALSE, demonstrating that the test distinguishes the two values.
+
+The NTFS object-level TRUE writer round-trip is a separate acceptance item. It can be marked PASS only if all are true:
+
+1. Case C creates an NTFS object whose retained-handle read reports `dacl_defaulted == true`.
+2. Case D executes the documented `SetSecurityInfo` call on that exact retained handle.
+3. Read-back proves the expected DACL bytes and TRUE defaulted state.
+4. Case E restores the original bytes and TRUE state and verifies both.
+5. Case F demonstrates rollback/cleanup behavior under injected failure.
 6. All native buffers and handles are released, and the disposable root is removed.
 7. Evidence records the exact Windows build, filesystem, Python version, test command, test output, and source commit SHA.
 
-If the setup cannot produce a TRUE state, the TRUE-state writer question remains UNKNOWN / NOT EXERCISED. A FALSE-state test, a mock, CI success, or a skipped non-Windows test cannot satisfy this gate.
+If NTFS does not retain TRUE on the newly created object, classify only the object-level TRUE writer round-trip as NOT EXERCISED. This does not invalidate a separately passing in-memory input-descriptor TRUE test. A FALSE-state object round-trip cannot substitute for the object-level TRUE case.
 
 ## 8. Explicit non-goals and safety gates
 
