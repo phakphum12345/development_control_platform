@@ -231,6 +231,22 @@ class WindowsDaclDefaultedRealHostTests(unittest.TestCase):
         self.assertEqual(calls["count"], 2, "rollback must run after an ambiguous write error")
         self.assertIn("injected error after native SetSecurityInfo", result.api_errors)
         self.assertEqual(result.outcome, "FAIL")
+        # The injected write error is expected, but rollback must still restore
+        # the original DACL bytes and DaclDefaulted state on the retained handle.
+        self.assertTrue(result.rollback_attempted)
+        self.assertTrue(result.rollback_verified)
+        self.assertTrue(result.dacl_bytes_equal_after_rollback)
+        self.assertEqual(result.dacl_defaulted_after_rollback, False)
+        self.assertEqual(
+            result.control_flags_before & 0xFBFF,
+            result.control_flags_after_rollback & 0xFBFF,
+            "ambiguous-write rollback changed control bits other than SE_DACL_AUTO_INHERITED",
+        )
+        self.assertEqual(
+            result.control_flags_before & 0x1000,
+            result.control_flags_after_rollback & 0x1000,
+            "ambiguous-write rollback changed SE_DACL_PROTECTED",
+        )
         self.assertTrue(experiment.last_cleanup_verified)
         self.assertTrue(result.cleanup_verified)
         self.assertTrue(result.owned_handle_opened)
