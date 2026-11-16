@@ -21,6 +21,7 @@ on:
       - ".github/workflows/cross-platform-recovery.yml"
       - "tools/cloud_gateway/**"
       - "tools/local_runner_agent/**"
+      - "tests/test_windows_psec_dacl_experiment.py"
       - "tests/test_cloud_gateway_job_control.py"
       - "tests/test_cloud_runner_user_api.py"
       - "tests/test_local_runner_pipeline_e2e.py"
