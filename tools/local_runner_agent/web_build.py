@@ -22,7 +22,15 @@ from pathlib import Path
 from typing import Callable
 
 from .execution import BuildResult, ExecutionError
-from .workspace import WorkspaceManager
+from .workspace import WorkspaceError, WorkspaceManager
+from .file_safety import open_verified_regular_file, copy_verified_regular_file
+
+
+def _check_workspace_quota(workspaces, job_id: str, worker_id: str) -> int:
+    try:
+        return workspaces.check_quota(job_id, worker_id)
+    except WorkspaceError as exc:
+        raise ExecutionError(str(exc)) from None
 
 
 class WebBuildExecutor:
@@ -168,7 +176,7 @@ class WebBuildExecutor:
         if source.is_symlink() or not source.is_dir():
             raise ExecutionError("project source directory is unsafe")
         command = self.command_for(target, source)
-        self.workspaces.check_quota(job_id, worker_id)
+        _check_workspace_quota(self.workspaces, job_id, worker_id)
         started = time.monotonic()
         if target == "build_static_web":
             destination = source / "dist"
@@ -190,9 +198,11 @@ class WebBuildExecutor:
                 if stat.S_ISLNK(info.st_mode):
                     raise ExecutionError("static source contains a symlink")
                 if stat.S_ISREG(info.st_mode):
+                    if getattr(info, "st_nlink", 1) != 1:
+                        raise ExecutionError("static source contains a hardlinked file")
                     if info.st_size > self.max_artifact_bytes:
                         raise ExecutionError("static source file exceeds size limit")
-                    shutil.copyfile(item, destination / item.name)
+                    copy_verified_regular_file(item, destination / item.name, ExecutionError, "static source file")
                 elif stat.S_ISDIR(info.st_mode):
                     for current, dirs, files in os.walk(item, followlinks=False):
                         current_path = Path(current)
@@ -207,15 +217,15 @@ class WebBuildExecutor:
                             if not safe_public_name(filename):
                                 continue
                             meta = path.lstat()
-                            if not stat.S_ISREG(meta.st_mode):
-                                raise ExecutionError("static source contains a non-regular file")
+                            if not stat.S_ISREG(meta.st_mode) or getattr(meta, "st_nlink", 1) != 1:
+                                raise ExecutionError("static source contains a non-regular or hardlinked file")
                             relative = path.relative_to(source)
                             if meta.st_size > self.max_artifact_bytes:
                                 raise ExecutionError("static source file exceeds size limit")
                             out = destination / relative
                             out.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-                            shutil.copyfile(path, out)
-            self.workspaces.check_quota(job_id, worker_id)
+                            copy_verified_regular_file(path, out, ExecutionError, "static source file")
+            _check_workspace_quota(self.workspaces, job_id, worker_id)
             self.log("system", "Static web files copied to dist/; no source code executed")
             return BuildResult("succeeded", command, 0, round(time.monotonic() - started, 3), 0)
 
@@ -299,7 +309,7 @@ class WebBuildExecutor:
                 output_path = source / output_name
                 if output_path.is_symlink() or not output_path.is_dir():
                     outcome, error_code = "failed", "BUILD_OUTPUT_MISSING"
-        self.workspaces.check_quota(job_id, worker_id)
+        _check_workspace_quota(self.workspaces, job_id, worker_id)
         return BuildResult(outcome, command, return_code, round(time.monotonic() - started, 3),
                            output_bytes, error_code)
 
@@ -334,8 +344,8 @@ class WebArtifactPackager:
             for filename in files:
                 path = base / filename
                 info = path.lstat()
-                if not stat.S_ISREG(info.st_mode):
-                    raise ExecutionError("web artifact contains a non-regular file")
+                if not stat.S_ISREG(info.st_mode) or getattr(info, "st_nlink", 1) != 1:
+                    raise ExecutionError("web artifact contains a non-regular or hardlinked file")
                 relative = path.relative_to(output)
                 total += info.st_size
                 entries.append((path, relative))
@@ -343,12 +353,20 @@ class WebArtifactPackager:
                     raise ExecutionError("web artifact exceeds configured limits")
         if not entries:
             raise ExecutionError("web build output is empty")
-        with zipfile.ZipFile(destination, "x", zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
-            for path, relative in entries:
-                archive.write(path, relative.as_posix())
+        try:
+            with zipfile.ZipFile(destination, "x", zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+                for path, relative in entries:
+                    archive_info = zipfile.ZipInfo(relative.as_posix())
+                    archive_info.compress_type = zipfile.ZIP_DEFLATED
+                    with open_verified_regular_file(path, ExecutionError, "web artifact file") as source_file:
+                        with archive.open(archive_info, "w") as archive_file:
+                            shutil.copyfileobj(source_file, archive_file, 1024 * 1024)
+        except Exception:
+            destination.unlink(missing_ok=True)
+            raise
         if destination.stat().st_size > self.max_bytes:
             destination.unlink(missing_ok=True)
             raise ExecutionError("compressed web artifact exceeds configured limit")
         destination.chmod(0o600)
-        self.workspaces.check_quota(job_id, worker_id)
+        _check_workspace_quota(self.workspaces, job_id, worker_id)
         return destination, destination.name

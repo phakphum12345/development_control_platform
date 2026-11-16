@@ -139,6 +139,8 @@ class WorkspaceManager:
                 info = item.lstat()
                 if not stat.S_ISREG(info.st_mode):
                     raise WorkspaceError("workspace contains a non-regular file")
+                if getattr(info, "st_nlink", 1) != 1:
+                    raise WorkspaceError("workspace contains a hardlinked file")
                 total += info.st_size
                 if total > self.max_workspace_bytes:
                     raise WorkspaceError("workspace byte quota exceeded")

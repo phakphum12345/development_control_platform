@@ -15,6 +15,7 @@ from pathlib import Path, PurePosixPath
 
 from .workspace import WorkspaceError, WorkspaceManager
 from .local_project import LocalProjectError, LocalProjectRegistry
+from .file_safety import open_verified_regular_file
 
 
 class CheckoutError(RuntimeError):
@@ -68,44 +69,37 @@ class LocalProjectCheckout:
             for name in sorted(files):
                 source_file = current_path / name
                 info = source_file.lstat()
-                if not stat.S_ISREG(info.st_mode):
-                    raise CheckoutError("local snapshot contains a symlink or special file")
+                if not stat.S_ISREG(info.st_mode) or getattr(info, "st_nlink", 1) != 1:
+                    raise CheckoutError("local snapshot contains a symlink, special, or hardlinked file")
                 relative = source_file.relative_to(root)
                 if any(part in ("", ".", "..") for part in relative.parts):
                     raise CheckoutError("local snapshot contains an unsafe path")
                 output_file = destination.joinpath(*relative.parts)
                 output_file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-                source_flags = os.O_RDONLY
-                output_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                output_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
                 if hasattr(os, "O_NOFOLLOW"):
-                    source_flags |= os.O_NOFOLLOW
                     output_flags |= os.O_NOFOLLOW
-                source_fd = os.open(source_file, source_flags)
-                try:
-                    output_fd = os.open(output_file, output_flags, 0o600)
-                except Exception:
-                    os.close(source_fd)
-                    raise
+                output_fd = os.open(output_file, output_flags, 0o600)
                 copied = 0
-                with os.fdopen(source_fd, "rb") as source_handle, os.fdopen(output_fd, "wb") as output_handle:
-                    opened = os.fstat(source_handle.fileno())
-                    if not stat.S_ISREG(opened.st_mode):
-                        raise CheckoutError("local snapshot file changed type")
-                    while True:
-                        chunk = source_handle.read(1024 * 1024)
-                        if not chunk:
-                            break
-                        copied += len(chunk)
-                        total += len(chunk)
-                        if total > self.max_bytes:
-                            raise CheckoutError("local snapshot copy exceeds byte limit")
-                        output_handle.write(chunk)
-                    after = os.fstat(source_handle.fileno())
-                    output_handle.flush()
-                    os.fsync(output_handle.fileno())
-                if (opened.st_ino, opened.st_size, opened.st_mtime_ns) != (
-                    after.st_ino, after.st_size, after.st_mtime_ns
-                ) or copied != after.st_size:
+                try:
+                    with os.fdopen(output_fd, "wb") as output_handle:
+                        with open_verified_regular_file(source_file, CheckoutError, "local snapshot file") as source_handle:
+                            opened = os.fstat(source_handle.fileno())
+                            while True:
+                                chunk = source_handle.read(1024 * 1024)
+                                if not chunk:
+                                    break
+                                copied += len(chunk)
+                                total += len(chunk)
+                                if total > self.max_bytes:
+                                    raise CheckoutError("local snapshot copy exceeds byte limit")
+                                output_handle.write(chunk)
+                        output_handle.flush()
+                        os.fsync(output_handle.fileno())
+                except Exception:
+                    output_file.unlink(missing_ok=True)
+                    raise
+                if copied != opened.st_size:
                     raise CheckoutError("local snapshot changed during writable copy")
                 os.chmod(output_file, 0o600)
         return total
@@ -170,8 +164,12 @@ class GitHubCommitCheckout:
     @staticmethod
     def _validate(repository: str, commit_sha: str):
         import re
-        if not isinstance(repository, str) or not re.fullmatch(
-            r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}", repository
+        if (
+            not isinstance(repository, str)
+            or not re.fullmatch(
+                r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}", repository
+            )
+            or any(part in (".", "..") for part in repository.split("/"))
         ):
             raise CheckoutError("invalid GitHub repository")
         if not isinstance(commit_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", commit_sha):

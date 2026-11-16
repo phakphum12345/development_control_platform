@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from tools.cloud_gateway.runner_bootstrap import AzureRunnerBootstrapFactory
+from tools.cloud_gateway.azure_guest_profile import AzureGuestProfileFactory
 
 
 class FakeGitHubApp:
@@ -22,9 +23,21 @@ class FakeGitHubApp:
 def main():
     output = Path(sys.argv[1])
     output.mkdir(parents=True, exist_ok=True)
+    # Parser fixtures must satisfy the same guest-profile contract as a real
+    # deployment. The key is synthetic and is never used to access a host.
+    public_key_blob = (
+        len(b"ssh-ed25519").to_bytes(4, "big")
+        + b"ssh-ed25519"
+        + (32).to_bytes(4, "big")
+        + bytes(range(1, 33))
+    )
+    guest_profiles = AzureGuestProfileFactory(
+        "dcpadmin",
+        "ssh-ed25519 " + base64.b64encode(public_key_blob).decode("ascii") + " parser-fixture",
+    )
     factory = AzureRunnerBootstrapFactory(
         FakeGitHubApp(), "2.331.0", "a" * 64, "b" * 64,
-        lambda vm, os_name, payload: {"computerName": vm},
+        guest_profiles,
     )
     profiles = {
         "linux": ["self-hosted", "Linux", "X64", "dcp-cloud-linux"],

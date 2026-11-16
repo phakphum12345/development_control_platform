@@ -200,3 +200,16 @@ references. Then run browser acceptance for login, logout, invalid issuer,
 invalid audience, expiry, nonce/state mismatch, CSRF, role denial, direct API
 header spoofing, replay across process restarts, and iPhone Safari. Do not
 enable provider provisioning as part of OIDC setup.
+
+
+## Additional provider-neutral OIDC service modules
+
+Alongside the loopback oauth2-proxy edge signer described above, the repository includes reusable provider-neutral OIDC components:
+
+- `oidc_config.py`: HTTPS issuer, client, callback, and scope validation.
+- `oidc_client.py`: discovery metadata checks, JWKS retrieval through an injected transport, PKCE S256, authorization-code exchange, and RS256/ES256 ID-token signature and claim verification.
+- `oidc_session_store.py`: durable one-time state transactions bound to a browser binding, SQLite-backed session lookup, CSRF validation, session rotation, and revocation.
+- `oidc_auth_service.py`: login/callback orchestration, verified group-to-role mapping, server-only session handles, rotation, logout, and secure cookie builders.
+- `oidc_wsgi.py`: HTTPS-only login redirect, exact-host callback, session introspection, CSRF-protected rotation/logout, and secure cookie handling.
+
+Offline regression tests cover invalid signatures, issuer/audience/nonce, expired tokens, algorithm rejection, key ambiguity, PKCE, state replay, browser binding, session rotation, and logout. These modules are reusable server-side building blocks; the WSGI adapter is not mounted by the current local password proxy or a production web host. A production HTTPS host must instantiate and mount it behind a trusted proxy with TLS-verified bounded transports. Do not treat these modules or mock tests as a configured production identity provider or live sign-in acceptance.
