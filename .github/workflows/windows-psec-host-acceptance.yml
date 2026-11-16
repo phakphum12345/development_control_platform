@@ -59,7 +59,7 @@ jobs:
           }
           Write-Host "DCP_PSEC_ACCEPTANCE_PARENT=$($item.FullName)"
 
-      - name: Run read-only PSEC host acceptance probes
+      - name: Run disposable PSEC host acceptance probes
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
