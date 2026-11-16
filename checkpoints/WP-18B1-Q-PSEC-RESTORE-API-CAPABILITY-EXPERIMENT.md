@@ -67,3 +67,14 @@ No merge, deployment, production enablement, privilege expansion, or real-file A
 - The dedicated Windows NTFS job now runs the FALSE-state round-trip with `DCP_RUN_WINDOWS_PSEC_CI=1`, independent of the user's local PC.
 - TRUE object persistence remains NOT EXERCISED if NTFS does not retain TRUE at creation.
 - Native Writer, transactional production ACL mutation, Terminal and all templates remain BLOCKED.
+
+## Final validation — 2026-11-16
+
+- Final exact head: `0cbaa2d11aa038f7eba4271f2529f31458c0a2eb`.
+- Cross-platform Recovery Acceptance, Local-first Minimal Emulator and Validate Control Plane: PASS.
+- Windows NTFS candidate matrix: PASS; all four candidates returned the exact expected S2 state, API return code, inherited ACE count and DACL byte equality.
+- Candidate A/B: `RESTORE_NOT_EXACT`, S2 control `0x8404`, three inherited ACEs.
+- Candidate C/D: `RESTORED_EXACT`, S2 control `0x9004`, zero inherited ACEs, DACL bytes equal S0.
+- Dedicated FALSE DACL acceptance: PASS under the explicit CI opt-in. TRUE object persistence: NOT EXERCISED, not PASS.
+- The attempted secondary path-pin handle was denied by the intentionally empty DACL (WinError 5) and removed. Final name-based path checks reject reparse points and use retained-handle identity evidence; no same-user path pinning guarantee is claimed.
+- Native Writer, production ACL mutation, Terminal and all templates remain BLOCKED.
