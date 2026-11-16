@@ -153,3 +153,20 @@ The native experiment still does not prove restoration capability. A native rest
 - Native Writer: BLOCKED.
 - Transactional native ACL mutation: BLOCKED.
 - No merge, deployment, process resume, privilege expansion, or Terminal enablement is authorized.
+
+## 11. Subsequent host evidence and dual verification status — 2026-11-16
+
+The strict restoration verifier and the disposable NTFS experiment acceptance are separate results and MUST be reported separately.
+
+- `verify_restoration_readback(..., STRICT_DESCRIPTOR_EQUALITY)` remains unchanged. For the observed `0x9004 → 0x9404` OS-managed `SE_DACL_AUTO_INHERITED` transition, it reports `RESTORE_NOT_EXACT` with `control_flags_mismatch`.
+- The disposable NTFS experiment additionally records an experiment-only acceptance profile: exact DACL bytes, exact observed `DaclDefaulted`, protected bit unchanged, all other control bits unchanged, and `SE_DACL_AUTO_INHERITED` either unchanged or clear-to-set. It never accepts clearing that bit.
+- Consequently, the FALSE NTFS experiment may report `outcome=PASS` and `rollback_verified=true` under the named experiment-only profile while simultaneously reporting `restoration_verification_state=RESTORE_NOT_EXACT` under strict Protocol v1 equality. This is not a strict restoration PASS.
+- The field `dacl_bytes_equal_after_rollback` reports byte equality only; it is not overloaded to mean full descriptor acceptance.
+- The production transaction coordinator continues to use the explicitly selected Protocol v1 profile. A strict control-word mismatch remains fatal and is not masked by the experiment helper.
+- The immutable S0 snapshot, transaction binding, target identity, SHA-256 digest and strict S2 verification remain independent safeguards.
+
+Exact-head hosted validation for `b5e9e8fbac3d75f6e69c71fc44bdf3ce4c51c252`: Windows NTFS native acceptance PASS; Windows and Ubuntu recovery tests PASS; Local-first Windows E2E and Linux Minimal Emulator PASS; Validate Control Plane PASS. The Windows runner matrix entry was SKIPPED by its eligibility condition and is not counted as PASS.
+
+TRUE input-descriptor testing is separate from NTFS object persistence. If NTFS does not retain TRUE on the created object, that object-level TRUE writer case remains NOT EXERCISED, never PASS.
+
+Native Writer, production ACL mutation, Terminal and all seven built-in templates remain BLOCKED / disabled.
