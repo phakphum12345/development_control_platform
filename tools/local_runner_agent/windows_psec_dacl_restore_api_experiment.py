@@ -28,6 +28,11 @@ from tools.local_runner_agent.windows_psec_dacl_experiment import (
     DACL_SECURITY_INFORMATION,
     SE_FILE_OBJECT,
     SECURITY_DESCRIPTOR_REVISION,
+    FILE_SHARE_READ,
+    FILE_SHARE_WRITE,
+    INVALID_HANDLE_VALUE,
+    READ_CONTROL,
+    WRITE_DAC,
     WindowsDaclDefaultedExperiment,
 )
 
@@ -100,6 +105,40 @@ class WindowsDaclRestoreApiExperiment(WindowsDaclDefaultedExperiment):
     @staticmethod
     def candidate_names() -> tuple[str, ...]:
         return RESTORE_API_CANDIDATES
+
+    @staticmethod
+    def _same_file_identity(left, right) -> bool:
+        return (
+            left.volume_serial == right.volume_serial
+            and left.file_id.casefold() == right.file_id.casefold()
+        )
+
+    def _open_path_pin(self, file_path: str):
+        # Name-based APIs need a path. Hold a second handle that denies DELETE
+        # sharing so the harness-owned path cannot be renamed/replaced while a
+        # candidate API resolves it. OPEN_REPARSE_POINT lets us reject a link.
+        handle = self._kernel32.CreateFileW(
+            file_path,
+            READ_CONTROL | WRITE_DAC,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            None,
+            3,  # OPEN_EXISTING
+            0x00200000,  # FILE_FLAG_OPEN_REPARSE_POINT
+            None,
+        )
+        if not handle or int(handle) == INVALID_HANDLE_VALUE:
+            raise self._last_error("CreateFileW(path identity pin)")
+        handle = int(handle)
+        try:
+            identity = self._reader.query_identity(handle)
+            if identity.is_directory or identity.attributes & 0x00000400:
+                raise DaclRestoreApiExperimentError(
+                    "restore candidate path resolves to a directory or reparse point"
+                )
+            return handle, identity
+        except Exception:
+            self._kernel32.CloseHandle(wintypes.HANDLE(handle))
+            raise
 
     def _build_self_relative_dacl_descriptor(self, snapshot, *, auto_inherit_req: bool):
         if not snapshot.dacl_present or snapshot.dacl_is_null or not snapshot.dacl_bytes:
@@ -211,6 +250,7 @@ class WindowsDaclRestoreApiExperiment(WindowsDaclDefaultedExperiment):
         root = None
         file_path = None
         handle = None
+        path_pin_handle = None
         result = None
         cleanup_error = None
         try:
@@ -260,8 +300,15 @@ class WindowsDaclRestoreApiExperiment(WindowsDaclDefaultedExperiment):
                 )
             s1 = self._reader.read_dacl(handle)
             identity_after_s1 = self._reader.query_identity(handle)
-            if identity_after_s1 != identity_before:
+            if not self._same_file_identity(identity_after_s1, identity_before):
                 raise DaclRestoreApiExperimentError("target identity changed after S1 mutation")
+
+            if candidate != "setsecurityinfo_unprotected":
+                path_pin_handle, path_identity = self._open_path_pin(file_path)
+                if not self._same_file_identity(path_identity, identity_before):
+                    raise DaclRestoreApiExperimentError(
+                        "name-based restore candidate path does not resolve to the retained target"
+                    )
 
             api_return_code = None
             api_error = None
@@ -272,6 +319,12 @@ class WindowsDaclRestoreApiExperiment(WindowsDaclDefaultedExperiment):
                     handle=handle,
                     snapshot=original.descriptor,
                 )
+                if path_pin_handle is not None:
+                    path_identity_after = self._reader.query_identity(path_pin_handle)
+                    if not self._same_file_identity(path_identity_after, identity_before):
+                        raise DaclRestoreApiExperimentError(
+                            "name-based restore candidate changed the pinned target identity"
+                        )
             except Exception as exc:
                 api_error = str(exc)
 
@@ -325,6 +378,10 @@ class WindowsDaclRestoreApiExperiment(WindowsDaclDefaultedExperiment):
                 cleanup_verified=False,
             )
         finally:
+            if path_pin_handle is not None:
+                if not self._kernel32.CloseHandle(wintypes.HANDLE(path_pin_handle)):
+                    cleanup_error = self._last_error("CloseHandle(restore API path pin)")
+                path_pin_handle = None
             if handle is not None:
                 if not self._kernel32.CloseHandle(wintypes.HANDLE(handle)):
                     cleanup_error = self._last_error("CloseHandle(restore API experiment)")
