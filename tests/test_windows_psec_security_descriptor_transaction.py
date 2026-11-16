@@ -172,6 +172,28 @@ class NativeSecurityDescriptorTransactionTests(unittest.TestCase):
         self.assertEqual(result.state, "ROLLED_BACK_VERIFIED")
         self.assertEqual(api.states, {10: ORIGINAL, 11: ORIGINAL})
 
+    def test_auto_inherited_control_flag_change_is_rejected_by_transaction_coordinator(self):
+        api = FakeHandleSecurityApi()
+        original_write = api.write_dacl
+
+        def simulate_os_auto_inherited_transition(handle, state):
+            original_write(handle, state)
+            if isinstance(state, DescriptorCandidate):
+                api.states[handle] = replace(
+                    api.states[handle],
+                    dacl_control_flags=api.states[handle].dacl_control_flags | 0x0400,
+                )
+
+        api.write_dacl = simulate_os_auto_inherited_transition
+        result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID)
+
+        # The relaxed flag rule belongs only to the disposable NTFS experiment.
+        # Production transaction read-back must still require exact snapshots.
+        self.assertEqual(result.state, "ROLLED_BACK_VERIFIED")
+        self.assertEqual(result.attempted_targets, 1)
+        self.assertEqual(api.states[10], ORIGINAL)
+        self.assertEqual(api.writes[-1], (10, ORIGINAL))
+
     def test_dacl_defaulted_state_is_preserved_in_candidate_and_readback(self):
         api = FakeHandleSecurityApi()
         result = NativeSecurityDescriptorTransaction(api).apply(targets(), PACKAGE_SID)
