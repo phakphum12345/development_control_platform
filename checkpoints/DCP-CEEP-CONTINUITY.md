@@ -294,3 +294,15 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Added Windows-only tests for FALSE creation-only baseline and repeated same-handle SetSecurityInfo observations. Existing strict FALSE round-trip assertion remains unchanged and is still expected to report the observed exact-state limitation until further evidence justifies a protocol-level disposition.
 - No Windows execution or CI pass is claimed by this source update. New exact-head CI and native evidence are required.
 - Native Writer, Terminal and all seven built-in templates remain BLOCKED. No merge or deployment.
+
+
+## 2026-11-16 — WP-18B.1-K acceptance-scope clarification
+
+- PR #131 branch: `work/wp18b1k-dacl-native-api-experiment-stack`.
+- Clarification commit: `0a07b9df1da2fa222338688c3c0b10210d231d7d`.
+- The acceptance contract now separates (1) the in-memory input security descriptor TRUE/FALSE contract from (2) NTFS object-level persistence and round-trip behavior.
+- A TRUE input descriptor is accepted only when the same in-memory descriptor reads back TRUE and the paired FALSE descriptor reads back FALSE. This assertion does not claim NTFS persists TRUE on a file object.
+- The object-level TRUE writer round-trip is PASS only if the newly created NTFS object itself reads back TRUE before SetSecurityInfo. If NTFS does not retain TRUE at creation, classify that object-level case as NOT EXERCISED; do not count it as PASS or use the FALSE round-trip as a substitute.
+- The FALSE NTFS object write/read-back/rollback remains a separate native acceptance case.
+- The in-memory TRUE/FALSE test is implemented and exercised by the stacked PR #145; it must be revalidated on the final rebased stack.
+- Exact-head CI for this clarification commit is pending. Do not merge PR #131 until its exact-head workflows pass and the stack is reconciled.
