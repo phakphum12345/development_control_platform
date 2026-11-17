@@ -793,13 +793,28 @@ class WindowsPsecHandleAclManager:
             scratch_targets = self._walk_tree(api, private_scratch, handles)
 
             target_specs = [
-                (root, FILE_TRAVERSE, False),
-                *((item, READ_EXECUTE, item.is_directory) for item in workspace_targets),
+                (root, [(FILE_TRAVERSE, 0)]),
                 *(
                     (
                         item,
-                        MODIFY | (FILE_DELETE_CHILD if item.is_directory else 0),
-                        item.is_directory,
+                        [(
+                            READ_EXECUTE,
+                            OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE
+                            if item.is_directory else 0,
+                        )],
+                    )
+                    for item in workspace_targets
+                ),
+                *(
+                    (
+                        item,
+                        (
+                            [
+                                (MODIFY, OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE),
+                                (FILE_DELETE_CHILD, CONTAINER_INHERIT_ACE),
+                            ]
+                            if item.is_directory else [(MODIFY, 0)]
+                        ),
                     )
                     for item in scratch_targets
                 ),
@@ -807,45 +822,66 @@ class WindowsPsecHandleAclManager:
 
             # Snapshot and validate every target before the first DACL write.
             already_authorized = {}
-            for item, mask, is_directory in target_specs:
+            for item, required_aces in target_specs:
                 current_sddl = api.read_sddl(item)
                 existing_aces = _parse_allow_aces(current_sddl, package_sid)
-                if any(granted & ~mask for _, granted in existing_aces):
+                allowed_mask = 0
+                for mask, _ in required_aces:
+                    allowed_mask |= mask
+                if any(granted & ~allowed_mask for _, granted in existing_aces):
                     raise WindowsPsecAclError(
                         f"Package SID already has an overbroad allow ACE: {item.path}"
                     )
-                required_flags = {"OI", "CI"} if is_directory else set()
-                already_authorized[id(item)] = any(
-                    granted == mask and required_flags.issubset(
-                        {flags[index:index + 2] for index in range(0, len(flags), 2)}
+                already_authorized[id(item)] = all(
+                    any(
+                        granted == mask
+                        and {
+                            flags[index:index + 2]
+                            for index in range(0, len(flags), 2)
+                        }.issuperset(
+                            {
+                                flag for flag, bit in (("OI", OBJECT_INHERIT_ACE), ("CI", CONTAINER_INHERIT_ACE))
+                                if inheritance & bit
+                            }
+                        )
+                        for flags, granted in existing_aces
                     )
-                    for flags, granted in existing_aces
+                    for mask, inheritance in required_aces
                 )
                 snapshots.append((item, api.snapshot_dacl(item)))
 
             verified = []
-            for item, mask, is_directory in target_specs:
-                required_flags = {"OI", "CI"} if is_directory else set()
+            for item, required_aces in target_specs:
                 if not already_authorized[id(item)]:
                     changed.append(item)
-                    inheritance = (
-                        OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE
-                        if is_directory else 0
-                    )
-                    api.add_allow_ace(item, package_sid, mask, inheritance)
+                    for mask, inheritance in required_aces:
+                        api.add_allow_ace(item, package_sid, mask, inheritance)
                 sddl = api.read_sddl(item)
                 aces = _parse_allow_aces(sddl, package_sid)
-                matching = [
-                    (flags, granted) for flags, granted in aces
-                    if granted == mask and required_flags.issubset(
-                        {flags[index:index + 2] for index in range(0, len(flags), 2)}
-                    )
-                ]
-                if not matching:
-                    raise WindowsPsecAclError(
-                        f"Package-SID ACE verification failed for {item.path}"
-                    )
-                if any(granted & ~mask for _, granted in aces):
+                for mask, inheritance in required_aces:
+                    required_flags = {
+                        flag for flag, bit in (
+                            ("OI", OBJECT_INHERIT_ACE),
+                            ("CI", CONTAINER_INHERIT_ACE),
+                        ) if inheritance & bit
+                    }
+                    matching = [
+                        (flags, granted) for flags, granted in aces
+                        if granted == mask
+                        and {
+                            flags[index:index + 2]
+                            for index in range(0, len(flags), 2)
+                        }.issuperset(required_flags)
+                    ]
+                    if not matching:
+                        raise WindowsPsecAclError(
+                            f"Package-SID ACE verification failed for {item.path} "
+                            f"mask=0x{mask:08x}"
+                        )
+                allowed_mask = 0
+                for mask, _ in required_aces:
+                    allowed_mask |= mask
+                if any(granted & ~allowed_mask for _, granted in aces):
                     raise WindowsPsecAclError(
                         f"Package SID has an overbroad allow ACE: {item.path}"
                     )
@@ -855,7 +891,7 @@ class WindowsPsecHandleAclManager:
                         "volume_serial": item.volume_serial,
                         "file_id": item.file_id,
                     },
-                    "mask": f"0x{mask:08x}",
+                    "masks": [f"0x{mask:08x}" for mask, _ in required_aces],
                     "sddl": sddl,
                 })
 
