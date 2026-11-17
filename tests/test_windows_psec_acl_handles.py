@@ -144,6 +144,7 @@ class WindowsPsecHandleAclManagerTests(unittest.TestCase):
         self.assertEqual(authorization.evidence["state"], "VERIFIED")
         self.assertTrue(authorization.evidence["handle_relative"])
         self.assertTrue(authorization.evidence["shared_parent_sddl_unchanged"])
+        self.assertTrue(authorization.evidence["shared_ancestor_sddl_unchanged"])
         self.assertEqual(authorization.evidence["workspace_targets"], 4)
         self.assertEqual(authorization.evidence["scratch_targets"], 2)
         self.assertEqual(
@@ -214,6 +215,9 @@ class WindowsPsecHandleAclRealHostTests(unittest.TestCase):
             self.assertTrue(authorization.evidence["handle_relative"])
             self.assertTrue(
                 authorization.evidence["shared_parent_sddl_unchanged"]
+            )
+            self.assertTrue(
+                authorization.evidence["shared_ancestor_sddl_unchanged"]
             )
             self.assertEqual(authorization.evidence["filesystem"], "NTFS")
         finally:
