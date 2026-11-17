@@ -583,6 +583,7 @@ class WindowsPsecProcess:
         self.token_diagnostics = token_diagnostics or {"state": "UNKNOWN"}
         self.returncode = None
         self._closed = False
+        self._drained = False
 
     def _active_processes(self) -> int:
         info = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION()
@@ -637,32 +638,35 @@ class WindowsPsecProcess:
 
         # Never close the Job Object handle merely because the bounded wait
         # expired. Callers may own a disposable projection that must remain
-        # intact until ActiveProcesses is proven to be zero.
-        if self.poll() is None:
-            self.terminate_tree()
-            try:
-                self.wait(timeout=float(timeout))
-            except subprocess.TimeoutExpired as exc:
+        # intact until ActiveProcesses is proven to be zero. Once drained,
+        # remember that fact so a partial handle-close failure can be retried.
+        if not self._drained:
+            if self.poll() is None:
+                self.terminate_tree()
                 try:
-                    active = self._active_processes()
-                except Exception:
-                    active = "UNKNOWN"
-                raise WindowsPsecError(
-                    "PSEC Job Object did not drain before close timeout; "
-                    f"active_processes={active}; process handles retained"
-                ) from exc
+                    self.wait(timeout=float(timeout))
+                except subprocess.TimeoutExpired as exc:
+                    try:
+                        active = self._active_processes()
+                    except Exception:
+                        active = "UNKNOWN"
+                    raise WindowsPsecError(
+                        "PSEC Job Object did not drain before close timeout; "
+                        f"active_processes={active}; process handles retained"
+                    ) from exc
 
-        active = self._active_processes()
-        if active != 0:
-            raise WindowsPsecError(
-                "PSEC Job Object is not drained; "
-                f"active_processes={active}; process handles retained"
-            )
-        if self.poll() is None:
-            raise WindowsPsecError(
-                "PSEC root process exit state is unknown after Job Object drain; "
-                "process handles retained"
-            )
+            active = self._active_processes()
+            if active != 0:
+                raise WindowsPsecError(
+                    "PSEC Job Object is not drained; "
+                    f"active_processes={active}; process handles retained"
+                )
+            if self.poll() is None:
+                raise WindowsPsecError(
+                    "PSEC root process exit state is unknown after Job Object drain; "
+                    "process handles retained"
+                )
+            self._drained = True
 
         close_errors = []
         if self.stdout is not None:
