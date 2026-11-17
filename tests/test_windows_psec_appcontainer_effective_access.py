@@ -197,7 +197,7 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
                     "if errorlevel 1 exit /b 13",
                     f'type "{scratch / "write-probe.txt"}" > nul',
                     "if errorlevel 1 exit /b 14",
-                    f'del /f /q "{scratch / "write-probe.txt"}" 2>nul',
+                    f'del /f /q "{scratch / "write-probe.txt"}" > "{scratch / "delete-result.txt"}" 2>&1',
                     "if errorlevel 1 exit /b 15",
                     f'if exist "{scratch / "write-probe.txt"}" exit /b 16',
                     f'type "{canary}" > nul 2>nul',
@@ -313,6 +313,11 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
             evidence["child_exit_code"] = int(exit_code.value)
             scratch_probe = scratch / "write-probe.txt"
             evidence["scratch_probe_exists_after_child"] = scratch_probe.exists()
+            delete_log = scratch / "delete-result.txt"
+            evidence["scratch_delete_output"] = (
+                delete_log.read_text(encoding="utf-8", errors="replace")
+                if delete_log.exists() else None
+            )
             if scratch_probe.exists():
                 acl_result = subprocess.run(
                     ["icacls", str(scratch_probe)],
