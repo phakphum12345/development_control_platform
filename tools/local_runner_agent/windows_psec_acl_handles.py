@@ -858,7 +858,8 @@ class WindowsPsecHandleAclManager:
                 )
 
             evidence = {
-                "state": "VERIFIED",
+                "state": "DACL_VERIFIED",
+                "effective_access": "NOT_TESTED",
                 "package_sid": package_sid,
                 "handle_relative": True,
                 "filesystem": "NTFS",
