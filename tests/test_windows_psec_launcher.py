@@ -120,6 +120,48 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
         process.close()
         self.assertEqual(len(kernel.closed), 2)
 
+    def test_close_can_retry_partial_handle_release_after_job_drain(self):
+        class FlakyKernel(FakeKernel32):
+            def __init__(self):
+                super().__init__(active_processes=0)
+                self.fail_job_close_once = True
+                self.CloseHandle = FakeFunction(self.close_handle)
+
+            def close_handle(self, handle):
+                if handle == 202 and self.fail_job_close_once:
+                    self.fail_job_close_once = False
+                    return 0
+                self.closed.append(handle)
+                return 1
+
+        kernel = FlakyKernel()
+        psec = FakePsecDll()
+        stdout = io.BytesIO()
+        process = WindowsPsecProcess(
+            kernel32=kernel,
+            process_handle=101,
+            job_handle=202,
+            psec_dll=psec,
+            psec_handle=303,
+            stdout=stdout,
+            pid=404,
+            args=("python.exe", "--version"),
+        )
+
+        with self.assertRaisesRegex(WindowsPsecError, "resource close failed"):
+            process.close()
+
+        self.assertTrue(process._drained)
+        self.assertIsNone(process._process_handle)
+        self.assertEqual(process._job_handle, 202)
+        self.assertIsNone(process._psec_handle)
+
+        process.close()
+        self.assertTrue(process._closed)
+        self.assertIsNone(process._job_handle)
+        self.assertEqual(kernel.closed, [101, 202])
+        self.assertEqual(psec.closed, [303])
+
     def test_close_retains_handles_until_job_object_is_drained(self):
         class StubbornKernel(FakeKernel32):
             def terminate_job(self, job, exit_code):
