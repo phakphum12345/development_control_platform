@@ -67,6 +67,24 @@ class WindowsPsecHostAcceptanceTests(unittest.TestCase):
             r"C:\DCP\workspace",
         )
 
+    def test_policy_payload_parser_preserves_nonzero_exit_and_output(self):
+        with self.assertRaisesRegex(
+            host.WindowsPsecError, "exit_code=17"
+        ) as raised:
+            host._parse_policy_payload_output(17, b"child diagnostic: access denied")
+        self.assertIn("access denied", str(raised.exception))
+
+    def test_policy_payload_parser_rejects_missing_or_invalid_json_with_output(self):
+        with self.assertRaisesRegex(host.WindowsPsecError, "returned no JSON"):
+            host._parse_policy_payload_output(0, b"")
+        with self.assertRaisesRegex(host.WindowsPsecError, "invalid JSON") as raised:
+            host._parse_policy_payload_output(0, b"child diagnostic\nnot-json")
+        self.assertIn("not-json", str(raised.exception))
+
+    def test_policy_payload_parser_requires_json_object(self):
+        with self.assertRaisesRegex(host.WindowsPsecError, "must be an object"):
+            host._parse_policy_payload_output(0, b"[]")
+
     def test_non_windows_host_reports_blocked_without_loading_psec(self):
         if os.name == "nt":
             self.skipTest("Windows host executes the native acceptance harness")
