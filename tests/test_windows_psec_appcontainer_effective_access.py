@@ -256,7 +256,7 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
                 False,
                 CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW,
                 None,
-                str(workspace),
+                str(Path(os.environ["SystemRoot"]) / "System32"),
                 ctypes.byref(startup),
                 ctypes.byref(process_info),
             ):
@@ -320,14 +320,19 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
             failed_index = {
                 11: 0, 12: 1, 13: 2, 14: 3, 15: 4, 16: 4, 17: 5,
             }.get(int(exit_code.value))
-            evidence["checks"] = {
-                name: (
-                    "FAIL" if index == failed_index
-                    else "PASS" if failed_index is None or index < failed_index
-                    else "NOT_RUN"
-                )
-                for index, name in enumerate(check_names)
-            }
+            if exit_code.value == 0:
+                evidence["checks"] = {name: "PASS" for name in check_names}
+            elif failed_index is not None:
+                evidence["checks"] = {
+                    name: (
+                        "FAIL" if index == failed_index
+                        else "PASS" if index < failed_index
+                        else "NOT_RUN"
+                    )
+                    for index, name in enumerate(check_names)
+                }
+            else:
+                evidence["checks"] = {name: "NOT_RUN" for name in check_names}
             if exit_code.value != 0:
                 evidence["failure_reason"] = (
                     f"AppContainer filesystem access probe exited {exit_code.value}"
