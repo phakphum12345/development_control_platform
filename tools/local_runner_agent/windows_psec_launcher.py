@@ -18,6 +18,7 @@ from tools.local_runner_agent.windows_psec import (
     PSEC_CREATE_FLAG_NONE,
     probe_psec,
 )
+from tools.local_runner_agent.windows_psec_acl import is_valid_package_sid
 
 
 HANDLE = ctypes.c_void_p
@@ -405,7 +406,7 @@ def _require_app_container_token(token: object) -> dict:
         raise WindowsPsecError("PSEC process token was not completely captured before resume")
     if token["is_app_container"] is not True:
         raise WindowsPsecError("PSEC process token is not an AppContainer token")
-    if not _valid_sid_string(token["app_container_sid"]):
+    if not is_valid_package_sid(token["app_container_sid"]):
         raise WindowsPsecError("PSEC AppContainer Package SID is invalid")
     if not _valid_sid_string(token["user_sid"]) or not _valid_sid_string(token["integrity_sid"]):
         raise WindowsPsecError("PSEC process token contains an invalid user or integrity SID")
