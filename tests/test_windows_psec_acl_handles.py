@@ -24,6 +24,7 @@ class FakeHandleAclApi:
     def __init__(self):
         self.sddl: dict[str, str] = {}
         self.closed: list[str] = []
+        self.restored: list[str] = []
         self.writes: list[str] = []
         self.fail_on_write: int | None = None
         self.swap_name: str | None = None
@@ -93,6 +94,7 @@ class FakeHandleAclApi:
         return self.read_sddl(item)
 
     def restore_dacl(self, item, snapshot):
+        self.restored.append(item.path)
         self.sddl[item.path] = snapshot
 
     def add_allow_ace(self, item, package_sid, mask, inheritance):
@@ -165,11 +167,16 @@ class WindowsPsecHandleAclManagerTests(unittest.TestCase):
         second.close()
 
     def test_partial_acl_failure_rolls_back_every_changed_target(self):
-        self.api.fail_on_write = 2
+        self.api.fail_on_write = 4
         with self.assertRaisesRegex(WindowsPsecAclError, "rollback=VERIFIED"):
             self.manager.apply(self.workspace, self.scratch, _PACKAGE_SID)
         self.assertEqual(self.api.read_sddl(self.api._entry(self.job_root)), "D:")
         self.assertEqual(self.api.read_sddl(self.api._entry(self.workspace)), "D:")
+        self.assertEqual(
+            self.api.restored,
+            [str(self.job_root), str(self.workspace), str(self.workspace / "nested"),
+             str(self.workspace / "read.txt")],
+        )
         self.assertTrue(self.api.closed)
 
     def test_identity_swap_between_enumeration_and_relative_open_fails_before_write(self):
