@@ -258,7 +258,7 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
                 False,
                 CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW,
                 None,
-                str(Path(os.environ["SystemRoot"]) / "System32"),
+                str(workspace),
                 ctypes.byref(startup),
                 ctypes.byref(process_info),
             ):
