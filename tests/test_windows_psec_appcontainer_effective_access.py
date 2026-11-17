@@ -5,7 +5,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 import tempfile
 import unittest
 import uuid
@@ -471,6 +470,9 @@ internal static class Program {
                 (workspace / "read.txt").read_text(encoding="utf-8"),
                 "DCP-APPCONTAINER-WORKSPACE-READ",
             )
+            acl_evidence["effective_access"] = "PASS"
+            acl_evidence["effective_checks"] = evidence["checks"]
+            evidence["filesystem_acl"] = acl_evidence
             evidence["state"] = "PASS"
         except Exception as exc:
             evidence["state"] = "FAIL"
