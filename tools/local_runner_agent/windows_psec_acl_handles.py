@@ -763,7 +763,7 @@ class WindowsPsecHandleAclManager:
                     "handle-relative private-parent chain does not match the validated parent path"
                 )
             parent = chain[-1]
-            parent_sddl_before = api.read_sddl(parent)
+            ancestor_sddl_before = [api.read_sddl(item) for item in chain]
 
             root = self._open_named_child(
                 api, parent, job_root.name, is_directory=True, handles=handles
@@ -835,10 +835,10 @@ class WindowsPsecHandleAclManager:
                     "sddl": sddl,
                 })
 
-            parent_sddl_after = api.read_sddl(parent)
-            if parent_sddl_before != parent_sddl_after:
+            ancestor_sddl_after = [api.read_sddl(item) for item in chain]
+            if ancestor_sddl_before != ancestor_sddl_after:
                 raise WindowsPsecAclError(
-                    "shared private-parent DACL changed during handle-relative ACL application"
+                    "shared parent or ancestor DACL changed during handle-relative ACL application"
                 )
 
             evidence = {
@@ -850,6 +850,7 @@ class WindowsPsecHandleAclManager:
                 "scratch_targets": len(scratch_targets),
                 "job_root_traverse_only": True,
                 "shared_parent_sddl_unchanged": True,
+                "shared_ancestor_sddl_unchanged": True,
                 "parent_chain": [
                     {
                         "path": item.path,
