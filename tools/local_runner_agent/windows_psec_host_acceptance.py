@@ -10,6 +10,7 @@ import os
 import platform
 import socket
 import subprocess
+import shutil
 import sys
 import tempfile
 import threading
@@ -23,6 +24,7 @@ from tools.local_runner_agent.windows_psec_launcher import (
     WindowsPsecError,
     WindowsPsecLauncher,
 )
+from tools.local_runner_agent.windows_psec_projection import create_workspace_projection
 
 
 def _paths_overlap(left: str, right: str) -> bool:
@@ -523,69 +525,97 @@ def main() -> int:
         return 2
 
     canary = None
+    source_root = None
+    private_parent = None
+    projection = None
+    cleanup_state = {"safe_to_cleanup": True}
+    output = None
+    exit_code = 1
+    cleanup_evidence = {"state": "NOT_STARTED"}
+    canary_cleanup = {"state": "NOT_CREATED"}
+
     try:
         user_profile = Path(os.environ["USERPROFILE"]).resolve(strict=True)
         canary = user_profile / f".dcp-psec-canary-{uuid.uuid4().hex}.txt"
         canary.write_text("DCP-HOST-CANARY", encoding="utf-8")
 
-        with tempfile.TemporaryDirectory(
-            prefix="dcp-psec-host-acceptance-", dir=str(_acceptance_parent())
-        ) as temporary:
-            root = Path(temporary)
-            workspace = root / "workspace"
-            scratch = root / "scratch"
-            workspace.mkdir()
-            scratch.mkdir()
-            (workspace / "read.txt").write_text("DCP-WORKSPACE-READ", encoding="utf-8")
+        acceptance_parent = _acceptance_parent()
+        source_root = Path(tempfile.mkdtemp(
+            prefix="dcp-psec-source-", dir=str(acceptance_parent)
+        ))
+        private_parent = Path(tempfile.mkdtemp(
+            prefix="dcp-psec-host-acceptance-", dir=str(acceptance_parent)
+        ))
+        source_workspace = source_root / "workspace"
+        source_workspace.mkdir()
+        (source_workspace / "read.txt").write_text(
+            "DCP-WORKSPACE-READ", encoding="utf-8"
+        )
+        (source_workspace / "nested").mkdir()
+        (source_workspace / "nested" / "nested.txt").write_text(
+            "DCP-WORKSPACE-NESTED", encoding="utf-8"
+        )
 
-            # Capture fixture ACLs before PSEC creation so the acceptance
-            # report can distinguish pre-existing host ACL restrictions from
-            # changes made while creating/running the PSEC environment.
-            filesystem_acl_before = {
-                "acceptance_parent": _filesystem_acl(_acceptance_parent()),
-                "temporary_root": _filesystem_acl(root),
-                "workspace_directory": _filesystem_acl(workspace),
-                "workspace_read_file": _filesystem_acl(workspace / "read.txt"),
-                "scratch_directory": _filesystem_acl(scratch),
-            }
+        # Use the production projection primitive so the ACL manager receives
+        # the exact dcp-psec-job-*/workspace + scratch layout.
+        projection = create_workspace_projection(source_workspace, private_parent)
+        root = projection.root
+        workspace = projection.workspace
+        scratch = projection.scratch
 
-            launcher = WindowsPsecLauncher()
-            environment = _environment()
-            policy_results = _run_policy_acceptance(
-                launcher, workspace, scratch, canary, environment
+        filesystem_acl_before = {
+            "acceptance_parent": _filesystem_acl(acceptance_parent),
+            "source_root": _filesystem_acl(source_root),
+            "private_parent": _filesystem_acl(private_parent),
+            "job_root": _filesystem_acl(root),
+            "workspace_directory": _filesystem_acl(workspace),
+            "workspace_read_file": _filesystem_acl(workspace / "read.txt"),
+            "scratch_directory": _filesystem_acl(scratch),
+        }
+
+        launcher = WindowsPsecLauncher()
+        environment = _environment()
+        policy_results = _run_policy_acceptance(
+            launcher, workspace, scratch, canary, environment, cleanup_state
+        )
+        tree_results = _run_job_tree_acceptance(
+            launcher, workspace, scratch, environment, cleanup_state
+        )
+
+        child_process_token = policy_results.get("child_process_token", {})
+        app_container_sid = child_process_token.get("app_container_sid")
+        filesystem_acl = {
+            "acceptance_parent": _filesystem_acl(acceptance_parent),
+            "source_root": _filesystem_acl(source_root),
+            "private_parent": _filesystem_acl(private_parent),
+            "job_root": _filesystem_acl(root),
+            "workspace_directory": _filesystem_acl(workspace),
+            "workspace_read_file": _filesystem_acl(workspace / "read.txt"),
+            "scratch_directory": _filesystem_acl(scratch),
+        }
+        if app_container_sid:
+            for snapshot in (filesystem_acl_before, filesystem_acl):
+                for evidence in snapshot.values():
+                    acl_text = (
+                        evidence.get("stdout", "") + evidence.get("stderr", "")
+                    ).casefold()
+                    evidence["app_container_sid_literal_present"] = (
+                        app_container_sid.casefold() in acl_text
+                    )
+
+        for name, evidence in filesystem_acl.items():
+            before_descriptor = filesystem_acl_before.get(name, {}).get(
+                "security_descriptor", {}
             )
-            tree_results = _run_job_tree_acceptance(
-                launcher, workspace, scratch, environment
+            after_descriptor = evidence.get("security_descriptor", {})
+            before_sddl = before_descriptor.get("sddl")
+            after_sddl = after_descriptor.get("sddl")
+            evidence["dacl_changed_during_psec_run"] = (
+                before_sddl != after_sddl
+                if before_sddl is not None and after_sddl is not None
+                else None
             )
-            # Capture ACLs while the temporary acceptance tree still exists.
-            child_process_token = policy_results.get("child_process_token", {})
-            app_container_sid = child_process_token.get("app_container_sid")
-            filesystem_acl = {
-                "acceptance_parent": _filesystem_acl(_acceptance_parent()),
-                "temporary_root": _filesystem_acl(root),
-                "workspace_directory": _filesystem_acl(workspace),
-                "workspace_read_file": _filesystem_acl(workspace / "read.txt"),
-                "scratch_directory": _filesystem_acl(scratch),
-            }
-            if app_container_sid:
-                for snapshot in (filesystem_acl_before, filesystem_acl):
-                    for evidence in snapshot.values():
-                        acl_text = (evidence.get("stdout", "") + evidence.get("stderr", "")).casefold()
-                        evidence["app_container_sid_literal_present"] = (
-                            app_container_sid.casefold() in acl_text
-                        )
-
-            for name, evidence in filesystem_acl.items():
-                before_descriptor = filesystem_acl_before.get(name, {}).get("security_descriptor", {})
-                after_descriptor = evidence.get("security_descriptor", {})
-                before_sddl = before_descriptor.get("sddl")
-                after_sddl = after_descriptor.get("sddl")
-                evidence["dacl_changed_during_psec_run"] = (
-                    before_sddl != after_sddl
-                    if before_sddl is not None and after_sddl is not None
-                    else None
-                )
-            filesystem_acl["before_launch"] = filesystem_acl_before
+        filesystem_acl["before_launch"] = filesystem_acl_before
 
         results = {**policy_results, **tree_results}
         child_process_token = results.pop("child_process_token", {})
@@ -594,6 +624,11 @@ def main() -> int:
             "child_token": child_token,
             "child_process_token": child_process_token,
             "filesystem_acl": filesystem_acl,
+            "workspace_projection": {
+                "manifest_sha256": projection.manifest_sha256,
+                "manifest_entries": len(projection.manifest),
+                "root": str(projection.root),
+            },
             "app_container_profile": (
                 _app_container_profile_evidence(app_container_sid, child_token)
                 if app_container_sid else {
@@ -618,24 +653,76 @@ def main() -> int:
             "failures": failures,
             "note": "This host acceptance result does not automatically set terminal isolation to VERIFIED.",
         }
-        print(json.dumps(output, indent=2, sort_keys=True))
-        return 0 if not failures else 1
+        exit_code = 0 if not failures else 1
     except Exception as exc:
-        print(json.dumps({
+        output = {
             "state": "FAIL",
             "error_type": type(exc).__name__,
             "error_message": str(exc),
             "traceback": traceback.format_exc(),
             "note": "No Terminal templates were enabled; the production VERIFIED gate remains closed.",
-        }, indent=2, sort_keys=True))
-        return 1
+        }
+        exit_code = 1
     finally:
+        if cleanup_state["safe_to_cleanup"]:
+            try:
+                if projection is not None:
+                    cleanup_state["safe_to_cleanup"] = False
+                    projection.close()
+                    cleanup_state["safe_to_cleanup"] = True
+                for directory in (private_parent, source_root):
+                    if directory is not None and directory.exists():
+                        shutil.rmtree(directory)
+                    if directory is not None and directory.exists():
+                        raise WindowsPsecError(
+                            f"acceptance temporary directory cleanup incomplete: {directory}"
+                        )
+                cleanup_evidence = {"state": "PASS"}
+            except Exception as exc:
+                cleanup_state["safe_to_cleanup"] = False
+                cleanup_evidence = {
+                    "state": "FAIL",
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc),
+                    "orphan_roots": [
+                        str(path) for path in (projection.root if projection else None,
+                                               private_parent, source_root)
+                        if path is not None and path.exists()
+                    ],
+                }
+                exit_code = 1
+        else:
+            cleanup_evidence = {
+                "state": "BLOCKED",
+                "reason": "Job Object drain was not proven; preserving the disposable tree",
+                "orphan_roots": [
+                    str(path) for path in (projection.root if projection else None,
+                                           private_parent, source_root)
+                    if path is not None and path.exists()
+                ],
+            }
+            exit_code = 1
+
         if canary is not None:
             try:
                 canary.unlink(missing_ok=True)
-            except OSError:
-                pass
+                canary_cleanup = {"state": "PASS"}
+            except OSError as exc:
+                canary_cleanup = {
+                    "state": "FAIL",
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc),
+                    "path": str(canary),
+                }
+                exit_code = 1
 
+        if output is None:
+            output = {"state": "FAIL", "error_message": "acceptance produced no result"}
+        output["cleanup"] = cleanup_evidence
+        output["canary_cleanup"] = canary_cleanup
+
+    print(json.dumps(output, indent=2, sort_keys=True))
+    return exit_code
 
 if __name__ == "__main__":
     raise SystemExit(main())
