@@ -275,6 +275,8 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
             evidence = {
                 "package_sid": package_sid,
                 "token_state": token["state"],
+                "token_user_sid": token["user_sid"],
+                "token_integrity_sid": token["integrity_sid"],
                 "se_change_notify_privilege_present": token[
                     "se_change_notify_privilege_present"
                 ],
@@ -310,6 +312,77 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
                 raise WindowsPsecError(
                     f"GetExitCodeProcess failed (WinError {ctypes.get_last_error()})"
                 )
+            first_exit_code = int(exit_code.value)
+            evidence["first_child_exit_code"] = first_exit_code
+            if first_exit_code in (15, 16):
+                if not kernel32.CloseHandle(process_info.hThread):
+                    raise WindowsPsecError(
+                        f"CloseHandle(first AppContainer thread) failed "
+                        f"(WinError {ctypes.get_last_error()})"
+                    )
+                process_info.hThread = None
+                if not kernel32.CloseHandle(process_info.hProcess):
+                    raise WindowsPsecError(
+                        f"CloseHandle(first AppContainer process) failed "
+                        f"(WinError {ctypes.get_last_error()})"
+                    )
+                process_info.hProcess = None
+                process_info = _PROCESS_INFORMATION()
+                retry_command_line = ctypes.create_unicode_buffer(
+                    f'"{cmd_exe}" /d /c call "{script}"'
+                )
+                if not kernel32.CreateProcessW(
+                    cmd_exe,
+                    retry_command_line,
+                    None,
+                    None,
+                    False,
+                    CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW,
+                    None,
+                    str(workspace),
+                    ctypes.byref(startup),
+                    ctypes.byref(process_info),
+                ):
+                    raise WindowsPsecError(
+                        f"CreateProcessW(AppContainer retry) failed "
+                        f"(WinError {ctypes.get_last_error()})"
+                    )
+                process_drained = False
+                retry_token = _require_app_container_token(
+                    _query_process_token(kernel32, process_info.hProcess)
+                )
+                self.assertEqual(retry_token["app_container_sid"], package_sid)
+                previous_suspend_count = kernel32.ResumeThread(process_info.hThread)
+                if previous_suspend_count == 0xFFFFFFFF or previous_suspend_count != 1:
+                    raise WindowsPsecError(
+                        "AppContainer retry thread had an unexpected suspend count"
+                    )
+                retry_wait = kernel32.WaitForSingleObject(
+                    process_info.hProcess, 15000
+                )
+                if retry_wait == WAIT_TIMEOUT:
+                    kernel32.TerminateProcess(process_info.hProcess, 1)
+                    retry_wait = kernel32.WaitForSingleObject(
+                        process_info.hProcess, 5000
+                    )
+                if retry_wait != WAIT_OBJECT_0:
+                    raise WindowsPsecError(
+                        f"AppContainer retry did not exit (wait=0x{retry_wait:08x})"
+                    )
+                process_drained = True
+                retry_exit_code = wintypes.DWORD()
+                if not kernel32.GetExitCodeProcess(
+                    process_info.hProcess, ctypes.byref(retry_exit_code)
+                ):
+                    raise WindowsPsecError(
+                        f"GetExitCodeProcess(retry) failed "
+                        f"(WinError {ctypes.get_last_error()})"
+                    )
+                evidence["retry_child_exit_code"] = int(retry_exit_code.value)
+                exit_code.value = retry_exit_code.value
+            else:
+                evidence["retry_child_exit_code"] = None
+
             evidence["child_exit_code"] = int(exit_code.value)
             scratch_probe = scratch / "write-probe.txt"
             evidence["scratch_probe_exists_after_child"] = scratch_probe.exists()
