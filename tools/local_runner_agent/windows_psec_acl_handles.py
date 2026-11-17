@@ -798,26 +798,35 @@ class WindowsPsecHandleAclManager:
             ]
 
             # Snapshot and validate every target before the first DACL write.
-            for item, mask, _ in target_specs:
+            already_authorized = {}
+            for item, mask, is_directory in target_specs:
                 current_sddl = api.read_sddl(item)
                 existing_aces = _parse_allow_aces(current_sddl, package_sid)
                 if any(granted & ~mask for _, granted in existing_aces):
                     raise WindowsPsecAclError(
                         f"Package SID already has an overbroad allow ACE: {item.path}"
                     )
+                required_flags = {"OI", "CI"} if is_directory else set()
+                already_authorized[id(item)] = any(
+                    granted == mask and required_flags.issubset(
+                        {flags[index:index + 2] for index in range(0, len(flags), 2)}
+                    )
+                    for flags, granted in existing_aces
+                )
                 snapshots.append((item, api.snapshot_dacl(item)))
 
             verified = []
             for item, mask, is_directory in target_specs:
-                changed.append(item)
-                inheritance = (
-                    OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE
-                    if is_directory else 0
-                )
-                api.add_allow_ace(item, package_sid, mask, inheritance)
+                required_flags = {"OI", "CI"} if is_directory else set()
+                if not already_authorized[id(item)]:
+                    changed.append(item)
+                    inheritance = (
+                        OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE
+                        if is_directory else 0
+                    )
+                    api.add_allow_ace(item, package_sid, mask, inheritance)
                 sddl = api.read_sddl(item)
                 aces = _parse_allow_aces(sddl, package_sid)
-                required_flags = {"OI", "CI"} if is_directory else set()
                 matching = [
                     (flags, granted) for flags, granted in aces
                     if granted == mask and required_flags.issubset(
