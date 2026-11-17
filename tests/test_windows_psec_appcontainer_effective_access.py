@@ -144,11 +144,11 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
         attribute_buffer = None
         attribute_list = None
         process_info = _PROCESS_INFORMATION()
-        process_drained = False
+        process_drained = True
         canary = None
         job_root = None
         evidence_path = acceptance_parent / "appcontainer-effective-access.json"
-        evidence = {}
+        evidence = {"state": "FAIL"}
 
         try:
             hr = userenv.CreateAppContainerProfile(
@@ -264,6 +264,7 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
                     f"CreateProcessW(AppContainer) failed "
                     f"(WinError {ctypes.get_last_error()})"
                 )
+            process_drained = False
 
             token = _require_app_container_token(
                 _query_process_token(kernel32, process_info.hProcess)
@@ -308,15 +309,29 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
                     f"GetExitCodeProcess failed (WinError {ctypes.get_last_error()})"
                 )
             evidence["child_exit_code"] = int(exit_code.value)
+            check_names = [
+                "workspace_read",
+                "workspace_write_denied",
+                "scratch_write",
+                "scratch_read",
+                "scratch_delete",
+                "host_profile_canary_denied",
+            ]
+            failed_index = {
+                11: 0, 12: 1, 13: 2, 14: 3, 15: 4, 16: 4, 17: 5,
+            }.get(int(exit_code.value))
             evidence["checks"] = {
-                "workspace_read": "PASS" if exit_code.value != 11 else "FAIL",
-                "workspace_write_denied": "PASS" if exit_code.value != 12 else "FAIL",
-                "scratch_write": "PASS" if exit_code.value != 13 else "FAIL",
-                "scratch_read": "PASS" if exit_code.value != 14 else "FAIL",
-                "scratch_delete": "PASS" if exit_code.value not in (15, 16) else "FAIL",
-                "host_profile_canary_denied": "PASS" if exit_code.value != 17 else "FAIL",
+                name: (
+                    "FAIL" if index == failed_index
+                    else "PASS" if failed_index is None or index < failed_index
+                    else "NOT_RUN"
+                )
+                for index, name in enumerate(check_names)
             }
             if exit_code.value != 0:
+                evidence["failure_reason"] = (
+                    f"AppContainer filesystem access probe exited {exit_code.value}"
+                )
                 raise AssertionError(
                     f"AppContainer filesystem access probe failed with exit code {exit_code.value}"
                 )
@@ -327,9 +342,11 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
                 "DCP-APPCONTAINER-WORKSPACE-READ",
             )
             evidence["state"] = "PASS"
-            evidence_path.write_text(
-                json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8"
-            )
+        except Exception as exc:
+            evidence["state"] = "FAIL"
+            evidence["error_type"] = type(exc).__name__
+            evidence["error_message"] = str(exc)
+            raise
         finally:
             if process_info.hProcess:
                 if not process_drained:
@@ -345,20 +362,36 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
                 kernel32.DeleteProcThreadAttributeList(attribute_list)
             if profile_sid:
                 advapi32.FreeSid(profile_sid)
+            cleanup_errors = []
             if profile_created and process_drained:
                 hr = userenv.DeleteAppContainerProfile(profile_name)
                 if hr != 0:
-                    raise WindowsPsecError(
-                        f"DeleteAppContainerProfile failed (HRESULT 0x{hr & 0xFFFFFFFF:08x})"
+                    cleanup_errors.append(
+                        f"DeleteAppContainerProfile HRESULT 0x{hr & 0xFFFFFFFF:08x}"
                     )
-            if canary is not None:
-                canary.unlink(missing_ok=True)
+            if canary is not None and process_drained:
+                try:
+                    canary.unlink(missing_ok=True)
+                except OSError as exc:
+                    cleanup_errors.append(f"canary cleanup: {type(exc).__name__}: {exc}")
             if job_root is not None and job_root.exists() and process_drained:
-                shutil.rmtree(job_root)
-            if job_root is not None and job_root.exists() and not process_drained:
-                raise WindowsPsecError(
-                    f"AppContainer process was not drained; preserving {job_root}"
+                try:
+                    shutil.rmtree(job_root)
+                except OSError as exc:
+                    cleanup_errors.append(f"job-root cleanup: {type(exc).__name__}: {exc}")
+            if evidence:
+                evidence["process_drained"] = process_drained
+                evidence["cleanup_errors"] = cleanup_errors
+                evidence_path.write_text(
+                    json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8"
                 )
+            if not process_drained:
+                raise WindowsPsecError(
+                    f"AppContainer process was not drained; preserving {job_root} "
+                    f"and {canary}"
+                )
+            if cleanup_errors:
+                raise WindowsPsecError("; ".join(cleanup_errors))
 
 
 if __name__ == "__main__":
