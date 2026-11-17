@@ -315,6 +315,36 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
             first_exit_code = int(exit_code.value)
             evidence["first_child_exit_code"] = first_exit_code
             if first_exit_code in (15, 16):
+                diagnostic_delete = subprocess.run(
+                    [
+                        "icacls", str(scratch), "/grant",
+                        f"*{token['user_sid']}:(OI)(CI)(D)", "/t", "/c",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                diagnostic_delete_child = subprocess.run(
+                    [
+                        "icacls", str(scratch), "/grant",
+                        f"*{token['user_sid']}:(CI)(DC)", "/t", "/c",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                evidence["diagnostic_user_delete_acl"] = {
+                    "delete_returncode": diagnostic_delete.returncode,
+                    "delete_output": diagnostic_delete.stdout + diagnostic_delete.stderr,
+                    "delete_child_returncode": diagnostic_delete_child.returncode,
+                    "delete_child_output": (
+                        diagnostic_delete_child.stdout + diagnostic_delete_child.stderr
+                    ),
+                }
+                if diagnostic_delete.returncode or diagnostic_delete_child.returncode:
+                    raise WindowsPsecError(
+                        "Could not apply diagnostic user-SID delete ACE to disposable scratch"
+                    )
                 if not kernel32.CloseHandle(process_info.hThread):
                     raise WindowsPsecError(
                         f"CloseHandle(first AppContainer thread) failed "
@@ -392,6 +422,20 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
                 if delete_log.exists() else None
             )
             if scratch_probe.exists():
+                owner_result = subprocess.run(
+                    [
+                        "powershell.exe", "-NoProfile", "-Command",
+                        f"(Get-Acl -LiteralPath '{scratch_probe}').Owner",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                evidence["scratch_probe_owner"] = {
+                    "returncode": owner_result.returncode,
+                    "stdout": owner_result.stdout.strip(),
+                    "stderr": owner_result.stderr.strip(),
+                }
                 acl_result = subprocess.run(
                     ["icacls", str(scratch_probe)],
                     capture_output=True,
