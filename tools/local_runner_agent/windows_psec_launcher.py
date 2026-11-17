@@ -19,6 +19,7 @@ from tools.local_runner_agent.windows_psec import (
     probe_psec,
 )
 from tools.local_runner_agent.windows_psec_acl import is_valid_package_sid
+from tools.local_runner_agent.windows_psec_acl_handles import WindowsPsecHandleAclManager
 
 
 HANDLE = ctypes.c_void_p
@@ -425,6 +426,25 @@ def _require_app_container_token(token: object) -> dict:
     return token
 
 
+def _resume_after_filesystem_authorization(
+    kernel32, thread_handle, acl_manager, workspace, scratch, package_sid,
+):
+    """Resume only after handle-relative ACL authorization is verified."""
+    authorization = acl_manager.apply(workspace, scratch, package_sid)
+    try:
+        previous_suspend_count = kernel32.ResumeThread(thread_handle)
+        if previous_suspend_count == 0xFFFFFFFF:
+            raise _win_error("ResumeThread")
+        if previous_suspend_count != 1:
+            raise WindowsPsecError(
+                "PSEC initial thread suspend count was not exactly one before resume"
+            )
+        evidence = authorization.evidence
+    finally:
+        authorization.close()
+    return previous_suspend_count, evidence
+
+
 def _environment_block(environment: Mapping[str, str]):
     normalized = {}
     for key, value in environment.items():
@@ -673,7 +693,7 @@ class WindowsPsecProcess:
 class WindowsPsecLauncher:
     """Launch one fixed command inside PSEC with a kill-on-close Job Object."""
 
-    def __init__(self):
+    def __init__(self, *, acl_manager=None):
         if os.name != "nt":
             raise WindowsPsecError("Windows PSEC launcher is supported only on Windows")
         assessment = probe_psec()
@@ -682,6 +702,7 @@ class WindowsPsecLauncher:
         self.kernel32 = _load_system_dll("kernel32.dll")
         _configure_kernel32(self.kernel32)
         self.psec_dll = _load_system_dll("processmodel.dll")
+        self.acl_manager = acl_manager or WindowsPsecHandleAclManager()
 
     def launch(
         self,
@@ -853,9 +874,15 @@ class WindowsPsecLauncher:
                 ) from exc
             if not kernel32.AssignProcessToJobObject(job_handle, process_info.hProcess):
                 raise _win_error("AssignProcessToJobObject")
-            previous_suspend_count = kernel32.ResumeThread(process_info.hThread)
-            if previous_suspend_count == 0xFFFFFFFF:
-                raise _win_error("ResumeThread")
+            previous_suspend_count, acl_evidence = _resume_after_filesystem_authorization(
+                kernel32,
+                process_info.hThread,
+                self.acl_manager,
+                work,
+                temp,
+                token_diagnostics["app_container_sid"],
+            )
+            token_diagnostics["filesystem_acl"] = acl_evidence
             kernel32.CloseHandle(process_info.hThread)
             process_info.hThread = None
 
