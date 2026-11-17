@@ -220,6 +220,14 @@ class SID_AND_ATTRIBUTES(ctypes.Structure):
     _fields_ = [("Sid", HANDLE), ("Attributes", DWORD)]
 
 
+class LUID(ctypes.Structure):
+    _fields_ = [("LowPart", DWORD), ("HighPart", ctypes.c_long)]
+
+
+class LUID_AND_ATTRIBUTES(ctypes.Structure):
+    _fields_ = [("Luid", LUID), ("Attributes", DWORD)]
+
+
 def _token_information(advapi32, token: HANDLE, information_class: int):
     required = DWORD(0)
     advapi32.GetTokenInformation(token, information_class, None, 0, ctypes.byref(required))
@@ -251,11 +259,13 @@ def _query_process_token(kernel32, process_handle: HANDLE) -> dict:
     TOKEN_QUERY = 0x0008
     TOKEN_USER = 1
     TOKEN_GROUPS = 2
+    TOKEN_PRIVILEGES = 3
     TOKEN_INTEGRITY_LEVEL = 25
     TOKEN_ELEVATION_TYPE = 18
     TOKEN_IS_APP_CONTAINER = 29
     TOKEN_CAPABILITIES = 30
     TOKEN_APP_CONTAINER_SID = 31
+    SE_PRIVILEGE_ENABLED = 0x00000002
     advapi32 = _load_system_dll("advapi32.dll")
     advapi32.OpenProcessToken.argtypes = [HANDLE, DWORD, ctypes.POINTER(HANDLE)]
     advapi32.OpenProcessToken.restype = BOOL
@@ -265,6 +275,10 @@ def _query_process_token(kernel32, process_handle: HANDLE) -> dict:
     advapi32.GetTokenInformation.restype = BOOL
     advapi32.ConvertSidToStringSidW.argtypes = [HANDLE, ctypes.POINTER(ctypes.c_wchar_p)]
     advapi32.ConvertSidToStringSidW.restype = BOOL
+    advapi32.LookupPrivilegeValueW.argtypes = [
+        ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.POINTER(LUID),
+    ]
+    advapi32.LookupPrivilegeValueW.restype = BOOL
     kernel32.LocalFree.argtypes = [HANDLE]
     kernel32.LocalFree.restype = HANDLE
 
@@ -359,11 +373,66 @@ def _query_process_token(kernel32, process_handle: HANDLE) -> dict:
             result["capabilities_error"] = f"{type(exc).__name__}: {exc}"
 
         try:
+            privilege_buffer = _token_information(advapi32, token, TOKEN_PRIVILEGES)
+            privilege_count = int(ctypes.cast(
+                privilege_buffer, ctypes.POINTER(DWORD)
+            ).contents.value)
+            if privilege_count > 512:
+                raise WindowsPsecError(
+                    "process token reports an unreasonable privilege count"
+                )
+            privilege_bytes = (
+                ctypes.sizeof(DWORD)
+                + privilege_count * ctypes.sizeof(LUID_AND_ATTRIBUTES)
+            )
+            if privilege_bytes > ctypes.sizeof(privilege_buffer):
+                raise WindowsPsecError(
+                    "process token privilege buffer is truncated"
+                )
+            change_notify_luid = LUID()
+            if not advapi32.LookupPrivilegeValueW(
+                None, "SeChangeNotifyPrivilege", ctypes.byref(change_notify_luid)
+            ):
+                raise _win_error("LookupPrivilegeValueW(SeChangeNotifyPrivilege)")
+            privileges = []
+            change_notify_present = False
+            change_notify_enabled = False
+            base = ctypes.addressof(privilege_buffer) + ctypes.sizeof(DWORD)
+            for index in range(privilege_count):
+                entry = ctypes.cast(
+                    base + index * ctypes.sizeof(LUID_AND_ATTRIBUTES),
+                    ctypes.POINTER(LUID_AND_ATTRIBUTES),
+                ).contents
+                attributes = int(entry.Attributes)
+                is_change_notify = (
+                    int(entry.Luid.LowPart) == int(change_notify_luid.LowPart)
+                    and int(entry.Luid.HighPart) == int(change_notify_luid.HighPart)
+                )
+                if is_change_notify:
+                    change_notify_present = True
+                    change_notify_enabled = bool(attributes & SE_PRIVILEGE_ENABLED)
+                privileges.append({
+                    "luid_low": int(entry.Luid.LowPart),
+                    "luid_high": int(entry.Luid.HighPart),
+                    "attributes": attributes,
+                    "enabled": bool(attributes & SE_PRIVILEGE_ENABLED),
+                })
+            result["privileges"] = privileges
+            result["se_change_notify_privilege_present"] = change_notify_present
+            result["se_change_notify_privilege_enabled"] = change_notify_enabled
+        except Exception as exc:
+            result["privileges_error"] = f"{type(exc).__name__}: {exc}"
+
+        try:
             result["groups"] = read_sid_attributes(TOKEN_GROUPS)
         except Exception as exc:
             result["groups_error"] = f"{type(exc).__name__}: {exc}"
 
-        required = {"user_sid", "integrity_sid", "elevation_type", "is_app_container", "app_container_sid", "groups", "capabilities"}
+        required = {
+            "user_sid", "integrity_sid", "elevation_type", "is_app_container",
+            "app_container_sid", "groups", "capabilities", "privileges",
+            "se_change_notify_privilege_present", "se_change_notify_privilege_enabled",
+        }
         result["state"] = "CAPTURED" if required.issubset(result) else "PARTIAL"
         return result
     finally:
@@ -400,6 +469,8 @@ def _require_app_container_token(token: object) -> dict:
     required = {
         "state", "captured_before_resume", "is_app_container", "app_container_sid",
         "user_sid", "integrity_sid", "elevation_type", "groups", "capabilities",
+        "privileges", "se_change_notify_privilege_present",
+        "se_change_notify_privilege_enabled",
     }
     if not required.issubset(token):
         raise WindowsPsecError("PSEC process token diagnostics are incomplete")
@@ -417,6 +488,24 @@ def _require_app_container_token(token: object) -> dict:
         raise WindowsPsecError("PSEC process token elevation type is invalid")
     if not isinstance(token["groups"], list) or not isinstance(token["capabilities"], list):
         raise WindowsPsecError("PSEC process token SID collections are invalid")
+    if (
+        not isinstance(token["privileges"], list)
+        or not isinstance(token["se_change_notify_privilege_present"], bool)
+        or not isinstance(token["se_change_notify_privilege_enabled"], bool)
+    ):
+        raise WindowsPsecError("PSEC process token privilege diagnostics are invalid")
+    for privilege in token["privileges"]:
+        if (
+            not isinstance(privilege, dict)
+            or isinstance(privilege.get("luid_low"), bool)
+            or not isinstance(privilege.get("luid_low"), int)
+            or isinstance(privilege.get("luid_high"), bool)
+            or not isinstance(privilege.get("luid_high"), int)
+            or isinstance(privilege.get("attributes"), bool)
+            or not isinstance(privilege.get("attributes"), int)
+            or not isinstance(privilege.get("enabled"), bool)
+        ):
+            raise WindowsPsecError("PSEC process token privilege entry is invalid")
     for collection_name in ("groups", "capabilities"):
         for entry in token[collection_name]:
             if (not isinstance(entry, dict) or not _valid_sid_string(entry.get("sid"))
