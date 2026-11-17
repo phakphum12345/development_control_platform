@@ -440,6 +440,15 @@ def _resume_after_filesystem_authorization(
                 "PSEC initial thread suspend count was not exactly one before resume"
             )
         evidence = authorization.evidence
+        if (
+            not isinstance(evidence, dict)
+            or evidence.get("state") != "DACL_VERIFIED"
+            or evidence.get("handle_relative") is not True
+            or evidence.get("effective_access") != "NOT_TESTED"
+        ):
+            raise WindowsPsecError(
+                "PSEC filesystem authorization did not return strict handle-relative DACL evidence"
+            )
     finally:
         authorization.close()
     return previous_suspend_count, evidence
