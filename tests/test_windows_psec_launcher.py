@@ -14,6 +14,7 @@ from tools.local_runner_agent.windows_psec_launcher import (
     _apply_sandbox_profile_environment,
     _environment_block,
     _require_app_container_token,
+    _resume_after_filesystem_authorization,
 )
 
 
@@ -154,6 +155,81 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
         self.assertTrue(stdout.closed)
         self.assertEqual(len(kernel.closed), 2)
         self.assertEqual(psec.closed, [303])
+
+    def test_filesystem_acl_is_verified_before_resume_and_handles_close_after_resume(self):
+        events = []
+
+        class Authorization:
+            evidence = {"state": "VERIFIED", "handle_relative": True}
+
+            def close(self):
+                events.append("close")
+
+        class Manager:
+            def apply(self, workspace, scratch, package_sid):
+                events.append(("apply", workspace, scratch, package_sid))
+                return Authorization()
+
+        class Kernel:
+            def ResumeThread(self, thread_handle):
+                events.append(("resume", thread_handle))
+                return 1
+
+        previous, evidence = _resume_after_filesystem_authorization(
+            Kernel(), 101, Manager(), "C:/job/workspace", "C:/job/scratch",
+            "S-1-15-2-123-456",
+        )
+        self.assertEqual(previous, 1)
+        self.assertEqual(evidence["state"], "VERIFIED")
+        self.assertEqual(events[0][0], "apply")
+        self.assertEqual(events[1], ("resume", 101))
+        self.assertEqual(events[2], "close")
+
+    def test_filesystem_acl_failure_prevents_resume(self):
+        events = []
+
+        class Manager:
+            def apply(self, workspace, scratch, package_sid):
+                events.append("apply")
+                raise WindowsPsecError("ACL verification failed")
+
+        class Kernel:
+            def ResumeThread(self, thread_handle):
+                events.append("resume")
+                return 1
+
+        with self.assertRaisesRegex(WindowsPsecError, "ACL verification failed"):
+            _resume_after_filesystem_authorization(
+                Kernel(), 101, Manager(), "C:/job/workspace", "C:/job/scratch",
+                "S-1-15-2-123-456",
+            )
+        self.assertEqual(events, ["apply"])
+
+    def test_unexpected_initial_suspend_count_fails_and_closes_acl_handles(self):
+        events = []
+
+        class Authorization:
+            evidence = {"state": "VERIFIED"}
+
+            def close(self):
+                events.append("close")
+
+        class Manager:
+            def apply(self, workspace, scratch, package_sid):
+                events.append("apply")
+                return Authorization()
+
+        class Kernel:
+            def ResumeThread(self, thread_handle):
+                events.append("resume")
+                return 0
+
+        with self.assertRaisesRegex(WindowsPsecError, "suspend count"):
+            _resume_after_filesystem_authorization(
+                Kernel(), 101, Manager(), "C:/job/workspace", "C:/job/scratch",
+                "S-1-15-2-123-456",
+            )
+        self.assertEqual(events, ["apply", "resume", "close"])
 
     def test_process_retains_read_only_token_diagnostics(self):
         kernel = FakeKernel32(active_processes=1)
