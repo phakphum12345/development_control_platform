@@ -160,7 +160,7 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
         events = []
 
         class Authorization:
-            evidence = {"state": "VERIFIED", "handle_relative": True}
+            evidence = {"state": "DACL_VERIFIED", "handle_relative": True, "effective_access": "NOT_TESTED"}
 
             def close(self):
                 events.append("close")
@@ -180,7 +180,7 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             "S-1-15-2-123-456",
         )
         self.assertEqual(previous, 1)
-        self.assertEqual(evidence["state"], "VERIFIED")
+        self.assertEqual(evidence["state"], "DACL_VERIFIED")
         self.assertEqual(events[0][0], "apply")
         self.assertEqual(events[1], ("resume", 101))
         self.assertEqual(events[2], "close")
