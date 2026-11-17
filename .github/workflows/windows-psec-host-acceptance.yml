@@ -59,6 +59,13 @@ jobs:
           }
           Write-Host "DCP_PSEC_ACCEPTANCE_PARENT=$($item.FullName)"
 
+      - name: Run native NTFS handle-relative ACL round-trip
+        shell: pwsh
+        env:
+          DCP_PSEC_HANDLE_ACL_TEST: "1"
+          DCP_PSEC_HANDLE_ACL_PACKAGE_SID: "S-1-15-2-123-456-789"
+        run: python -m unittest tests.test_windows_psec_acl_handles.WindowsPsecHandleAclRealHostTests.test_real_ntfs_handle_relative_acl_round_trip -v
+
       - name: Run disposable PSEC API availability probe
         shell: pwsh
         run: |
