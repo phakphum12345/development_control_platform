@@ -277,6 +277,7 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
                 "token_state": token["state"],
                 "token_user_sid": token["user_sid"],
                 "token_integrity_sid": token["integrity_sid"],
+                "token_groups": token["groups"],
                 "se_change_notify_privilege_present": token[
                     "se_change_notify_privilege_present"
                 ],
@@ -333,6 +334,30 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
                     text=True,
                     check=False,
                 )
+                diagnostic_all_apps_delete = subprocess.run(
+                    [
+                        "icacls", str(scratch), "/grant",
+                        "*S-1-15-2-1:(OI)(CI)(D)", "/t", "/c",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                diagnostic_all_apps_delete_child = subprocess.run(
+                    [
+                        "icacls", str(scratch), "/grant",
+                        "*S-1-15-2-1:(CI)(DC)", "/t", "/c",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                scratch_acl_result = subprocess.run(
+                    ["icacls", str(scratch)],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
                 evidence["diagnostic_user_delete_acl"] = {
                     "delete_returncode": diagnostic_delete.returncode,
                     "delete_output": diagnostic_delete.stdout + diagnostic_delete.stderr,
@@ -341,9 +366,28 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
                         diagnostic_delete_child.stdout + diagnostic_delete_child.stderr
                     ),
                 }
-                if diagnostic_delete.returncode or diagnostic_delete_child.returncode:
+                evidence["diagnostic_all_apps_delete_acl"] = {
+                    "delete_returncode": diagnostic_all_apps_delete.returncode,
+                    "delete_output": (
+                        diagnostic_all_apps_delete.stdout + diagnostic_all_apps_delete.stderr
+                    ),
+                    "delete_child_returncode": diagnostic_all_apps_delete_child.returncode,
+                    "delete_child_output": (
+                        diagnostic_all_apps_delete_child.stdout
+                        + diagnostic_all_apps_delete_child.stderr
+                    ),
+                }
+                evidence["scratch_root_icacls_after_diagnostics"] = (
+                    scratch_acl_result.stdout + scratch_acl_result.stderr
+                )
+                if (
+                    diagnostic_delete.returncode
+                    or diagnostic_delete_child.returncode
+                    or diagnostic_all_apps_delete.returncode
+                    or diagnostic_all_apps_delete_child.returncode
+                ):
                     raise WindowsPsecError(
-                        "Could not apply diagnostic user-SID delete ACE to disposable scratch"
+                        "Could not apply diagnostic delete ACEs to disposable scratch"
                     )
                 if not kernel32.CloseHandle(process_info.hThread):
                     raise WindowsPsecError(
@@ -433,7 +477,7 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
                 owner_result = subprocess.run(
                     [
                         "powershell.exe", "-NoProfile", "-Command",
-                        f"(Get-Acl -LiteralPath '{scratch_probe}').Owner",
+                        f"Import-Module Microsoft.PowerShell.Security; (Get-Acl -LiteralPath '{scratch_probe}').Owner",
                     ],
                     capture_output=True,
                     text=True,
