@@ -34,6 +34,7 @@ from tools.local_runner_agent.windows_psec_launcher import (
     WindowsPsecLauncher,
     WindowsPsecError,
 )
+from tools.local_runner_agent.windows_psec_projection import create_workspace_projection
 
 
 class TerminalExecutionError(RuntimeError):
@@ -325,6 +326,25 @@ class TerminalScriptExecutor:
                 env[f"GIT_CONFIG_VALUE_{index}"] = value
                 index += 1
         env["GIT_CONFIG_COUNT"] = str(index)
+
+    @staticmethod
+    def _cleanup_execution_workspace(*, projection, private_parent, job_home):
+        """Delete only after the caller has proven the Windows Job Object drained."""
+        if projection is not None:
+            projection.close()
+            if private_parent is not None and private_parent.exists():
+                shutil.rmtree(private_parent)
+            if private_parent is not None and private_parent.exists():
+                raise TerminalExecutionError(
+                    f"Windows PSEC private parent cleanup incomplete: {private_parent}"
+                )
+            return
+        if job_home is not None and job_home.exists():
+            shutil.rmtree(job_home)
+        if job_home is not None and job_home.exists():
+            raise TerminalExecutionError(
+                f"Terminal temporary HOME cleanup incomplete: {job_home}"
+            )
 
     @staticmethod
     def _disable_repository_filters_windows(
