@@ -48,6 +48,7 @@ FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
 FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000
 FILE_ATTRIBUTE_DIRECTORY = 0x00000010
 FILE_ATTRIBUTE_REPARSE_POINT = 0x00000400
+FILE_DELETE_CHILD = 0x00000040
 OPEN_EXISTING = 3
 
 FILE_OPEN = 1
@@ -794,7 +795,14 @@ class WindowsPsecHandleAclManager:
             target_specs = [
                 (root, FILE_TRAVERSE, False),
                 *((item, READ_EXECUTE, item.is_directory) for item in workspace_targets),
-                *((item, MODIFY, item.is_directory) for item in scratch_targets),
+                *(
+                    (
+                        item,
+                        MODIFY | (FILE_DELETE_CHILD if item.is_directory else 0),
+                        item.is_directory,
+                    )
+                    for item in scratch_targets
+                ),
             ]
 
             # Snapshot and validate every target before the first DACL write.
