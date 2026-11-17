@@ -119,6 +119,42 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
         process.close()
         self.assertEqual(len(kernel.closed), 2)
 
+    def test_close_retains_handles_until_job_object_is_drained(self):
+        class StubbornKernel(FakeKernel32):
+            def terminate_job(self, job, exit_code):
+                self.terminated.append((job, exit_code))
+                return 1
+
+        kernel = StubbornKernel(active_processes=1)
+        psec = FakePsecDll()
+        stdout = io.BytesIO()
+        process = WindowsPsecProcess(
+            kernel32=kernel,
+            process_handle=101,
+            job_handle=202,
+            psec_dll=psec,
+            psec_handle=303,
+            stdout=stdout,
+            pid=404,
+            args=("python.exe", "--version"),
+        )
+
+        with self.assertRaisesRegex(WindowsPsecError, "did not drain"):
+            process.close(timeout=0.01)
+
+        self.assertFalse(process._closed)
+        self.assertFalse(stdout.closed)
+        self.assertEqual(kernel.closed, [])
+        self.assertEqual(psec.closed, [])
+        self.assertEqual(kernel.terminated, [(202, 1)])
+
+        kernel.active_processes = 0
+        process.close(timeout=0.1)
+        self.assertTrue(process._closed)
+        self.assertTrue(stdout.closed)
+        self.assertEqual(len(kernel.closed), 2)
+        self.assertEqual(psec.closed, [303])
+
     def test_process_retains_read_only_token_diagnostics(self):
         kernel = FakeKernel32(active_processes=1)
         evidence = {
