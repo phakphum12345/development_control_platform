@@ -400,7 +400,7 @@ def _parse_policy_payload_output(return_code: int, output: bytes) -> dict:
     return result
 
 
-def _run_policy_acceptance(launcher, workspace: Path, scratch: Path, canary: Path, environment):
+def _run_policy_acceptance(launcher, workspace: Path, scratch: Path, canary: Path, environment, cleanup_state):
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind(("127.0.0.1", 0))
@@ -441,6 +441,7 @@ def _run_policy_acceptance(launcher, workspace: Path, scratch: Path, canary: Pat
     ]
     process = None
     try:
+        cleanup_state["safe_to_cleanup"] = False
         process = launcher.launch(
             command,
             workspace=workspace,
@@ -455,13 +456,16 @@ def _run_policy_acceptance(launcher, workspace: Path, scratch: Path, canary: Pat
             result["network_loopback_deny"] = "FAIL"
         return result
     finally:
-        if process is not None:
-            process.close()
-        server.close()
-        listener.join(timeout=3)
+        try:
+            if process is not None:
+                process.close()
+                cleanup_state["safe_to_cleanup"] = True
+        finally:
+            server.close()
+            listener.join(timeout=3)
 
 
-def _run_job_tree_acceptance(launcher, workspace: Path, scratch: Path, environment):
+def _run_job_tree_acceptance(launcher, workspace: Path, scratch: Path, environment, cleanup_state):
     marker = scratch / "escaped-child-marker.txt"
     parent_code = (
         "import subprocess,sys; "
@@ -474,6 +478,7 @@ def _run_job_tree_acceptance(launcher, workspace: Path, scratch: Path, environme
         "import pathlib,sys,time; time.sleep(4); "
         "pathlib.Path(sys.argv[1]).write_text('child-survived', encoding='utf-8')"
     )
+    cleanup_state["safe_to_cleanup"] = False
     process = launcher.launch(
         [sys.executable, "-c", parent_code, child_code, str(marker)],
         workspace=workspace,
@@ -496,6 +501,7 @@ def _run_job_tree_acceptance(launcher, workspace: Path, scratch: Path, environme
         }
     finally:
         process.close()
+        cleanup_state["safe_to_cleanup"] = True
 
 
 def main() -> int:
