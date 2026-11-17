@@ -141,7 +141,7 @@ class WindowsPsecHandleAclManagerTests(unittest.TestCase):
         authorization = self.manager.apply(
             self.workspace, self.scratch, _PACKAGE_SID
         )
-        self.assertEqual(authorization.evidence["state"], "VERIFIED")
+        self.assertEqual(authorization.evidence["state"], "DACL_VERIFIED")
         self.assertTrue(authorization.evidence["handle_relative"])
         self.assertTrue(authorization.evidence["shared_parent_sddl_unchanged"])
         self.assertTrue(authorization.evidence["shared_ancestor_sddl_unchanged"])
@@ -161,7 +161,7 @@ class WindowsPsecHandleAclManagerTests(unittest.TestCase):
 
         second = self.manager.apply(self.workspace, self.scratch, _PACKAGE_SID)
         self.assertEqual(len(self.api.writes), first_write_count)
-        self.assertEqual(second.evidence["state"], "VERIFIED")
+        self.assertEqual(second.evidence["state"], "DACL_VERIFIED")
         second.close()
 
     def test_partial_acl_failure_rolls_back_every_changed_target(self):
@@ -221,7 +221,7 @@ class WindowsPsecHandleAclRealHostTests(unittest.TestCase):
             authorization = WindowsPsecHandleAclManager().apply(
                 workspace, scratch, package_sid
             )
-            self.assertEqual(authorization.evidence["state"], "VERIFIED")
+            self.assertEqual(authorization.evidence["state"], "DACL_VERIFIED")
             self.assertTrue(authorization.evidence["handle_relative"])
             self.assertTrue(
                 authorization.evidence["shared_parent_sddl_unchanged"]
