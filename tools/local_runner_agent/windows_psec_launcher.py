@@ -598,33 +598,76 @@ class WindowsPsecProcess:
     def kill(self):
         self.terminate_tree()
 
-    def close(self):
+    def close(self, timeout: float = 5.0):
+        """Terminate and prove the complete Job Object has drained before closing handles."""
         if self._closed:
             return
-        try:
-            if self.poll() is None:
-                self.terminate_tree()
-                try:
-                    self.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    # Closing a KILL_ON_JOB_CLOSE handle remains the final
-                    # fail-safe if TerminateJobObject or wait cannot complete.
-                    pass
-        finally:
+        if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
+                or timeout < 0):
+            raise ValueError("close timeout must be a non-negative number")
+
+        # Never close the Job Object handle merely because the bounded wait
+        # expired. Callers may own a disposable projection that must remain
+        # intact until ActiveProcesses is proven to be zero.
+        if self.poll() is None:
+            self.terminate_tree()
             try:
-                if self.stdout:
-                    self.stdout.close()
-            finally:
-                if self._process_handle:
-                    self._kernel32.CloseHandle(self._process_handle)
-                    self._process_handle = None
-                if self._job_handle:
-                    self._kernel32.CloseHandle(self._job_handle)
-                    self._job_handle = None
-                if self._psec_handle:
-                    self._psec_dll.CloseProcessSecurityEnvironment(self._psec_handle)
-                    self._psec_handle = None
-                self._closed = True
+                self.wait(timeout=float(timeout))
+            except subprocess.TimeoutExpired as exc:
+                try:
+                    active = self._active_processes()
+                except Exception:
+                    active = "UNKNOWN"
+                raise WindowsPsecError(
+                    "PSEC Job Object did not drain before close timeout; "
+                    f"active_processes={active}; process handles retained"
+                ) from exc
+
+        active = self._active_processes()
+        if active != 0:
+            raise WindowsPsecError(
+                "PSEC Job Object is not drained; "
+                f"active_processes={active}; process handles retained"
+            )
+        if self.poll() is None:
+            raise WindowsPsecError(
+                "PSEC root process exit state is unknown after Job Object drain; "
+                "process handles retained"
+            )
+
+        close_errors = []
+        if self.stdout is not None:
+            try:
+                self.stdout.close()
+            except Exception as exc:
+                close_errors.append(f"stdout: {type(exc).__name__}: {exc}")
+            else:
+                self.stdout = None
+
+        for attribute in ("_process_handle", "_job_handle"):
+            handle = getattr(self, attribute)
+            if handle:
+                try:
+                    if not self._kernel32.CloseHandle(handle):
+                        raise _win_error(f"CloseHandle({attribute})")
+                except Exception as exc:
+                    close_errors.append(f"{attribute}: {type(exc).__name__}: {exc}")
+                else:
+                    setattr(self, attribute, None)
+
+        if self._psec_handle:
+            try:
+                self._psec_dll.CloseProcessSecurityEnvironment(self._psec_handle)
+            except Exception as exc:
+                close_errors.append(f"PSEC environment: {type(exc).__name__}: {exc}")
+            else:
+                self._psec_handle = None
+
+        if close_errors:
+            raise WindowsPsecError(
+                "PSEC process resource close failed: " + "; ".join(close_errors)
+            )
+        self._closed = True
 
 
 class WindowsPsecLauncher:
