@@ -4,6 +4,7 @@ import ctypes
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 import unittest
 import uuid
@@ -147,7 +148,8 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
         process_drained = True
         canary = None
         job_root = None
-        evidence_path = acceptance_parent / "appcontainer-effective-access.json"
+        evidence_dir = Path(os.environ.get("RUNNER_TEMP", str(acceptance_parent)))
+        evidence_path = evidence_dir / "appcontainer-effective-access.json"
         evidence = {"state": "FAIL"}
 
         try:
@@ -195,7 +197,7 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
                     "if errorlevel 1 exit /b 13",
                     f'type "{scratch / "write-probe.txt"}" > nul',
                     "if errorlevel 1 exit /b 14",
-                    f'del "{scratch / "write-probe.txt"}" 2>nul',
+                    f'del /f /q "{scratch / "write-probe.txt"}" 2>nul',
                     "if errorlevel 1 exit /b 15",
                     f'if exist "{scratch / "write-probe.txt"}" exit /b 16',
                     f'type "{canary}" > nul 2>nul',
@@ -309,6 +311,27 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
                     f"GetExitCodeProcess failed (WinError {ctypes.get_last_error()})"
                 )
             evidence["child_exit_code"] = int(exit_code.value)
+            scratch_probe = scratch / "write-probe.txt"
+            evidence["scratch_probe_exists_after_child"] = scratch_probe.exists()
+            if scratch_probe.exists():
+                acl_result = subprocess.run(
+                    ["icacls", str(scratch_probe)],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                evidence["scratch_probe_acl"] = {
+                    "returncode": acl_result.returncode,
+                    "stdout": acl_result.stdout,
+                    "stderr": acl_result.stderr,
+                }
+            evidence["scratch_root_sddl"] = next(
+                (
+                    target["sddl"] for target in acl_evidence["targets"]
+                    if target["path"].casefold() == str(scratch).casefold()
+                ),
+                None,
+            )
             check_names = [
                 "workspace_read",
                 "workspace_write_denied",
