@@ -177,6 +177,18 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
         with self.assertRaisesRegex(WindowsPsecError, "Package SID is invalid"):
             _require_app_container_token(token)
 
+    def test_app_container_token_validation_rejects_non_package_sid(self):
+        token = self._captured_app_container_token()
+        token["app_container_sid"] = "S-1-5-21-1-2-3-1001"
+        with self.assertRaisesRegex(WindowsPsecError, "Package SID is invalid"):
+            _require_app_container_token(token)
+
+    def test_app_container_token_validation_rejects_package_sid_without_identity_subauthority(self):
+        token = self._captured_app_container_token()
+        token["app_container_sid"] = "S-1-15-2"
+        with self.assertRaisesRegex(WindowsPsecError, "Package SID is invalid"):
+            _require_app_container_token(token)
+
     def test_app_container_token_validation_rejects_out_of_range_sid_subauthority(self):
         token = self._captured_app_container_token()
         token["app_container_sid"] = "S-1-15-2-4294967296"
