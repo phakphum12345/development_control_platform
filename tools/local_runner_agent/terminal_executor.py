@@ -567,7 +567,35 @@ class TerminalScriptExecutor:
         except ValueError:
             pass
         resolved = str(resolved_path)
-        job_home = Path(tempfile.mkdtemp(prefix="dcp-terminal-home-"))
+        projection = None
+        private_parent = None
+        execution_workspace = workspace
+        job_home = None
+        if assessment.platform == "windows":
+            try:
+                private_parent = Path(tempfile.mkdtemp(prefix="dcp-terminal-private-"))
+                projection = create_workspace_projection(workspace, private_parent)
+                execution_workspace = projection.workspace
+                job_home = projection.scratch
+                self.log(
+                    "system",
+                    "Windows PSEC projection created; "
+                    f"manifest={projection.manifest_sha256}; entries={len(projection.manifest)}",
+                )
+            except Exception as exc:
+                if private_parent is not None:
+                    try:
+                        self._cleanup_execution_workspace(
+                            projection=None, private_parent=private_parent, job_home=None
+                        )
+                    except Exception as cleanup_exc:
+                        self.log("system", f"Preserving failed projection parent: {cleanup_exc}")
+                raise TerminalExecutionError(
+                    "Windows PSEC workspace projection could not be created safely"
+                ) from exc
+        else:
+            job_home = Path(tempfile.mkdtemp(prefix="dcp-terminal-home-"))
+
         try:
             job_home = job_home.resolve(strict=True)
             try:
@@ -575,15 +603,24 @@ class TerminalScriptExecutor:
             except ValueError:
                 pass
             else:
-                shutil.rmtree(job_home, ignore_errors=True)
+                self._cleanup_execution_workspace(
+                    projection=projection, private_parent=private_parent, job_home=job_home
+                )
                 raise TerminalExecutionError(
                     "Temporary Terminal HOME must be outside the Project Workspace"
                 )
             if os.name == "posix":
                 os.chmod(job_home, 0o700)
-        except OSError:
-            shutil.rmtree(job_home, ignore_errors=True)
-            raise TerminalExecutionError("Temporary Terminal environment could not be secured") from None
+        except OSError as exc:
+            try:
+                self._cleanup_execution_workspace(
+                    projection=projection, private_parent=private_parent, job_home=job_home
+                )
+            except Exception as cleanup_exc:
+                self.log("system", f"Temporary Terminal cleanup blocked: {cleanup_exc}")
+            raise TerminalExecutionError(
+                "Temporary Terminal environment could not be secured"
+            ) from exc
         env = self._environment(template, job_home, safe_path)
         launcher = None
         if assessment.platform == "linux":
