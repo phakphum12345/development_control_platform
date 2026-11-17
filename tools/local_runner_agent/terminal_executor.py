@@ -842,6 +842,34 @@ class TerminalScriptExecutor:
                     close_process()
                 elif process.stdout is not None and not process.stdout.closed:
                     process.stdout.close()
-            except OSError:
-                pass
-            shutil.rmtree(job_home, ignore_errors=True)
+            except Exception as exc:
+                if projection is not None:
+                    self.log(
+                        "system",
+                        "PSEC Job Object drain/close not verified; preserving workspace "
+                        f"projection at {projection.root}: {type(exc).__name__}: {exc}",
+                    )
+                    raise TerminalExecutionError(
+                        "PSEC Job Object drain/close was not verified; workspace projection preserved"
+                    ) from exc
+                if isinstance(exc, OSError):
+                    self.log("system", f"Terminal stdout close warning: {exc}")
+                else:
+                    raise TerminalExecutionError(
+                        "Terminal process cleanup could not be verified"
+                    ) from exc
+            else:
+                try:
+                    self._cleanup_execution_workspace(
+                        projection=projection,
+                        private_parent=private_parent,
+                        job_home=job_home,
+                    )
+                except Exception as exc:
+                    self.log(
+                        "system",
+                        f"Terminal execution workspace cleanup failed: {type(exc).__name__}: {exc}",
+                    )
+                    raise TerminalExecutionError(
+                        "Terminal execution workspace cleanup could not be verified"
+                    ) from exc
