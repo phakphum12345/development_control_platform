@@ -185,9 +185,28 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
             canary = user_profile / f".dcp-appcontainer-canary-{uuid.uuid4().hex}.txt"
             canary.write_text("DCP-APPCONTAINER-HOST-CANARY", encoding="utf-8")
 
+            delete_probe = workspace / "delete_probe.py"
+            delete_probe.write_text(
+                "\\n".join([
+                    "import ctypes, json, sys",
+                    "kernel32 = ctypes.WinDLL('kernel32.dll', use_last_error=True)",
+                    "kernel32.DeleteFileW.argtypes = [ctypes.c_wchar_p]",
+                    "kernel32.DeleteFileW.restype = ctypes.c_int",
+                    "target, evidence_path = sys.argv[1], sys.argv[2]",
+                    "ctypes.set_last_error(0)",
+                    "deleted = bool(kernel32.DeleteFileW(target))",
+                    "error = 0 if deleted else ctypes.get_last_error()",
+                    "with open(evidence_path, 'w', encoding='utf-8') as stream:",
+                    "    json.dump({'api': 'DeleteFileW', 'success': deleted, 'winerror': error, 'target': target}, stream)",
+                    "sys.exit(0 if deleted else 15)",
+                    "",
+                ]),
+                encoding="utf-8",
+            )
+
             script = workspace / "acl-probe.cmd"
             script.write_text(
-                "\r\n".join([
+                "\\r\\n".join([
                     "@echo off",
                     f'type "{workspace / "read.txt"}" > nul',
                     "if errorlevel 1 exit /b 11",
@@ -197,7 +216,7 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
                     "if errorlevel 1 exit /b 13",
                     f'type "{scratch / "write-probe.txt"}" > nul',
                     "if errorlevel 1 exit /b 14",
-                    f'del /f /q "{scratch / "write-probe.txt"}" > "{scratch / "delete-result.txt"}" 2>&1',
+                    f'"{sys.executable}" "{delete_probe}" "{scratch / "write-probe.txt"}" "{scratch / "delete-native-result.json"}"',
                     "if errorlevel 1 exit /b 15",
                     f'if exist "{scratch / "write-probe.txt"}" exit /b 16',
                     f'type "{canary}" > nul 2>nul',
@@ -315,183 +334,26 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
                 )
             first_exit_code = int(exit_code.value)
             evidence["first_child_exit_code"] = first_exit_code
-            if first_exit_code in (15, 16):
-                diagnostic_delete = subprocess.run(
-                    [
-                        "icacls", str(scratch), "/grant",
-                        f"*{token['user_sid']}:(OI)(CI)(D)", "/t", "/c",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                diagnostic_delete_child = subprocess.run(
-                    [
-                        "icacls", str(scratch), "/grant",
-                        f"*{token['user_sid']}:(CI)(DC)", "/t", "/c",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                diagnostic_all_apps_delete = subprocess.run(
-                    [
-                        "icacls", str(scratch), "/grant",
-                        "*S-1-15-2-1:(OI)(CI)(D)", "/t", "/c",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                diagnostic_all_apps_delete_child = subprocess.run(
-                    [
-                        "icacls", str(scratch), "/grant",
-                        "*S-1-15-2-1:(CI)(DC)", "/t", "/c",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                diagnostic_full_control = {}
-                for diagnostic_sid in (
-                    package_sid, token["user_sid"], "S-1-15-2-1",
-                ):
-                    full_result = subprocess.run(
-                        [
-                            "icacls", str(scratch), "/grant",
-                            f"*{diagnostic_sid}:(OI)(CI)(F)", "/t", "/c",
-                        ],
-                        capture_output=True,
-                        text=True,
-                        check=False,
-                    )
-                    diagnostic_full_control[diagnostic_sid] = {
-                        "returncode": full_result.returncode,
-                        "output": full_result.stdout + full_result.stderr,
-                    }
-                scratch_acl_result = subprocess.run(
-                    ["icacls", str(scratch)],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                evidence["diagnostic_full_control_acl"] = diagnostic_full_control
-                evidence["diagnostic_user_delete_acl"] = {
-                    "delete_returncode": diagnostic_delete.returncode,
-                    "delete_output": diagnostic_delete.stdout + diagnostic_delete.stderr,
-                    "delete_child_returncode": diagnostic_delete_child.returncode,
-                    "delete_child_output": (
-                        diagnostic_delete_child.stdout + diagnostic_delete_child.stderr
-                    ),
-                }
-                evidence["diagnostic_all_apps_delete_acl"] = {
-                    "delete_returncode": diagnostic_all_apps_delete.returncode,
-                    "delete_output": (
-                        diagnostic_all_apps_delete.stdout + diagnostic_all_apps_delete.stderr
-                    ),
-                    "delete_child_returncode": diagnostic_all_apps_delete_child.returncode,
-                    "delete_child_output": (
-                        diagnostic_all_apps_delete_child.stdout
-                        + diagnostic_all_apps_delete_child.stderr
-                    ),
-                }
-                evidence["scratch_root_icacls_after_diagnostics"] = (
-                    scratch_acl_result.stdout + scratch_acl_result.stderr
-                )
-                if (
-                    diagnostic_delete.returncode
-                    or diagnostic_delete_child.returncode
-                    or diagnostic_all_apps_delete.returncode
-                    or diagnostic_all_apps_delete_child.returncode
-                    or any(item["returncode"] for item in diagnostic_full_control.values())
-                ):
-                    raise WindowsPsecError(
-                        "Could not apply diagnostic delete ACEs to disposable scratch"
-                    )
-                if not kernel32.CloseHandle(process_info.hThread):
-                    raise WindowsPsecError(
-                        f"CloseHandle(first AppContainer thread) failed "
-                        f"(WinError {ctypes.get_last_error()})"
-                    )
-                process_info.hThread = None
-                if not kernel32.CloseHandle(process_info.hProcess):
-                    raise WindowsPsecError(
-                        f"CloseHandle(first AppContainer process) failed "
-                        f"(WinError {ctypes.get_last_error()})"
-                    )
-                process_info.hProcess = None
-                process_info = _PROCESS_INFORMATION()
-                retry_command_line = ctypes.create_unicode_buffer(
-                    f'"{cmd_exe}" /d /c call "{script}"'
-                )
-                if not kernel32.CreateProcessW(
-                    cmd_exe,
-                    retry_command_line,
-                    None,
-                    None,
-                    False,
-                    CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW,
-                    None,
-                    str(workspace),
-                    ctypes.byref(startup),
-                    ctypes.byref(process_info),
-                ):
-                    raise WindowsPsecError(
-                        f"CreateProcessW(AppContainer retry) failed "
-                        f"(WinError {ctypes.get_last_error()})"
-                    )
-                process_drained = False
-                retry_token = _require_app_container_token(
-                    _query_process_token(kernel32, process_info.hProcess)
-                )
-                self.assertEqual(retry_token["app_container_sid"], package_sid)
-                previous_suspend_count = kernel32.ResumeThread(process_info.hThread)
-                if previous_suspend_count == 0xFFFFFFFF or previous_suspend_count != 1:
-                    raise WindowsPsecError(
-                        "AppContainer retry thread had an unexpected suspend count"
-                    )
-                retry_wait = kernel32.WaitForSingleObject(
-                    process_info.hProcess, 15000
-                )
-                if retry_wait == WAIT_TIMEOUT:
-                    kernel32.TerminateProcess(process_info.hProcess, 1)
-                    retry_wait = kernel32.WaitForSingleObject(
-                        process_info.hProcess, 5000
-                    )
-                if retry_wait != WAIT_OBJECT_0:
-                    raise WindowsPsecError(
-                        f"AppContainer retry did not exit (wait=0x{retry_wait:08x})"
-                    )
-                process_drained = True
-                retry_exit_code = wintypes.DWORD()
-                if not kernel32.GetExitCodeProcess(
-                    process_info.hProcess, ctypes.byref(retry_exit_code)
-                ):
-                    raise WindowsPsecError(
-                        f"GetExitCodeProcess(retry) failed "
-                        f"(WinError {ctypes.get_last_error()})"
-                    )
-                evidence["retry_child_exit_code"] = int(retry_exit_code.value)
-                exit_code.value = retry_exit_code.value
-                if retry_exit_code.value == 0:
-                    evidence["diagnostic_result"] = (
-                        "user SID DELETE/DELETE_CHILD ACE resolved AppContainer delete denial"
-                    )
-                    raise AssertionError(
-                        "Diagnostic user-SID ACE resolved delete, but production "
-                        "handle-relative ACL manager does not yet install that dual-principal grant"
-                    )
+            if first_exit_code == 15:
+                evidence["delete_probe_stage"] = "native_DeleteFileW"
+                evidence["delete_probe_helper"] = str(delete_probe)
             else:
                 evidence["retry_child_exit_code"] = None
-
             evidence["child_exit_code"] = int(exit_code.value)
             scratch_probe = scratch / "write-probe.txt"
             evidence["scratch_probe_exists_after_child"] = scratch_probe.exists()
-            delete_log = scratch / "delete-result.txt"
-            evidence["scratch_delete_output"] = (
-                delete_log.read_text(encoding="utf-8", errors="replace")
-                if delete_log.exists() else None
-            )
+            native_delete_result = scratch / "delete-native-result.json"
+            if native_delete_result.exists():
+                try:
+                    evidence["native_delete_probe"] = json.loads(
+                        native_delete_result.read_text(encoding="utf-8")
+                    )
+                except (OSError, ValueError) as exc:
+                    evidence["native_delete_probe_error"] = (
+                        f"{type(exc).__name__}: {exc}"
+                    )
+            else:
+                evidence["native_delete_probe"] = "NOT_CREATED"
             if scratch_probe.exists():
                 owner_result = subprocess.run(
                     [
