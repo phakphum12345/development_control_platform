@@ -66,6 +66,12 @@ jobs:
           DCP_PSEC_HANDLE_ACL_PACKAGE_SID: "S-1-15-2-123-456-789"
         run: python -m unittest tests.test_windows_psec_acl_handles.WindowsPsecHandleAclRealHostTests.test_real_ntfs_handle_relative_acl_round_trip -v
 
+      - name: Verify real AppContainer effective filesystem access
+        shell: pwsh
+        env:
+          DCP_PSEC_APPCONTAINER_ACL_TEST: "1"
+        run: python -m unittest tests.test_windows_psec_appcontainer_effective_access.WindowsPsecAppContainerEffectiveAccessTests.test_real_appcontainer_effective_workspace_and_scratch_access -v
+
       - name: Run disposable PSEC API availability probe
         shell: pwsh
         run: |
@@ -94,5 +100,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-psec-api-availability-probe
-          path: ${{ runner.temp }}/windows-psec-host-acceptance.json
+          path: |
+            ${{ runner.temp }}/windows-psec-host-acceptance.json
+            C:\\DCP-PSEC-Acceptance\\appcontainer-effective-access.json
           if-no-files-found: ignore
