@@ -333,6 +333,9 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             "elevation_type": 1,
             "groups": [{"sid": "S-1-5-32-545", "attributes": 4}],
             "capabilities": [],
+            "privileges": [],
+            "se_change_notify_privilege_present": False,
+            "se_change_notify_privilege_enabled": False,
         }
 
     def test_app_container_token_validation_accepts_complete_identity(self):
@@ -373,6 +376,23 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
         token = self._captured_app_container_token()
         token["app_container_sid"] = "S-1-15-2-4294967296"
         with self.assertRaisesRegex(WindowsPsecError, "Package SID is invalid"):
+            _require_app_container_token(token)
+
+    def test_app_container_token_validation_requires_traverse_privilege_evidence(self):
+        token = self._captured_app_container_token()
+        token.pop("se_change_notify_privilege_enabled")
+        with self.assertRaisesRegex(WindowsPsecError, "incomplete"):
+            _require_app_container_token(token)
+
+    def test_app_container_token_validation_rejects_malformed_privilege_evidence(self):
+        token = self._captured_app_container_token()
+        token["privileges"] = [{
+            "luid_low": "not-an-int",
+            "luid_high": 0,
+            "attributes": 2,
+            "enabled": True,
+        }]
+        with self.assertRaisesRegex(WindowsPsecError, "privilege entry"):
             _require_app_container_token(token)
 
     def test_app_container_token_validation_rejects_unknown_elevation_type(self):
