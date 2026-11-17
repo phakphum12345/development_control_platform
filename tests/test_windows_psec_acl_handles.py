@@ -11,6 +11,7 @@ from tools.local_runner_agent.windows_psec_acl import WindowsPsecAclError
 from tools.local_runner_agent.windows_psec_acl_handles import (
     FILE_ATTRIBUTE_DIRECTORY,
     FILE_ATTRIBUTE_REPARSE_POINT,
+    FILE_DELETE_CHILD,
     DirectoryEntry,
     HandleEntry,
     WindowsPsecHandleAclManager,
@@ -149,6 +150,12 @@ class WindowsPsecHandleAclManagerTests(unittest.TestCase):
         self.assertTrue(authorization.evidence["shared_ancestor_sddl_unchanged"])
         self.assertEqual(authorization.evidence["workspace_targets"], 4)
         self.assertEqual(authorization.evidence["scratch_targets"], 2)
+        self.assertEqual(FILE_DELETE_CHILD, 0x40)
+        self.assertIn("0x001301ff", self.api.read_sddl(self.api._entry(self.scratch)))
+        self.assertIn(
+            "0x001301bf",
+            self.api.read_sddl(self.api._entry(self.scratch / "scratch.txt")),
+        )
         self.assertEqual(
             self.api.read_sddl(self.api._entry(self.parent)), parent_before
         )
