@@ -187,7 +187,7 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
 
             delete_probe = workspace / "delete_probe.py"
             delete_probe.write_text(
-                "\\n".join([
+                "\n".join([
                     "import ctypes, json, sys",
                     "kernel32 = ctypes.WinDLL('kernel32.dll', use_last_error=True)",
                     "kernel32.DeleteFileW.argtypes = [ctypes.c_wchar_p]",
@@ -206,7 +206,7 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
 
             script = workspace / "acl-probe.cmd"
             script.write_text(
-                "\\r\\n".join([
+                "\r\n".join([
                     "@echo off",
                     f'type "{workspace / "read.txt"}" > nul',
                     "if errorlevel 1 exit /b 11",
@@ -217,6 +217,7 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
                     f'type "{scratch / "write-probe.txt"}" > nul',
                     "if errorlevel 1 exit /b 14",
                     f'"{sys.executable}" "{delete_probe}" "{scratch / "write-probe.txt"}" "{scratch / "delete-native-result.json"}"',
+                    f'if not exist "{scratch / "delete-native-result.json"}" exit /b 18',
                     "if errorlevel 1 exit /b 15",
                     f'if exist "{scratch / "write-probe.txt"}" exit /b 16',
                     f'type "{canary}" > nul 2>nul',
@@ -396,7 +397,7 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
                 "host_profile_canary_denied",
             ]
             failed_index = {
-                11: 0, 12: 1, 13: 2, 14: 3, 15: 4, 16: 4, 17: 5,
+                11: 0, 12: 1, 13: 2, 14: 3, 15: 4, 16: 4, 17: 5, 18: 4,
             }.get(int(exit_code.value))
             if exit_code.value == 0:
                 evidence["checks"] = {name: "PASS" for name in check_names}
