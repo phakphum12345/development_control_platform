@@ -330,11 +330,18 @@ class TerminalScriptExecutor:
     @staticmethod
     def _cleanup_execution_workspace(*, projection, private_parent, job_home):
         """Delete only after the caller has proven the Windows Job Object drained."""
-        if projection is not None:
-            projection.close()
-            if private_parent is not None and private_parent.exists():
-                shutil.rmtree(private_parent)
-            if private_parent is not None and private_parent.exists():
+        if private_parent is not None:
+            if projection is not None:
+                projection.close()
+            if private_parent.exists():
+                remaining = list(private_parent.iterdir())
+                if remaining:
+                    raise TerminalExecutionError(
+                        "Windows PSEC private parent contains unverified orphan entries; "
+                        f"preserving {private_parent}"
+                    )
+                private_parent.rmdir()
+            if private_parent.exists():
                 raise TerminalExecutionError(
                     f"Windows PSEC private parent cleanup incomplete: {private_parent}"
                 )
