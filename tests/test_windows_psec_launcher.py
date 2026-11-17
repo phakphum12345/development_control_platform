@@ -247,11 +247,37 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             )
         self.assertEqual(events, ["apply"])
 
+    def test_unverified_acl_evidence_prevents_resume_and_closes_handles(self):
+        events = []
+
+        class Authorization:
+            evidence = {"state": "VERIFIED", "handle_relative": False}
+
+            def close(self):
+                events.append("close")
+
+        class Manager:
+            def apply(self, workspace, scratch, package_sid):
+                events.append("apply")
+                return Authorization()
+
+        class Kernel:
+            def ResumeThread(self, thread_handle):
+                events.append("resume")
+                return 1
+
+        with self.assertRaisesRegex(WindowsPsecError, "strict handle-relative"):
+            _resume_after_filesystem_authorization(
+                Kernel(), 101, Manager(), "C:/job/workspace", "C:/job/scratch",
+                "S-1-15-2-123-456",
+            )
+        self.assertEqual(events, ["apply", "close"])
+
     def test_unexpected_initial_suspend_count_fails_and_closes_acl_handles(self):
         events = []
 
         class Authorization:
-            evidence = {"state": "VERIFIED"}
+            evidence = {"state": "DACL_VERIFIED", "handle_relative": True, "effective_access": "NOT_TESTED"}
 
             def close(self):
                 events.append("close")
