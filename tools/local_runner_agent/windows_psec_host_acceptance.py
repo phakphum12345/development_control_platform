@@ -370,6 +370,36 @@ print(json.dumps(result, sort_keys=True))
 '''
 
 
+def _parse_policy_payload_output(return_code: int, output: bytes) -> dict:
+    """Parse child evidence while preserving exit code and bounded raw output."""
+    decoded = output.decode("utf-8", "replace") if isinstance(output, bytes) else str(output)
+    evidence_tail = decoded[-16000:]
+    if return_code != 0:
+        raise WindowsPsecError(
+            "PSEC policy acceptance payload exited non-zero; "
+            f"exit_code={return_code}; child_output_tail={evidence_tail!r}"
+        )
+    lines = [line for line in decoded.splitlines() if line.strip()]
+    if not lines:
+        raise WindowsPsecError(
+            "PSEC policy acceptance payload returned no JSON; "
+            f"child_output_tail={evidence_tail!r}"
+        )
+    try:
+        result = json.loads(lines[-1])
+    except json.JSONDecodeError as exc:
+        raise WindowsPsecError(
+            "PSEC policy acceptance payload returned invalid JSON; "
+            f"child_output_tail={evidence_tail!r}"
+        ) from exc
+    if not isinstance(result, dict):
+        raise WindowsPsecError(
+            "PSEC policy acceptance payload JSON must be an object; "
+            f"child_output_tail={evidence_tail!r}"
+        )
+    return result
+
+
 def _run_policy_acceptance(launcher, workspace: Path, scratch: Path, canary: Path, environment):
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -419,10 +449,7 @@ def _run_policy_acceptance(launcher, workspace: Path, scratch: Path, canary: Pat
         )
         return_code = process.wait(timeout=15)
         output = process.stdout.read()
-        if return_code != 0:
-            raise WindowsPsecError("PSEC policy acceptance payload exited non-zero")
-        lines = [line for line in output.decode("utf-8", "replace").splitlines() if line.strip()]
-        result = json.loads(lines[-1])
+        result = _parse_policy_payload_output(return_code, output)
         result["child_process_token"] = process.token_diagnostics
         if accepted:
             result["network_loopback_deny"] = "FAIL"
