@@ -703,6 +703,7 @@ class TerminalScriptExecutor:
 
         # The Windows launcher applies PSEC before CreateProcessW and assigns the
         # suspended process to a kill-on-close Job Object before resuming it.
+        process_drained = True
         started = time.monotonic()
         try:
             if assessment.platform == "linux":
@@ -721,6 +722,7 @@ class TerminalScriptExecutor:
                     scratch=job_home,
                     environment=env,
                 )
+            process_drained = False
         except (OSError, ValueError, WindowsPsecError) as exc:
             if projection is not None:
                 self.log(
@@ -798,9 +800,11 @@ class TerminalScriptExecutor:
                     self._terminate_tree(process)
             try:
                 return_code = process.wait(timeout=5)
+                process_drained = True
             except subprocess.TimeoutExpired:
                 self._terminate_tree(process)
                 return_code = process.wait(timeout=5)
+                process_drained = True
             reader.join(timeout=2)
             decoded_tail = decoder.decode(b"", final=True)
             safe_tail = redactor.feed(decoded_tail, final=True)
@@ -826,8 +830,9 @@ class TerminalScriptExecutor:
             self._terminate_tree(process)
             try:
                 process.wait(timeout=5)
+                process_drained = True
             except subprocess.TimeoutExpired:
-                pass
+                process_drained = False
             while reader.is_alive():
                 try:
                     chunks.get(timeout=0.05)
@@ -836,40 +841,53 @@ class TerminalScriptExecutor:
             reader.join(timeout=1)
             raise
         finally:
+            close_error = None
+            close_process = getattr(process, "close", None)
             try:
-                close_process = getattr(process, "close", None)
                 if callable(close_process):
                     close_process()
+                elif projection is not None:
+                    raise TerminalExecutionError(
+                        "Windows PSEC process facade lacks Job Object drain verification"
+                    )
                 elif process.stdout is not None and not process.stdout.closed:
                     process.stdout.close()
             except Exception as exc:
-                if projection is not None:
-                    self.log(
-                        "system",
-                        "PSEC Job Object drain/close not verified; preserving workspace "
-                        f"projection at {projection.root}: {type(exc).__name__}: {exc}",
-                    )
-                    raise TerminalExecutionError(
-                        "PSEC Job Object drain/close was not verified; workspace projection preserved"
-                    ) from exc
-                if isinstance(exc, OSError):
-                    self.log("system", f"Terminal stdout close warning: {exc}")
-                else:
-                    raise TerminalExecutionError(
-                        "Terminal process cleanup could not be verified"
-                    ) from exc
-            else:
-                try:
-                    self._cleanup_execution_workspace(
-                        projection=projection,
-                        private_parent=private_parent,
-                        job_home=job_home,
-                    )
-                except Exception as exc:
-                    self.log(
-                        "system",
-                        f"Terminal execution workspace cleanup failed: {type(exc).__name__}: {exc}",
-                    )
-                    raise TerminalExecutionError(
-                        "Terminal execution workspace cleanup could not be verified"
-                    ) from exc
+                close_error = exc
+
+            if projection is not None and close_error is not None:
+                self.log(
+                    "system",
+                    "PSEC Job Object drain/close not verified; preserving workspace "
+                    f"projection at {projection.root}: {type(close_error).__name__}: {close_error}",
+                )
+                raise TerminalExecutionError(
+                    "PSEC Job Object drain/close was not verified; workspace projection preserved"
+                ) from close_error
+
+            if projection is None and not process_drained:
+                self.log(
+                    "system",
+                    f"Terminal process drain not verified; preserving temporary HOME {job_home}",
+                )
+                raise TerminalExecutionError(
+                    "Terminal process drain was not verified; temporary HOME preserved"
+                )
+
+            if close_error is not None:
+                self.log("system", f"Terminal stdout close warning: {close_error}")
+
+            try:
+                self._cleanup_execution_workspace(
+                    projection=projection,
+                    private_parent=private_parent,
+                    job_home=job_home,
+                )
+            except Exception as exc:
+                self.log(
+                    "system",
+                    f"Terminal execution workspace cleanup failed: {type(exc).__name__}: {exc}",
+                )
+                raise TerminalExecutionError(
+                    "Terminal execution workspace cleanup could not be verified"
+                ) from exc
