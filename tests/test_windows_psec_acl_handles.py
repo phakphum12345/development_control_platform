@@ -151,11 +151,14 @@ class WindowsPsecHandleAclManagerTests(unittest.TestCase):
         self.assertEqual(authorization.evidence["workspace_targets"], 4)
         self.assertEqual(authorization.evidence["scratch_targets"], 2)
         self.assertEqual(FILE_DELETE_CHILD, 0x40)
-        self.assertIn("0x001301ff", self.api.read_sddl(self.api._entry(self.scratch)))
-        self.assertIn(
-            "0x001301bf",
-            self.api.read_sddl(self.api._entry(self.scratch / "scratch.txt")),
+        scratch_root_sddl = self.api.read_sddl(self.api._entry(self.scratch))
+        self.assertIn("0x001301bf", scratch_root_sddl)
+        self.assertIn("0x00000040", scratch_root_sddl)
+        scratch_file_sddl = self.api.read_sddl(
+            self.api._entry(self.scratch / "scratch.txt")
         )
+        self.assertIn("0x001301bf", scratch_file_sddl)
+        self.assertNotIn("0x00000040", scratch_file_sddl)
         self.assertEqual(
             self.api.read_sddl(self.api._entry(self.parent)), parent_before
         )
