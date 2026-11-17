@@ -354,13 +354,16 @@ class TerminalScriptExecutor:
         *,
         launcher: WindowsPsecLauncher,
         scratch: Path,
+        cleanup_state: dict | None = None,
     ) -> None:
         """Inspect Git filter names inside a PSEC process before the main Git command."""
+        cleanup_state = cleanup_state if cleanup_state is not None else {"safe_to_cleanup": True}
         process = None
         chunks: queue.Queue[bytes | None] = queue.Queue(maxsize=8)
         output = bytearray()
         reader = None
         try:
+            cleanup_state["safe_to_cleanup"] = False
             process = launcher.launch(
                 [resolved, "config", "--name-only", "--null", "--list"],
                 workspace=workspace,
@@ -419,6 +422,7 @@ class TerminalScriptExecutor:
                 reader.join(timeout=2)
             if process is not None:
                 process.close()
+                cleanup_state["safe_to_cleanup"] = True
 
         drivers: dict[str, str] = {}
         for raw_key in bytes(output).split(b"\0"):
