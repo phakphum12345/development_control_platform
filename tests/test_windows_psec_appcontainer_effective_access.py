@@ -186,48 +186,93 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
             canary = user_profile / f".dcp-appcontainer-canary-{uuid.uuid4().hex}.txt"
             canary.write_text("DCP-APPCONTAINER-HOST-CANARY", encoding="utf-8")
 
-            delete_probe = workspace / "delete_probe.py"
-            delete_probe.write_text(
-                "\n".join([
-                    "import ctypes, json, sys",
-                    "kernel32 = ctypes.WinDLL('kernel32.dll', use_last_error=True)",
-                    "kernel32.DeleteFileW.argtypes = [ctypes.c_wchar_p]",
-                    "kernel32.DeleteFileW.restype = ctypes.c_int",
-                    "target, evidence_path = sys.argv[1], sys.argv[2]",
-                    "ctypes.set_last_error(0)",
-                    "deleted = bool(kernel32.DeleteFileW(target))",
-                    "error = 0 if deleted else ctypes.get_last_error()",
-                    "with open(evidence_path, 'w', encoding='utf-8') as stream:",
-                    "    json.dump({'api': 'DeleteFileW', 'success': deleted, 'winerror': error, 'target': target}, stream)",
-                    "sys.exit(0 if deleted else 15)",
-                    "",
-                ]),
+            probe_source = workspace / "acl-probe.cs"
+            probe_source.write_text(
+                """
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+internal static class Program {
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool DeleteFileW(string path);
+    private static int Main(string[] args) {
+        string workspace = args[0];
+        string scratch = args[1];
+        string canary = args[2];
+        string evidence = args[3];
+        string target = Path.Combine(scratch, "write-probe.txt");
+        try { File.ReadAllText(Path.Combine(workspace, "read.txt")); }
+        catch { return 11; }
+        try {
+            File.WriteAllText(Path.Combine(workspace, "write-probe.txt"), "forbidden");
+            return 12;
+        } catch (UnauthorizedAccessException) { }
+          catch (IOException) { }
+        try { File.WriteAllText(target, "scratch"); }
+        catch { return 13; }
+        try { File.ReadAllText(target); }
+        catch { return 14; }
+        bool deleted = DeleteFileW(target);
+        int error = deleted ? 0 : Marshal.GetLastWin32Error();
+        try {
+            File.WriteAllText(
+                evidence,
+                String.Format("{{""api"":""DeleteFileW"",""success"":{0},""winerror"":{1}}}",
+                    deleted ? "true" : "false", error)
+            );
+        } catch { return 19; }
+        if (!deleted) return 15;
+        if (File.Exists(target)) return 16;
+        try { File.ReadAllText(canary); return 17; }
+        catch (UnauthorizedAccessException) { }
+        catch (IOException) { }
+        return 0;
+    }
+}
+""",
                 encoding="utf-8",
             )
-
-            script = workspace / "acl-probe.cmd"
-            script.write_text(
-                "\r\n".join([
-                    "@echo off",
-                    f'type "{workspace / "read.txt"}" > nul',
-                    "if errorlevel 1 exit /b 11",
-                    f'echo forbidden > "{workspace / "write-probe.txt"}" 2>nul',
-                    f'if exist "{workspace / "write-probe.txt"}" exit /b 12',
-                    f'echo scratch > "{scratch / "write-probe.txt"}" 2>nul',
-                    "if errorlevel 1 exit /b 13",
-                    f'type "{scratch / "write-probe.txt"}" > nul',
-                    "if errorlevel 1 exit /b 14",
-                    f'"{sys.executable}" "{delete_probe}" "{scratch / "write-probe.txt"}" "{scratch / "delete-native-result.json"}"',
-                    f'if not exist "{scratch / "delete-native-result.json"}" exit /b 18',
-                    "if errorlevel 1 exit /b 15",
-                    f'if exist "{scratch / "write-probe.txt"}" exit /b 16',
-                    f'type "{canary}" > nul 2>nul',
-                    "if not errorlevel 1 exit /b 17",
-                    "exit /b 0",
-                    "",
-                ]),
-                encoding="utf-8",
+            probe_executable = workspace / "acl-probe.exe"
+            system_root = Path(os.environ["SystemRoot"])
+            compiler_candidates = [
+                system_root / "Microsoft.NET" / "Framework64" / "v4.0.30319" / "csc.exe",
+                system_root / "Microsoft.NET" / "Framework" / "v4.0.30319" / "csc.exe",
+            ]
+            for program_files in (
+                os.environ.get("ProgramFiles"),
+                os.environ.get("ProgramFiles(x86)"),
+            ):
+                if program_files:
+                    compiler_candidates.extend(
+                        Path(program_files).glob(
+                            "Microsoft Visual Studio/*/*/MSBuild/Current/Bin/Roslyn/csc.exe"
+                        )
+                    )
+            compiler = next(
+                (candidate for candidate in compiler_candidates if candidate.is_file()),
+                None,
             )
+            if compiler is None:
+                raise WindowsPsecError(
+                    "A supported C# compiler is required for the native AppContainer probe"
+                )
+            compile_result = subprocess.run(
+                [
+                    str(compiler),
+                    "/nologo",
+                    "/target:exe",
+                    f"/out:{probe_executable}",
+                    str(probe_source),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if compile_result.returncode != 0 or not probe_executable.is_file():
+                raise WindowsPsecError(
+                    "Could not compile native AppContainer probe: "
+                    + (compile_result.stdout + compile_result.stderr).strip()
+                )
 
             size = ctypes.c_size_t(0)
             kernel32.InitializeProcThreadAttributeList(None, 1, 0, ctypes.byref(size))
