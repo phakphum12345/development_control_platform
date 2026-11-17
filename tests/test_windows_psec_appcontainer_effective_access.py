@@ -352,12 +352,30 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
                     text=True,
                     check=False,
                 )
+                diagnostic_full_control = {}
+                for diagnostic_sid in (
+                    package_sid, token["user_sid"], "S-1-15-2-1",
+                ):
+                    full_result = subprocess.run(
+                        [
+                            "icacls", str(scratch), "/grant",
+                            f"*{diagnostic_sid}:(OI)(CI)(F)", "/t", "/c",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+                    diagnostic_full_control[diagnostic_sid] = {
+                        "returncode": full_result.returncode,
+                        "output": full_result.stdout + full_result.stderr,
+                    }
                 scratch_acl_result = subprocess.run(
                     ["icacls", str(scratch)],
                     capture_output=True,
                     text=True,
                     check=False,
                 )
+                evidence["diagnostic_full_control_acl"] = diagnostic_full_control
                 evidence["diagnostic_user_delete_acl"] = {
                     "delete_returncode": diagnostic_delete.returncode,
                     "delete_output": diagnostic_delete.stdout + diagnostic_delete.stderr,
@@ -385,6 +403,7 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
                     or diagnostic_delete_child.returncode
                     or diagnostic_all_apps_delete.returncode
                     or diagnostic_all_apps_delete_child.returncode
+                    or any(item["returncode"] for item in diagnostic_full_control.values())
                 ):
                     raise WindowsPsecError(
                         "Could not apply diagnostic delete ACEs to disposable scratch"
