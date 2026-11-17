@@ -217,7 +217,7 @@ internal static class Program {
         try {
             File.WriteAllText(
                 evidence,
-                String.Format("{{""api"":""DeleteFileW"",""success"":{0},""winerror"":{1}}}",
+                String.Format(@"{{""api"":""DeleteFileW"",""success"":{0},""winerror"":{1}}}",
                     deleted ? "true" : "false", error)
             );
         } catch { return 19; }
@@ -312,12 +312,12 @@ internal static class Program {
             startup.StartupInfo.cb = ctypes.sizeof(_STARTUPINFOEXW)
             startup.lpAttributeList = attribute_list
             process_info = _PROCESS_INFORMATION()
-            cmd_exe = str(Path(os.environ["SystemRoot"]) / "System32" / "cmd.exe")
+            probe_application = str(probe_executable)
             command_line = ctypes.create_unicode_buffer(
-                f'"{cmd_exe}" /d /c call "{script}"'
+                f'"{probe_application}" "{workspace}" "{scratch}" "{canary}" "{scratch / "delete-native-result.json"}"'
             )
             if not kernel32.CreateProcessW(
-                cmd_exe,
+                probe_application,
                 command_line,
                 None,
                 None,
