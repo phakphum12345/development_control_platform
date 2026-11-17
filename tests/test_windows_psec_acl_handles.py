@@ -154,6 +154,16 @@ class WindowsPsecHandleAclManagerTests(unittest.TestCase):
         authorization.close()
         self.assertGreaterEqual(len(self.api.closed), 1)
 
+    def test_reapplying_verified_acl_is_idempotent(self):
+        first = self.manager.apply(self.workspace, self.scratch, _PACKAGE_SID)
+        first.close()
+        first_write_count = len(self.api.writes)
+
+        second = self.manager.apply(self.workspace, self.scratch, _PACKAGE_SID)
+        self.assertEqual(len(self.api.writes), first_write_count)
+        self.assertEqual(second.evidence["state"], "VERIFIED")
+        second.close()
+
     def test_partial_acl_failure_rolls_back_every_changed_target(self):
         self.api.fail_on_write = 2
         with self.assertRaisesRegex(WindowsPsecAclError, "rollback=VERIFIED"):
