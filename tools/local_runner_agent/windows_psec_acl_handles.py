@@ -882,7 +882,9 @@ class WindowsPsecHandleAclManager:
 
         except Exception as exc:
             rollback_errors = []
-            for item, snapshot in reversed(snapshots):
+            # Restore parents before descendants so inheritance propagation
+            # cannot overwrite a child rollback performed earlier.
+            for item, snapshot in snapshots:
                 if item not in changed:
                     continue
                 try:
