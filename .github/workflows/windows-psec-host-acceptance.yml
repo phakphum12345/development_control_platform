@@ -102,5 +102,5 @@ jobs:
           name: windows-psec-api-availability-probe
           path: |
             ${{ runner.temp }}/windows-psec-host-acceptance.json
-            C:\\DCP-PSEC-Acceptance\\appcontainer-effective-access.json
+            C:/DCP-PSEC-Acceptance/appcontainer-effective-access.json
           if-no-files-found: ignore
