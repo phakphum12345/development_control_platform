@@ -19,6 +19,7 @@ from tools.local_runner_agent.terminal_executor import (
     TerminalExecutionError,
     TerminalScriptExecutor,
     TerminalOutputRedactor,
+    WindowsPsecError,
     redact_terminal_output,
 )
 from tools.local_runner_agent.linux_sandbox import LinuxBubblewrapLauncher, LinuxSandboxError
