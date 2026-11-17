@@ -61,6 +61,7 @@ OBJ_DONT_REPARSE = 0x00001000
 
 FILE_ID_BOTH_DIR_INFO_CLASS = 10
 FILE_ID_BOTH_DIR_RESTART_INFO_CLASS = 11
+FILE_STREAM_INFO_CLASS = 7
 ERROR_NO_MORE_FILES = 18
 STATUS_SUCCESS = 0
 
@@ -493,6 +494,64 @@ class _WindowsHandleAclApi:
             self.close_handle(output_handle)
             raise
 
+    def enumerate_streams(self, item: HandleEntry) -> list[str]:
+        if item.is_directory:
+            return []
+        buffer_size = 64 * 1024
+        buffer = ctypes.create_string_buffer(buffer_size)
+        base = ctypes.addressof(buffer)
+        streams = []
+        ok = self.kernel32.GetFileInformationByHandleEx(
+            item.handle,
+            FILE_STREAM_INFO_CLASS,
+            ctypes.cast(buffer, wintypes.LPVOID),
+            buffer_size,
+        )
+        if not ok:
+            self._raise_win32("GetFileInformationByHandleEx(FileStreamInfo)")
+        offset = 0
+        while True:
+            if offset + 24 > buffer_size:
+                raise WindowsPsecAclError(
+                    f"file stream enumeration returned a truncated record: {item.path}"
+                )
+            next_offset = int(ctypes.c_uint32.from_address(base + offset).value)
+            name_length = int(ctypes.c_uint32.from_address(base + offset + 4).value)
+            if name_length <= 0 or name_length % 2 or offset + 24 + name_length > buffer_size:
+                raise WindowsPsecAclError(
+                    f"file stream enumeration returned an invalid name: {item.path}"
+                )
+            streams.append(
+                ctypes.wstring_at(base + offset + 24, name_length // 2)
+            )
+            if next_offset == 0:
+                break
+            if next_offset < 24 or next_offset % 8 or offset + next_offset >= buffer_size:
+                raise WindowsPsecAclError(
+                    f"file stream enumeration returned an invalid offset: {item.path}"
+                )
+            offset += next_offset
+        return streams
+
+    def verify_identity(self, item: HandleEntry) -> None:
+        info = self._file_info(item.handle)
+        attributes = int(info.dwFileAttributes)
+        is_directory = bool(attributes & FILE_ATTRIBUTE_DIRECTORY)
+        file_id = self._file_id(info)
+        volume_serial = int(info.dwVolumeSerialNumber)
+        link_count = int(info.nNumberOfLinks)
+        if (
+            attributes & FILE_ATTRIBUTE_REPARSE_POINT
+            or is_directory != item.is_directory
+            or file_id != item.file_id
+            or volume_serial != item.volume_serial
+            or link_count != item.link_count
+            or (not is_directory and link_count != 1)
+        ):
+            raise WindowsPsecAclError(
+                f"filesystem object identity or type changed before ACL mutation: {item.path}"
+            )
+
     def open_ancestor_chain(self, directory: str | os.PathLike) -> list[HandleEntry]:
         path = ntpath.normpath(str(directory))
         drive, tail = ntpath.splitdrive(path)
@@ -746,6 +805,13 @@ class WindowsPsecHandleAclManager:
                     expected_file_id=entry.file_id, write_dac=True,
                 )
                 handles.append(child)
+                api.verify_identity(child)
+                if not is_directory:
+                    streams = api.enumerate_streams(child)
+                    if [stream.casefold() for stream in streams] != ["::$data"]:
+                        raise WindowsPsecAclError(
+                            f"handle-relative tree contains an alternate or unsupported data stream: {child.path}"
+                        )
                 targets.append(child)
                 if is_directory:
                     stack.append(child)
@@ -823,6 +889,7 @@ class WindowsPsecHandleAclManager:
             # Snapshot and validate every target before the first DACL write.
             already_authorized = {}
             for item, required_aces in target_specs:
+                api.verify_identity(item)
                 current_sddl = api.read_sddl(item)
                 existing_aces = _parse_allow_aces(current_sddl, package_sid)
                 allowed_mask = 0
@@ -852,10 +919,13 @@ class WindowsPsecHandleAclManager:
 
             verified = []
             for item, required_aces in target_specs:
+                api.verify_identity(item)
                 if not already_authorized[id(item)]:
                     changed.append(item)
                     for mask, inheritance in required_aces:
+                        api.verify_identity(item)
                         api.add_allow_ace(item, package_sid, mask, inheritance)
+                api.verify_identity(item)
                 sddl = api.read_sddl(item)
                 aces = _parse_allow_aces(sddl, package_sid)
                 for mask, inheritance in required_aces:
