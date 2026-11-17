@@ -432,13 +432,6 @@ def _resume_after_filesystem_authorization(
     """Resume only after handle-relative ACL authorization is verified."""
     authorization = acl_manager.apply(workspace, scratch, package_sid)
     try:
-        previous_suspend_count = kernel32.ResumeThread(thread_handle)
-        if previous_suspend_count == 0xFFFFFFFF:
-            raise _win_error("ResumeThread")
-        if previous_suspend_count != 1:
-            raise WindowsPsecError(
-                "PSEC initial thread suspend count was not exactly one before resume"
-            )
         evidence = authorization.evidence
         if (
             not isinstance(evidence, dict)
@@ -448,6 +441,13 @@ def _resume_after_filesystem_authorization(
         ):
             raise WindowsPsecError(
                 "PSEC filesystem authorization did not return strict handle-relative DACL evidence"
+            )
+        previous_suspend_count = kernel32.ResumeThread(thread_handle)
+        if previous_suspend_count == 0xFFFFFFFF:
+            raise _win_error("ResumeThread")
+        if previous_suspend_count != 1:
+            raise WindowsPsecError(
+                "PSEC initial thread suspend count was not exactly one before resume"
             )
     finally:
         authorization.close()
