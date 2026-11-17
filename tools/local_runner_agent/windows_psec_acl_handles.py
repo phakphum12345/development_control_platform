@@ -59,6 +59,7 @@ OBJ_CASE_INSENSITIVE = 0x00000040
 OBJ_DONT_REPARSE = 0x00001000
 
 FILE_ID_BOTH_DIR_INFO_CLASS = 10
+FILE_ID_BOTH_DIR_RESTART_INFO_CLASS = 11
 ERROR_NO_MORE_FILES = 18
 STATUS_SUCCESS = 0
 
@@ -358,13 +359,19 @@ class _WindowsHandleAclApi:
         name_offset = _FILE_ID_BOTH_DIR_INFO.FileName.offset
         entries: list[DirectoryEntry] = []
 
+        first_batch = True
         while True:
+            information_class = (
+                FILE_ID_BOTH_DIR_RESTART_INFO_CLASS
+                if first_batch else FILE_ID_BOTH_DIR_INFO_CLASS
+            )
             ok = self.kernel32.GetFileInformationByHandleEx(
                 directory.handle,
-                FILE_ID_BOTH_DIR_INFO_CLASS,
+                information_class,
                 ctypes.cast(buffer, wintypes.LPVOID),
                 buffer_size,
             )
+            first_batch = False
             if not ok:
                 error = ctypes.get_last_error()
                 if error == ERROR_NO_MORE_FILES:
