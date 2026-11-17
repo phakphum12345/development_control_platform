@@ -410,6 +410,14 @@ class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
                     )
                 evidence["retry_child_exit_code"] = int(retry_exit_code.value)
                 exit_code.value = retry_exit_code.value
+                if retry_exit_code.value == 0:
+                    evidence["diagnostic_result"] = (
+                        "user SID DELETE/DELETE_CHILD ACE resolved AppContainer delete denial"
+                    )
+                    raise AssertionError(
+                        "Diagnostic user-SID ACE resolved delete, but production "
+                        "handle-relative ACL manager does not yet install that dual-principal grant"
+                    )
             else:
                 evidence["retry_child_exit_code"] = None
 
