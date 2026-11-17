@@ -1,4 +1,5 @@
 """Tests for the fixed-template Terminal executor; no project scripts are executed."""
+import io
 import os
 import re
 import shutil
@@ -467,6 +468,177 @@ class TerminalScriptExecutorTests(unittest.TestCase):
         self.assertIn("Python", "".join(message for _, message in logs))
         self.assertFalse((self.workspace / ".dcp-terminal-home").exists())
         self.assertTrue((self.workspace / "README.md").is_file())
+
+    def test_windows_terminal_uses_private_workspace_projection_and_cleans_after_close(self):
+        executable = Path(self.temp.name) / "python.exe"
+        executable.write_text("test-only executable placeholder", encoding="utf-8")
+        captured = {}
+
+        class FakeProcess:
+            def __init__(self):
+                self.stdout = io.BytesIO(b"Python test version\\n")
+                self.returncode = 0
+                self.closed = False
+
+            def poll(self):
+                return self.returncode
+
+            def wait(self, timeout=None):
+                return self.returncode
+
+            def close(self):
+                self.closed = True
+
+        class FakeLauncher:
+            def launch(self, command, *, workspace, scratch, environment):
+                captured["workspace"] = Path(workspace)
+                captured["scratch"] = Path(scratch)
+                captured["private_parent"] = Path(workspace).parent.parent
+                captured["process"] = FakeProcess()
+                captured["command"] = tuple(command)
+                return captured["process"]
+
+        assessment = IsolationAssessment(
+            platform="windows",
+            backend="windows-psec",
+            state="VERIFIED",
+            available=True,
+            network_isolated=True,
+            filesystem_isolated=True,
+            process_tree_contained=True,
+            reason="unit-test-only injected verifier",
+        )
+        template = {
+            "id": "python_version",
+            "executable": "python",
+            "argv": ["--version"],
+            "parameters": [],
+            "parameter_values": {},
+            "execution_enabled": True,
+            "mutation_class": "read-only",
+            "network": "denied",
+            "approval_required": False,
+            "working_directory_policy": "assigned_workspace_required",
+            "environment_allowlist": ["PATH", "HOME", "USERPROFILE", "SYSTEMROOT"],
+            "timeout_seconds": 10,
+            "max_output_bytes": 4096,
+        }
+        executor = TerminalScriptExecutor(enabled=True)
+        with patch(
+            "tools.local_runner_agent.terminal_executor.assess_isolation_backend",
+            return_value=assessment,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.preview_template",
+            return_value=template,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.template_version_digest",
+            return_value="c" * 64,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.WindowsPsecLauncher",
+            FakeLauncher,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.shutil.which",
+            side_effect=lambda name, path=None: (
+                str(executable) if name == "python"
+                else self.original_which(name, path=path)
+            ),
+        ):
+            result = executor.run(
+                str(uuid.uuid4()), "runner-local", self.workspace,
+                "python_version", {}, "c" * 64,
+            )
+
+        self.assertEqual(result.outcome, "succeeded")
+        self.assertEqual(captured["workspace"].parent, captured["scratch"].parent)
+        self.assertTrue(captured["workspace"].parent.name.startswith("dcp-psec-job-"))
+        self.assertNotEqual(captured["workspace"], self.workspace)
+        self.assertFalse(captured["private_parent"].exists())
+        self.assertTrue(captured["process"].closed)
+        self.assertTrue((self.workspace / "README.md").is_file())
+
+    def test_windows_terminal_preserves_projection_when_job_drain_is_unverified(self):
+        executable = Path(self.temp.name) / "python.exe"
+        executable.write_text("test-only executable placeholder", encoding="utf-8")
+        captured = {}
+
+        class FakeProcess:
+            def __init__(self):
+                self.stdout = io.BytesIO(b"")
+                self.returncode = 0
+
+            def poll(self):
+                return self.returncode
+
+            def wait(self, timeout=None):
+                return self.returncode
+
+            def close(self):
+                raise WindowsPsecError("Job Object did not drain")
+
+        class FakeLauncher:
+            def launch(self, command, *, workspace, scratch, environment):
+                captured["workspace"] = Path(workspace)
+                captured["private_parent"] = Path(workspace).parent.parent
+                return FakeProcess()
+
+        assessment = IsolationAssessment(
+            platform="windows",
+            backend="windows-psec",
+            state="VERIFIED",
+            available=True,
+            network_isolated=True,
+            filesystem_isolated=True,
+            process_tree_contained=True,
+            reason="unit-test-only injected verifier",
+        )
+        template = {
+            "id": "python_version",
+            "executable": "python",
+            "argv": ["--version"],
+            "parameters": [],
+            "parameter_values": {},
+            "execution_enabled": True,
+            "mutation_class": "read-only",
+            "network": "denied",
+            "approval_required": False,
+            "working_directory_policy": "assigned_workspace_required",
+            "environment_allowlist": ["PATH", "HOME", "USERPROFILE", "SYSTEMROOT"],
+            "timeout_seconds": 10,
+            "max_output_bytes": 4096,
+        }
+        executor = TerminalScriptExecutor(enabled=True)
+        try:
+            with patch(
+                "tools.local_runner_agent.terminal_executor.assess_isolation_backend",
+                return_value=assessment,
+            ), patch(
+                "tools.local_runner_agent.terminal_executor.preview_template",
+                return_value=template,
+            ), patch(
+                "tools.local_runner_agent.terminal_executor.template_version_digest",
+                return_value="e" * 64,
+            ), patch(
+                "tools.local_runner_agent.terminal_executor.WindowsPsecLauncher",
+                FakeLauncher,
+            ), patch(
+                "tools.local_runner_agent.terminal_executor.shutil.which",
+                side_effect=lambda name, path=None: (
+                    str(executable) if name == "python"
+                    else self.original_which(name, path=path)
+                ),
+            ):
+                with self.assertRaisesRegex(
+                    TerminalExecutionError, "projection preserved"
+                ):
+                    executor.run(
+                        str(uuid.uuid4()), "runner-local", self.workspace,
+                        "python_version", {}, "e" * 64,
+                    )
+            self.assertTrue(captured["workspace"].exists())
+            self.assertTrue(captured["private_parent"].exists())
+        finally:
+            if captured.get("private_parent") and captured["private_parent"].exists():
+                shutil.rmtree(captured["private_parent"], ignore_errors=True)
 
     def test_template_digest_mismatch_fails_before_process_start(self):
         template = preview_template("python_version", {})
