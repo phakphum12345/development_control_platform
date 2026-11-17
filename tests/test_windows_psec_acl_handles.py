@@ -27,6 +27,9 @@ class FakeHandleAclApi:
         self.closed: list[str] = []
         self.restored: list[str] = []
         self.writes: list[str] = []
+        self.identity_checks: dict[str, int] = {}
+        self.fail_verify_after: dict[str, int] = {}
+        self.streams: dict[str, list[str]] = {}
         self.fail_on_write: int | None = None
         self.swap_name: str | None = None
 
@@ -87,6 +90,28 @@ class FakeHandleAclApi:
         if item.file_id != expected_file_id:
             raise WindowsPsecAclError("fake file identity changed after enumeration")
         return item
+
+    def verify_identity(self, item):
+        count = self.identity_checks.get(item.path, 0) + 1
+        self.identity_checks[item.path] = count
+        if self.fail_verify_after.get(item.path) == count:
+            raise WindowsPsecAclError(
+                f"filesystem object identity or type changed before ACL mutation: {item.path}"
+            )
+        current = os.lstat(item.path)
+        if (
+            stat.S_ISLNK(current.st_mode)
+            or stat.S_ISDIR(current.st_mode) != item.is_directory
+            or current.st_ino != item.file_id
+            or current.st_nlink != item.link_count
+            or (not item.is_directory and current.st_nlink != 1)
+        ):
+            raise WindowsPsecAclError(
+                f"filesystem object identity or type changed before ACL mutation: {item.path}"
+            )
+
+    def enumerate_streams(self, item):
+        return self.streams.get(item.path, ["::$DATA"])
 
     def read_sddl(self, item):
         return self.sddl.setdefault(item.path, "D:")
@@ -165,6 +190,33 @@ class WindowsPsecHandleAclManagerTests(unittest.TestCase):
         self.assertTrue(self.api.writes)
         authorization.close()
         self.assertGreaterEqual(len(self.api.closed), 1)
+
+    def test_alternate_data_stream_is_rejected_before_any_dacl_write(self):
+        target = str(self.workspace / "read.txt")
+        self.api.streams[target] = ["::$DATA", ":hidden:$DATA"]
+
+        with self.assertRaisesRegex(WindowsPsecAclError, "alternate or unsupported data stream"):
+            WindowsPsecHandleAclManager(self.api).apply(
+                self.workspace, self.scratch, "S-1-15-2-123-456"
+            )
+
+        self.assertEqual(self.api.writes, [])
+        self.assertTrue(self.api.closed)
+
+    def test_identity_change_before_acl_mutation_rolls_back_prior_targets(self):
+        target = str(self.workspace / "read.txt")
+        self.api.fail_verify_after[target] = 3
+
+        with self.assertRaisesRegex(WindowsPsecAclError, "identity or type changed"):
+            WindowsPsecHandleAclManager(self.api).apply(
+                self.workspace, self.scratch, "S-1-15-2-123-456"
+            )
+
+        self.assertGreater(len(self.api.writes), 0)
+        self.assertEqual(self.api.read_sddl(self.api._entry(self.job_root)), "D:")
+        self.assertEqual(self.api.read_sddl(self.api._entry(self.workspace)), "D:")
+        self.assertTrue(self.api.restored)
+        self.assertTrue(self.api.closed)
 
     def test_reapplying_verified_acl_is_idempotent(self):
         first = self.manager.apply(self.workspace, self.scratch, _PACKAGE_SID)
