@@ -29,7 +29,7 @@ TRUSTEE_IS_UNKNOWN = 0
 SDDL_REVISION_1 = 1
 ERROR_SUCCESS = 0
 
-_SID_RE = re.compile(r"^S-1-15-2-(?:0|[1-9][0-9]{0,9})(?:-(?:0|[1-9][0-9]{0,9})){0,14}$", re.ASCII)
+_SID_RE = re.compile(r"^S-1-15-2-(?:0|[1-9][0-9]{0,9})(?:-(?:0|[1-9][0-9]{0,9})){1,14}$", re.ASCII)
 _ACE_RE = re.compile(r"\((A|D);([^;]*);([^;]+);;;([^)]*)\)")
 
 # SDDL rights are two-character tokens, not necessarily hexadecimal masks.
@@ -94,13 +94,19 @@ class EXPLICIT_ACCESS_W(ctypes.Structure):
     ]
 
 
-def _valid_package_sid(value: object) -> bool:
+def is_valid_package_sid(value: object) -> bool:
+    """Return whether value is a bounded AppContainer Package SID."""
     if not isinstance(value, str) or not _SID_RE.fullmatch(value):
         return False
     try:
         return all(int(part) <= 0xFFFFFFFF for part in value.split("-")[4:])
     except ValueError:
         return False
+
+
+def _valid_package_sid(value: object) -> bool:
+    """Backward-compatible internal alias for Package SID validation."""
+    return is_valid_package_sid(value)
 
 
 def _is_reparse(path: Path, info: os.stat_result | None = None) -> bool:
