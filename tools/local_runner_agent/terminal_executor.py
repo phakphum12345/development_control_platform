@@ -627,7 +627,9 @@ class TerminalScriptExecutor:
             try:
                 launcher = LinuxBubblewrapLauncher()
             except (LinuxSandboxError, OSError, ValueError):
-                shutil.rmtree(job_home, ignore_errors=True)
+                self._cleanup_execution_workspace(
+                    projection=projection, private_parent=private_parent, job_home=job_home
+                )
                 raise TerminalExecutionError(
                     "Linux bubblewrap sandbox could not be constructed safely"
                 ) from None
@@ -635,7 +637,9 @@ class TerminalScriptExecutor:
             try:
                 launcher = WindowsPsecLauncher()
             except (WindowsPsecError, OSError, ValueError):
-                shutil.rmtree(job_home, ignore_errors=True)
+                self._cleanup_execution_workspace(
+                    projection=projection, private_parent=private_parent, job_home=job_home
+                )
                 raise TerminalExecutionError(
                     "Windows PSEC sandbox could not be constructed safely"
                 ) from None
@@ -646,12 +650,36 @@ class TerminalScriptExecutor:
                         resolved, workspace, env, launcher=launcher, scratch=job_home
                     )
                 else:
+                    filter_cleanup_state = {"safe_to_cleanup": True}
                     self._disable_repository_filters_windows(
-                        resolved, workspace, env, launcher=launcher, scratch=job_home
+                        resolved,
+                        execution_workspace,
+                        env,
+                        launcher=launcher,
+                        scratch=job_home,
+                        cleanup_state=filter_cleanup_state,
                     )
-            except TerminalExecutionError:
-                shutil.rmtree(job_home, ignore_errors=True)
-                raise
+            except (TerminalExecutionError, WindowsPsecError) as exc:
+                if (
+                    assessment.platform != "windows"
+                    or filter_cleanup_state.get("safe_to_cleanup", True)
+                ):
+                    self._cleanup_execution_workspace(
+                        projection=projection,
+                        private_parent=private_parent,
+                        job_home=job_home,
+                    )
+                else:
+                    self.log(
+                        "system",
+                        "PSEC Git-filter Job Object drain not proven; preserving "
+                        f"workspace projection at {projection.root if projection else private_parent}",
+                    )
+                if isinstance(exc, TerminalExecutionError):
+                    raise
+                raise TerminalExecutionError(
+                    "Git repository filter configuration cleanup was not verified"
+                ) from exc
         timeout = min(int(template["timeout_seconds"]), self.timeout_ceiling_seconds)
         output_limit = min(int(template["max_output_bytes"]), self.output_ceiling_bytes)
         command = self._build_command(resolved, executable, argv)
@@ -666,7 +694,9 @@ class TerminalScriptExecutor:
                     environment=self._sandbox_environment(env),
                 )
             except (LinuxSandboxError, OSError, ValueError):
-                shutil.rmtree(job_home, ignore_errors=True)
+                self._cleanup_execution_workspace(
+                    projection=projection, private_parent=private_parent, job_home=job_home
+                )
                 raise TerminalExecutionError(
                     "Linux bubblewrap sandbox could not be constructed safely"
                 ) from None
@@ -687,13 +717,24 @@ class TerminalScriptExecutor:
             else:
                 process = launcher.launch(
                     command,
-                    workspace=workspace,
+                    workspace=execution_workspace,
                     scratch=job_home,
                     environment=env,
                 )
-        except (OSError, ValueError, WindowsPsecError):
-            shutil.rmtree(job_home, ignore_errors=True)
-            raise TerminalExecutionError("OS isolation launcher could not be started") from None
+        except (OSError, ValueError, WindowsPsecError) as exc:
+            if projection is not None:
+                self.log(
+                    "system",
+                    "Windows PSEC launch cleanup not proven; preserving workspace projection at "
+                    f"{projection.root}",
+                )
+            else:
+                self._cleanup_execution_workspace(
+                    projection=projection, private_parent=private_parent, job_home=job_home
+                )
+            raise TerminalExecutionError(
+                "OS isolation launcher could not be started"
+            ) from exc
         finally:
             if sandbox_command is not None:
                 # The child inherited only the explicitly passed seccomp descriptor.
