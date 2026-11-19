@@ -122,3 +122,33 @@ Existing roadmap, backlog and continuity documents require reconciliation with m
 ## 9. Current limitations
 
 This inventory is source-driven but still IN_PROGRESS. It does not yet enumerate every atomic acceptance criterion for all 78 tool files and 86 test files. No total atomic task count is claimed until WP-00B/00C produce a traceable one-to-one register. No implementation completion, host acceptance or merge is claimed by this document.
+
+
+---
+
+## 2026-11-19 — Current main baseline reconciliation
+
+**Exact baseline:** `main@985a78d5fba459c8a0cbcf47e5d00a858c6e6228`  
+**Recursive tree:** 309 entries / 283 files  
+**Path counts:** 81 tools / 91 test files / 63 docs / 8 workflows  
+**Branch inventory:** 158 branches (search paginated to completion)  
+**Open PRs:** #140, #149, #138  
+**Open issues:** 0
+
+This dated section supersedes the 2026-11-14 baseline counts above. Earlier entries remain historical and are not rewritten.
+
+### Current PR blockers
+- PR #140 is OPEN / DRAFT. Its five workflows completed successfully, but its hosted PSEC probe emitted `state=BLOCKED` because `processmodel.dll` was unavailable from the System32 search path; optional self-hosted Windows acceptance was SKIPPED.
+- PR #149 is OPEN / DRAFT. Its four workflows completed successfully, but the same hosted PSEC probe emitted `state=BLOCKED`; optional self-hosted Windows acceptance was SKIPPED. It overlaps #140 and has divergent history (comparison to current #140 head: 71 ahead / 7 behind).
+- PR #138 is an open cross-fork comparison PR from the fork's `main` into the WP-18B.1 feature branch. Its own body records 501 ahead / 472 behind and mergeable=false at the last reconciliation. Do not merge it wholesale.
+
+### Updated WP-00 status
+| WP | Current status | Evidence / next action |
+|---|---|---|
+| WP-00A | PASS | Current main SHA and complete recursive file path inventory captured |
+| WP-00B | IN_PROGRESS | Module families and all tool paths captured; complete HTTP method/path/auth and Dashboard handler trace remains |
+| WP-00C | IN_PROGRESS | All 91 test paths captured; test-function/fixture/skip and requirement mapping remains |
+| WP-00D | IN_PROGRESS | New canonical inventory/status/traceability/test/architecture docs added on the WP-00 branch; review and exact-head CI still required |
+
+### Safety
+No merge, deployment, cloud provisioning, VM creation, branch deletion, force-push, or local test execution occurred in this inventory pass. Cloud Provisioning and VM Creation remain OFF. Terminal process execution remains blocked pending verified OS isolation.
