@@ -142,3 +142,12 @@ This inventory is source-driven but still IN_PROGRESS. It does not yet enumerate
 - The Windows bootstrap acceptance log confirms the test script completed successfully; the reparse-point test did not report a host-capability skip.
 - Optional Windows runner acceptance remains SKIPPED. PSEC target-host acceptance is tracked separately and remains BLOCKED.
 - PR #152 remains Draft; do not treat CI success as merge approval.
+
+
+### 2026-11-20 — WP-06 native Windows bootstrap acceptance
+
+- Native Windows PowerShell 5.1 run of `tests/test_local_runner_bootstrap.ps1` on source head `0cb2a4077bc250777cb02d51bd6442ef5ef6e97c` completed with exit code 0 and `Local Runner credential bootstrap tests passed.`
+- The run used an isolated temporary `RUNNER_TEMP` and temporary `LOCALAPPDATA`; it did not modify the user's real DCP profile. The reparse-point test ran without a capability-based skip.
+- The exact-head CI results on `0cb2a407...` are 6 PASS and 1 optional Windows runner acceptance SKIPPED. The skip is not PSEC evidence.
+- Security review remains OPEN: Windows atomic replacement semantics for `Move-Item -Force`, parent DCP directory ACL/race resistance, and partial-commit behavior across credential/settings writes still require explicit verification or hardening. Validation-rejection no-mutation is covered; I/O-failure transactionality is not.
+- WP-06 remains a bootstrap-only acceptance boundary. WP-12 Windows PSEC and all Terminal OS isolation gates remain independently BLOCKED/UNKNOWN as already recorded.
