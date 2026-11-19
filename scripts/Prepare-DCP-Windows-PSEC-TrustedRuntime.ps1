@@ -43,17 +43,27 @@ function Assert-TrustedAcl {
    }
    Assert-NoReparsePath -Path $Path
 
-   $acl = Get-Acl -LiteralPath $Path
-   $ownerSid = $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value
+   $full = [System.IO.Path]::GetFullPath($Path)
+   $root = [System.IO.Path]::GetPathRoot($full)
+   $current = $root
+   $targets = @($root)
+   $relative = $full.Substring($root.Length)
+   $parts = $relative.Split(
+       [char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar),
+       [System.StringSplitOptions]::RemoveEmptyEntries
+   )
+   foreach ($part in $parts) {
+       $current = Join-Path $current $part
+       if (Test-Path -LiteralPath $current) {
+           $targets += $current
+       }
+   }
+
    $trustedOwners = @(
        "S-1-5-18",
        "S-1-5-32-544",
        "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"
    )
-   if ($ownerSid -notin $trustedOwners) {
-       throw "Untrusted owner on '$Path': $ownerSid. Expected SYSTEM, Administrators, or TrustedInstaller."
-   }
-
    $broadPrincipals = @(
        "S-1-1-0",       # Everyone
        "S-1-5-4",       # Interactive
@@ -78,22 +88,30 @@ function Assert-TrustedAcl {
        0x40000000       # GENERIC_WRITE
    )
 
-   foreach ($rule in $acl.Access) {
-       if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) {
-           continue
+   foreach ($target in $targets) {
+       $acl = Get-Acl -LiteralPath $target
+       $ownerSid = $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value
+       if ($ownerSid -notin $trustedOwners) {
+           throw "Untrusted owner on '$target': $ownerSid. Expected SYSTEM, Administrators, or TrustedInstaller."
        }
-       try {
-           $sid = $rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
-       }
-       catch {
-           throw "Could not resolve ACL principal on '$Path': $($rule.IdentityReference)"
-       }
-       if ($sid -notin $broadPrincipals) {
-           continue
-       }
-       $rights = [int]$rule.FileSystemRights
-       if (($rights -band $writeMask) -ne 0) {
-           throw "Broad principal '$sid' has write-capable ACL rights on '$Path': $($rule.FileSystemRights)"
+
+       foreach ($rule in $acl.Access) {
+           if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) {
+               continue
+           }
+           try {
+               $sid = $rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
+           }
+           catch {
+               throw "Could not resolve ACL principal on '$target': $($rule.IdentityReference)"
+           }
+           if ($sid -notin $broadPrincipals) {
+               continue
+           }
+           $rights = [int]$rule.FileSystemRights
+           if (($rights -band $writeMask) -ne 0) {
+               throw "Broad principal '$sid' has write-capable ACL rights on '$target': $($rule.FileSystemRights)"
+           }
        }
    }
 }
