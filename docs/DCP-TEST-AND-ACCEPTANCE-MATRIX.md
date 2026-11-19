@@ -72,3 +72,67 @@ Every future acceptance record must include:
 - Treat path-filtered workflows that did not trigger as UNKNOWN until manually or otherwise validly executed.
 - Keep optional self-hosted jobs SKIPPED unless a registered supported host actually runs them.
 - Never use unsandboxed browser fallback or relax security policy merely to make CI green.
+
+
+---
+
+## 6. 2026-11-20 — Exact-head PR #150 / #151 recheck
+
+### PR #150
+
+- Head SHA: `b4769a69115cefa39a8ac5770b65e5379917142d`.
+- Validate Control Plane: `validate` PASS.
+- Local-first Minimal Emulator: Linux Minimal Emulator PASS; Windows 11 Auth Proxy + Gateway E2E PASS.
+- Cross-platform Recovery: Ubuntu PASS; Windows PASS.
+- Windows dynamic-port launcher integration: **FAIL** (job `135733550078`).
+- Optional Windows runner acceptance: **SKIPPED** (job `135733552694`).
+- Exact failure line: `tests/test_local_runner_bootstrap.ps1:28` invokes `Setup-DCP-Local-Runner.ps1 -WorkerId ... -TrustedRepository ...`; PowerShell reports that the `TrustedRepository` parameter is not defined on main.
+- Classification: PR #150 CI = FAIL; Windows host acceptance = SKIPPED. The docs-only change did not alter the failing bootstrap contract.
+
+### PR #151
+
+- Head SHA: `87b2c4dd48c6ad21fdeb8fa9cd79173f4409de92`.
+- Validate Control Plane: PASS; package: PASS; Linux Minimal Emulator: PASS; Windows Auth Proxy + Gateway E2E: PASS; Ubuntu and Windows Recovery: PASS.
+- Windows dynamic-port launcher integration: **FAIL** (job `135720966046`).
+- Optional Windows runner acceptance: **SKIPPED** (job `135720969555`).
+- Classification: PR #151 CI = FAIL; Code Navigator contract mapping = candidate implementation only.
+
+### PR #151 Code Navigator test trace
+
+At the PR #151 head:
+- 23 navigation IDs are present in Dashboard source.
+- 23 `CODE_NAV_MAPPINGS` records are present, including `project-import` and `document-generator`.
+- New contract checks include exact navigation/mapping equality and validation that each declared test path and function/class symbol resolves.
+- The changed test file includes `DashboardControlCenterV2Tests.test_code_navigator_covers_all_dashboard_views` and `test_code_navigator_mapping_test_references_resolve`.
+- This validates static mapping integrity; it does not execute the referenced tests or prove backend behavior.
+
+## 7. 2026-11-20 — Selected test-function and workflow trace (WP-00C increment)
+
+This increment enumerates test methods and fixtures from eight security/control-plane test files on exact main baseline. It is a partial register, not the full 88 Python test-file inventory.
+
+| Test file | Test methods | Fixture / setup | Skip conditions | Workflow/job relationship |
+|---|---:|---|---|---|
+| `tests/test_cloud_gateway_job_control.py` | 23 | `JobStoreTests.setUp/tearDown` | None found | Validate Control Plane / full unittest discovery; Cross-platform Recovery (recovery-focused subset) |
+| `tests/test_cloud_gateway_proxy_authorization.py` | 2 | `ProxyMutationAuthorizationTests.setUp/tearDown` | None found | Validate Control Plane / full unittest discovery |
+| `tests/test_cloud_gateway_dynamic_port.py` | 4 | None | None found | Validate Control Plane / full unittest discovery; Windows dynamic-port integration exercises launcher rather than this module alone |
+| `tests/test_cloud_gateway_local_projects.py` | 22 | `LocalProjectGatewayAPITests.setUp/tearDown` | None found | Validate Control Plane / full unittest discovery |
+| `tests/test_document_workflow_gateway.py` | 11 | `DocumentWorkflowStoreTests.setUp/tearDown` | None found | Validate Control Plane / full unittest discovery |
+| `tests/test_terminal_grants.py` | 11 | `TerminalGrantStoreTests.setUp/tearDown` | None found | Validate Control Plane / full unittest discovery |
+| `tests/test_terminal_executor.py` | 20 | `TerminalScriptExecutorTests.setUp/tearDown` | Git unavailable; Git <2.36; symlinks unavailable on host | Validate Control Plane / full unittest discovery; Cross-platform Recovery / policy and process-related subsets |
+| `tests/test_sqlite_security.py` | 4 | None | POSIX-only file mode assertions skipped on Windows | Validate Control Plane / full unittest discovery; Windows ACL behavior requires separate tests |
+ 
+### Selected method-level coverage
+
+- Job control: idempotency, invalid/conflicting payloads, immutable Local Folder snapshot identity, trusted-project gate, terminal grant binding, lease expiry/requeue/fencing, bounded retries, checkpoint monotonicity/idempotency/lease binding, UNKNOWN-job owner reconciliation, concurrent claims and cancellation.
+- Proxy authorization: operator read access is distinct from Owner-only runner creation/termination.
+- Local project Gateway API: Owner-only Local Folder metadata, public GitHub catalog operator access, local path disclosure prevention, source refresh/fingerprint and terminal grant/job authorization.
+- Document Workflow: default-disabled scope, explicit grant confirmation, exact byte/digest approval, stale base, path traversal, revoked grant and idempotency.
+- Terminal grants/executor: one-time consumption, job/runner binding, expiry/revocation, canonical digest, disabled execution without verified isolation, fixed argv, timeout/output/cancel termination, symlink rejection and streaming secret redaction.
+- SQLite security: owner-only DB permissions and symlink rejection.
+
+### Remaining WP-00C gaps
+
+- Enumerate all test functions/classes, fixtures and skip decorators in the remaining test files (88 `test_*` paths exist in the main recursive tree; this is not the total number of tests).
+- Include non-`test_*` test assets such as `tests/browser_smoke.mjs`, generated bootstrap scripts and PowerShell acceptance scripts.
+- Map each test function to the exact workflow step/job and path-filter conditions.
+- Record exact-head test execution results separately from test definitions.
