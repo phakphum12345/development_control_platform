@@ -97,7 +97,7 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             scripts.mkdir(parents=True)
             (scripts / "python.exe").write_bytes(b"venv-python")
             (venv / "pyvenv.cfg").write_text(
-                f"home = {base}\\ninclude-system-site-packages = false\\n",
+                f"home = {base}\ninclude-system-site-packages = false\n",
                 encoding="utf-8",
             )
             base.mkdir()
@@ -133,7 +133,7 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             scripts.mkdir(parents=True)
             (scripts / "python.exe").write_bytes(b"venv-python")
             (venv / "pyvenv.cfg").write_text(
-                f"home = {base}\\n", encoding="utf-8"
+                f"home = {base}\n", encoding="utf-8"
             )
             base.mkdir()
             (base / "python.exe").write_bytes(b"base-python")
@@ -152,7 +152,7 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             base.mkdir(parents=True)
             (scripts / "python.exe").write_bytes(b"venv-python")
             (venv / "pyvenv.cfg").write_text(
-                f"home = {base}\\n", encoding="utf-8"
+                f"home = {base}\n", encoding="utf-8"
             )
             (base / "python.exe").write_bytes(b"base-python")
             (base / "Lib").mkdir()
