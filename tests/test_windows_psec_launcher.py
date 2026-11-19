@@ -3,6 +3,7 @@ from __future__ import annotations
 import ctypes
 import io
 import os
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -14,6 +15,8 @@ from tools.local_runner_agent.windows_psec_launcher import (
     _apply_sandbox_profile_environment,
     _environment_block,
     _require_app_container_token,
+    _paths_overlap,
+    _runtime_directories,
     _resume_after_filesystem_authorization,
 )
 
@@ -66,6 +69,73 @@ class FakePsecDll:
 
 
 class WindowsPsecLauncherUnitTests(unittest.TestCase):
+    def _make_venv_runtime(self, root: Path, base_home: Path) -> Path:
+        scripts = root / "Scripts"
+        scripts.mkdir(parents=True)
+        (scripts / "python.exe").write_bytes(b"venv redirector test fixture")
+        (root / "pyvenv.cfg").write_text(
+            f"home = {base_home}\\nversion = 3.12.10\\n",
+            encoding="utf-8",
+        )
+        base_home.mkdir(parents=True, exist_ok=True)
+        (base_home / "python.exe").write_bytes(b"base interpreter fixture")
+        (base_home / "Lib").mkdir(exist_ok=True)
+        (base_home / "Lib" / "os.py").write_text("# stdlib fixture", encoding="utf-8")
+        return scripts / "python.exe"
+
+    def test_venv_runtime_includes_base_home_and_standard_library(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            base_home = root / "TrustedRuntime" / "Python312"
+            executable = self._make_venv_runtime(root / "venv", base_home)
+
+            paths = _runtime_directories(str(executable), ())
+
+            self.assertEqual(paths[0], executable.parent.parent)
+            self.assertIn(base_home, paths)
+            self.assertIn(base_home / "Lib", paths)
+
+    def test_venv_base_runtime_under_denied_host_profile_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            denied_profile = root / "HostProfile"
+            base_home = denied_profile / "AppData" / "Python312"
+            executable = self._make_venv_runtime(root / "venv", base_home)
+
+            with self.assertRaisesRegex(WindowsPsecError, "overlaps a denied host path"):
+                _runtime_directories(str(executable), (denied_profile,))
+
+    def test_venv_without_pyvenv_cfg_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            scripts = Path(temporary) / "venv" / "Scripts"
+            scripts.mkdir(parents=True)
+            executable = scripts / "python.exe"
+            executable.write_bytes(b"venv redirector fixture")
+
+            with self.assertRaisesRegex(WindowsPsecError, "missing pyvenv.cfg"):
+                _runtime_directories(str(executable), ())
+
+    def test_runtime_path_overlap_detects_parent_and_child(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.assertTrue(_paths_overlap(root / "profile", root))
+            self.assertTrue(_paths_overlap(root, root / "profile" / "python"))
+            self.assertFalse(_paths_overlap(root / "runtime", root / "profile"))
+
+    def test_venv_base_runtime_reparse_point_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            real_home = root / "RealPython"
+            real_home.mkdir()
+            link_home = root / "LinkedPython"
+            try:
+                os.symlink(real_home, link_home, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest("directory symlink creation is unavailable")
+            executable = self._make_venv_runtime(root / "venv", link_home)
+            with self.assertRaisesRegex(WindowsPsecError, "reparse point"):
+                _runtime_directories(str(executable), ())
+
     def test_environment_block_is_sorted_and_double_null_terminated(self):
         block = _environment_block({"zeta": "2", "Alpha": "1"})
         values = "".join(block)
