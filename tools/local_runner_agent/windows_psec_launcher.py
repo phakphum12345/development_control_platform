@@ -622,8 +622,6 @@ def _runtime_root(executable: str) -> Path:
 
 def _program_files_roots() -> tuple[Path, ...]:
     """Read the 64-bit Program Files location from HKLM, never user env vars."""
-    if os.name != "nt":
-        raise WindowsPsecError("trusted Program Files registry location is only available on Windows")
     try:
         import winreg
 
