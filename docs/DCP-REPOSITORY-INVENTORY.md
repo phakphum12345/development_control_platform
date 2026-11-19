@@ -413,3 +413,8 @@ Source line anchors at this baseline: Gateway `do_GET` begins near line 327, `do
 - Proxy mutation paths enforce same-origin and session-bound CSRF before forwarding. Exact role requirements and all forwarded body/header fields still need a dedicated per-route contract table.
 
 This second pass supersedes the earlier README-derived 21-view estimate with the current source-derived 23 navigation tabs.
+
+
+## 9. HTTP path-family coverage update
+
+The 2026-11-19 source pass now records concrete Gateway GET/POST/DELETE route shapes, Runner credential endpoints, Auth Proxy read allowlists, bounded query rules and same-origin/CSRF checks in `DCP-REQUIREMENTS-TRACEABILITY.md`. Gateway and Auth Proxy each expose GET/POST/DELETE handler dispatch; no PUT/PATCH handler was found. Exact request/response schemas, all error statuses, and the full Proxy allowlist equivalence table remain IN_PROGRESS.
