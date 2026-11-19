@@ -118,7 +118,8 @@ function Assert-TrustedAcl {
            if (($rights -band $writeMask) -eq 0 -or $sid -in $trustedWriters) {
                continue
            }
-           throw "Untrusted principal '$sid' has write-capable ACL rights on '$target': mask=0x$('{0:X8}' -f ($rights -band 0xffffffff)). SDDL=$($acl.Sddl)"
+           $maskHex = "{0:X8}" -f ($rights -band 0xffffffff)
+           throw "Untrusted principal '$sid' has write-capable ACL rights on '$target': mask=0x$maskHex. SDDL=$($acl.Sddl)"
        }
    }
 }
