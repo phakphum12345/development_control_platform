@@ -199,3 +199,20 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Corrected the Document Generator operations status from "feature branch" to "present in current mainline source"; exact-head CI, browser integration, host filesystem and deployment acceptance remain separate.
 - Clarified that local document writes do not commit/push to GitHub and PR lifecycle tools are read-only.
 - Branch head before this ledger update: `b1dc863ac7174dc83382ffe58db33eef8f82e0a9`.
+
+
+---
+
+## 2026-11-19 — Exact-head CI failure and runner-bootstrap dependency checkpoint
+
+- Audit branch: `docs/wp00-full-repository-audit-20261119`.
+- Branch head before this ledger update: `c0ffc97c3c2cd084500150cbb6860197ebeb2a75`.
+- Main baseline remains `985a78d5fba459c8a0cbcf47e5d00a858c6e6228`; main was not modified.
+- Current open PRs: #150, #151, #140, #149 and #138. Open issue search returned zero issue records. Main branch protection is not enabled/reported (`protected=false`, required status checks absent).
+- PR #150 exact-head Validate Control Plane failed on Windows dynamic-port launcher integration (run `44568803009`, job `135717852997`); PR #151 exact-head Validate Control Plane failed on the same integration (run `44569675117`, job `135720966046`). Both exact logs report that `Setup-DCP-Local-Runner.ps1` has no `-TrustedRepository` parameter.
+- Root cause: mainline `Setup-DCP-Local-Runner.ps1` creates only the Runner token map, while `tests/test_local_runner_bootstrap.ps1` expects explicit trusted repository allowlist persistence in `gateway-local-settings.json`. Mainline `Start-DCP-Gateway-Runner.ps1` requires that settings file before enabling trusted repository execution. This is a real bootstrap contract mismatch on main, not a WP-00 or Code Navigator source regression.
+- The setup-script implementation on PR #140 and PR #149 is byte-identical (blob SHA `42b3403ddcb3d4fd6f3a67b8beb54cae9ebbb935`) and implements the missing allowlist persistence with validation, bounded entries, reparse-point checks and protected ACL writes. Do not duplicate/cherry-pick it into another PR without resolving the branch dependency and reviewing scope.
+- PR #140 current head CI completed successfully, but its optional Windows runner acceptance is SKIPPED and PSEC API probe evidence is BLOCKED (hosted image lacks `processmodel.dll`). PR #149 is based on a stale #140 head and currently diverges from #140 (71 commits ahead / 7 behind); launcher, host acceptance, tests and workflow files differ. Reconcile before any merge consideration.
+- PR #138 remains a cross-fork comparison from `phakphumwiri-boop/development_control_platform`; do not merge wholesale.
+- WP-00A remains PASS for the exact main tree/path inventory. WP-00B/00C/00D remain IN_PROGRESS. Exact route schemas, complete handler/service trace, per-test-function mapping and documentation reconciliation remain outstanding.
+- Next action: keep all PRs Draft/open; do not merge or rewrite history. Resolve the existing #140/#149 runner-bootstrap dependency through an Owner-reviewed sequencing decision, then re-run required CI on the exact affected heads. Continue WP-00 traceability and independent work only where it does not depend on this blocked prerequisite.
