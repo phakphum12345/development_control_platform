@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-   [string]$AcceptanceParent = $env:DCP_PSEC_ACCEPTANCE_PARENT
+   [string]$AcceptanceParent = $env:DCP_PSEC_ACCEPTANCE_PARENT,
+   [switch]$AuditProgramFilesAclOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -138,7 +139,9 @@ function Assert-PythonSignature {
    }
 }
 
-Assert-Administrator
+if (-not $AuditProgramFilesAclOnly) {
+    Assert-Administrator
+}
 if (-not [Environment]::Is64BitOperatingSystem -or
    -not [Environment]::Is64BitProcess -or
    $env:PROCESSOR_ARCHITECTURE -ne "AMD64") {
@@ -157,6 +160,14 @@ if ([string]::IsNullOrWhiteSpace($programFilesRoot) -or $programFilesRoot.Contai
     throw "The machine 64-bit ProgramFilesDir registry value is invalid."
 }
 $programFilesRoot = [System.IO.Path]::GetFullPath($programFilesRoot)
+Assert-TrustedAcl -Path $programFilesRoot
+if ($AuditProgramFilesAclOnly) {
+    [pscustomobject]@{
+        program_files_root = $programFilesRoot
+        acl_evidence = @($script:TrustedAclEvidence.Values)
+    } | ConvertTo-Json -Depth 20
+    return
+}
 $programFilesDrive = New-Object -TypeName System.IO.DriveInfo -ArgumentList ([System.IO.Path]::GetPathRoot($programFilesRoot))
 $minimumFreeBytes = [long]1GB
 if ($programFilesDrive.AvailableFreeSpace -lt $minimumFreeBytes) {
@@ -170,7 +181,6 @@ $venvRoot = Join-Path $baseRuntime "venvs\psec"
 $venvPython = Join-Path $venvRoot "Scripts\python.exe"
 $venvConfig = Join-Path $venvRoot "pyvenv.cfg"
 
-Assert-TrustedAcl -Path $programFilesRoot
 Assert-NoReparsePath -Path $dcpRoot
 if (-not (Test-Path -LiteralPath $dcpRoot -PathType Container)) {
    New-Item -ItemType Directory -Path $dcpRoot | Out-Null
