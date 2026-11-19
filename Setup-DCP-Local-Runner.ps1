@@ -164,6 +164,9 @@ if ($null -ne $existingCredentialItem) {
         }
         $tokenMap[$property.Name] = $property.Value
     }
+    if ($tokenMap.Count -gt 16) {
+        throw 'Existing Runner credential file exceeds the 16-worker limit.'
+    }
 }
 
 $existingSettingsItem = Get-ExistingRegularFile -Path $settingsFile -MaximumBytes $maxSettingsBytes -Label 'Existing local Gateway settings'
