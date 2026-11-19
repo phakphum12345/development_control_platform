@@ -103,6 +103,7 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             root = Path(temporary)
             denied_profile = root / "HostProfile"
             program_files = root / "Program Files"
+            program_files.mkdir()
             base_home = denied_profile / "AppData" / "Python312"
             executable = self._make_venv_runtime(root / "venv", base_home)
 
@@ -145,16 +146,18 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
     def test_venv_base_runtime_reparse_point_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            real_home = root / "RealPython"
-            real_home.mkdir()
-            link_home = root / "LinkedPython"
+            program_files = root / "Program Files"
+            real_home = program_files / "RealPython"
+            real_home.mkdir(parents=True)
+            link_home = program_files / "LinkedPython"
             try:
                 os.symlink(real_home, link_home, target_is_directory=True)
             except (OSError, NotImplementedError):
                 self.skipTest("directory symlink creation is unavailable")
             executable = self._make_venv_runtime(root / "venv", link_home)
-            with self.assertRaisesRegex(WindowsPsecError, "reparse point"):
-                _runtime_directories(str(executable), ())
+            with mock.patch.dict(os.environ, {"ProgramFiles": str(program_files)}):
+                with self.assertRaisesRegex(WindowsPsecError, "reparse point"):
+                    _runtime_directories(str(executable), ())
 
     def test_environment_block_is_sorted_and_double_null_terminated(self):
         block = _environment_block({"zeta": "2", "Alpha": "1"})
