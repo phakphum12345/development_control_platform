@@ -746,6 +746,7 @@ def main() -> int:
             "psec_api": api.to_dict(),
             "psec_spec": {"state": "PASS", "reason": spec_reason},
             "checks": results,
+            "expected_denial_checks": sorted(_EXPECTED_WRITE_DENIALS),
             "diagnostics": diagnostics,
             "failures": failures,
             "note": "This host acceptance result does not automatically set terminal isolation to VERIFIED.",
