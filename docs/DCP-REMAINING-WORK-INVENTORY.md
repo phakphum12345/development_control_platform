@@ -122,3 +122,95 @@ Existing roadmap, backlog and continuity documents require reconciliation with m
 ## 9. Current limitations
 
 This inventory is source-driven but still IN_PROGRESS. It does not yet enumerate every atomic acceptance criterion for all 78 tool files and 86 test files. No total atomic task count is claimed until WP-00B/00C produce a traceable one-to-one register. No implementation completion, host acceptance or merge is claimed by this document.
+
+
+---
+
+## 2026-11-19 — Current main baseline reconciliation
+
+**Exact baseline:** `main@985a78d5fba459c8a0cbcf47e5d00a858c6e6228`  
+**Recursive tree:** 309 entries / 283 files  
+**Path counts:** 81 tools / 91 test files / 63 docs / 8 workflows  
+**Branch inventory:** 158 branches (search paginated to completion)  
+**Open PRs:** #140, #149, #138  
+**Open issues:** 0
+
+This dated section supersedes the 2026-11-14 baseline counts above. Earlier entries remain historical and are not rewritten.
+
+### Current PR blockers
+- PR #140 is OPEN / DRAFT. Its five workflows completed successfully, but its hosted PSEC probe emitted `state=BLOCKED` because `processmodel.dll` was unavailable from the System32 search path; optional self-hosted Windows acceptance was SKIPPED.
+- PR #149 is OPEN / DRAFT. Its four workflows completed successfully, but the same hosted PSEC probe emitted `state=BLOCKED`; optional self-hosted Windows acceptance was SKIPPED. It overlaps #140 and has divergent history (comparison to current #140 head: 71 ahead / 7 behind).
+- PR #138 is an open cross-fork comparison PR from the fork's `main` into the WP-18B.1 feature branch. Its own body records 501 ahead / 472 behind and mergeable=false at the last reconciliation. Do not merge it wholesale.
+
+### Updated WP-00 status
+| WP | Current status | Evidence / next action |
+|---|---|---|
+| WP-00A | PASS | Current main SHA and complete recursive file path inventory captured |
+| WP-00B | IN_PROGRESS | Module families and all tool paths captured; complete HTTP method/path/auth and Dashboard handler trace remains |
+| WP-00C | IN_PROGRESS | All 91 test paths captured; test-function/fixture/skip and requirement mapping remains |
+| WP-00D | IN_PROGRESS | New canonical inventory/status/traceability/test/architecture docs added on the WP-00 branch; review and exact-head CI still required |
+
+### Safety
+No merge, deployment, cloud provisioning, VM creation, branch deletion, force-push, or local test execution occurred in this inventory pass. Cloud Provisioning and VM Creation remain OFF. Terminal process execution remains blocked pending verified OS isolation.
+
+
+### 2026-11-19 — WP-00B API and Dashboard dispatch refinement
+
+- Latest branch head before this ledger update: `629cab1aea86dbdf2066619b22583f58bf8903d5`.
+- Inspected Gateway `do_GET`, `do_POST`, `do_DELETE` dispatch and Local Auth Proxy equivalents.
+- Added route-family and role/CSRF boundary tables to `docs/DCP-REPOSITORY-INVENTORY.md` and `docs/DCP-REQUIREMENTS-TRACEABILITY.md`.
+- Source-derived Dashboard count is 23 distinct `data-tab` values; the in-page Code Navigator has 21 declared mappings and therefore does not yet cover every tab. The older 21-view statement is stale.
+- 334 DOM element IDs are not view count.
+- WP-00B remains IN_PROGRESS: route families are mapped, but exact query/body schemas, every status/error branch and Gateway-to-Proxy forwarding equivalence are not fully enumerated.
+- WP-00C remains IN_PROGRESS: all 91 test file paths are captured, but individual test methods/fixtures/skips and requirement coverage are not yet enumerated.
+- Next action: complete endpoint contract/forwarding matrix and Dashboard view → handler → API → service → test trace; then re-run exact-head CI after final docs updates.
+
+
+### 2026-11-19 — HTTP path-family inventory progress
+- Gateway and Auth Proxy GET/POST/DELETE path families, Runner credential route shapes, bounded query rules and core role/CSRF controls are now mapped in `docs/DCP-REQUIREMENTS-TRACEABILITY.md`.
+- WP-00B remains IN_PROGRESS for complete request/response schemas, every status/error branch, Gateway-to-Proxy allowlist equivalence and view-to-handler-to-service tracing.
+- Branch head before this continuity update: `9dbfc547cde21566d9df1eca099229bc3c1bdd47`.
+
+
+### 2026-11-19 — Mainline test-path audit correction
+- Corrected the traceability matrix to reference only test files present in the current main baseline.
+- PR-only Windows PSEC test patterns remain explicitly labeled as branch-only, not mainline evidence.
+- Branch head before this ledger update: `0ecd1597160f4ea91fc1533cb8974aa8d66cbd07`.
+- Full test-function enumeration remains open; no count inferred from GitHub code-search excerpts.
+
+
+### 2026-11-19 — Dashboard view mapping gap
+- 23 navigation tabs exist; 21 Code Navigator mappings are declared.
+- `project-import` and `document-generator` are not yet mapped in `CODE_NAV_MAPPINGS`.
+- 48 declared mapping test references resolve to existing mainline test files.
+- WP-00B remains IN_PROGRESS until the two missing tabs and all event-handler/API/service edges are traced.
+
+
+### 2026-11-19 — Documentation drift correction
+- Inspected the Dashboard document generator, Gateway Document Workflow Store, local writer, and lifecycle contract tests.
+- Corrected README's stale statement that the authenticated Dashboard-to-Gateway local document write workflow was not exposed.
+- Corrected the Document Generator operations status from "feature branch" to "present in current mainline source"; exact-head CI, browser integration, host filesystem and deployment acceptance remain separate.
+- Clarified that local document writes do not commit/push to GitHub and PR lifecycle tools are read-only.
+- Branch head before this ledger update: `b1dc863ac7174dc83382ffe58db33eef8f82e0a9`.
+
+
+---
+
+## 2026-11-20 — WP-00B / WP-00C source trace increment
+
+**Main baseline remains:** `985a78d5fba459c8a0cbcf47e5d00a858c6e6228`.
+
+### WP-00B
+- Gateway `do_GET`, `do_POST`, `do_DELETE` and Auth Proxy dispatch have been traced into route families, role boundaries, same-origin/CSRF enforcement, bounded query shapes, representative success response shapes and common status/error paths. See `docs/DCP-REQUIREMENTS-TRACEABILITY.md`.
+- Dashboard mainline has 23 navigation tabs and 21 mapping records. PR #151 contains a 23-record candidate mapping with explicit Project Import and Document Generator entries and reference integrity tests. Candidate-only; not yet mainline.
+- Still open: every JSON request/response schema, all route-specific error branches, full Auth Proxy/Gateway allowlist equivalence, and every Dashboard event-handler → API → service call edge.
+
+### WP-00C
+- The recursive main tree contains 91 files under `tests/`: 88 paths beginning `tests/test_*` and three support assets (`browser_smoke.mjs`, `emit_runner_bootstrap_scripts.py`, `live_gateway_preflight.py`).
+- A method/fixture/skip inventory has been recorded for eight high-risk files: Job Control, proxy authorization, dynamic port, Local Project Gateway, Document Workflow, Terminal Grants, Terminal Executor and SQLite security.
+- Still open: enumerate all remaining test functions/classes, fixtures and skip markers; map each test to workflow/job/path filters; distinguish test definitions from exact-head execution evidence.
+
+### Active blocker
+The shared Windows dynamic-port launcher integration is failing on both PR #150 and #151 because `tests/test_local_runner_bootstrap.ps1` passes `-TrustedRepository` to mainline `Setup-DCP-Local-Runner.ps1`, which does not declare the parameter. Treat this as a separate Runner Bootstrap dependency; do not duplicate or merge PSEC code without an Owner-reviewed sequencing decision.
+
+WP-00B and WP-00C remain IN_PROGRESS. No implementation, acceptance or merge completion is claimed.

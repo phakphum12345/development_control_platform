@@ -86,3 +86,13 @@
 ## Maintenance rule
 
 Every Work Package must update the relevant implementation, requirements, test and acceptance documentation. Preserve historical audit records; append dated, exact-SHA checkpoints rather than rewriting old evidence. If a document conflicts with source code or a newer exact-SHA checkpoint, mark the older statement stale and reconcile it through a reviewed change.
+
+
+## 2026-11-19 repository-wide audit set
+- [Current Repository Inventory](DCP-REPOSITORY-INVENTORY.md) — exact main SHA, full file-path counts, branches, PR and workflow inventory.
+- [Current Implementation Status](DCP-IMPLEMENTATION-STATUS.md) — evidence-backed capability state and safety blockers.
+- [Current Requirements Traceability](DCP-REQUIREMENTS-TRACEABILITY.md) — requirement/source/test/workflow family mapping and remaining trace gaps.
+- [Test and Acceptance Matrix](DCP-TEST-AND-ACCEPTANCE-MATRIX.md) — workflow scope, exact PR-head evidence and host acceptance limitations.
+- [Architecture and Dependency Map](DCP-ARCHITECTURE-AND-DEPENDENCY-MAP.md) — current component boundaries and dependency order.
+
+These 2026-11-19 documents supersede older count/status snapshots only for the exact baseline SHA they name. Historical audits and the legacy status/traceability documents remain preserved.
