@@ -164,3 +164,9 @@ No merge, deployment, cloud provisioning, VM creation, branch deletion, force-pu
 - WP-00B remains IN_PROGRESS: route families are mapped, but exact query/body schemas, every status/error branch and Gateway-to-Proxy forwarding equivalence are not fully enumerated.
 - WP-00C remains IN_PROGRESS: all 91 test file paths are captured, but individual test methods/fixtures/skips and requirement coverage are not yet enumerated.
 - Next action: complete endpoint contract/forwarding matrix and Dashboard view → handler → API → service → test trace; then re-run exact-head CI after final docs updates.
+
+
+### 2026-11-19 — HTTP path-family inventory progress
+- Gateway and Auth Proxy GET/POST/DELETE path families, Runner credential route shapes, bounded query rules and core role/CSRF controls are now mapped in `docs/DCP-REQUIREMENTS-TRACEABILITY.md`.
+- WP-00B remains IN_PROGRESS for complete request/response schemas, every status/error branch, Gateway-to-Proxy allowlist equivalence and view-to-handler-to-service tracing.
+- Branch head before this continuity update: `9dbfc547cde21566d9df1eca099229bc3c1bdd47`.
