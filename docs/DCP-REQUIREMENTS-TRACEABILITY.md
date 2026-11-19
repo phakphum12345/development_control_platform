@@ -54,3 +54,50 @@
 - Build Dashboard view/action/API/service mappings from every event handler.
 - Enumerate test functions, skips, fixtures and test-to-workflow relationships across all 91 test files.
 - Reconcile each backlog ID against current mainline source and the exact PR where work is proposed.
+
+
+## 2026-11-19 — Gateway/Auth Proxy and Dashboard dispatch pass
+
+### Dashboard navigation trace
+
+Source: `dashboard/index.html` at `main@985a78d5fba459c8a0cbcf47e5d00a858c6e6228`.
+
+There are 23 distinct navigation tabs:
+`home`, `account`, `project-import`, `terminal-studio`, `code-navigator`, `cloud-runners`, `infrastructure`, `dev-tools`, `ui-routes`, `ui-simulator`, `route-colors`, `github-api`, `repo-selector`, `repo`, `pr`, `user`, `workspace`, `evidence`, `gates`, `checkpoint`, `document-generator`, `audit`, `contact`.
+
+The declared `CODE_NAV_MAPPINGS` contains 21 entries. It is a partial mapping rather than complete coverage of all 23 tabs. The Dashboard also has 334 DOM element IDs; this number must not be mistaken for the view count.
+
+### HTTP dispatch / authorization trace
+
+Gateway source: `tools/cloud_gateway/server.py`  
+Auth Proxy source: `tools/local_auth_proxy.py`
+
+| Method / family | Gateway authorization observed | Additional enforcement |
+|---|---|---|
+| GET `/healthz` | Public | Health-only response |
+| GET `/api/auth/session` | Validated proxy identity | Returns identity role and session CSRF token |
+| GET GitHub repository catalog/refs/commit inspection | Validated proxy identity | Repository access delegated to GitHub App service/authorizer |
+| GET Local Projects and roots | Owner | Owner-only project registry |
+| GET Document Workflow grants/target/proposals | Owner | Project/path scope checked by workflow service |
+| GET Terminal templates/events | Owner/operator | Event query is bounded |
+| GET Jobs, logs, previews | Owner/operator | Owner-only restrictions for selected preview operations |
+| GET Runners, Infrastructure, Artifacts, Cloud Runner resources | Owner/operator / validated dashboard session | Exact per-item rules require a further schema-level pass |
+| POST Terminal jobs/authorize/grant revoke | Owner | Same-origin + CSRF |
+| POST Document Workflow grant/revoke/proposal/approve | Owner | Same-origin + CSRF and explicit write approval |
+| POST Terminal import/review | Owner | Same-origin + CSRF; imported packs remain inert |
+| POST Terminal command preview | Owner/operator | Same-origin + CSRF; preview does not imply process launch |
+| POST Infrastructure actions | Owner/operator | Same-origin + CSRF; gate mutation is Owner-only |
+| POST Jobs create/resume/cancel/preview start | Owner/operator baseline | Same-origin + CSRF; Local Folder and selected lifecycle actions have additional Owner-only checks |
+| POST Runner drain/enable | Owner | Same-origin + CSRF |
+| POST `/v1/runner/*` | Runner credential identity | Separate Runner authentication/lease contract |
+| DELETE preview/infrastructure/Cloud Runner resources | Owner | Same-origin + CSRF |
+
+Auth Proxy GET is an allowlisted read surface; POST and DELETE mutations enforce same-origin and session CSRF before forwarding. The Auth Proxy's browser session is Owner-scoped in this implementation; it does not establish multi-user operator role support by itself.
+
+### Remaining detail gaps
+
+- Extract every literal and regex route, HTTP status, request body schema, response schema, query parameter and error branch.
+- Verify each Gateway method against Auth Proxy forwarding allowlists; flag direct Gateway-only paths and paths unintentionally inaccessible from Dashboard.
+- Map every one of the 23 tabs to its event listeners, called functions, API method/path, server handler, role/CSRF check and test.
+- Reconcile README and Code Navigator's 21-entry registry with the 23 actual navigation tabs.
+- Count and map individual test functions, fixtures, skips and test workflow jobs; path inventory alone is not test coverage.
