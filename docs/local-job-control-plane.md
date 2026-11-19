@@ -149,22 +149,29 @@ The command processes no more than one queued job. The host must have the Flutte
 
 The local Windows stack can provision a dedicated Runner credential without placing the token in source control or printing it to the console.
 
-1. Run `Setup-DCP-Local-Runner.cmd`. It creates or reuses a worker credential in `%LOCALAPPDATA%\DCP\runner-tokens.json`, protects the file with a current-user/SYSTEM/Administrators Windows ACL, and does not display the token.
-2. Stop the existing DCP stack with Ctrl+C in its stack PowerShell window, then restart it with `Start-DCP-Local.cmd`. The Local Auth Proxy loads the protected credential map into the Gateway process at startup.
-3. Enroll the host offline first:
+1. Run `Setup-DCP-Local-Runner.cmd` to create or reuse a worker credential in `%LOCALAPPDATA%\DCP\runner-tokens.json`. The file is protected with a current-user/SYSTEM/Administrators Windows ACL; the token is never displayed.
+2. Before enabling repository execution, persist the exact Owner-approved repository allowlist:
+
+   ```powershell
+   .\Setup-DCP-Local-Runner.ps1 -WorkerId windows-local-01 -TrustedRepository "owner/repository"
+   ```
+
+   This writes `gateway-local-settings.json` with the bounded `allowed_repositories` schema and a restricted ACL. It does not enable execution, claim jobs, provision cloud resources or change the Gateway process already running.
+3. Stop the existing DCP stack with Ctrl+C in its stack PowerShell window, then restart it with `Start-DCP-Local.cmd`. The Local Auth Proxy loads the protected Runner token map and approved repository allowlist into the Gateway process at startup.
+4. Enroll the host offline first:
 
    ```powershell
    .\Start-DCP-Gateway-Runner.cmd -WorkerId windows-local-01
    ```
 
    This calls `--enroll-only`; the Runner appears offline and cannot claim jobs.
-4. Only after reviewing the trusted repository and host preflight, explicitly enable execution for one repository:
+5. Only after reviewing the trusted repository and host preflight, explicitly enable execution for that same repository:
 
    ```powershell
    .\Start-DCP-Gateway-Runner.cmd -WorkerId windows-local-01 -EnableExecution -TrustedRepository "owner/repository" -Once
    ```
 
-   Omit `-Once` to run the unified `--serve` supervisor until Ctrl+C. Offline enrollment never enables execution.
+   Omit `-Once` to run the unified `--serve` supervisor until Ctrl+C. Offline enrollment never enables execution. The Runner launcher also verifies that each requested repository is present in the Gateway's persisted allowlist.
 
 The Gateway listens on loopback port 18790; the Dashboard remains on 8789. The Gateway reads the protected token map at startup; Runner tokens are never injected into build subprocesses. Build subprocesses receive only the safe OS/toolchain environment allowlist. Cloud Provisioning remains disabled.
 
