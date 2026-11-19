@@ -822,18 +822,6 @@ def _build_environment_spec(workspace: Path, scratch: Path, executable: str) -> 
         os.environ.get("PUBLIC"),
         tempfile.gettempdir(),
         system_root_path / "Temp",
-    )
-    denied = _existing_directories(denied_values)
-    runtime_directories = _validate_runtime_directories(
-        runtime_directories, denied
-    )
-    system_directories = _existing_directories((
-        system_root_path / "System32",
-        system_root_path / "WinSxS",
-        system_root_path / "SysWOW64",
-    ))
-    read_only = _existing_directories((
-        workspace, *runtime_directories, *system_directories
     ))
     runtime_directories = _runtime_directories(executable, denied)
     system_directories = _existing_directories((
@@ -841,7 +829,9 @@ def _build_environment_spec(workspace: Path, scratch: Path, executable: str) -> 
         system_root_path / "WinSxS",
         system_root_path / "SysWOW64",
     ))
-    read_only = _existing_directories((workspace, *runtime_directories, *system_directories))
+    read_only = _existing_directories(
+        (workspace, *runtime_directories, *system_directories)
+    )
     for allowed_path in read_only:
         for denied_path in denied:
             if _paths_overlap(allowed_path, denied_path):
