@@ -142,3 +142,12 @@ Do not mark a Work Package PASS based only on source presence, test-file presenc
 - Windows acceptance tests now cover traversal, case-insensitive duplicates, allowlist overflow, oversized worker maps and no-mutation-on-rejection.
 - PR #152 is Draft; exact-head CI is pending. No PASS is claimed yet.
 - This slice does not implement or certify Windows AppContainer/LPAC or Trusted Python runtime. PR #140/#149 remain separate PSEC streams and require reconciliation after the bootstrap dependency is reviewed.
+
+
+### 2026-11-20 — WP-06 bootstrap hardening exact-head evidence
+
+- Follow-up PR #152 is based on the post-PR-140 mainline and hardens the existing allowlist producer rather than duplicating its missing-parameter fix.
+- Exact head `4270c1379fd67649ecf17448cc0f334586d75724`: Validate PASS; Windows dynamic-port launcher integration PASS; Local-first Minimal Emulator PASS; Windows Auth Proxy + Gateway E2E PASS; Ubuntu Recovery PASS; Windows Recovery PASS.
+- The native Windows bootstrap test completed with `Local Runner credential bootstrap tests passed.`; its symlink reparse-point check ran without the host-capability SKIPPED warning.
+- Optional Windows runner acceptance remains SKIPPED. This is not Windows PSEC target-host acceptance.
+- PR #152 remains Draft pending review and Owner decision. No merge is requested.
