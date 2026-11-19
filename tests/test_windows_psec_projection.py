@@ -15,6 +15,7 @@ from tools.local_runner_agent.windows_psec_projection import (
 
 class WindowsPsecProjectionTests(unittest.TestCase):
     def _roots(self, parent: Path):
+        parent = parent.resolve()
         source = parent / "source"
         private = parent / "private"
         source.mkdir()

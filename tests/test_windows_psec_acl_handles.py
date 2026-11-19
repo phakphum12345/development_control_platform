@@ -142,7 +142,7 @@ class FakeHandleAclApi:
 class WindowsPsecHandleAclManagerTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
-        self.parent = Path(self.temporary.name) / "private-parent"
+        self.parent = Path(self.temporary.name).resolve() / "private-parent"
         self.parent.mkdir()
         self.job_root = Path(tempfile.mkdtemp(
             prefix="dcp-psec-job-", dir=str(self.parent)

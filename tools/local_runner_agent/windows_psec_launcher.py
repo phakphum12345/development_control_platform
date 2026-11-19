@@ -590,8 +590,28 @@ def _apply_sandbox_profile_environment(environment: dict[str, str], scratch: Pat
     environment["TEMP"] = scratch_path
     environment["TMP"] = scratch_path
 
+def _paths_overlap(left: str | os.PathLike, right: str | os.PathLike) -> bool:
+    """Return whether either canonical path contains the other."""
+    first = os.path.normcase(os.path.abspath(os.fspath(left)))
+    second = os.path.normcase(os.path.abspath(os.fspath(right)))
+    try:
+        common = os.path.normcase(os.path.commonpath((first, second)))
+    except ValueError:
+        return False
+    return common == first or common == second
+
+
 def _runtime_root(executable: str) -> Path:
-    binary = Path(executable).resolve(strict=True)
+    raw_binary = Path(executable)
+    _trusted_directory(raw_binary.parent, "Python executable directory")
+    try:
+        if raw_binary.is_symlink() or (
+            hasattr(raw_binary, "is_junction") and raw_binary.is_junction()
+        ):
+            raise WindowsPsecError("sandbox executable cannot be a reparse point")
+        binary = raw_binary.resolve(strict=True)
+    except (OSError, RuntimeError):
+        raise WindowsPsecError("sandbox executable is unavailable") from None
     if not binary.is_file():
         raise WindowsPsecError("sandbox executable is not a regular file")
     parent = binary.parent
@@ -600,102 +620,170 @@ def _runtime_root(executable: str) -> Path:
     return parent
 
 
-def _path_contains(parent: Path, child: Path) -> bool:
-    parent_value = os.path.normcase(str(parent))
-    child_value = os.path.normcase(str(child))
+def _program_files_roots() -> tuple[Path, ...]:
+    """Read the 64-bit Program Files location from HKLM, never user env vars."""
     try:
-        return os.path.commonpath((parent_value, child_value)) == parent_value
-    except ValueError:
-        return False
+        import winreg
+
+        access = winreg.KEY_READ | winreg.KEY_WOW64_64KEY
+        with winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion",
+            0,
+            access,
+        ) as key:
+            value, _ = winreg.QueryValueEx(key, "ProgramFilesDir")
+    except (OSError, ImportError):
+        raise WindowsPsecError(
+            "cannot read the 64-bit ProgramFilesDir from the machine registry"
+        ) from None
+    if not isinstance(value, str) or not value or "%" in value:
+        raise WindowsPsecError("machine ProgramFilesDir registry value is invalid")
+    return (_trusted_directory(value, "Program Files registry root"),)
 
 
-def _runtime_directories(executable: str) -> tuple[Path, ...]:
-    """Return the executable environment and its complete trusted Python base runtime.
+def _require_program_files_base_runtime(base_home: Path) -> None:
+    """Require the single installer-managed DCP Python runtime location."""
+    expected_roots = [
+        root / "DCP" / "Python312"
+        for root in _program_files_roots()
+    ]
+    if not any(
+        os.path.normcase(os.path.abspath(str(base_home)))
+        == os.path.normcase(os.path.abspath(str(expected)))
+        for expected in expected_roots
+    ):
+        raise WindowsPsecError(
+            "Base Python runtime must use the protected Program Files\\DCP\\Python312 location"
+        )
 
-    Windows virtual environments keep pyvenv.cfg beside the Scripts directory.
-    The base interpreter and standard library are required at runtime even when
-    the venv's own Scripts directory is the executable's immediate parent.
+
+def _require_base_runtime_files(base_home: Path, standard_library: Path) -> None:
+    required_runtime_files = (
+        base_home / "python312.dll",
+        base_home / "python3.dll",
+        standard_library / "os.py",
+        standard_library / "encodings" / "__init__.py",
+    )
+    for required_file in required_runtime_files:
+        try:
+            if required_file.is_symlink() or (
+                hasattr(required_file, "is_junction") and required_file.is_junction()
+            ):
+                raise WindowsPsecError("Base Python runtime contains a required-file reparse point")
+            if not required_file.is_file():
+                raise WindowsPsecError(
+                    f"Base Python runtime is missing required file: {required_file}"
+                )
+            required_file.resolve(strict=True)
+        except WindowsPsecError:
+            raise
+        except (OSError, RuntimeError):
+            raise WindowsPsecError(
+                f"Base Python runtime is missing required file: {required_file}"
+            ) from None
+    _trusted_directory(standard_library / "encodings", "Base Python encodings directory")
+
+
+def _runtime_directories(
+    executable: str, denied_paths: Sequence[str | os.PathLike] = (),
+) -> tuple[Path, ...]:
+    """Resolve venv and base-Python roots without widening any denied boundary.
+
+    A Windows venv's Scripts\\python.exe is only a redirector. Its pyvenv.cfg
+    points at the base installation, which must also be readable by the child.
     """
-    binary = Path(executable).resolve(strict=True)
-    if not binary.is_file():
-        raise WindowsPsecError("sandbox executable is not a regular file")
-
     runtime_root = _trusted_directory(_runtime_root(executable), "Python runtime")
-    directories = [runtime_root]
-    is_python_launcher = binary.name.casefold() in {
-        "python.exe", "pythonw.exe", "python", "python3", "python3.exe",
-    }
-    is_scripts_directory = binary.parent.name.casefold() in {"scripts", "bin"}
-    if not (is_python_launcher and is_scripts_directory):
-        return tuple(directories)
+    roots = [runtime_root]
+    binary_parent = Path(executable).resolve(strict=True).parent
+    if binary_parent.name.casefold() not in {"scripts", "bin"}:
+        for allowed_root in roots:
+            for denied_root in denied_paths:
+                if _paths_overlap(allowed_root, denied_root):
+                    raise WindowsPsecError(
+                        "Python runtime path overlaps a denied host path"
+                    )
+        _require_program_files_base_runtime(runtime_root)
+        base_executable = Path(executable).resolve(strict=True)
+        if base_executable.name.casefold() != "python.exe" or base_executable.parent != runtime_root:
+            raise WindowsPsecError("standalone PSEC interpreter must be the trusted base python.exe")
+        standard_library = _trusted_directory(
+            runtime_root / "Lib", "Base Python standard library"
+        )
+        _require_base_runtime_files(runtime_root, standard_library)
+        for allowed_root in roots:
+            for denied_root in denied_paths:
+                if _paths_overlap(allowed_root, denied_root):
+                    raise WindowsPsecError(
+                        "Python runtime path overlaps a denied host path"
+                    )
+        return tuple(roots)
 
     config_path = runtime_root / "pyvenv.cfg"
-    if config_path.is_symlink() or not config_path.is_file():
-        raise WindowsPsecError(
-            "Python virtual environment is missing a regular pyvenv.cfg file"
-        )
     try:
+        if config_path.is_symlink() or (
+            hasattr(config_path, "is_junction") and config_path.is_junction()
+        ):
+            raise WindowsPsecError("Python virtual-environment config is a reparse point")
+        config_path = config_path.resolve(strict=True)
+        if config_path.parent != runtime_root or not config_path.is_file():
+            raise WindowsPsecError("Python virtual-environment config is not canonical")
         config_text = config_path.read_text(encoding="utf-8-sig")
-    except (OSError, UnicodeError):
-        raise WindowsPsecError("Python virtual environment pyvenv.cfg cannot be read") from None
+    except WindowsPsecError:
+        raise
+    except (OSError, UnicodeError, RuntimeError):
+        raise WindowsPsecError(
+            "Python virtual-environment executable is missing pyvenv.cfg"
+        ) from None
 
     home_values = []
     for line in config_text.splitlines():
-        key, separator, value = line.partition("=")
-        if separator and key.strip().casefold() == "home":
-            home_values.append(value.strip().strip('"'))
-    if len(home_values) != 1 or not home_values[0]:
-        raise WindowsPsecError(
-            "Python virtual environment pyvenv.cfg must contain exactly one home entry"
-        )
+        stripped = line.strip()
+        if not stripped or stripped.startswith(("#", ";")) or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        if key.strip().casefold() == "home":
+            home_values.append(value.strip())
+    if len(home_values) != 1 or not home_values[0] or "\x00" in home_values[0]:
+        raise WindowsPsecError("Python pyvenv.cfg must contain exactly one valid home entry")
 
     base_home = Path(home_values[0])
     if not base_home.is_absolute():
-        raise WindowsPsecError("Python base runtime home must be an absolute path")
-    base_home = _trusted_directory(base_home, "Python base runtime")
-    base_executable = base_home / "python.exe"
-    standard_library_path = base_home / "Lib"
-    if base_executable.is_symlink() or not base_executable.is_file():
-        raise WindowsPsecError("Python base runtime is missing python.exe")
-    try:
-        standard_library = _trusted_directory(
-            standard_library_path, "Python base standard library"
-        )
-    except WindowsPsecError:
+        raise WindowsPsecError("Python pyvenv.cfg home must be an absolute path")
+    base_home = _trusted_directory(base_home, "Base Python runtime")
+    _require_program_files_base_runtime(base_home)
+    expected_venv_root = base_home / "venvs" / "psec"
+    if os.path.normcase(os.path.abspath(str(runtime_root))) != os.path.normcase(
+        os.path.abspath(str(expected_venv_root))
+    ):
         raise WindowsPsecError(
-            "Python base runtime is missing a canonical Lib standard library"
-        ) from None
+            "Python virtual environment must use the protected Program Files\\DCP\\Python312\\venvs\\psec location"
+        )
+    base_executable = base_home / "python.exe"
+    standard_library = base_home / "Lib"
+    try:
+        if base_executable.is_symlink() or (
+            hasattr(base_executable, "is_junction") and base_executable.is_junction()
+        ):
+            raise WindowsPsecError("Base Python executable is a reparse point")
+        base_executable = base_executable.resolve(strict=True)
+        standard_library = _trusted_directory(standard_library, "Base Python standard library")
+    except WindowsPsecError:
+        raise
+    except (OSError, RuntimeError):
+        raise WindowsPsecError("Base Python executable or standard library is unavailable") from None
+    if not base_executable.is_file() or base_executable.parent != base_home:
+        raise WindowsPsecError("Base Python executable is not inside its declared home")
+    _require_base_runtime_files(base_home, standard_library)
 
-    directories.extend((base_home, standard_library))
-    dll_directory = base_home / "DLLs"
-    if dll_directory.exists() or dll_directory.is_symlink():
-        directories.append(_trusted_directory(
-            dll_directory, "Python base runtime DLLs"
-        ))
-    return tuple(directories)
-
-
-def _validate_runtime_directories(
-    runtime_directories: Sequence[str | os.PathLike],
-    denied_directories: Sequence[str | os.PathLike],
-) -> tuple[Path, ...]:
-    """Reject runtime roots that overlap any explicitly denied host directory."""
-    trusted = tuple(
-        _trusted_directory(value, "Python runtime directory")
-        for value in runtime_directories
-    )
-    denied = tuple(
-        Path(value).resolve(strict=True)
-        for value in denied_directories
-        if value
-    )
-    for runtime in trusted:
-        for denied_root in denied:
-            if _path_contains(runtime, denied_root) or _path_contains(denied_root, runtime):
+    roots = [base_home]
+    for allowed_root in roots:
+        for denied_root in denied_paths:
+            if _paths_overlap(allowed_root, denied_root):
                 raise WindowsPsecError(
-                    "Python runtime overlaps an explicitly denied host directory"
+                    "Python runtime path overlaps a denied host path"
                 )
-    return trusted
+    return tuple(roots)
 
 
 def _existing_directories(values: Sequence[str | os.PathLike]) -> tuple[str, ...]:
@@ -717,6 +805,29 @@ def _existing_directories(values: Sequence[str | os.PathLike]) -> tuple[str, ...
     return tuple(result)
 
 
+def _validate_runtime_directories(
+    runtime_directories: Sequence[str | os.PathLike],
+    denied_paths: Sequence[str | os.PathLike],
+) -> tuple[Path, ...]:
+    """Require canonical runtime roots that do not overlap denied host paths."""
+    denied = tuple(Path(value) for value in _existing_directories(denied_paths))
+    validated = []
+    seen = set()
+    for value in runtime_directories:
+        runtime = _trusted_directory(value, "Python runtime")
+        key = os.path.normcase(str(runtime))
+        if key in seen:
+            continue
+        for denied_path in denied:
+            if _paths_overlap(runtime, denied_path):
+                raise WindowsPsecError(
+                    "Python runtime path overlaps an explicitly denied host directory"
+                )
+        seen.add(key)
+        validated.append(runtime)
+    return tuple(validated)
+
+
 def _build_environment_spec(workspace: Path, scratch: Path, executable: str) -> bytes:
     try:
         from tools.local_runner_agent.windows_psec_spec import build_psec_spec
@@ -724,30 +835,32 @@ def _build_environment_spec(workspace: Path, scratch: Path, executable: str) -> 
         raise WindowsPsecError(
             "optional flatbuffers dependency is missing; run Install-DCP-Windows-PSEC.ps1"
         ) from None
-    runtime_directories = _runtime_directories(executable)
     system_root = os.environ.get("SYSTEMROOT") or os.environ.get("SystemRoot")
     if not system_root:
         raise WindowsPsecError("SYSTEMROOT is unavailable")
     system_root_path = Path(system_root).resolve(strict=True)
-    denied_values = (
+    denied = _existing_directories((
         os.environ.get("USERPROFILE"),
         os.environ.get("PROGRAMDATA"),
         os.environ.get("PUBLIC"),
         tempfile.gettempdir(),
         system_root_path / "Temp",
-    )
-    denied = _existing_directories(denied_values)
+    ))
     runtime_directories = _validate_runtime_directories(
-        runtime_directories, denied
+        _runtime_directories(executable), denied
     )
     system_directories = _existing_directories((
         system_root_path / "System32",
         system_root_path / "WinSxS",
         system_root_path / "SysWOW64",
     ))
-    read_only = _existing_directories((
-        workspace, *runtime_directories, *system_directories
-    ))
+    read_only = _existing_directories(
+        (workspace, *runtime_directories, *system_directories)
+    )
+    for allowed_path in read_only:
+        for denied_path in denied:
+            if _paths_overlap(allowed_path, denied_path):
+                raise WindowsPsecError("PSEC read-only path overlaps a denied host path")
     enumerate_paths = tuple((*read_only, str(scratch)))
     return build_psec_spec(
         read_only_paths=read_only,

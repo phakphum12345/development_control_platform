@@ -191,3 +191,17 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - PR #119 remains OPEN / DRAFT / NOT MERGED; PR #118 remains OPEN / DRAFT / NOT MERGED; PR #117 and #116 remain OPEN / DRAFT / NOT MERGED. These are stacked dependencies; do not merge a child before its base.
 - WP-18D is PARTIAL pending the target Linux host run. WP-18B Windows native process isolation and LPAC remain BLOCKED pending implementation and host acceptance. Terminal templates remain disabled.
 - This checkpoint follows code/test head `a497117adfcdb68f9e6a52b385f28fbec21ec621`; re-check exact-head CI on the resulting checkpoint commit before treating it as current.
+
+
+---
+
+## 2026-11-20 — WP-12 Trusted Python runtime launcher repair and exact-head CI
+
+- After PR #140 merged to main, PR #149 was retargeted from the merged #140 branch to main; no code was merged by this action.
+- Initial exact-head CI exposed a Python SyntaxError in _build_environment_spec: an incomplete duplicated denied-path block referenced undefined denied_values/runtime_directories and undefined _validate_runtime_directories.
+- Minimal repair restored a single denied-host path list, runtime root resolution and System32/WinSxS/SysWOW64 read-only roots.
+- Follow-up CI exposed that the test module still imports _validate_runtime_directories. Restored this helper with canonical non-reparse runtime path validation, denied-host overlap rejection and deterministic de-duplication; _build_environment_spec now applies it to runtime roots.
+- Code fix SHA: c0a26656a5e6f4541f0745525a756b1248daeea6.
+- Exact code-head CI: Validate PASS; Windows dynamic-port integration PASS; Linux Minimal Emulator PASS; Windows Auth Proxy + Gateway E2E PASS; Ubuntu and Windows Recovery PASS.
+- PSEC API availability probe job completed successfully but internal state is BLOCKED: hosted Windows lacks processmodel.dll and required AppContainer filesystem/network-ingress policy capabilities. Optional Windows runner acceptance is SKIPPED.
+- No target-host PSEC acceptance is claimed. Keep PR #149 Draft pending actual Windows target-host evidence and Owner review. No cloud provisioning or VM creation.

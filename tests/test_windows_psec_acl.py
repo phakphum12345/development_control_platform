@@ -34,7 +34,7 @@ class FakeAclApi:
 
 class WindowsPsecAclManagerTests(unittest.TestCase):
     def _job_tree(self, parent):
-        job = Path(parent) / "dcp-psec-job-test"
+        job = Path(parent).resolve() / "dcp-psec-job-test"
         work = job / "workspace"
         scratch = job / "scratch"
         (work / "nested").mkdir(parents=True)
@@ -118,8 +118,8 @@ class WindowsPsecAclManagerTests(unittest.TestCase):
 
     def test_rejects_non_job_private_layout_before_any_acl_write(self):
         with tempfile.TemporaryDirectory() as parent:
-            work = Path(parent) / "workspace"
-            scratch = Path(parent) / "scratch"
+            work = Path(parent).resolve() / "workspace"
+            scratch = Path(parent).resolve() / "scratch"
             work.mkdir()
             scratch.mkdir()
             api = FakeAclApi()
