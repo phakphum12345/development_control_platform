@@ -152,3 +152,15 @@ This dated section supersedes the 2026-11-14 baseline counts above. Earlier entr
 
 ### Safety
 No merge, deployment, cloud provisioning, VM creation, branch deletion, force-push, or local test execution occurred in this inventory pass. Cloud Provisioning and VM Creation remain OFF. Terminal process execution remains blocked pending verified OS isolation.
+
+
+### 2026-11-19 — WP-00B API and Dashboard dispatch refinement
+
+- Latest branch head before this ledger update: `629cab1aea86dbdf2066619b22583f58bf8903d5`.
+- Inspected Gateway `do_GET`, `do_POST`, `do_DELETE` dispatch and Local Auth Proxy equivalents.
+- Added route-family and role/CSRF boundary tables to `docs/DCP-REPOSITORY-INVENTORY.md` and `docs/DCP-REQUIREMENTS-TRACEABILITY.md`.
+- Source-derived Dashboard count is 23 distinct `data-tab` values; the in-page Code Navigator has 21 declared mappings and therefore does not yet cover every tab. The older 21-view statement is stale.
+- 334 DOM element IDs are not view count.
+- WP-00B remains IN_PROGRESS: route families are mapped, but exact query/body schemas, every status/error branch and Gateway-to-Proxy forwarding equivalence are not fully enumerated.
+- WP-00C remains IN_PROGRESS: all 91 test file paths are captured, but individual test methods/fixtures/skips and requirement coverage are not yet enumerated.
+- Next action: complete endpoint contract/forwarding matrix and Dashboard view → handler → API → service → test trace; then re-run exact-head CI after final docs updates.
