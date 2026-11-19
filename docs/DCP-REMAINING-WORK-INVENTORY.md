@@ -122,3 +122,28 @@ Existing roadmap, backlog and continuity documents require reconciliation with m
 ## 9. Current limitations
 
 This inventory is source-driven but still IN_PROGRESS. It does not yet enumerate every atomic acceptance criterion for all 78 tool files and 86 test files. No total atomic task count is claimed until WP-00B/00C produce a traceable one-to-one register. No implementation completion, host acceptance or merge is claimed by this document.
+
+
+### 2026-11-19 — WP-00B Dashboard Code Navigator completion candidate
+- Branch: `fix/dashboard-code-navigator-cover-all-views-20261119`.
+- Implemented explicit `project-import` and `document-generator` entries in `CODE_NAV_MAPPINGS`.
+- Mapping count now equals all 23 Dashboard navigation tabs; no navigation tab remains unmapped on this branch.
+- Added an exact navigation-vs-mapping assertion and a contract test validating every declared test file/function/class reference.
+- New mapping DOM checks: 18 Project Import IDs and 25 Document Generator IDs all exist in Dashboard source.
+- This is a candidate branch only. CI, browser smoke and review must pass before considering the mapping complete in main.
+- No project import, document generation, authentication, or write behavior was changed; only mapping metadata and tests were modified.
+- Cloud provisioning, VM creation, Terminal execution and PR mutation remain unchanged and gated.
+
+
+### 2026-11-19 — Code Navigator reference audit
+- Audited all 57 declared Code Navigator test references across 14 unique mainline test files.
+- Found six stale symbol references in existing mappings: five references to `test_github_requests_are_public_read_only` and one to `test_registry_remains_empty_and_write_actions_disabled`; neither symbol exists in `tests/test_dashboard_contract.py`.
+- Replaced them with existing tests: `test_public_research_and_private_github_app_import_are_separate` and `test_all_tool_views_exist`.
+- Re-ran source-backed symbol/path inspection: 57 references, 14 files, 0 missing file/function/class symbols.
+- New automated test uses multiline-aware matching so methods inside test classes are validated correctly.
+
+
+### 2026-11-19 — Dashboard navigation count correction
+- The Control Center initially displayed `22 tools` despite 23 actual navigation tabs.
+- Updated the initial display to `23 tools` and extended the Code Navigator contract test to assert the displayed count.
+- Runtime search count remains dynamically calculated from the actual navigation buttons.

@@ -133,61 +133,30 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Next exact action: trigger all required workflows for documentation/checkpoint changes, then verify every check on the final head SHA. If checks pass, continue the executor integration as a separate WP-18A implementation slice; do not merge until reviewed and approved.
 
 
-## 2026-11-14 — WP-18A executor integration and WP-18C recovery continuation
-
-- Repository: `phakphum12345/development_control_platform`; protocol: DCP-CEEP v1.0.
-- PR #116 remains OPEN / DRAFT / NOT MERGED; exact head `c811f0fee91f5ad43850359f4adfae506c3a502a`; its three exact-head workflows passed.
-- PR #117 — Linux bubblewrap executor integration — remains OPEN / DRAFT / NOT MERGED, stacked on PR #116's branch. Exact head `45b1650e740b4f4667ca21c793fab0d670c84a73`.
-- PR #117 exact-head checks: Cross-platform Recovery Acceptance #167 PASS; Validate Control Plane #745 PASS; Local-first Minimal Emulator #531 PASS. Windows runner acceptance matrix SKIPPED because no eligible self-hosted acceptance Runner was available; SKIPPED is not PASS.
-- PR #117 integrates the Linux bubblewrap launcher into TerminalScriptExecutor, passes the seccomp FD, pins bubblewrap/workload executables to /usr/bin, performs Git filter discovery inside the sandbox, and retains the VERIFIED gate. All seven built-in templates remain disabled. No user-host acceptance is claimed.
-- Started stacked branch `work/wp18c-terminal-recovery` from PR #117 head `45b1650e740b4f4667ca21c793fab0d670c84a73`.
-- WP-18C implementation in progress: runner-authenticated cleanup status endpoint; conservative reconciliation only for old terminal_script workspaces with matching ownership and Gateway `cleanup_safe=true`; UNKNOWN, lease-expired, active, mismatched, recent, unavailable and preview-retained workspaces are preserved.
-- Added Linux-only detached-child timeout test using bubblewrap parent-death/PID-namespace containment. Exact-head CI for this WP-18C branch has not yet run.
-- Current WP-18C branch head: `3fb72e498d7b3b1decda44a16f054532e04ce50f`.
-- No merge, deployment, template enablement or deletion is authorized. Continue with tests, exact-head CI, Draft PR and evidence reconciliation; do not merge without separate explicit approval.
+### 2026-11-19 — WP-00B Dashboard Code Navigator completion candidate
+- Branch: `fix/dashboard-code-navigator-cover-all-views-20261119`.
+- Implemented explicit `project-import` and `document-generator` entries in `CODE_NAV_MAPPINGS`.
+- Mapping count now equals all 23 Dashboard navigation tabs; no navigation tab remains unmapped on this branch.
+- Added an exact navigation-vs-mapping assertion and a contract test validating every declared test file/function/class reference.
+- New mapping DOM checks: 18 Project Import IDs and 25 Document Generator IDs all exist in Dashboard source.
+- This is a candidate branch only. CI, browser smoke and review must pass before considering the mapping complete in main.
+- No project import, document generation, authentication, or write behavior was changed; only mapping metadata and tests were modified.
+- Cloud provisioning, VM creation, Terminal execution and PR mutation remain unchanged and gated.
 
 
-## 2026-11-14 — WP-18C exact-head CI completion
+### 2026-11-19 — Code Navigator reference audit
+- Audited all 57 declared Code Navigator test references across 14 unique mainline test files.
+- Found six stale symbol references in existing mappings: five references to `test_github_requests_are_public_read_only` and one to `test_registry_remains_empty_and_write_actions_disabled`; neither symbol exists in `tests/test_dashboard_contract.py`.
+- Replaced them with existing tests: `test_public_research_and_private_github_app_import_are_separate` and `test_all_tool_views_exist`.
+- Re-ran source-backed symbol/path inspection: 57 references, 14 files, 0 missing file/function/class symbols.
+- New automated test uses multiline-aware matching so methods inside test classes are validated correctly.
 
-- PR #118: [feat(terminal): add conservative WP-18C recovery and descendant cleanup](https://github.com/phakphum12345/development_control_platform/pull/118), OPEN / DRAFT / NOT MERGED.
-- PR #118 is stacked on PR #117's branch `work/wp18a-linux-executor-integration`; base SHA `45b1650e740b4f4667ca21c793fab0d670c84a73`.
-- Code/test head before this ledger-only update: `a8a79cdf4f0a82b9dc55419f79fc0d8386de8554`.
-- Exact-head CI on `a8a79cdf4f0a82b9dc55419f79fc0d8386de8554`:
-  - Cross-platform Recovery Acceptance #168: PASS (Ubuntu and Windows jobs).
-  - Validate Control Plane #746: PASS.
-  - Local-first Minimal Emulator #532: PASS.
-  - Windows runner acceptance matrix: SKIPPED; no eligible self-hosted host acceptance Runner. SKIPPED is not PASS.
-- Linux executor suite: 23 tests PASS, including actual bubblewrap executor launch with seccomp FD inheritance and a forked child that calls `setsid()`; the child did not survive launcher termination.
-- Linux sandbox suite: 5 tests PASS, including actual bubblewrap filesystem/network/scratch boundary test.
-- Pipeline E2E verifies Gateway cleanup status is available only to the owning Runner. Workspace reconciliation tests verify that UNKNOWN, recent, mismatched, unavailable and preview-retained workspaces are preserved.
-- WP-18C remains PARTIAL: automatic cleanup is limited to Gateway-attested terminal Terminal jobs. UNKNOWN and LEASE_EXPIRED workspaces are intentionally preserved; this is not a universal orphan cleaner. Windows AppContainer/LPAC and macOS helper remain BLOCKED.
-- PR #117 remains OPEN / DRAFT / NOT MERGED; PR #116 remains its base dependency. No branch has been merged to main.
-- No user-host acceptance, deployment, template enablement or deletion was performed or authorized. After this ledger-only update, re-check exact-head CI on the new branch SHA before treating it as current evidence.
+- Branch head before this ledger update: `edc67743c1510f8d9cd5f8e31fba28191f207772`.
 
 
-## 2026-11-14 — WP-18D exact-head CI completion
+### 2026-11-19 — Dashboard navigation count correction
+- The Control Center initially displayed `22 tools` despite 23 actual navigation tabs.
+- Updated the initial display to `23 tools` and extended the Code Navigator contract test to assert the displayed count.
+- Runtime search count remains dynamically calculated from the actual navigation buttons.
 
-- PR #119: [test(terminal): add Linux adversarial sandbox acceptance](https://github.com/phakphum12345/development_control_platform/pull/119), OPEN / DRAFT / NOT MERGED.
-- PR #119 code/test head with completed CI: `57399f94d8ece4c706eb373ec74f9c3bcda3e61f`.
-- Exact-head workflows on that code/test head:
-  - Cross-platform Recovery Acceptance #170: PASS (Ubuntu and Windows jobs).
-  - Local-first Minimal Emulator #534: PASS (Linux and Windows jobs).
-  - Validate Control Plane #748: PASS.
-  - Windows runner acceptance matrix: SKIPPED; no eligible self-hosted host acceptance Runner. SKIPPED is not PASS.
-- Ubuntu host-acceptance harness: PASS on the ephemeral GitHub-hosted runner, 5/5 tests, 0 skipped, 0 failures, 0 errors. Evidence: Bubblewrap 0.11.1; Linux 7.0.0-1016-aws; x86_64; UID/GID 1001. This is CI-host evidence only.
-- WP-18D remains PARTIAL until the harness is run on the actual target Linux host. Windows AppContainer/LPAC remains BLOCKED and user-host acceptance remains UNKNOWN.
-- This checkpoint is followed by a small evidence-schema refinement that records both the harness interpreter version and the exact /usr/bin Python runtime versions; re-check CI against the resulting new head.
-- PR #116, #117 and #118 remain OPEN / DRAFT / NOT MERGED. No merge to main, deployment or Terminal template enablement is authorized.
-
-
-## 2026-11-14 — WP-18D exact-head evidence refinement accepted
-
-- PR #119 code/test head `a497117adfcdb68f9e6a52b385f28fbec21ec621`: all exact-head workflows PASS.
-- Cross-platform Recovery Acceptance #171: PASS (Ubuntu and Windows).
-- Local-first Minimal Emulator #535: PASS (Linux and Windows).
-- Validate Control Plane #749: PASS.
-- Linux host acceptance harness on the ephemeral Ubuntu CI host: PASS, 5/5, 0 skipped, 0 failures, 0 errors. Exact evidence: Bubblewrap 0.11.1; Linux 7.0.0-1016-aws; x86_64; UID/GID 1001; harness Python 3.12.16; Terminal runtime Python 3.14.4; sandbox test Python 3.14.4.
-- Windows runner acceptance matrix: SKIPPED; no eligible self-hosted host acceptance Runner. No target Windows or Linux host acceptance is claimed.
-- PR #119 remains OPEN / DRAFT / NOT MERGED; PR #118 remains OPEN / DRAFT / NOT MERGED; PR #117 and #116 remain OPEN / DRAFT / NOT MERGED. These are stacked dependencies; do not merge a child before its base.
-- WP-18D is PARTIAL pending the target Linux host run. WP-18B Windows native process isolation and LPAC remain BLOCKED pending implementation and host acceptance. Terminal templates remain disabled.
-- This checkpoint follows code/test head `a497117adfcdb68f9e6a52b385f28fbec21ec621`; re-check exact-head CI on the resulting checkpoint commit before treating it as current.
+- Branch head before this ledger update: `7d2d9f93e1a00163f69d6a8bbd260b27401879ed`.
