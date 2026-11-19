@@ -366,3 +366,50 @@ Still IN_PROGRESS:
 - Inspect relevant closed PRs and all historical branch ancestry before deciding which branch work is still valuable.
 
 No source-code behavior was changed by this audit document set. No local test suite, deployment, cloud provisioning, VM creation or release was run.
+
+
+## 8. Refined Dashboard and HTTP dispatch inventory
+
+A second source pass inspected Gateway/Auth Proxy dispatch branches and the Dashboard navigation source:
+
+- Dashboard has **23 distinct `data-tab` values**: `home`, `account`, `project-import`, `terminal-studio`, `code-navigator`, `cloud-runners`, `infrastructure`, `dev-tools`, `ui-routes`, `ui-simulator`, `route-colors`, `github-api`, `repo-selector`, `repo`, `pr`, `user`, `workspace`, `evidence`, `gates`, `checkpoint`, `document-generator`, `audit`, `contact`.
+- The in-page `CODE_NAV_MAPPINGS` contains 21 explicit mappings, so it does not currently map every one of the 23 navigation tabs. The README's older 21-view count must be treated as stale until its description is reconciled.
+- `dashboard/index.html` has 334 observed element IDs; these are DOM IDs, not view count.
+- Gateway and Auth Proxy use `BaseHTTPRequestHandler` dispatch, not Flask-style decorators. Route extraction must inspect `do_GET`, `do_POST`, and `do_DELETE`.
+
+### Gateway dispatch families (source: `tools/cloud_gateway/server.py`)
+
+| Method | Path family | Observed authorization boundary |
+|---|---|---|
+| GET | `/healthz` | Public health response |
+| GET | `/api/auth/session` | Requires validated proxy identity; returns session role and CSRF token |
+| GET | `/api/github/repositories`, repository refs/commit inspection | Requires validated proxy identity; repository access is delegated to the configured GitHub App service/authorizer |
+| GET | `/api/local-projects`, `/roots`, `/{project_id}` | Owner only |
+| GET | `/api/document-workflow/grants`, `/target`, proposal lookup | Owner only |
+| GET | `/api/terminal/templates`, terminal events | Owner/operator |
+| GET | `/api/jobs`, `/{job_id}`, logs and preview metadata | Owner/operator; selected preview controls require Owner |
+| GET | `/api/runners`, `/api/infrastructure/gates`, `/api/infrastructure[/...]` | Owner/operator |
+| GET | `/api/artifacts/{artifact_id}/download` | Owner/operator |
+| GET | `/api/cloud-runners/status`, collection and item | Validated dashboard identity; verify exact item policy in full endpoint matrix |
+| POST | `/api/terminal/jobs`, `/api/terminal/authorize`, grant revoke | Owner + same-origin + CSRF |
+| POST | `/api/document-workflow/grants`, grant revoke, proposals and approve | Owner + same-origin + CSRF |
+| POST | `/api/terminal/templates/import`, template review | Owner + same-origin + CSRF |
+| POST | `/api/terminal/commands/preview` | Owner/operator + same-origin + CSRF |
+| POST | `/api/infrastructure`, gate changes and actions | Owner/operator for general actions; Owner for gate mutation; same-origin + CSRF |
+| POST | `/api/jobs`, `/{job_id}/resume`, `/{job_id}/cancel`, preview start | Owner/operator + same-origin + CSRF; Local Folder creation, resume and cancellation have additional Owner checks |
+| POST | `/api/runners/{worker_id}/drain|enable` | Owner + same-origin + CSRF |
+| POST | `/v1/runner/register`, `enroll`, `ping`, `claim` and job lease routes | Runner credential identity, not browser Owner session |
+| DELETE | `/api/jobs/{job_id}/previews/{preview_id}` | Owner + same-origin + CSRF |
+| DELETE | `/api/infrastructure/{resource_id}` | Owner + same-origin + CSRF |
+| DELETE | `/api/cloud-runners/{runner_id}` | Owner + same-origin + CSRF |
+
+Source line anchors at this baseline: Gateway `do_GET` begins near line 327, `do_POST` near 815 and `do_DELETE` near 1569; Auth Proxy `do_GET` near 517, `do_POST` near 676 and `do_DELETE` near 869. This is a route-family map, not yet the final exhaustive path/query/body schema.
+
+### Auth Proxy dispatch families (source: `tools/local_auth_proxy.py`)
+
+- GET: `/healthz`, `/api/auth/session`, allowlisted read-only API paths for GitHub catalog/refs, Jobs/logs, artifacts, terminal events, infrastructure resources, Local Projects and Cloud Runner resources, plus static Dashboard assets.
+- POST: `/api/auth/login`, `/api/auth/logout`, Jobs create/resume/cancel, preview start, infrastructure/gate actions, Cloud Runner requests, Terminal template import/review/command preview and Runner drain/enable.
+- DELETE: preview stop, infrastructure resource delete and Cloud Runner delete.
+- Proxy mutation paths enforce same-origin and session-bound CSRF before forwarding. Exact role requirements and all forwarded body/header fields still need a dedicated per-route contract table.
+
+This second pass supersedes the earlier README-derived 21-view estimate with the current source-derived 23 navigation tabs.
