@@ -84,6 +84,13 @@ function Assert-TrustedAcl {
        0x10000000 -bor  # GENERIC_ALL
        0x40000000       # GENERIC_WRITE
    )
+   $ancestorMutationMask = [int](
+       0x00000040 -bor  # FILE_DELETE_CHILD can remove/replace a protected child
+       0x00010000 -bor  # DELETE
+       0x00040000 -bor  # WRITE_DAC
+       0x00080000 -bor  # WRITE_OWNER
+       0x10000000       # GENERIC_ALL
+   )
 
    foreach ($target in $targets) {
        $acl = Get-Acl -LiteralPath $target
@@ -116,7 +123,9 @@ function Assert-TrustedAcl {
            }
            $sid = $ace.SecurityIdentifier.Value
            $rights = [int]$ace.AccessMask
-           if (($rights -band $writeMask) -eq 0 -or $sid -in $trustedWriters) {
+           $isFinalTarget = [System.IO.Path]::GetFullPath($target) -ieq $full
+           $effectiveWriteMask = if ($isFinalTarget) { $writeMask } else { $ancestorMutationMask }
+           if (($rights -band $effectiveWriteMask) -eq 0 -or $sid -in $trustedWriters) {
                continue
            }
            $maskHex = "{0:X8}" -f ($rights -band 0xffffffff)
