@@ -15,7 +15,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
-from urllib.request import Request, urlopen
+from urllib.request import Request
+
+from .safe_http import open_no_redirect, read_bounded, require_json_content_type
 
 
 class GitHubAppError(RuntimeError):
@@ -90,7 +92,7 @@ class GitHubAppRunnerBootstrap:
         self._repository_catalog_cache_until = 0.0
         self.clock = clock
         self.timeout = timeout
-        self.opener = opener or urlopen
+        self.opener = opener
 
     def _app_jwt(self) -> str:
         try:
@@ -131,10 +133,10 @@ class GitHubAppRunnerBootstrap:
         request = Request(self.API_ORIGIN + path, data=body, method=method, headers=headers)
         request.add_unredirected_header("Authorization", "Bearer " + token)
         try:
-            with self.opener(request, timeout=self.timeout) as response:
-                raw = response.read(self.MAX_RESPONSE_BYTES + 1)
-            if len(raw) > self.MAX_RESPONSE_BYTES:
-                raise GitHubAppError("GitHub API response exceeded size limit")
+            with open_no_redirect(request, timeout=self.timeout, opener=self.opener) as response:
+                raw = read_bounded(response, self.MAX_RESPONSE_BYTES)
+                if raw:
+                    require_json_content_type(response)
             data = json.loads(raw.decode("utf-8")) if raw else {}
         except HTTPError as exc:
             try:
@@ -145,6 +147,10 @@ class GitHubAppRunnerBootstrap:
             raise GitHubAppError("GitHub API request failed: " + type(exc).__name__) from exc
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise GitHubAppError("GitHub API returned malformed JSON") from exc
+        except ValueError as exc:
+            if "size limit" in str(exc):
+                raise GitHubAppError("GitHub API response exceeded size limit") from exc
+            raise GitHubAppError("GitHub API response failed validation") from exc
         if not isinstance(data, (dict, list)):
             raise GitHubAppError("GitHub API returned an invalid response shape")
         return data
@@ -240,6 +246,12 @@ class GitHubAppRunnerBootstrap:
         else:
             raise GitHubAppError("GitHub installation repository catalog exceeded pagination limit")
 
+        # The DCP runner broker is private-repository-only. Public repositories
+        # installed on the same GitHub App must never enter its selectable catalog.
+        catalog = [item for item in catalog if item["private"] is True]
+        if self.allowed_repositories:
+            allowlist = {name.lower() for name in self.allowed_repositories}
+            catalog = [item for item in catalog if item["full_name"].lower() in allowlist]
         catalog.sort(key=lambda item: item["full_name"].lower())
         self._repository_catalog_cache = tuple(dict(item) for item in catalog)
         self._repository_catalog_cache_until = now + 60.0
@@ -250,10 +262,14 @@ class GitHubAppRunnerBootstrap:
             r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}", repository
         ):
             return False
-        if self.allowed_repositories:
-            return repository in self.allowed_repositories
+        if (self.allowed_repositories
+                and repository.lower() not in {item.lower() for item in self.allowed_repositories}):
+            return False
+        # A static allowlist is only a narrowing filter, never proof of current
+        # installation membership or repository privacy. Require live catalog
+        # evidence and fail closed when it is unavailable.
         return any(
-            item["full_name"].lower() == repository.lower()
+            item["private"] is True and item["full_name"].lower() == repository.lower()
             for item in self.list_installation_repositories(refresh=refresh)
         )
 

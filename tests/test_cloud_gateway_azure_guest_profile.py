@@ -39,6 +39,8 @@ class AzureGuestProfileTests(unittest.TestCase):
         factory = self.make()
         first = factory("dcp-123-abcdef12", "windows", request("windows"))
         second = factory("dcp-124-abcdef12", "windows", request("windows"))
+        self.assertEqual(first["computerName"], "DCPWABCDEF12")
+        self.assertLessEqual(len(first["computerName"]), 15)
         password = first["adminPassword"]
         self.assertGreaterEqual(len(password), 48)
         self.assertRegex(password, r"[a-z]")

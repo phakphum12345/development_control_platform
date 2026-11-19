@@ -1,0 +1,106 @@
+name: Windows PSEC API Availability Probe
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/windows-psec-host-acceptance.yml"
+      - "requirements-windows-psec.txt"
+      - "scripts/Run-DCP-Windows-PSEC-Host-Acceptance.ps1"
+      - "tools/local_runner_agent/windows_psec*.py"
+      - "tests/test_windows_psec*.py"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/windows-psec-host-acceptance.yml"
+      - "requirements-windows-psec.txt"
+      - "scripts/Run-DCP-Windows-PSEC-Host-Acceptance.ps1"
+      - "tools/local_runner_agent/windows_psec*.py"
+      - "tests/test_windows_psec*.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-psec-host-acceptance-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-psec-host-acceptance:
+    name: PSEC API availability probe (GitHub-hosted; not target acceptance)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      DCP_PSEC_ACCEPTANCE_PARENT: C:\\DCP-PSEC-Acceptance
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install optional Windows PSEC serializer
+        run: python -m pip install --disable-pip-version-check -r requirements-windows-psec.txt
+
+      - name: Prepare isolated acceptance parent
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $parent = $env:DCP_PSEC_ACCEPTANCE_PARENT
+          if ([string]::IsNullOrWhiteSpace($parent) -or -not [System.IO.Path]::IsPathRooted($parent)) {
+            throw "PSEC acceptance parent must be an absolute path."
+          }
+          New-Item -ItemType Directory -Path $parent -Force | Out-Null
+          $item = Get-Item -LiteralPath $parent -Force
+          if (-not $item.PSIsContainer -or (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)) {
+            throw "PSEC acceptance parent must be a real directory, not a reparse point."
+          }
+          Write-Host "DCP_PSEC_ACCEPTANCE_PARENT=$($item.FullName)"
+
+      - name: Run native NTFS handle-relative ACL round-trip
+        shell: pwsh
+        env:
+          DCP_PSEC_HANDLE_ACL_TEST: "1"
+          DCP_PSEC_HANDLE_ACL_PACKAGE_SID: "S-1-15-2-123-456-789"
+        run: python -m unittest tests.test_windows_psec_acl_handles.WindowsPsecHandleAclRealHostTests.test_real_ntfs_handle_relative_acl_round_trip -v
+
+      - name: Verify real AppContainer effective filesystem access
+        shell: pwsh
+        env:
+          DCP_PSEC_APPCONTAINER_ACL_TEST: "1"
+        run: python -m unittest tests.test_windows_psec_appcontainer_effective_access.WindowsPsecAppContainerEffectiveAccessTests.test_real_appcontainer_effective_workspace_and_scratch_access -v
+
+      - name: Run disposable PSEC API availability probe
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $evidence = Join-Path $env:RUNNER_TEMP "windows-psec-host-acceptance.json"
+          python -m tools.local_runner_agent.windows_psec_host_acceptance 2>&1 |
+            Tee-Object -FilePath $evidence
+          $pythonExitCode = $LASTEXITCODE
+          Write-Host "Evidence file: $evidence"
+          try {
+            $result = Get-Content -LiteralPath $evidence -Raw | ConvertFrom-Json
+          } catch {
+            throw "PSEC probe evidence is not valid JSON."
+          }
+          if ($pythonExitCode -eq 2 -and $result.state -eq "BLOCKED") {
+            Write-Warning "PSEC API is BLOCKED on this GitHub-hosted Windows image. This probe is informational and is NOT an acceptance PASS; run target-host acceptance on a supported Windows host."
+            exit 0
+          } elseif ($pythonExitCode -ne 0) {
+            throw "Windows PSEC host probe failed with exit code $pythonExitCode (state=$($result.state))."
+          } elseif ($result.state -ne "PASS") {
+            throw "Unexpected PSEC probe state: $($result.state)."
+          }
+
+      - name: Upload host acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-psec-api-availability-probe
+          path: |
+            ${{ runner.temp }}/windows-psec-host-acceptance.json
+            ${{ runner.temp }}/appcontainer-effective-access.json
+          if-no-files-found: ignore

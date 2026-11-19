@@ -23,7 +23,7 @@ The owner password is stored as a salted PBKDF2-HMAC-SHA256 hash in `%LOCALAPPDA
 ## Local service layout
 
 - Dashboard + Auth Proxy: `127.0.0.1:8789`
-- Gateway: `127.0.0.1:8790`
+- Gateway: `127.0.0.1:18790`
 - SQLite data: `%LOCALAPPDATA%\DCP\gateway.sqlite3`
 - Owner credential hash: `%LOCALAPPDATA%\DCP\owner-auth.json`
 
@@ -46,3 +46,17 @@ Press `Ctrl+C` in the PowerShell window running the integrated stack. It stops b
 The automated Linux and Windows emulator workflows exercise login, session issuance, signed Gateway API access, CSRF/origin enforcement, logout/revocation, and safe provisioning defaults. They do not replace a final test on your own Windows 11 computer.
 
 For broader deployment limitations, see [Windows 11 self-hosted deployment](windows-11-self-hosted.md).
+
+## Recon Back Box integration
+
+The Recon Back Box is served at `/recon-back-box/` from the same local Dashboard origin.
+Its read-only source data is the public `phakphum12345/Drive-letter` repository. The browser
+calls only the authenticated same-origin `/api/recon/*` endpoints; the Local Auth Proxy
+forwards those requests to the local Gateway, which fetches a fixed allowlist of public
+GitHub metadata and the four versioned JSON configs from `main`. No GitHub token is
+stored in the browser or local stack.
+
+The local integration requires an authenticated DCP Owner session. Recon source access is
+read-only: exported config edits are review material and are not pushed to GitHub. The
+Drive-letter connection must not be treated as a durable write path unless a separately
+approved GitHub App integration with repository write permission is configured.

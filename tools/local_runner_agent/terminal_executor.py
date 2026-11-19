@@ -26,6 +26,15 @@ from tools.local_runner_agent.terminal_isolation import (
     assess_isolation_backend,
     require_verified_isolation,
 )
+from tools.local_runner_agent.linux_sandbox import (
+    LinuxBubblewrapLauncher,
+    LinuxSandboxError,
+)
+from tools.local_runner_agent.windows_psec_launcher import (
+    WindowsPsecLauncher,
+    WindowsPsecError,
+)
+from tools.local_runner_agent.windows_psec_projection import create_workspace_projection
 
 
 class TerminalExecutionError(RuntimeError):
@@ -243,21 +252,52 @@ class TerminalScriptExecutor:
         return [resolved, *command_args]
 
     @staticmethod
+    def _sandbox_environment(env: dict[str, str]) -> dict[str, str]:
+        """Return only fixed/template-approved workload variables for bubblewrap."""
+        return {
+            name: value for name, value in env.items()
+            if name not in {"PATH", "HOME", "USERPROFILE", "SYSTEMROOT"}
+        }
+
+    @staticmethod
     def _disable_repository_filters(
-        resolved: str, workspace: Path, env: dict[str, str]
+        resolved: str,
+        workspace: Path,
+        env: dict[str, str],
+        *,
+        launcher: LinuxBubblewrapLauncher,
+        scratch: Path,
     ) -> None:
-        """Disable repository-defined clean/smudge/process filters before Git inspection."""
+        """Inspect repository filter names inside the same OS sandbox as the job."""
+        sandbox = None
         try:
-            result = subprocess.run(
-                [resolved, "config", "--name-only", "--null", "--list"],
-                cwd=str(workspace), env=env, stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                shell=False, close_fds=True, timeout=5, check=False,
+            sandbox = launcher.build(
+                executable=resolved,
+                argv=["config", "--name-only", "--null", "--list"],
+                workspace=workspace,
+                scratch=scratch,
+                environment=TerminalScriptExecutor._sandbox_environment(env),
             )
-        except (OSError, subprocess.TimeoutExpired):
+            result = subprocess.run(
+                list(sandbox.argv),
+                cwd=str(workspace),
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                shell=False,
+                close_fds=True,
+                timeout=5,
+                check=False,
+                pass_fds=(sandbox.seccomp_fd,) if os.name == "posix" else (),
+            )
+        except (OSError, subprocess.TimeoutExpired, LinuxSandboxError, ValueError):
             raise TerminalExecutionError(
                 "Git repository filter configuration could not be inspected safely"
             ) from None
+        finally:
+            if sandbox is not None:
+                sandbox.close()
         if result.returncode != 0:
             raise TerminalExecutionError(
                 "Git repository filter configuration could not be inspected safely"
@@ -265,6 +305,134 @@ class TerminalScriptExecutor:
 
         drivers: dict[str, str] = {}
         for raw_key in result.stdout.split(b"\0"):
+            if not raw_key:
+                continue
+            key = raw_key.decode("utf-8", "replace")
+            section, separator, setting = key.rpartition(".")
+            if not separator or setting.casefold() not in {"clean", "smudge", "process", "required"}:
+                continue
+            if not section.casefold().startswith("filter."):
+                continue
+            driver = section[len("filter."):]
+            if driver:
+                drivers.setdefault(driver, driver)
+
+        index = int(env.get("GIT_CONFIG_COUNT", "0"))
+        for driver in drivers.values():
+            for setting, value in (
+                ("clean", ""), ("smudge", ""), ("process", ""), ("required", "false")
+            ):
+                env[f"GIT_CONFIG_KEY_{index}"] = f"filter.{driver}.{setting}"
+                env[f"GIT_CONFIG_VALUE_{index}"] = value
+                index += 1
+        env["GIT_CONFIG_COUNT"] = str(index)
+
+    @staticmethod
+    def _cleanup_execution_workspace(*, projection, private_parent, job_home):
+        """Delete only after the caller has proven the Windows Job Object drained."""
+        if private_parent is not None:
+            if projection is not None:
+                projection.close()
+            if private_parent.exists():
+                remaining = list(private_parent.iterdir())
+                if remaining:
+                    raise TerminalExecutionError(
+                        "Windows PSEC private parent contains unverified orphan entries; "
+                        f"preserving {private_parent}"
+                    )
+                private_parent.rmdir()
+            if private_parent.exists():
+                raise TerminalExecutionError(
+                    f"Windows PSEC private parent cleanup incomplete: {private_parent}"
+                )
+            return
+        if job_home is not None and job_home.exists():
+            shutil.rmtree(job_home)
+        if job_home is not None and job_home.exists():
+            raise TerminalExecutionError(
+                f"Terminal temporary HOME cleanup incomplete: {job_home}"
+            )
+
+    @staticmethod
+    def _disable_repository_filters_windows(
+        resolved: str,
+        workspace: Path,
+        env: dict[str, str],
+        *,
+        launcher: WindowsPsecLauncher,
+        scratch: Path,
+        cleanup_state: dict | None = None,
+    ) -> None:
+        """Inspect Git filter names inside a PSEC process before the main Git command."""
+        cleanup_state = cleanup_state if cleanup_state is not None else {"safe_to_cleanup": True}
+        process = None
+        chunks: queue.Queue[bytes | None] = queue.Queue(maxsize=8)
+        output = bytearray()
+        reader = None
+        try:
+            cleanup_state["safe_to_cleanup"] = False
+            process = launcher.launch(
+                [resolved, "config", "--name-only", "--null", "--list"],
+                workspace=workspace,
+                scratch=scratch,
+                environment=env,
+            )
+
+            def read_output():
+                try:
+                    while True:
+                        chunk = process.stdout.read(4096)
+                        if not chunk:
+                            break
+                        chunks.put(chunk)
+                finally:
+                    chunks.put(None)
+
+            reader = threading.Thread(target=read_output, name="dcp-git-filter-config", daemon=True)
+            reader.start()
+            deadline = time.monotonic() + 5
+            reader_done = False
+            while not reader_done:
+                if time.monotonic() >= deadline:
+                    process.terminate_tree()
+                    raise TerminalExecutionError(
+                        "Git repository filter configuration could not be inspected safely"
+                    )
+                try:
+                    chunk = chunks.get(timeout=0.05)
+                except queue.Empty:
+                    continue
+                if chunk is None:
+                    reader_done = True
+                    continue
+                if len(output) + len(chunk) > 65536:
+                    process.terminate_tree()
+                    raise TerminalExecutionError(
+                        "Git repository filter configuration exceeded its output limit"
+                    )
+                output.extend(chunk)
+            if process.wait(timeout=5) != 0:
+                raise TerminalExecutionError(
+                    "Git repository filter configuration could not be inspected safely"
+                )
+        except (OSError, subprocess.TimeoutExpired, WindowsPsecError, ValueError):
+            if process is not None:
+                try:
+                    process.terminate_tree()
+                except Exception:
+                    pass
+            raise TerminalExecutionError(
+                "Git repository filter configuration could not be inspected safely"
+            ) from None
+        finally:
+            if reader is not None:
+                reader.join(timeout=2)
+            if process is not None:
+                process.close()
+                cleanup_state["safe_to_cleanup"] = True
+
+        drivers: dict[str, str] = {}
+        for raw_key in bytes(output).split(b"\0"):
             if not raw_key:
                 continue
             key = raw_key.decode("utf-8", "replace")
@@ -303,22 +471,17 @@ class TerminalScriptExecutor:
             yield "".join(current)
 
     @staticmethod
-    def _terminate_tree(process: subprocess.Popen) -> None:
+    def _terminate_tree(process) -> None:
+        terminate_tree = getattr(process, "terminate_tree", None)
+        if callable(terminate_tree):
+            terminate_tree()
+            return
         if process.poll() is not None:
             return
         if os.name == "nt":
-            try:
-                subprocess.run(
-                    ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL, check=False, timeout=5,
-                    shell=False,
-                )
-            except (OSError, subprocess.TimeoutExpired):
-                try:
-                    process.kill()
-                except OSError:
-                    pass
+            raise TerminalExecutionError(
+                "Windows Terminal process is not owned by a PSEC Job Object"
+            )
         else:
             try:
                 os.killpg(process.pid, signal.SIGTERM)
@@ -339,12 +502,17 @@ class TerminalScriptExecutor:
     ) -> TerminalExecutionResult:
         if not self.enabled:
             raise TerminalExecutionError("Terminal execution is disabled on this Runner")
+        assessment = assess_isolation_backend()
         try:
-            require_verified_isolation(assess_isolation_backend())
+            require_verified_isolation(assessment)
         except RuntimeError:
             raise TerminalExecutionError(
                 "Terminal execution is blocked: verified OS isolation is unavailable"
             ) from None
+        if assessment.platform not in {"linux", "windows"}:
+            raise TerminalExecutionError(
+                "Terminal execution is blocked: this Runner has no integrated isolation launcher for the host platform"
+            )
         workspace = self._trusted_directory(workspace_path)
         try:
             template = preview_template(template_id, parameters)
@@ -364,11 +532,34 @@ class TerminalScriptExecutor:
                 or len(argv) > 32 or any(not isinstance(arg, str) or "\x00" in arg for arg in argv)):
             raise TerminalExecutionError("Terminal template resolved an unsafe command")
         safe_path = self._safe_path(workspace)
-        resolved = shutil.which(executable, path=safe_path)
-        if not resolved:
-            raise TerminalExecutionError("Required Terminal executable is unavailable")
+        if assessment.platform == "linux":
+            # bubblewrap exposes only the system-managed /usr/bin runtime tree.
+            # Do not select tools from /usr/local, a user PATH, or the project.
+            linux_names = {
+                "git": ("git",),
+                "python": ("python", "python3"),
+                "node": ("node",),
+            }
+            resolved = next(
+                (
+                    candidate
+                    for name in linux_names[executable]
+                    if (candidate := shutil.which(name, path="/usr/bin"))
+                ),
+                None,
+            )
+            if not resolved:
+                raise TerminalExecutionError(
+                    "Required Terminal executable is unavailable in the approved /usr/bin runtime"
+                )
+        else:
+            resolved = shutil.which(executable, path=safe_path)
+            if not resolved:
+                raise TerminalExecutionError("Required Terminal executable is unavailable")
         resolved_path = Path(resolved).resolve(strict=True)
-        if (not resolved_path.is_file() or resolved_path.suffix.lower() in (".bat", ".cmd")):
+        if (not resolved_path.is_file()
+                or resolved_path.suffix.lower() in (".bat", ".cmd")
+                or (assessment.platform == "windows" and resolved_path.suffix.lower() != ".exe")):
             raise TerminalExecutionError("Terminal executable is not a trusted native binary")
         try:
             resolved_path.relative_to(workspace)
@@ -376,7 +567,35 @@ class TerminalScriptExecutor:
         except ValueError:
             pass
         resolved = str(resolved_path)
-        job_home = Path(tempfile.mkdtemp(prefix="dcp-terminal-home-"))
+        projection = None
+        private_parent = None
+        execution_workspace = workspace
+        job_home = None
+        if assessment.platform == "windows":
+            try:
+                private_parent = Path(tempfile.mkdtemp(prefix="dcp-terminal-private-"))
+                projection = create_workspace_projection(workspace, private_parent)
+                execution_workspace = projection.workspace
+                job_home = projection.scratch
+                self.log(
+                    "system",
+                    "Windows PSEC projection created; "
+                    f"manifest={projection.manifest_sha256}; entries={len(projection.manifest)}",
+                )
+            except Exception as exc:
+                if private_parent is not None:
+                    try:
+                        self._cleanup_execution_workspace(
+                            projection=None, private_parent=private_parent, job_home=None
+                        )
+                    except Exception as cleanup_exc:
+                        self.log("system", f"Preserving failed projection parent: {cleanup_exc}")
+                raise TerminalExecutionError(
+                    "Windows PSEC workspace projection could not be created safely"
+                ) from exc
+        else:
+            job_home = Path(tempfile.mkdtemp(prefix="dcp-terminal-home-"))
+
         try:
             job_home = job_home.resolve(strict=True)
             try:
@@ -384,37 +603,144 @@ class TerminalScriptExecutor:
             except ValueError:
                 pass
             else:
-                shutil.rmtree(job_home, ignore_errors=True)
+                self._cleanup_execution_workspace(
+                    projection=projection, private_parent=private_parent, job_home=job_home
+                )
                 raise TerminalExecutionError(
                     "Temporary Terminal HOME must be outside the Project Workspace"
                 )
             if os.name == "posix":
                 os.chmod(job_home, 0o700)
-        except OSError:
-            shutil.rmtree(job_home, ignore_errors=True)
-            raise TerminalExecutionError("Temporary Terminal environment could not be secured") from None
+        except OSError as exc:
+            try:
+                self._cleanup_execution_workspace(
+                    projection=projection, private_parent=private_parent, job_home=job_home
+                )
+            except Exception as cleanup_exc:
+                self.log("system", f"Temporary Terminal cleanup blocked: {cleanup_exc}")
+            raise TerminalExecutionError(
+                "Temporary Terminal environment could not be secured"
+            ) from exc
         env = self._environment(template, job_home, safe_path)
+        launcher = None
+        if assessment.platform == "linux":
+            try:
+                launcher = LinuxBubblewrapLauncher()
+            except (LinuxSandboxError, OSError, ValueError):
+                self._cleanup_execution_workspace(
+                    projection=projection, private_parent=private_parent, job_home=job_home
+                )
+                raise TerminalExecutionError(
+                    "Linux bubblewrap sandbox could not be constructed safely"
+                ) from None
+        else:
+            try:
+                launcher = WindowsPsecLauncher()
+            except (WindowsPsecError, OSError, ValueError):
+                self._cleanup_execution_workspace(
+                    projection=projection, private_parent=private_parent, job_home=job_home
+                )
+                raise TerminalExecutionError(
+                    "Windows PSEC sandbox could not be constructed safely"
+                ) from None
         if executable == "git":
             try:
-                self._disable_repository_filters(resolved, workspace, env)
-            except TerminalExecutionError:
-                shutil.rmtree(job_home, ignore_errors=True)
-                raise
+                if assessment.platform == "linux":
+                    self._disable_repository_filters(
+                        resolved, workspace, env, launcher=launcher, scratch=job_home
+                    )
+                else:
+                    filter_cleanup_state = {"safe_to_cleanup": True}
+                    self._disable_repository_filters_windows(
+                        resolved,
+                        execution_workspace,
+                        env,
+                        launcher=launcher,
+                        scratch=job_home,
+                        cleanup_state=filter_cleanup_state,
+                    )
+            except (TerminalExecutionError, WindowsPsecError) as exc:
+                if (
+                    assessment.platform != "windows"
+                    or filter_cleanup_state.get("safe_to_cleanup", True)
+                ):
+                    self._cleanup_execution_workspace(
+                        projection=projection,
+                        private_parent=private_parent,
+                        job_home=job_home,
+                    )
+                else:
+                    self.log(
+                        "system",
+                        "PSEC Git-filter Job Object drain not proven; preserving "
+                        f"workspace projection at {projection.root if projection else private_parent}",
+                    )
+                if isinstance(exc, TerminalExecutionError):
+                    raise
+                raise TerminalExecutionError(
+                    "Git repository filter configuration cleanup was not verified"
+                ) from exc
         timeout = min(int(template["timeout_seconds"]), self.timeout_ceiling_seconds)
         output_limit = min(int(template["max_output_bytes"]), self.output_ceiling_bytes)
         command = self._build_command(resolved, executable, argv)
-        creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
+        sandbox_command = None
+        if assessment.platform == "linux":
+            try:
+                sandbox_command = launcher.build(
+                    executable=resolved,
+                    argv=command[1:],
+                    workspace=workspace,
+                    scratch=job_home,
+                    environment=self._sandbox_environment(env),
+                )
+            except (LinuxSandboxError, OSError, ValueError):
+                self._cleanup_execution_workspace(
+                    projection=projection, private_parent=private_parent, job_home=job_home
+                )
+                raise TerminalExecutionError(
+                    "Linux bubblewrap sandbox could not be constructed safely"
+                ) from None
+
+        # The Windows launcher applies PSEC before CreateProcessW and assigns the
+        # suspended process to a kill-on-close Job Object before resuming it.
+        process_drained = True
         started = time.monotonic()
         try:
-            process = subprocess.Popen(
-                command, cwd=str(workspace), env=env, stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=False,
-                close_fds=True, start_new_session=(os.name != "nt"),
-                creationflags=creationflags, bufsize=0,
-            )
-        except OSError:
-            shutil.rmtree(job_home, ignore_errors=True)
-            raise TerminalExecutionError("Terminal executable could not be started") from None
+            if assessment.platform == "linux":
+                creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
+                process = subprocess.Popen(
+                    list(sandbox_command.argv), cwd=str(workspace), env=env,
+                    stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT, shell=False, close_fds=True,
+                    start_new_session=True, creationflags=creationflags,
+                    bufsize=0, pass_fds=(sandbox_command.seccomp_fd,),
+                )
+            else:
+                process = launcher.launch(
+                    command,
+                    workspace=execution_workspace,
+                    scratch=job_home,
+                    environment=env,
+                )
+            process_drained = False
+        except (OSError, ValueError, WindowsPsecError) as exc:
+            if projection is not None:
+                self.log(
+                    "system",
+                    "Windows PSEC launch cleanup not proven; preserving workspace projection at "
+                    f"{projection.root}",
+                )
+            else:
+                self._cleanup_execution_workspace(
+                    projection=projection, private_parent=private_parent, job_home=job_home
+                )
+            raise TerminalExecutionError(
+                "OS isolation launcher could not be started"
+            ) from exc
+        finally:
+            if sandbox_command is not None:
+                # The child inherited only the explicitly passed seccomp descriptor.
+                sandbox_command.close()
 
         chunks: queue.Queue[bytes | None] = queue.Queue(maxsize=8)
 
@@ -474,9 +800,11 @@ class TerminalScriptExecutor:
                     self._terminate_tree(process)
             try:
                 return_code = process.wait(timeout=5)
+                process_drained = True
             except subprocess.TimeoutExpired:
                 self._terminate_tree(process)
                 return_code = process.wait(timeout=5)
+                process_drained = True
             reader.join(timeout=2)
             decoded_tail = decoder.decode(b"", final=True)
             safe_tail = redactor.feed(decoded_tail, final=True)
@@ -502,8 +830,9 @@ class TerminalScriptExecutor:
             self._terminate_tree(process)
             try:
                 process.wait(timeout=5)
+                process_drained = True
             except subprocess.TimeoutExpired:
-                pass
+                process_drained = False
             while reader.is_alive():
                 try:
                     chunks.get(timeout=0.05)
@@ -512,4 +841,53 @@ class TerminalScriptExecutor:
             reader.join(timeout=1)
             raise
         finally:
-            shutil.rmtree(job_home, ignore_errors=True)
+            close_error = None
+            close_process = getattr(process, "close", None)
+            try:
+                if callable(close_process):
+                    close_process()
+                elif projection is not None:
+                    raise TerminalExecutionError(
+                        "Windows PSEC process facade lacks Job Object drain verification"
+                    )
+                elif process.stdout is not None and not process.stdout.closed:
+                    process.stdout.close()
+            except Exception as exc:
+                close_error = exc
+
+            if projection is not None and close_error is not None:
+                self.log(
+                    "system",
+                    "PSEC Job Object drain/close not verified; preserving workspace "
+                    f"projection at {projection.root}: {type(close_error).__name__}: {close_error}",
+                )
+                raise TerminalExecutionError(
+                    "PSEC Job Object drain/close was not verified; workspace projection preserved"
+                ) from close_error
+
+            if projection is None and not process_drained:
+                self.log(
+                    "system",
+                    f"Terminal process drain not verified; preserving temporary HOME {job_home}",
+                )
+                raise TerminalExecutionError(
+                    "Terminal process drain was not verified; temporary HOME preserved"
+                )
+
+            if close_error is not None:
+                self.log("system", f"Terminal stdout close warning: {close_error}")
+
+            try:
+                self._cleanup_execution_workspace(
+                    projection=projection,
+                    private_parent=private_parent,
+                    job_home=job_home,
+                )
+            except Exception as exc:
+                self.log(
+                    "system",
+                    f"Terminal execution workspace cleanup failed: {type(exc).__name__}: {exc}",
+                )
+                raise TerminalExecutionError(
+                    "Terminal execution workspace cleanup could not be verified"
+                ) from exc

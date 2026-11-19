@@ -16,7 +16,7 @@ The Orka bearer token is read through an injected Key Vault secret reader at req
 `tools/cloud_gateway/orka_bootstrap.py` builds an idempotent macOS ARM64
 bootstrap script using a pinned runner release/checksum and a short-lived,
 repository-scoped GitHub registration token. `OrkaProvider` sends the
-base64-encoded script in the documented lower-case `userdata` field, enforces
+base64-encoded script in the experimental lower-case `userdata` field, enforces
 the 64 KiB encoded limit, and waits for `userdataPhase=success` before it can
 report a runner online. A later `skipped` phase is accepted only when the
 independent GitHub runner-online check proves the runner is registered and
@@ -50,9 +50,7 @@ Running VM. See the official [Orka 4.0 User Data documentation](https://docs.mac
 
 This adapter does not create an Orka namespace, VM config, image, node, cluster,
 network policy or budget. The approved VM config must already be reviewed to
-map to macOS 15 ARM64. The User Data request contract and mocked lifecycle
-checks are implemented, but no production Orka runtime composition or
-authoritative Orka/MacStadium billing reader exists.
+map to macOS 15 ARM64. The User Data request path and mocked lifecycle checks are implemented, but API compatibility is not accepted until the target cluster's own `/api/v1/swagger` or OpenAPI schema confirms the exact `userdata` request field and `userdataPhase` response field. No production Orka runtime composition or authoritative Orka/MacStadium billing reader exists.
 
 The Gateway selects budget guards by provider. Orka requests require a
 separate guard keyed to `orka`; an Azure Consumption budget is never accepted
@@ -62,3 +60,10 @@ live cluster/VM Tools check, namespace RBAC review, restricted egress policy,
 and runner-online/job/teardown acceptance are supplied and tested. The
 Gateway's global provisioning and owner-approval gates remain independent.
 No Orka capacity was allocated by tests.
+
+
+## Orka API compatibility and transport acceptance
+
+The `userdata` request field and `userdataPhase` response field are experimental integration assumptions, not verified compatibility evidence. The target cluster's own `/api/v1/swagger` or OpenAPI schema and the cluster's Orka 4.0 VM Tools contract must confirm the exact field names, encoding, execution semantics, and phase values. MacStadium/cluster-owner confirmation must also cover whether User Data can appear in API, proxy, audit, support, or application logs. A write-only response is not proof that request bodies are never logged. Until these checks are recorded in the cluster-readiness evidence, keep Orka readiness false and do not attempt live provisioning.
+
+Orka API requests use the shared no-redirect transport. The bearer credential is validated and added as an unredirected header; redirects are rejected, request timeouts are limited to 1–30 seconds, non-empty responses must declare JSON media type, and response bodies are capped at 64 KiB. Transport and response-validation failures fail closed without exposing credentials or response bodies.

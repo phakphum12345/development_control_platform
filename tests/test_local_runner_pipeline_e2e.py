@@ -4,6 +4,7 @@ import tempfile
 import threading
 import unittest
 import uuid
+from contextlib import ExitStack
 from unittest.mock import patch
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -15,7 +16,7 @@ from tools.cloud_gateway.terminal_execution_contract import template_version_dig
 from tools.cloud_gateway.artifacts import ArtifactStore
 from tools.cloud_gateway.runner_registry import RunnerRegistry
 from tools.cloud_gateway.server import make_handler
-from tools.local_runner_agent.client import GatewayClient, RunnerAgentConfig
+from tools.local_runner_agent.client import GatewayClient, RunnerAgentConfig, RunnerGatewayError
 from tools.local_runner_agent.execution import FlutterBuildExecutor
 from tools.local_runner_agent.pipeline import RunnerPipeline
 from tools.local_runner_agent.service import RunnerAgentService
@@ -27,6 +28,7 @@ from tools.local_runner_agent.terminal_isolation import IsolationAssessment
 
 
 TOKEN = "runner-pipeline-e2e-token-which-is-long-enough"
+OTHER_TOKEN = "runner-other-pipeline-e2e-token-which-is-long-enough"
 
 
 class _Service:
@@ -53,6 +55,26 @@ class _FixtureCheckout:
         return source
 
 
+class _TestOnlyTerminalSandboxCommand:
+    """Process test stub; deliberately provides no OS isolation."""
+
+    def __init__(self, executable, argv):
+        self.argv = (executable, *argv)
+        self._fd = tempfile.TemporaryFile(mode="w+b")
+
+    @property
+    def seccomp_fd(self):
+        return self._fd.fileno()
+
+    def close(self):
+        self._fd.close()
+
+
+class _TestOnlyTerminalLauncher:
+    def build(self, *, executable, argv, workspace, scratch, environment=None):
+        return _TestOnlyTerminalSandboxCommand(executable, argv)
+
+
 class RunnerPipelineEndToEndTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -67,6 +89,7 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
             ("127.0.0.1", 0),
             make_handler(service, "internal-gateway-token", runner_tokens={
                 "runner-e2e": TOKEN,
+                "runner-other": OTHER_TOKEN,
             }),
         )
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -593,14 +616,50 @@ class RunnerPipelineEndToEndTests(unittest.TestCase):
             process_tree_contained=True,
             reason="test-only fixture; not production isolation evidence",
         )
-        with patch("tools.local_runner_agent.terminal_executor.preview_template", return_value=template), \
-             patch("tools.cloud_gateway.terminal_execution_contract.preview_template", return_value=template), \
-             patch("tools.local_runner_agent.terminal_executor.assess_isolation_backend", return_value=test_verified_isolation):
+        with ExitStack() as stack:
+            stack.enter_context(patch(
+                "tools.local_runner_agent.terminal_executor.preview_template",
+                return_value=template,
+            ))
+            stack.enter_context(patch(
+                "tools.cloud_gateway.terminal_execution_contract.preview_template",
+                return_value=template,
+            ))
+            stack.enter_context(patch(
+                "tools.local_runner_agent.terminal_executor.assess_isolation_backend",
+                return_value=test_verified_isolation,
+            ))
+            if os.name != "nt":
+                # This test covers grant/workspace wiring, not kernel isolation.
+                stack.enter_context(patch(
+                    "tools.local_runner_agent.terminal_executor.LinuxBubblewrapLauncher",
+                    _TestOnlyTerminalLauncher,
+                ))
             result = pipeline.run_once()
+
+        if os.name == "nt":
+            # Windows AppContainer/LPAC is not implemented. Even a test-injected
+            # VERIFIED assessment must not permit a direct host-process fallback.
+            self.assertEqual(result["outcome"], "failed", result)
+            self.assertEqual(result["job"]["state"], "failed")
+            self.assertEqual(result["job"]["error_code"], "RUNNER_POLICY_OR_BUILD_ERROR")
+            self.assertEqual(readme.read_text(encoding="utf-8"), "unchanged project workspace\n")
+            self.assertEqual(sorted(item.name for item in project_path.iterdir()), ["README.md"])
+            return
 
         self.assertEqual(result["outcome"], "succeeded", result)
         self.assertEqual(result["job"]["id"], job["id"])
         self.assertEqual(result["job"]["state"], "succeeded")
+        cleanup_status = self.client.workspace_cleanup_status(job["id"])
+        self.assertTrue(cleanup_status["cleanup_safe"])
+        self.assertEqual(cleanup_status["worker_id"], "runner-e2e")
+        other_client = GatewayClient(RunnerAgentConfig(
+            gateway_url=f"http://127.0.0.1:{self.server.server_port}",
+            worker_id="runner-other", token=OTHER_TOKEN,
+        ))
+        with self.assertRaises(RunnerGatewayError) as denied:
+            other_client.workspace_cleanup_status(job["id"])
+        self.assertEqual(denied.exception.status_code, 404)
         self.assertEqual(result["result"]["source_type"], "terminal_script")
         self.assertEqual(result["result"]["project_workspace_id"], project["workspace_id"])
         self.assertEqual(result["result"]["template_id"], "python_version")

@@ -22,8 +22,15 @@ from pathlib import Path
 from typing import Callable
 
 from .execution import BuildResult, ExecutionError
-from .workspace import WorkspaceManager
+from .workspace import WorkspaceError, WorkspaceManager
 from .file_safety import open_verified_regular_file, copy_verified_regular_file
+
+
+def _check_workspace_quota(workspaces, job_id: str, worker_id: str) -> int:
+    try:
+        return workspaces.check_quota(job_id, worker_id)
+    except WorkspaceError as exc:
+        raise ExecutionError(str(exc)) from None
 
 
 class WebBuildExecutor:
@@ -169,7 +176,7 @@ class WebBuildExecutor:
         if source.is_symlink() or not source.is_dir():
             raise ExecutionError("project source directory is unsafe")
         command = self.command_for(target, source)
-        self.workspaces.check_quota(job_id, worker_id)
+        _check_workspace_quota(self.workspaces, job_id, worker_id)
         started = time.monotonic()
         if target == "build_static_web":
             destination = source / "dist"
@@ -218,7 +225,7 @@ class WebBuildExecutor:
                             out = destination / relative
                             out.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
                             copy_verified_regular_file(path, out, ExecutionError, "static source file")
-            self.workspaces.check_quota(job_id, worker_id)
+            _check_workspace_quota(self.workspaces, job_id, worker_id)
             self.log("system", "Static web files copied to dist/; no source code executed")
             return BuildResult("succeeded", command, 0, round(time.monotonic() - started, 3), 0)
 
@@ -302,7 +309,7 @@ class WebBuildExecutor:
                 output_path = source / output_name
                 if output_path.is_symlink() or not output_path.is_dir():
                     outcome, error_code = "failed", "BUILD_OUTPUT_MISSING"
-        self.workspaces.check_quota(job_id, worker_id)
+        _check_workspace_quota(self.workspaces, job_id, worker_id)
         return BuildResult(outcome, command, return_code, round(time.monotonic() - started, 3),
                            output_bytes, error_code)
 
@@ -361,5 +368,5 @@ class WebArtifactPackager:
             destination.unlink(missing_ok=True)
             raise ExecutionError("compressed web artifact exceeds configured limit")
         destination.chmod(0o600)
-        self.workspaces.check_quota(job_id, worker_id)
+        _check_workspace_quota(self.workspaces, job_id, worker_id)
         return destination, destination.name

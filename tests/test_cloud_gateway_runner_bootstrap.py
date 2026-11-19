@@ -37,13 +37,36 @@ def payload(os_name):
 
 
 class AzureRunnerBootstrapTests(unittest.TestCase):
-    def make(self, app=None):
+    @staticmethod
+    def valid_profile(vm, os_name, request):
+        if os_name == "linux":
+            return {
+                "computerName": vm,
+                "adminUsername": "dcpadmin",
+                "linuxConfiguration": {
+                    "disablePasswordAuthentication": True,
+                    "ssh": {"publicKeys": [{
+                        "path": "/home/dcpadmin/.ssh/authorized_keys",
+                        "keyData": "ssh-ed25519 " + base64.b64encode(
+                            len(b"ssh-ed25519").to_bytes(4, "big") + b"ssh-ed25519"
+                            + (32).to_bytes(4, "big") + bytes(range(1, 33))
+                        ).decode("ascii") + " test-key",
+                    }]},
+                },
+            }
+        return {
+            "computerName": "DCPW" + vm.rsplit("-", 1)[-1].upper(),
+            "adminUsername": "dcpadmin",
+            "adminPassword": "Test-Only-Password-123!",
+        }
+
+    def make(self, app=None, os_profile_factory=None):
         return AzureRunnerBootstrapFactory(
             app or FakeGitHubApp(),
             "2.331.0",
             "a" * 64,
             "b" * 64,
-            lambda vm, os_name, request: {"computerName": vm, "os": os_name},
+            os_profile_factory or self.valid_profile,
         )
 
     def test_linux_registration_token_is_only_in_protected_script(self):
@@ -117,6 +140,33 @@ class AzureRunnerBootstrapTests(unittest.TestCase):
     def test_rejects_invalid_registration_token(self):
         with self.assertRaises(RunnerBootstrapError):
             self.make(FakeGitHubApp("bad token"))("dcp-123-abcdef12", "linux", payload("linux"))
+
+    def test_rejects_incomplete_linux_guest_login_before_minting_token(self):
+        app = FakeGitHubApp()
+        factory = self.make(app, lambda vm, os_name, request: {"computerName": vm, "adminUsername": "dcpadmin"})
+        with self.assertRaises(RunnerBootstrapError):
+            factory("dcp-123-abcdef12", "linux", payload("linux"))
+        self.assertEqual(app.repositories, [])
+
+    def test_rejects_linux_password_authentication_and_wrong_ssh_path(self):
+        profile = self.valid_profile("dcp-123-abcdef12", "linux", payload("linux"))
+        profile["linuxConfiguration"]["disablePasswordAuthentication"] = False
+        with self.assertRaises(RunnerBootstrapError):
+            self.make(os_profile_factory=lambda *_: profile)("dcp-123-abcdef12", "linux", payload("linux"))
+        profile = self.valid_profile("dcp-123-abcdef12", "linux", payload("linux"))
+        profile["linuxConfiguration"]["ssh"]["publicKeys"][0]["path"] = "/root/.ssh/authorized_keys"
+        with self.assertRaises(RunnerBootstrapError):
+            self.make(os_profile_factory=lambda *_: profile)("dcp-123-abcdef12", "linux", payload("linux"))
+
+    def test_rejects_weak_windows_guest_password_and_long_computer_name(self):
+        profile = self.valid_profile("dcp-123-abcdef12", "windows", payload("windows"))
+        profile["adminPassword"] = "weak"
+        with self.assertRaises(RunnerBootstrapError):
+            self.make(os_profile_factory=lambda *_: profile)("dcp-123-abcdef12", "windows", payload("windows"))
+        profile = self.valid_profile("dcp-123-abcdef12", "windows", payload("windows"))
+        profile["computerName"] = "dcp-123-abcdef12"
+        with self.assertRaises(RunnerBootstrapError):
+            self.make(os_profile_factory=lambda *_: profile)("dcp-123-abcdef12", "windows", payload("windows"))
 
 
 if __name__ == "__main__":
