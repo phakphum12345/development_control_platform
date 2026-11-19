@@ -161,3 +161,11 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - WP-00B remains IN_PROGRESS: route families are mapped, but exact query/body schemas, every status/error branch and Gateway-to-Proxy forwarding equivalence are not fully enumerated.
 - WP-00C remains IN_PROGRESS: all 91 test file paths are captured, but individual test methods/fixtures/skips and requirement coverage are not yet enumerated.
 - Next action: complete endpoint contract/forwarding matrix and Dashboard view → handler → API → service → test trace; then re-run exact-head CI after final docs updates.
+
+
+### 2026-11-19 — Dashboard count wording correction
+
+- The 21-view figure came from the older remaining-work inventory, not a verified README count.
+- Current source contains 23 distinct navigation tabs and 21 declared Code Navigator mappings.
+- Corrected the provenance wording in the repository inventory and requirements traceability documents.
+- Branch head before this ledger update: `04c4c7a4d02aadb1de3489a811e2f37229d8b355`.
