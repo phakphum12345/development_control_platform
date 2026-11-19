@@ -631,6 +631,12 @@ def _runtime_directories(
     roots = [runtime_root]
     binary_parent = Path(executable).resolve(strict=True).parent
     if binary_parent.name.casefold() not in {"scripts", "bin"}:
+        for allowed_root in roots:
+            for denied_root in denied_paths:
+                if _paths_overlap(allowed_root, denied_root):
+                    raise WindowsPsecError(
+                        "Python runtime path overlaps a denied host path"
+                    )
         return tuple(roots)
 
     config_path = runtime_root / "pyvenv.cfg"
