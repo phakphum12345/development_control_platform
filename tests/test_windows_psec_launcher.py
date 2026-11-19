@@ -77,12 +77,17 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
         program_files.mkdir(parents=True, exist_ok=True)
         return program_files.resolve()
 
-    def _make_venv_runtime(self, root: Path, base_home: Path) -> Path:
+    def _make_venv_runtime(
+        self, root: Path, base_home: Path, venv_root: Path | None = None,
+    ) -> Path:
         root = root.resolve()
-        scripts = root / "Scripts"
+        base_home = Path(base_home)
+        if venv_root is None:
+            venv_root = base_home / "venvs" / "psec"
+        scripts = venv_root / "Scripts"
         scripts.mkdir(parents=True)
         (scripts / "python.exe").write_bytes(b"venv redirector test fixture")
-        (root / "pyvenv.cfg").write_text(
+        (venv_root / "pyvenv.cfg").write_text(
             f"home = {base_home}\nversion = 3.12.10\n",
             encoding="utf-8",
         )
@@ -159,6 +164,21 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             self.assertIn(base_home / "Lib", read_only)
             denied = tuple(Path(value) for value in build_spec.call_args.kwargs["denied_paths"])
             self.assertFalse(any(_paths_overlap(base_home, value) for value in denied))
+
+    def test_venv_outside_protected_program_files_runtime_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            program_files = self._program_files_root(root)
+            base_home = program_files / "DCP" / "Python312"
+            untrusted_venv = root / "workspace-venv"
+            executable = self._make_venv_runtime(root, base_home, untrusted_venv)
+
+            with mock.patch(
+                "tools.local_runner_agent.windows_psec_launcher._program_files_roots",
+                return_value=(program_files,),
+            ):
+                with self.assertRaisesRegex(WindowsPsecError, "virtual environment must use the protected Program Files"):
+                    _runtime_directories(str(executable), ())
 
     def test_venv_base_runtime_under_denied_host_profile_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
