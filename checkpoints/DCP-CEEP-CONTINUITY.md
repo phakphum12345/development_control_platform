@@ -169,3 +169,19 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Native Windows bootstrap acceptance output includes `Local Runner credential bootstrap tests passed.`; the symlink test did not emit its capability-based SKIPPED warning.
 - Optional Windows runner acceptance is SKIPPED; this does not certify PSEC/AppContainer/LPAC.
 - PR #152 remains Draft and unmerged. No cloud resource provisioning or VM creation occurred.
+
+
+---
+
+## 2026-11-20 — WP-06 native Windows acceptance and security audit checkpoint
+
+- Worktree: `D:\\DCP-WP06-TEST`; branch: `work/wp06-trusted-repository-bootstrap`.
+- Exact tested source/document head before this checkpoint: `0cb2a4077bc250777cb02d51bd6442ef5ef6e97c`.
+- Native test command ran under Windows PowerShell 5.1 with an isolated `RUNNER_TEMP`; the test used a temporary `LOCALAPPDATA` beneath that isolated directory and did not touch the real `%LOCALAPPDATA%\\DCP` profile.
+- Result: `tests/test_local_runner_bootstrap.ps1` completed with `Local Runner credential bootstrap tests passed.` and native process exit code `0`.
+- The run exercised first enrollment, idempotent token preservation, second-worker unique token, persisted two-repository allowlist, ACL inspection, traversal rejection, case-insensitive duplicate rejection, settings reparse-point rejection, oversized settings rejection, 20-repository limit, and 16-worker limit. The symlink branch ran; no capability-based SKIPPED warning appeared.
+- CI on the same tested head `0cb2a407...`: Validate, Windows dynamic-port integration, Linux Minimal Emulator, Windows Auth Proxy + Gateway E2E, Ubuntu Recovery and Windows Recovery PASS; optional Windows runner acceptance SKIPPED.
+- Security audit remains OPEN for the file replacement and parent-directory boundary: `Move-Item -Force` has not yet been demonstrated to provide the required atomic replacement semantics for an existing destination under Windows PowerShell 5.1; the DCP parent directory ACL and replacement race behavior have not been independently verified. Do not claim race-safe atomic replacement until those properties are tested or implementation is hardened.
+- The two-file update is not transactional: credentials are committed before Gateway settings. Validation failures are proven not to mutate either file, but an I/O/ACL failure during the second write could leave a partial update. This remains a reliability/security-hardening follow-up.
+- Historical WP-18 checkpoints above are retained unchanged. WP-06 bootstrap acceptance does not certify PSEC, AppContainer/LPAC, Trusted Python runtime, process-tree containment or Terminal OS isolation.
+- PR #152 remains Draft / unmerged. No cloud provisioning, deployment, VM creation, branch rewrite or merge was performed.
