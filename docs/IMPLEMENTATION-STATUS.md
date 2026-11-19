@@ -128,3 +128,16 @@ These are historical exact-SHA CI results for the baseline, not current feature-
 ## 8. Completion rule
 
 Do not mark a Work Package PASS based only on source presence, test-file presence, skipped CI, stale SHA evidence, or GitHub-hosted CI where real-host acceptance is required. Keep missing or unverified evidence UNKNOWN. The Repository is not E2E Complete until the full WP register, requirement traceability, critical CI and required operational acceptance are closed.
+
+
+---
+
+## 2026-11-20 — WP-06 Trusted Repository Bootstrap split
+
+- A mainline contract defect was isolated: `tests/test_local_runner_bootstrap.ps1` calls `Setup-DCP-Local-Runner.ps1 -TrustedRepository`, but mainline setup accepted only `-WorkerId`.
+- `Start-DCP-Gateway-Runner.ps1` already requires a persisted `gateway-local-settings.json` allowlist before trusted repository execution; the Local Auth Proxy already loads that file and exports `DCP_GATEWAY_ALLOWED_REPOSITORIES`.
+- A separate WP-06 branch `work/wp06-trusted-repository-bootstrap` adds the missing parameter and bounded Owner allowlist persistence, preserving offline enrollment defaults.
+- Implementation includes regular-file/reparse checks, 64 KiB token and 16 KiB settings bounds, 16-worker and 20-repository limits, repository syntax/traversal/case-insensitive duplicate validation, protected temp/final ACL writes, and preservation on invalid input.
+- Windows acceptance tests now cover traversal, case-insensitive duplicates, allowlist overflow, oversized worker maps and no-mutation-on-rejection.
+- PR #152 is Draft; exact-head CI is pending. No PASS is claimed yet.
+- This slice does not implement or certify Windows AppContainer/LPAC or Trusted Python runtime. PR #140/#149 remain separate PSEC streams and require reconciliation after the bootstrap dependency is reviewed.
