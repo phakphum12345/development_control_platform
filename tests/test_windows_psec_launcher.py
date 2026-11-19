@@ -174,6 +174,23 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
                 with self.assertRaisesRegex(WindowsPsecError, "trusted Program Files"):
                     _runtime_directories(str(executable), (denied_profile,))
 
+    def test_user_programfiles_override_cannot_trust_unregistered_runtime(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            registered_program_files = self._program_files_root(root)
+            overridden_program_files = root / "UserControlledProgramFiles"
+            overridden_program_files.mkdir()
+            base_home = overridden_program_files / "DCP" / "Python312"
+            executable = self._make_venv_runtime(root / "venv", base_home)
+
+            with mock.patch.dict(os.environ, {"ProgramFiles": str(overridden_program_files)}):
+                with mock.patch(
+                    "tools.local_runner_agent.windows_psec_launcher._program_files_roots",
+                    return_value=(registered_program_files,),
+                ):
+                    with self.assertRaisesRegex(WindowsPsecError, "protected Program Files"):
+                        _runtime_directories(str(executable), ())
+
     def test_venv_base_home_parent_traversal_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
@@ -305,7 +322,10 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             except (OSError, NotImplementedError):
                 self.skipTest("directory symlink creation is unavailable")
             executable = self._make_venv_runtime(root / "venv", link_home)
-            with mock.patch.dict(os.environ, {"ProgramFiles": str(program_files)}):
+            with mock.patch(
+                "tools.local_runner_agent.windows_psec_launcher._program_files_roots",
+                return_value=(program_files,),
+            ):
                 with self.assertRaisesRegex(WindowsPsecError, "reparse point"):
                     _runtime_directories(str(executable), ())
 
