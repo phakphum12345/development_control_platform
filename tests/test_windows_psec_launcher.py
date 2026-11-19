@@ -74,7 +74,7 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
         scripts.mkdir(parents=True)
         (scripts / "python.exe").write_bytes(b"venv redirector test fixture")
         (root / "pyvenv.cfg").write_text(
-            f"home = {base_home}\\nversion = 3.12.10\\n",
+            f"home = {base_home}\nversion = 3.12.10\n",
             encoding="utf-8",
         )
         base_home.mkdir(parents=True, exist_ok=True)
@@ -104,6 +104,19 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
 
             with self.assertRaisesRegex(WindowsPsecError, "overlaps a denied host path"):
                 _runtime_directories(str(executable), (denied_profile,))
+
+    def test_venv_base_home_parent_traversal_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            base_home = root / "TrustedRuntime" / "Python312"
+            executable = self._make_venv_runtime(root / "venv", base_home)
+            config = executable.parent.parent / "pyvenv.cfg"
+            config.write_text(
+                f"home = {base_home / '..' / '..'}\\nversion = 3.12.10\\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(WindowsPsecError, "canonical directory"):
+                _runtime_directories(str(executable), ())
 
     def test_venv_without_pyvenv_cfg_fails_closed(self):
         with tempfile.TemporaryDirectory() as temporary:
