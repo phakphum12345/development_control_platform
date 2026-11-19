@@ -64,16 +64,11 @@ function Assert-TrustedAcl {
        "S-1-5-32-544",
        "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"
    )
-   $broadPrincipals = @(
-       "S-1-1-0",       # Everyone
-       "S-1-5-4",       # Interactive
-       "S-1-5-11",      # Authenticated Users
-       "S-1-5-32-545",  # BUILTIN\Users
-       "S-1-15-2-1",    # ALL APPLICATION PACKAGES
-       "S-1-15-2-2"     # ALL RESTRICTED APPLICATION PACKAGES
+   $trustedWriters = @(
+       "S-1-5-18",
+       "S-1-5-32-544",
+       "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"
    )
-   $currentUserSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-   $broadPrincipals += $currentUserSid
 
    $writeMask = [int](
        0x00000002 -bor  # FILE_WRITE_DATA
@@ -105,13 +100,15 @@ function Assert-TrustedAcl {
            catch {
                throw "Could not resolve ACL principal on '$target': $($rule.IdentityReference)"
            }
-           if ($sid -notin $broadPrincipals) {
+           $rights = [int]$rule.FileSystemRights
+           if (($rights -band $writeMask) -eq 0 -or $sid -in $trustedWriters) {
                continue
            }
-           $rights = [int]$rule.FileSystemRights
-           if (($rights -band $writeMask) -ne 0) {
-               throw "Broad principal '$sid' has write-capable ACL rights on '$target': $($rule.FileSystemRights)"
+           if ($sid -eq "S-1-3-0" -and
+               ($rule.PropagationFlags -band [System.Security.AccessControl.PropagationFlags]::InheritOnly) -ne 0) {
+               continue
            }
+           throw "Untrusted principal '$sid' has write-capable ACL rights on '$target': $($rule.FileSystemRights)"
        }
    }
 }
