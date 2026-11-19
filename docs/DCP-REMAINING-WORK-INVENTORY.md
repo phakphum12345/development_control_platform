@@ -170,3 +170,10 @@ No merge, deployment, cloud provisioning, VM creation, branch deletion, force-pu
 - Gateway and Auth Proxy GET/POST/DELETE path families, Runner credential route shapes, bounded query rules and core role/CSRF controls are now mapped in `docs/DCP-REQUIREMENTS-TRACEABILITY.md`.
 - WP-00B remains IN_PROGRESS for complete request/response schemas, every status/error branch, Gateway-to-Proxy allowlist equivalence and view-to-handler-to-service tracing.
 - Branch head before this continuity update: `9dbfc547cde21566d9df1eca099229bc3c1bdd47`.
+
+
+### 2026-11-19 — Mainline test-path audit correction
+- Corrected the traceability matrix to reference only test files present in the current main baseline.
+- PR-only Windows PSEC test patterns remain explicitly labeled as branch-only, not mainline evidence.
+- Branch head before this ledger update: `0ecd1597160f4ea91fc1533cb8974aa8d66cbd07`.
+- Full test-function enumeration remains open; no count inferred from GitHub code-search excerpts.
