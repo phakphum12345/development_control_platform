@@ -17,13 +17,14 @@ because a helper binary is installed or a process starts successfully.
 
 | Platform | Candidate backend | Required boundary | Current state |
 |---|---|---|---|
-| Windows 10/11 | Native AppContainer or LPAC launcher + Job Object | Restricted token/package SID, explicit read-only workspace and runtime capabilities, no network capability, child-process containment and verified cleanup | BLOCKED — native launcher and host acceptance not implemented |
-| Linux | bubblewrap + user/mount/PID/IPC/UTS/network namespaces + seccomp | Empty namespace root, explicit read-only runtime mounts, assigned workspace only, per-job scratch, private network namespace, reviewed syscall policy, child cleanup | BLOCKED — preflight contract only; no verified launcher |
+| Windows 10/11 | Windows Process Security Environment (PSEC) v1.1 + Job Object | Filesystem deny/enumerate policy, default-deny network ingress/egress, no network capabilities, Win32k disabled, explicit inherited handles, kill-on-close process-tree containment | READY_FOR_ACCEPTANCE when PSEC v1.1 features are present; not VERIFIED |
+| Linux | bubblewrap + user/mount/PID/IPC/UTS/network namespaces + seccomp | Empty namespace root, explicit read-only runtime mounts, assigned workspace only, per-job scratch, private network namespace, reviewed syscall policy, child cleanup | READY_FOR_ACCEPTANCE when bwrap is present; integrated launcher is not host-verified |
 | macOS | Signed App Sandbox helper with explicit entitlements | Signed helper, explicit file access, network client/server entitlements disabled, process lifecycle and cleanup evidence | BLOCKED — helper and signing/entitlement acceptance not implemented |
 
-Windows AppContainer/LPAC is the selected Windows security boundary. Job Objects
-remain necessary for resource and process-tree lifecycle, but are not a substitute
-for AppContainer access control.
+Windows uses the Process Security Environment (PSEC) v1.1 API. PSEC is not LPAC:
+do not claim LPAC's all-application-packages opt-out or LPAC-equivalent least
+privilege. Job Objects remain necessary for process-tree lifecycle and do not
+substitute for PSEC filesystem/network access control.
 
 Linux bubblewrap is a candidate because it can construct mount and network namespaces,
 PID/IPC/UTS isolation and seccomp filtering. Its safety depends on the exact mounts and
@@ -37,12 +38,32 @@ Do not use the deprecated sandbox-exec interface as a production substitute.
 - tools/local_runner_agent/terminal_isolation.py records the platform backend and
   returns only BLOCKED or READY_FOR_ACCEPTANCE from current detection.
 - Presence of bwrap is explicitly not reported as network/filesystem/process isolation.
-- Windows and macOS remain blocked until their native helper implementations exist.
+- WP-18B adds a Windows PSEC v1.1 capability/spec-creation probe and integrates WindowsPsecLauncher into TerminalScriptExecutor. The launcher creates a PSEC security environment, starts the fixed executable through CreateProcessW with an explicit inherited-handle list, creates it suspended, assigns a Job Object with KILL_ON_JOB_CLOSE and an active-process ceiling, then resumes it. The process facade tracks Job Object active-process count rather than only the root PID.
+- Windows remains READY_FOR_ACCEPTANCE at most; the default isolation contract keeps network/filesystem/process-tree enforcement claims false and Terminal execution blocked until target-host adversarial acceptance.
+- macOS remains BLOCKED until its signed App Sandbox helper and host acceptance exist.
 - require_verified_isolation() rejects every state except a complete VERIFIED
   assessment with all three enforcement claims.
-- TerminalScriptExecutor now calls require_verified_isolation() before workspace resolution or process launch. The default platform assessment cannot return VERIFIED, so the executor fails closed on every host until a trusted verifier is implemented and accepted.
-- Unit tests inject a test-only VERIFIED assessment to exercise the executor's existing process-control behavior; this is not production evidence.
-- This module is a gate contract, not a process launcher and not a security boundary.
+- TerminalScriptExecutor calls require_verified_isolation() before workspace resolution or process launch. The default platform assessment cannot return VERIFIED, so production execution remains blocked.
+- WP-18A now connects the Linux executor path to LinuxBubblewrapLauncher: it resolves only tools from the approved /usr/bin runtime, mounts the assigned workspace read-only and per-job scratch separately, passes the seccomp descriptor with pass_fds, and closes the parent descriptor immediately after process creation.
+- The Linux executor does not fall back to a host Popen command if bubblewrap is missing, command construction fails, or the seccomp descriptor cannot be inherited. The Windows path uses the integrated PSEC launcher and never falls back to direct host Popen; both platforms remain blocked until their host acceptance gates return VERIFIED.
+- The bubblewrap host process receives only the executor's template-allowlisted environment and fixed safety settings, never the ambient host environment or Runner credentials; the workload environment is reconstructed after --clearenv.
+- Git repository filter discovery also runs as a fixed `git config --name-only` command inside bubblewrap before the requested Git command. No Git process is launched on the host against project-controlled repository configuration.
+- Both backend detection and launcher construction resolve bubblewrap only from the approved /usr/bin runtime. The launcher rejects a resolved bubblewrap binary outside that runtime tree.
+- Executor unit tests use an explicitly test-only passthrough launcher to exercise bounded process/output/cancellation behavior. They do not assert or prove OS isolation.
+- terminal_isolation.py remains the gate contract; linux_sandbox.py and windows_psec_launcher.py construct candidate launch boundaries. Neither module promotes a host to VERIFIED.
+
+## WP-18B target Windows acceptance
+
+Run these commands from the repository root on the target Windows Runner host:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\Install-DCP-Windows-PSEC.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\Run-DCP-Windows-PSEC-Host-Acceptance.ps1
+```
+
+The first command installs the pinned optional FlatBuffers serializer and probes PSEC v1.1 API/features plus policy creation. The second launches fixed test payloads through the PSEC launcher and checks workspace read-only behavior, scratch-only writes, host-profile canary denial, loopback network denial (after a host-side loopback baseline), and Job Object descendant termination.
+
+Preserve the complete JSON output and the exact repository HEAD SHA. A successful run is host-specific evidence for that revision; it does not automatically promote the backend to VERIFIED or enable Terminal templates. If the probe or any acceptance check is BLOCKED/FAIL/UNKNOWN, keep Windows execution blocked.
 
 ## Mandatory acceptance matrix
 
@@ -89,10 +110,13 @@ on that actual host and exact helper build:
 
 ## References
 
-- Microsoft, Windows application isolation:
-  https://learn.microsoft.com/en-us/windows/security/book/application-security-application-isolation
-- Microsoft, launching AppContainer/LPAC:
-  https://learn.microsoft.com/en-us/windows/win32/secauthz/implementing-an-appcontainer
+- Microsoft, CreateProcessSecurityEnvironment and processmodel.dll:
+  https://learn.microsoft.com/en-us/windows/win32/api/processmodel/
+- Microsoft, Windows Job Objects:
+  https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects
+- Microsoft MXC Process Container reference implementation and Windows support matrix:
+  https://github.com/microsoft/mxc/tree/main/docs/backends/process-container
+  https://github.com/microsoft/mxc/blob/main/docs/backends/process-container/os-version-support.md
 - Bubblewrap upstream documentation:
   https://github.com/containers/bubblewrap
 - Apple, App Sandbox:
@@ -106,8 +130,28 @@ on that actual host and exact helper build:
 - The user namespace is mapped to UID/GID 0 inside the namespace, all capabilities are dropped, and further user namespaces are disabled/asserted disabled. The host-side workspace remains read-only and scratch remains job-scoped.
 - Added `tests/test_linux_sandbox.py` for argument policy, seccomp program alignment, unsupported architectures, path validation and workspace/scratch separation. These are command-construction tests, not proof that the kernel accepted or enforced the sandbox.
 - Added the Linux policy tests to the Ubuntu/Windows Cross-platform Recovery Acceptance matrix. Windows marks this Linux-only test class skipped; that skip is not a Windows pass for Linux isolation.
-- The command builder is not yet integrated into TerminalScriptExecutor and no actual host acceptance has been run. Linux remains BLOCKED/READY_FOR_ACCEPTANCE only; `require_verified_isolation()` still blocks production execution. All seven built-in templates remain disabled.
+- The command builder is now integrated into TerminalScriptExecutor, including seccomp FD inheritance and fail-closed launch errors. No user-host acceptance has been run. Linux remains BLOCKED/READY_FOR_ACCEPTANCE only; `require_verified_isolation()` still blocks production execution. All seven built-in templates remain disabled.
 - Upstream behavior reference: bubblewrap's own option parser documents `--unshare-user`, `--uid`, `--gid`, `--unshare-net`, `--seccomp`, `--disable-userns` and `--cap-drop`: https://github.com/containers/bubblewrap/blob/main/bubblewrap.c
 
 
 - Added an opt-in actual bubblewrap runtime test to the Linux-only suite. The Ubuntu CI job installs bubblewrap and attempts to verify workspace read-only behavior, isolation of an unmounted host sentinel, writable per-job scratch, and socket denial through seccomp. This is acceptance on the ephemeral GitHub-hosted Ubuntu runner only; it does not replace acceptance on the user's Linux host.
+
+
+## WP-18C — process-tree containment and conservative workspace recovery
+
+- Linux Terminal launch continues to use bubblewrap's `--die-with-parent`, a private PID namespace and a separate session. The executor terminates the outer launcher process group; the sandbox parent-death boundary is responsible for terminating descendants that create a new session inside the PID namespace.
+- Added a Linux-only adversarial timeout test that forks a child, calls `setsid()` in the child to leave the process group, then verifies that no running descendants remain after the bubblewrap parent is terminated. This is CI-host evidence, not user-host acceptance.
+- Added an authenticated Runner-only `GET /v1/runner/{job_id}/workspace-cleanup-status` endpoint. It reveals only minimal status for a Terminal job whose current/last worker matches the calling Runner.
+- The Gateway attests `cleanup_safe` only when the job is terminal, has no active worker/lease, and is either succeeded/cancelled or failed specifically because workspace cleanup failed. Lease-expired failures and UNKNOWN outcomes are not cleanup-safe.
+- Runner startup now performs expired-preview cleanup and asks the Gateway to attest candidate Terminal workspaces. The reconciler requires a valid ownership marker, matching job/worker, terminal target, an elapsed 120-second grace period, and explicit `cleanup_safe=true`.
+- Active, queued, retrying, UNKNOWN, LEASE_EXPIRED, recent, mismatched, unowned, malformed, unavailable, and preview-retained workspaces are preserved. A missing Gateway response never authorizes deletion.
+- This is conservative recovery for known terminal Terminal jobs, not a universal orphan cleaner. UNKNOWN workspaces intentionally remain for investigation. Windows PSEC Job Object containment is now integrated under WP-18B, but actual Windows descendant cleanup and crash acceptance remain UNKNOWN; macOS process cleanup remains blocked. WP-18C therefore remains PARTIAL until host-level acceptance and broader crash recovery are proven.
+
+
+## WP-18D — adversarial Linux sandbox acceptance
+
+- Expanded real bubblewrap runtime coverage to deny IPv4, IPv6, Unix-domain sockets, socketpair, and `io_uring_setup`; the workload must report zero effective capabilities and must not see host `/etc/passwd`.
+- Added a workspace symlink escape test proving an absolute host-file symlink cannot expose a host sentinel through the sandbox's separate `/tmp` mount.
+- Added `tools/local_runner_agent/linux_host_acceptance.py`, which runs five non-skipped real bubblewrap tests and emits JSON evidence containing host kernel, architecture, UID/GID, Python version and bubblewrap version.
+- Run instructions and strict PASS/BLOCKED/FAIL criteria are in [Linux Host Acceptance](DCP-LINUX-HOST-ACCEPTANCE.md).
+- GitHub-hosted Ubuntu CI is not a substitute for the target host. Until the harness is run successfully on the actual Runner host, target-host acceptance remains UNKNOWN and production Terminal templates remain disabled.

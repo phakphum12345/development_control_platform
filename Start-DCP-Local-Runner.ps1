@@ -10,7 +10,14 @@ param(
 $ErrorActionPreference = 'Stop'
 if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is not available.' }
 $project = [System.IO.Path]::GetFullPath($PSScriptRoot)
-$credentialFile = Join-Path $env:LOCALAPPDATA 'DCP\runner-tokens.json'
+$dataDir = Join-Path $env:LOCALAPPDATA 'DCP'
+$dataDirItem = Get-Item -LiteralPath $dataDir -Force -ErrorAction SilentlyContinue
+if ($null -eq $dataDirItem -or
+    (($dataDirItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -or
+    -not $dataDirItem.PSIsContainer) {
+    throw 'Local DCP data directory is missing or unsafe.'
+}
+$credentialFile = Join-Path $dataDir 'runner-tokens.json'
 $python = Get-Command py.exe -ErrorAction SilentlyContinue
 if (-not $python) { throw 'Python Launcher (py.exe) was not found. Run Setup-DCP-Local.cmd first.' }
 
@@ -54,7 +61,21 @@ if ($EnableExecution) {
         $gatewaySettings.allowed_repositories -isnot [System.Array]) {
         throw 'Gateway repository allowlist file has an invalid schema.'
     }
+
     $gatewayAllowed = @($gatewaySettings.allowed_repositories)
+    if ($gatewayAllowed.Count -gt 20) {
+        throw 'Gateway repository allowlist exceeds 20 entries.'
+    }
+    $seenGatewayRepositories = New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($allowedRepository in $gatewayAllowed) {
+        if ($allowedRepository -isnot [string] -or
+            $allowedRepository -notmatch '^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$' -or
+            @($allowedRepository.Split('/')) -contains '.' -or
+            @($allowedRepository.Split('/')) -contains '..' -or
+            -not $seenGatewayRepositories.Add($allowedRepository)) {
+            throw 'Gateway repository allowlist contains an invalid or duplicate entry.'
+        }
+    }
 
     $uniqueTrustedRepositories = @($TrustedRepository | Select-Object -Unique)
     if ($uniqueTrustedRepositories.Count -ne $TrustedRepository.Count) {

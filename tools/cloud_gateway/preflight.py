@@ -6,6 +6,7 @@ services, or provisions infrastructure.
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import math
 import os
@@ -16,6 +17,39 @@ from urllib.parse import urlparse
 from .azure_guest_profile import AzureGuestProfileError, AzureGuestProfileFactory
 from .azure_egress import _valid_fqdn_pattern
 
+
+
+def _managed_identity_configuration_valid(values: Mapping[str, str]) -> bool:
+    use_imds = values.get("DCP_AZURE_USE_IMDS", "false")
+    if not isinstance(use_imds, str) or use_imds.lower() not in ("true", "false"):
+        return False
+    endpoint = values.get("IDENTITY_ENDPOINT", "")
+    identity_header = values.get("IDENTITY_HEADER", "")
+    endpoint_valid = False
+    if endpoint or identity_header:
+        if not isinstance(endpoint, str) or not isinstance(identity_header, str) or not identity_header or len(identity_header) > 4096 or "\r" in identity_header or "\n" in identity_header:
+            return False
+        try:
+            parsed = urlparse(endpoint)
+            _ = parsed.port
+            endpoint_valid = (
+                parsed.scheme == "http"
+                and parsed.hostname in ("localhost", "127.0.0.1", "::1")
+                and parsed.username is None and parsed.password is None
+                and parsed.fragment == "" and parsed.query == ""
+                and parsed.path.startswith("/")
+            )
+        except (TypeError, ValueError):
+            endpoint_valid = False
+    elif use_imds.lower() == "true":
+        endpoint_valid = True
+    client_id = values.get("AZURE_CLIENT_ID", "")
+    client_id_valid = (
+        isinstance(client_id, str)
+        and (not client_id or (len(client_id) <= 256
+            and "\r" not in client_id and "\n" not in client_id))
+    )
+    return endpoint_valid and client_id_valid
 
 def _present(env: Mapping[str, str], name: str) -> bool:
     value = env.get(name, "")
@@ -133,7 +167,8 @@ def inspect_environment(env: Mapping[str, str] | None = None) -> dict:
         "DCP_AZURE_SUBSCRIPTION_ID", "DCP_AZURE_RESOURCE_GROUP",
         "DCP_AZURE_LOCATION", "DCP_AZURE_SUBNET_ID", "DCP_AZURE_NSG_ID",
         "DCP_AZURE_ROUTE_TABLE_ID", "DCP_AZURE_FIREWALL_ID",
-        "DCP_AZURE_FIREWALL_POLICY_ID", "DCP_AZURE_BUDGET_NAME", "DCP_AZURE_PROJECTED_RUN_COST_USD",
+        "DCP_AZURE_FIREWALL_POLICY_ID", "DCP_AZURE_EXPECTED_FIREWALL_IP",
+        "DCP_AZURE_REQUIRED_OUTBOUND_FLOWS_JSON", "DCP_AZURE_BUDGET_NAME", "DCP_AZURE_PROJECTED_RUN_COST_USD",
         "DCP_AZURE_LINUX_VM_SIZE", "DCP_AZURE_WINDOWS_VM_SIZE",
         "DCP_AZURE_LINUX_IMAGE_PUBLISHER", "DCP_AZURE_LINUX_IMAGE_OFFER",
         "DCP_AZURE_LINUX_IMAGE_SKU", "DCP_AZURE_LINUX_IMAGE_VERSION",
@@ -185,6 +220,51 @@ def inspect_environment(env: Mapping[str, str] | None = None) -> dict:
         "Subnet, NSG, route table, firewall and firewall policy IDs are valid and isolated from the runner resource group"
         if network_resource_ids_valid else "Separate, valid Azure network resource IDs are required; configured values are not echoed",
     )
+    expected_firewall_ip = values.get("DCP_AZURE_EXPECTED_FIREWALL_IP", "")
+    try:
+        firewall_address = ipaddress.ip_address(expected_firewall_ip)
+        firewall_ip_valid = (
+            firewall_address.version == 4 and firewall_address.is_private
+            and not (firewall_address.is_loopback or firewall_address.is_link_local
+                     or firewall_address.is_multicast or firewall_address.is_unspecified
+                     or firewall_address.is_reserved)
+        )
+    except (TypeError, ValueError):
+        firewall_ip_valid = False
+    flows_present = _present(values, "DCP_AZURE_REQUIRED_OUTBOUND_FLOWS_JSON")
+    flows_valid = False
+    try:
+        flows = json.loads(values.get("DCP_AZURE_REQUIRED_OUTBOUND_FLOWS_JSON", ""))
+        if isinstance(flows, list) and 1 <= len(flows) <= 64:
+            seen_flows = set()
+            flows_valid = True
+            for flow in flows:
+                if not isinstance(flow, dict) or set(flow) != {"protocol", "port", "destination"}:
+                    flows_valid = False
+                    break
+                protocol, port, destination = flow["protocol"], flow["port"], flow["destination"]
+                if protocol not in ("Tcp", "Udp") or isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535 or not isinstance(destination, str):
+                    flows_valid = False
+                    break
+                network = ipaddress.ip_network(destination, strict=False)
+                if network.version != 4 or network.prefixlen == 0 or not network.is_global or network.is_multicast or network.is_unspecified:
+                    flows_valid = False
+                    break
+                key = (protocol, port, str(network))
+                if key in seen_flows:
+                    flows_valid = False
+                    break
+                seen_flows.add(key)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        flows_valid = False
+    effective_network_present = _present(values, "DCP_AZURE_EXPECTED_FIREWALL_IP") and flows_present
+    effective_network_valid = firewall_ip_valid and flows_valid
+    add(
+        "azure_effective_network_configuration",
+        "PASS" if effective_network_valid else ("UNKNOWN" if not effective_network_present else "FAIL"),
+        "Private firewall IPv4 and a bounded, unique TCP/UDP CIDR/port allowlist are syntactically valid"
+        if effective_network_valid else "Requires a private IPv4 firewall next hop and 1..64 unique bounded TCP/UDP CIDR/port flows",
+    )
     extra_fqdns = tuple(
         item.strip() for item in values.get("DCP_AZURE_EGRESS_EXTRA_FQDNS", "").split(",")
         if item.strip()
@@ -205,6 +285,7 @@ def inspect_environment(env: Mapping[str, str] | None = None) -> dict:
         and bool(re.fullmatch(r"[A-Za-z0-9_.()-]{1,90}", values.get("DCP_AZURE_RESOURCE_GROUP", "")))
         and bool(re.fullmatch(r"[a-z0-9]+", values.get("DCP_AZURE_LOCATION", "")))
         and network_resource_ids_valid
+        and effective_network_valid
         and bool(re.fullmatch(r"[A-Za-z0-9_.-]{1,63}", values.get("DCP_AZURE_BUDGET_NAME", "")))
         and _valid_amount(values.get("DCP_AZURE_PROJECTED_RUN_COST_USD", ""))
         and all(re.fullmatch(r"[A-Za-z0-9_]+", values.get(name, "")) for name in
@@ -229,13 +310,21 @@ def inspect_environment(env: Mapping[str, str] | None = None) -> dict:
         "Azure resource IDs, budget projection, VM sizes, and pinned runner artifacts are syntactically valid"
         if azure_valid else "Azure configuration is missing or contains invalid identifiers/values; values are not echoed")
     add("azure_network_policy", "UNKNOWN",
-        "Live ARM inspection must verify subnet/NSG/UDR, Azure Firewall policy, DNS proxy and current GitHub Actions FQDN allowlist")
+        "Live ARM inspection must verify subnet/NSG/UDR, Firewall FQDN policy, DNS proxy, and each created NIC effective NSG/default route before VM creation")
     provider_enabled_raw = values.get("DCP_AZURE_PROVIDER_ENABLED", "false").strip().lower()
     provider_enabled_valid = provider_enabled_raw in ("true", "false")
     provider_enabled = provider_enabled_raw == "true"
+    managed_identity_valid = _managed_identity_configuration_valid(values)
+    add(
+        "azure_managed_identity_configuration",
+        "PASS" if (provider_enabled_valid and not provider_enabled) or managed_identity_valid else "FAIL",
+        "Azure provider is disabled or a trusted local identity endpoint/explicit IMDS mode is configured"
+        if (provider_enabled_valid and not provider_enabled) or managed_identity_valid
+        else "Azure provider opt-in requires a trusted local identity endpoint with header or DCP_AZURE_USE_IMDS=true",
+    )
     provider_opt_in_ok = (
         provider_enabled_valid
-        and (not provider_enabled or (azure_valid and github_valid))
+        and (not provider_enabled or (azure_valid and github_valid and managed_identity_valid))
         and not (enabled and not provider_enabled)
     )
     add(

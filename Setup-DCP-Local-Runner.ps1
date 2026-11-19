@@ -149,7 +149,6 @@ if ($null -ne $existingCredentialItem) {
     if ($null -eq $existingTokens -or $existingTokens -isnot [pscustomobject]) {
         throw 'Existing Runner credential file must be a JSON object.'
     }
-
     $seenTokens = New-Object 'System.Collections.Generic.HashSet[string]'
     foreach ($property in $existingTokens.PSObject.Properties) {
         if ($property.Name -notmatch $workerPattern -or
@@ -228,17 +227,60 @@ if ($allowedRepositoryMap.Count -gt 20) {
     throw 'The local Gateway repository allowlist is limited to 20 repositories.'
 }
 
+$existingSettingsItem = Get-Item -LiteralPath $settingsFile -Force -ErrorAction SilentlyContinue
+if ($null -ne $existingSettingsItem) {
+    if ((($existingSettingsItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -or $existingSettingsItem.PSIsContainer) {
+        throw 'Existing local Gateway settings path is not a regular file.'
+    }
+    if ($existingSettingsItem.Length -gt 16384) {
+        throw 'Existing local Gateway settings file exceeds 16 KiB.'
+    }
+    try {
+        $existingSettings = Get-Content -LiteralPath $settingsFile -Raw | ConvertFrom-Json
+    } catch {
+        throw 'Existing local Gateway settings file is invalid JSON; it was not changed.'
+    }
+    if ($null -eq $existingSettings -or $existingSettings -isnot [pscustomobject] -or
+        @($existingSettings.PSObject.Properties).Count -ne 1 -or
+        $null -eq $existingSettings.PSObject.Properties['allowed_repositories'] -or
+        $existingSettings.allowed_repositories -isnot [System.Array]) {
+        throw 'Existing local Gateway settings file has an invalid schema.'
+    }
+    $settingsFileExists = $true
+    foreach ($repository in @($existingSettings.allowed_repositories)) {
+        if ($repository -isnot [string] -or $repository -notmatch $repositoryPattern -or
+            @($repository.Split('/')) -contains '.' -or @($repository.Split('/')) -contains '..') {
+            throw 'Existing local Gateway allowlist contains an invalid repository.'
+        }
+        if ($allowedRepositoryMap.ContainsKey($repository)) {
+            throw 'Existing local Gateway allowlist contains duplicate repository names.'
+        }
+        $allowedRepositoryMap[$repository] = $repository
+    }
+}
+
+foreach ($repository in $TrustedRepository) {
+    if ($repository -notmatch $repositoryPattern -or
+        @($repository.Split('/')) -contains '.' -or @($repository.Split('/')) -contains '..') {
+        throw "Invalid trusted repository name: $repository"
+    }
+    $matchingKey = @($allowedRepositoryMap.Keys | Where-Object { $_ -ieq $repository })
+    if ($matchingKey.Count -gt 0 -and $matchingKey[0] -cne $repository) {
+        throw 'Trusted repository name casing must match the existing Gateway allowlist exactly.'
+    }
+    $allowedRepositoryMap[$repository] = $repository
+}
+if ($allowedRepositoryMap.Count -gt 20) {
+    throw 'The local Gateway repository allowlist is limited to 20 repositories.'
+}
+
 if (-not $tokenMap.ContainsKey($WorkerId)) {
     if ($tokenMap.Count -ge 16) {
         throw 'The local Runner credential file already contains 16 workers.'
     }
     $bytes = New-Object byte[] 48
     $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
-    try {
-        $rng.GetBytes($bytes)
-    } finally {
-        $rng.Dispose()
-    }
+    try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
     $tokenMap[$WorkerId] = [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
 }
 

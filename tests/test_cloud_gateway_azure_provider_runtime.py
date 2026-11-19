@@ -35,6 +35,8 @@ def environment():
         "DCP_AZURE_ROUTE_TABLE_ID": resource("routeTables", "runner-rt"),
         "DCP_AZURE_FIREWALL_ID": resource("azureFirewalls", "runner-fw"),
         "DCP_AZURE_FIREWALL_POLICY_ID": resource("firewallPolicies", "runner-policy"),
+        "DCP_AZURE_EXPECTED_FIREWALL_IP": "10.20.0.4",
+        "DCP_AZURE_REQUIRED_OUTBOUND_FLOWS_JSON": '[{"protocol":"Tcp","port":443,"destination":"13.64.0.0/11"}]',
         "DCP_AZURE_BUDGET_NAME": "dcp-monthly",
         "DCP_AZURE_PROJECTED_RUN_COST_USD": "1.25",
         "DCP_AZURE_LINUX_VM_SIZE": "Standard_D2s_v5",
@@ -73,14 +75,17 @@ class AzureProviderRuntimeTests(unittest.TestCase):
         def egress_factory(arm, env):
             seen["egress_args"] = (arm, env)
             return lambda os_name, subnet_id, nsg_id: True
-        return seen, credential_factory, arm_factory, egress_factory
+        def effective_factory(arm, nsg_id, flows, firewall_ip):
+            seen["effective_args"] = (arm, nsg_id, flows, firewall_ip)
+            return SimpleNamespace(verify_nic=lambda nic_id, expected_nsg, subnet_id: True)
+        return seen, credential_factory, arm_factory, egress_factory, effective_factory
 
     def test_provider_is_disabled_without_explicit_opt_in(self):
         settings = SimpleNamespace(provisioning_enabled=False)
-        seen, credential, arm, egress = self.factories()
+        seen, credential, arm, egress, effective = self.factories()
         self.assertIsNone(build_azure_provider_runtime(
             settings, None, None, None, env={}, credential_factory=credential,
-            arm_factory=arm, egress_factory=egress,
+            arm_factory=arm, egress_factory=egress, effective_network_factory=effective,
         ))
         self.assertEqual(seen, {})
 
@@ -91,7 +96,7 @@ class AzureProviderRuntimeTests(unittest.TestCase):
 
     def test_enabled_provider_requires_complete_config_and_all_independent_guards(self):
         settings = SimpleNamespace(provisioning_enabled=False)
-        seen, credential, arm, egress = self.factories()
+        seen, credential, arm, egress, effective = self.factories()
         budget = SimpleNamespace(authorize=lambda active_count: None)
         app = SimpleNamespace(create_registration_token=lambda repository: None)
         with self.assertRaises(ValueError):
@@ -116,14 +121,14 @@ class AzureProviderRuntimeTests(unittest.TestCase):
 
     def test_composes_real_provider_with_pinned_images_and_live_network_checker(self):
         settings = SimpleNamespace(provisioning_enabled=False)
-        seen, credential, arm, egress = self.factories()
+        seen, credential, arm, egress, effective = self.factories()
         budget = SimpleNamespace(authorize=lambda active_count: None)
         app = SimpleNamespace(create_registration_token=lambda repository: None)
         online = lambda *args: True
         values = environment()
         provider = build_azure_provider_runtime(
             settings, app, online, budget, env=values,
-            credential_factory=credential, arm_factory=arm, egress_factory=egress,
+            credential_factory=credential, arm_factory=arm, egress_factory=egress, effective_network_factory=effective,
         )
         self.assertIsInstance(provider, AzureVMProvider)
         self.assertEqual(provider.vm_sizes, {

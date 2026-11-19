@@ -9,6 +9,7 @@ on:
       - "tests/test_cloud_gateway_job_control.py"
       - "tests/test_cloud_runner_user_api.py"
       - "tests/test_local_runner_pipeline_e2e.py"
+      - "tests/test_local_runner_hardlink_containment.py"
       - "tests/test_local_auth_proxy.py"
       - "tests/test_local_runner_execution.py"
       - "tests/test_linux_sandbox.py"
@@ -23,6 +24,7 @@ on:
       - "tests/test_cloud_gateway_job_control.py"
       - "tests/test_cloud_runner_user_api.py"
       - "tests/test_local_runner_pipeline_e2e.py"
+      - "tests/test_local_runner_hardlink_containment.py"
       - "tests/test_local_auth_proxy.py"
       - "tests/test_local_runner_execution.py"
       - "tests/test_linux_sandbox.py"
@@ -86,6 +88,14 @@ jobs:
 
       - name: Run Linux bubblewrap launcher policy tests
         run: python -m unittest tests.test_linux_sandbox -v
+
+      - name: Run Terminal executor and bubblewrap integration tests
+        if: runner.os == 'Linux'
+        run: python -m unittest tests.test_terminal_executor -v
+
+      - name: Run Linux host acceptance harness (ephemeral CI host)
+        if: runner.os == 'Linux'
+        run: python -m tools.local_runner_agent.linux_host_acceptance
 
       - name: Report host identity
         shell: bash

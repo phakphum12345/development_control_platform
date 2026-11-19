@@ -147,3 +147,39 @@ Do not set provisioning to true simply because the service starts. The Azure run
 ## 8. Current deployment boundary
 
 This plan and the repository reference components are deployment preparation only. They do not deploy Azure resources or Azure Firewall, configure DNS/OIDC, create Key Vault secrets, enable `DCP_AZURE_PROVIDER_ENABLED`, turn on global cloud provisioning, or claim production readiness. Azure Firewall is billable; reuse an existing approved firewall or obtain explicit owner approval before creating one. Those actions require the owner inputs in section 3 and verified live acceptance evidence.
+
+
+## Azure adapter and effective-egress acceptance details
+
+The Azure runtime factory is composed only when `DCP_AZURE_PROVIDER_ENABLED=true` and all required Azure, GitHub App, Key Vault, image, guest, budget, and network-policy inputs are valid. This flag only composes the adapter; `DCP_GATEWAY_PROVISIONING_ENABLED` and `DCP_GATEWAY_OWNER_APPROVED` remain independent hard gates and default to false. Orka remains disabled until its separate budget and protected-bootstrap acceptance is complete.
+
+The read-only preflight validates configuration references without reading secret values:
+
+- `DCP_AZURE_EXPECTED_FIREWALL_IP`: approved private IPv4 address of the Azure Firewall/NVA next hop.
+- `DCP_AZURE_REQUIRED_OUTBOUND_FLOWS_JSON`: 1–64 exact flows containing only `protocol` (`Tcp` or `Udp`), `port` (1–65535), and `destination` (an IPv4 CIDR other than `0.0.0.0/0`).
+- `DCP_AZURE_LINUX_ADMIN_USERNAME` and `DCP_AZURE_LINUX_SSH_PUBLIC_KEY_SECRET_NAME`.
+- `DCP_AZURE_WINDOWS_ADMIN_USERNAME` and `DCP_AZURE_WINDOWS_ADMIN_PASSWORD_SECRET_NAME`.
+
+Preflight syntax validation is not proof that Key Vault contains valid material, Azure has applied the network policy, or guest login works. Guest SSH/password values are fetched from Key Vault lazily for a specific provision request and must never be emitted by preflight or logs.
+
+Before each VM create, the provider must create the private NIC and call the ARM NIC `effectiveNetworkSecurityGroups` and `effectiveRouteTable` operations (Network API `2025-05-01`). Bind the result to the exact NIC, configured subnet, and expected NSG resource ID. Every required outbound flow must match an explicit effective outbound Allow rule in every applied NSG, including the NIC's actual private source IP; default rules (priority 65000 or greater) do not authorize a required flow.
+
+Require an active effective `0.0.0.0/0` route with next-hop type `VirtualAppliance` and the exact approved firewall/NVA next-hop IP. Missing, inactive, Internet, VirtualNetworkGateway, unknown, or mismatched next hops fail closed. Treat HTTP `202 Accepted` only as an asynchronous operation start: require a trusted HTTPS `management.azure.com` Location, poll to a complete HTTP `200` result, and fail closed on missing Location, untrusted host, non-success response, or timeout. Do not cache effective-network results. A failed or unknown verification must reconcile/delete the NIC and must never fall through to VM creation. The verifier must not have NSG or route-table write permissions.
+
+### Effective egress live acceptance (Azure subscription required)
+
+Mock tests prove parser and fail-closed behavior only; they do not prove Azure has applied the intended policy. Before enabling a real runner:
+
+1. Select the owner-approved private subnet, NSG, route table, and Azure Firewall/NVA; record full resource IDs and firewall private IP.
+2. Record exact outbound destinations as CIDRs and ports. Do not replace them with `Internet`, `*`, or unrestricted outbound access.
+3. Run effective NSG and route-table ARM actions against a disposable private NIC with the production subnet/NSG association. Capture timestamps, request IDs, NIC/subnet/NSG IDs, effective rules/priorities, route prefix/state/next-hop type/IP, and sanitized operation status.
+4. Prove each approved flow is explicitly allowed and an unapproved destination/port is denied. Prove the default route uses the exact approved firewall/NVA next hop.
+5. Repeat after changes to NSG, subnet association, route table, firewall policy, or service endpoint ranges.
+6. Run controlled guest connectivity tests to approved destinations and a negative test to an unapproved destination.
+7. Prove ARM `202 Accepted` is polled to completion and missing/unknown/timed-out operations block VM creation. Confirm the verifier made no NSG/route-table writes.
+8. Obtain owner sign-off for the exact allowlist, firewall IP, region, resource group, budget, and test evidence.
+
+Required evidence includes sanitized ARM responses, timestamps/request IDs, effective rules/routes, firewall policy export, guest positive/negative connectivity results, CI report, and owner approval. Never include tokens, guest credentials, bootstrap payloads, or secrets.
+
+
+The effective-NIC verifier runs after the private NIC is created but before the bootstrap factory is called. GitHub runner registration tokens are therefore not minted until the actual NIC's effective outbound rules and default route pass. The Azure resource/runner ID remains unchanged; Windows guest `computerName` is derived as `DCPW` plus the eight-character VM suffix to stay within Azure's 15-character Windows limit, and the bootstrap factory validates this mapping before token creation.

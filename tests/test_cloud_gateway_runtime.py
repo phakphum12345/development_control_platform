@@ -1,6 +1,7 @@
 """Mock-only GitHub App runtime composition tests; no cloud or GitHub calls."""
 import unittest
 from unittest.mock import patch
+from tools.runner_backend.provider import RunnerInstance
 
 from tools.cloud_gateway.policy import GatewaySettings
 from tools.cloud_gateway import github_app_runtime
@@ -39,7 +40,7 @@ class RuntimeCompositionTests(unittest.TestCase):
         credential.assert_called_once_with(env=self.env)
         reader.assert_called_once()
         reader.return_value.get_secret.assert_called_once_with("github-app-private-key")
-        app_type.assert_called_once_with("12345", 98765, "PRIVATE-KEY-MATERIAL", ())
+        app_type.assert_called_once_with("12345", 98765, "PRIVATE-KEY-MATERIAL", ("owner/repo",))
         self.assertIs(checker.github_app, app)
         self.assertTrue(callable(cleanup))
 
@@ -50,10 +51,10 @@ class RuntimeCompositionTests(unittest.TestCase):
             reader.return_value.get_secret.return_value = "key"
             app, _, cleanup = github_app_runtime.build_github_app_runtime(self.settings, self.env)
         app.is_repository_accessible.side_effect = lambda repository, refresh=False: repository == "owner/repo"
-        app.find_runner.return_value = {"id": 42, "status": "offline"}
+        app.find_runner.side_effect = [{"id": 42, "status": "offline"}, None]
         app.remove_runner.return_value = True
         self.assertEqual(cleanup(
-            {"repository": "owner/repo", "provider_id": "azure:dcp-1-abcd1234"}, None
+            {"repository": "owner/repo", "provider_id": "azure:dcp-1-abcd1234"}, RunnerInstance("dcp-1-abcd1234", "terminated")
         ), "removed")
         app.remove_runner.assert_called_once_with("owner/repo", 42)
 
@@ -66,9 +67,9 @@ class RuntimeCompositionTests(unittest.TestCase):
         app.is_repository_accessible.side_effect = lambda repository, refresh=False: repository == "owner/repo"
         app.find_runner.return_value = {"id": 42, "status": "online"}
         with self.assertRaisesRegex(RuntimeError, "not confirmed offline"):
-            cleanup({"repository": "owner/repo", "provider_id": "orka:dcp-1-abcd1234"}, None)
+            cleanup({"repository": "owner/repo", "provider_id": "orka:dcp-1-abcd1234"}, RunnerInstance("dcp-1-abcd1234", "terminated"))
         with self.assertRaisesRegex(RuntimeError, "not accessible to the DCP GitHub App installation"):
-            cleanup({"repository": "attacker/repo", "provider_id": "dcp-1-abcd1234"}, None)
+            cleanup({"repository": "attacker/repo", "provider_id": "dcp-1-abcd1234"}, RunnerInstance("dcp-1-abcd1234", "terminated"))
         app.remove_runner.assert_not_called()
 
 

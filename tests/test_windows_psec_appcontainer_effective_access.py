@@ -1,0 +1,530 @@
+from __future__ import annotations
+
+import ctypes
+import json
+import os
+import shutil
+import subprocess
+import tempfile
+import unittest
+import uuid
+from ctypes import wintypes
+from pathlib import Path
+
+from tools.local_runner_agent.windows_psec_acl_handles import (
+    WindowsPsecHandleAclManager,
+)
+from tools.local_runner_agent.windows_psec_launcher import (
+    WindowsPsecError,
+    _query_process_token,
+    _require_app_container_token,
+    _resume_after_filesystem_authorization,
+)
+
+
+CREATE_SUSPENDED = 0x00000004
+EXTENDED_STARTUPINFO_PRESENT = 0x00080000
+CREATE_NO_WINDOW = 0x08000000
+PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES = 0x00020009
+WAIT_OBJECT_0 = 0x00000000
+WAIT_TIMEOUT = 0x00000102
+
+
+class _STARTUPINFOW(ctypes.Structure):
+    _fields_ = [
+        ("cb", wintypes.DWORD),
+        ("lpReserved", wintypes.LPWSTR),
+        ("lpDesktop", wintypes.LPWSTR),
+        ("lpTitle", wintypes.LPWSTR),
+        ("dwX", wintypes.DWORD),
+        ("dwY", wintypes.DWORD),
+        ("dwXSize", wintypes.DWORD),
+        ("dwYSize", wintypes.DWORD),
+        ("dwXCountChars", wintypes.DWORD),
+        ("dwYCountChars", wintypes.DWORD),
+        ("dwFillAttribute", wintypes.DWORD),
+        ("dwFlags", wintypes.DWORD),
+        ("wShowWindow", wintypes.WORD),
+        ("cbReserved2", wintypes.WORD),
+        ("lpReserved2", wintypes.LPBYTE),
+        ("hStdInput", wintypes.HANDLE),
+        ("hStdOutput", wintypes.HANDLE),
+        ("hStdError", wintypes.HANDLE),
+    ]
+
+
+class _STARTUPINFOEXW(ctypes.Structure):
+    _fields_ = [
+        ("StartupInfo", _STARTUPINFOW),
+        ("lpAttributeList", wintypes.LPVOID),
+    ]
+
+
+class _PROCESS_INFORMATION(ctypes.Structure):
+    _fields_ = [
+        ("hProcess", wintypes.HANDLE),
+        ("hThread", wintypes.HANDLE),
+        ("dwProcessId", wintypes.DWORD),
+        ("dwThreadId", wintypes.DWORD),
+    ]
+
+
+class _SECURITY_CAPABILITIES(ctypes.Structure):
+    _fields_ = [
+        ("AppContainerSid", wintypes.LPVOID),
+        ("Capabilities", wintypes.LPVOID),
+        ("CapabilityCount", wintypes.DWORD),
+        ("Reserved", wintypes.DWORD),
+    ]
+
+
+@unittest.skipUnless(
+    os.name == "nt" and os.environ.get("DCP_PSEC_APPCONTAINER_ACL_TEST") == "1",
+    "requires opt-in real AppContainer effective-access acceptance",
+)
+class WindowsPsecAppContainerEffectiveAccessTests(unittest.TestCase):
+    def test_real_appcontainer_effective_workspace_and_scratch_access(self):
+        from tools.local_runner_agent.windows_psec_launcher import _sid_to_string
+
+        acceptance_parent_value = os.environ.get("DCP_PSEC_ACCEPTANCE_PARENT")
+        if not acceptance_parent_value:
+            self.fail("DCP_PSEC_ACCEPTANCE_PARENT is required")
+        acceptance_parent = Path(acceptance_parent_value).resolve(strict=True)
+
+        kernel32 = ctypes.WinDLL("kernel32.dll", use_last_error=True)
+        advapi32 = ctypes.WinDLL("advapi32.dll", use_last_error=True)
+        userenv = ctypes.WinDLL("userenv.dll", use_last_error=True)
+
+        kernel32.InitializeProcThreadAttributeList.argtypes = [
+            wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD,
+            ctypes.POINTER(ctypes.c_size_t),
+        ]
+        kernel32.InitializeProcThreadAttributeList.restype = wintypes.BOOL
+        kernel32.UpdateProcThreadAttribute.argtypes = [
+            wintypes.LPVOID, wintypes.DWORD, ctypes.c_size_t, wintypes.LPVOID,
+            ctypes.c_size_t, wintypes.LPVOID, ctypes.POINTER(ctypes.c_size_t),
+        ]
+        kernel32.UpdateProcThreadAttribute.restype = wintypes.BOOL
+        kernel32.DeleteProcThreadAttributeList.argtypes = [wintypes.LPVOID]
+        kernel32.DeleteProcThreadAttributeList.restype = None
+        kernel32.CreateProcessW.argtypes = [
+            wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.LPVOID, wintypes.LPVOID,
+            wintypes.BOOL, wintypes.DWORD, wintypes.LPVOID, wintypes.LPCWSTR,
+            ctypes.POINTER(_STARTUPINFOEXW), ctypes.POINTER(_PROCESS_INFORMATION),
+        ]
+        kernel32.CreateProcessW.restype = wintypes.BOOL
+        kernel32.ResumeThread.argtypes = [wintypes.HANDLE]
+        kernel32.ResumeThread.restype = wintypes.DWORD
+        kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel32.WaitForSingleObject.restype = wintypes.DWORD
+        kernel32.GetExitCodeProcess.argtypes = [
+            wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD),
+        ]
+        kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+        kernel32.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+        kernel32.TerminateProcess.restype = wintypes.BOOL
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32.CloseHandle.restype = wintypes.BOOL
+        kernel32.LocalFree.argtypes = [wintypes.LPVOID]
+        kernel32.LocalFree.restype = wintypes.LPVOID
+
+        userenv.CreateAppContainerProfile.argtypes = [
+            wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.LPCWSTR,
+            wintypes.LPVOID, wintypes.DWORD, ctypes.POINTER(wintypes.LPVOID),
+        ]
+        userenv.CreateAppContainerProfile.restype = ctypes.c_long
+        userenv.DeleteAppContainerProfile.argtypes = [wintypes.LPCWSTR]
+        userenv.DeleteAppContainerProfile.restype = ctypes.c_long
+
+        advapi32.FreeSid.argtypes = [wintypes.LPVOID]
+        advapi32.FreeSid.restype = wintypes.LPVOID
+
+        profile_name = "dcp-psec-acl-" + uuid.uuid4().hex[:24]
+        profile_sid = wintypes.LPVOID()
+        profile_created = False
+        attribute_buffer = None
+        attribute_list = None
+        process_info = _PROCESS_INFORMATION()
+        process_drained = True
+        canary = None
+        job_root = None
+        evidence_dir = Path(os.environ.get("RUNNER_TEMP", str(acceptance_parent)))
+        evidence_path = evidence_dir / "appcontainer-effective-access.json"
+        evidence = {"state": "FAIL"}
+
+        try:
+            hr = userenv.CreateAppContainerProfile(
+                profile_name,
+                "DCP PSEC ACL Acceptance",
+                "Disposable AppContainer filesystem authorization test",
+                None,
+                0,
+                ctypes.byref(profile_sid),
+            )
+            if hr != 0 or not profile_sid:
+                raise WindowsPsecError(
+                    f"CreateAppContainerProfile failed (HRESULT 0x{hr & 0xFFFFFFFF:08x})"
+                )
+            profile_created = True
+            package_sid = _sid_to_string(advapi32, kernel32, profile_sid)
+            if not package_sid.startswith("S-1-15-2-"):
+                raise WindowsPsecError("CreateAppContainerProfile returned a non-Package SID")
+
+            job_root = Path(tempfile.mkdtemp(
+                prefix="dcp-psec-job-", dir=str(acceptance_parent)
+            ))
+            workspace = job_root / "workspace"
+            scratch = job_root / "scratch"
+            workspace.mkdir()
+            scratch.mkdir()
+            (workspace / "read.txt").write_text(
+                "DCP-APPCONTAINER-WORKSPACE-READ", encoding="utf-8"
+            )
+
+            user_profile = Path(os.environ["USERPROFILE"]).resolve(strict=True)
+            canary = user_profile / f".dcp-appcontainer-canary-{uuid.uuid4().hex}.txt"
+            canary.write_text("DCP-APPCONTAINER-HOST-CANARY", encoding="utf-8")
+
+            probe_source = workspace / "acl-probe.cs"
+            probe_source.write_text(
+                """
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+internal static class Program {
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool DeleteFileW(string path);
+    private static int Main(string[] args) {
+        string workspace = args[0];
+        string scratch = args[1];
+        string canary = args[2];
+        string evidence = args[3];
+        string target = Path.Combine(scratch, "write-probe.txt");
+        try { File.ReadAllText(Path.Combine(workspace, "read.txt")); }
+        catch { return 11; }
+        try {
+            File.WriteAllText(Path.Combine(workspace, "write-probe.txt"), "forbidden");
+            return 12;
+        } catch (UnauthorizedAccessException) { }
+          catch (IOException) { }
+        try { File.WriteAllText(target, "scratch"); }
+        catch { return 13; }
+        try { File.ReadAllText(target); }
+        catch { return 14; }
+        bool deleted = DeleteFileW(target);
+        int error = deleted ? 0 : Marshal.GetLastWin32Error();
+        try {
+            File.WriteAllText(
+                evidence,
+                String.Format(@"{{""api"":""DeleteFileW"",""success"":{0},""winerror"":{1}}}",
+                    deleted ? "true" : "false", error)
+            );
+        } catch { return 19; }
+        if (!deleted) return 15;
+        if (File.Exists(target)) return 16;
+        try { File.ReadAllText(canary); return 17; }
+        catch (UnauthorizedAccessException) { }
+        catch (IOException) { }
+        return 0;
+    }
+}
+""",
+                encoding="utf-8",
+            )
+            probe_executable = workspace / "acl-probe.exe"
+            system_root = Path(os.environ["SystemRoot"])
+            compiler_candidates = [
+                system_root / "Microsoft.NET" / "Framework64" / "v4.0.30319" / "csc.exe",
+                system_root / "Microsoft.NET" / "Framework" / "v4.0.30319" / "csc.exe",
+            ]
+            for program_files in (
+                os.environ.get("ProgramFiles"),
+                os.environ.get("ProgramFiles(x86)"),
+            ):
+                if program_files:
+                    compiler_candidates.extend(
+                        Path(program_files).glob(
+                            "Microsoft Visual Studio/*/*/MSBuild/Current/Bin/Roslyn/csc.exe"
+                        )
+                    )
+            compiler = next(
+                (candidate for candidate in compiler_candidates if candidate.is_file()),
+                None,
+            )
+            if compiler is None:
+                raise WindowsPsecError(
+                    "A supported C# compiler is required for the native AppContainer probe"
+                )
+            compile_result = subprocess.run(
+                [
+                    str(compiler),
+                    "/nologo",
+                    "/target:exe",
+                    f"/out:{probe_executable}",
+                    str(probe_source),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if compile_result.returncode != 0 or not probe_executable.is_file():
+                raise WindowsPsecError(
+                    "Could not compile native AppContainer probe: "
+                    + (compile_result.stdout + compile_result.stderr).strip()
+                )
+
+            size = ctypes.c_size_t(0)
+            kernel32.InitializeProcThreadAttributeList(None, 1, 0, ctypes.byref(size))
+            if not size.value:
+                raise WindowsPsecError(
+                    f"InitializeProcThreadAttributeList size query failed "
+                    f"(WinError {ctypes.get_last_error()})"
+                )
+            attribute_buffer = ctypes.create_string_buffer(size.value)
+            attribute_list = ctypes.cast(attribute_buffer, wintypes.LPVOID)
+            if not kernel32.InitializeProcThreadAttributeList(
+                attribute_list, 1, 0, ctypes.byref(size)
+            ):
+                raise WindowsPsecError(
+                    f"InitializeProcThreadAttributeList failed "
+                    f"(WinError {ctypes.get_last_error()})"
+                )
+
+            security_capabilities = _SECURITY_CAPABILITIES(
+                profile_sid, None, 0, 0
+            )
+            if not kernel32.UpdateProcThreadAttribute(
+                attribute_list,
+                0,
+                PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
+                ctypes.byref(security_capabilities),
+                ctypes.sizeof(security_capabilities),
+                None,
+                None,
+            ):
+                raise WindowsPsecError(
+                    f"UpdateProcThreadAttribute(SECURITY_CAPABILITIES) failed "
+                    f"(WinError {ctypes.get_last_error()})"
+                )
+
+            startup = _STARTUPINFOEXW()
+            startup.StartupInfo.cb = ctypes.sizeof(_STARTUPINFOEXW)
+            startup.lpAttributeList = attribute_list
+            process_info = _PROCESS_INFORMATION()
+            probe_application = str(probe_executable)
+            command_line = ctypes.create_unicode_buffer(
+                f'"{probe_application}" "{workspace}" "{scratch}" "{canary}" "{scratch / "delete-native-result.json"}"'
+            )
+            if not kernel32.CreateProcessW(
+                probe_application,
+                command_line,
+                None,
+                None,
+                False,
+                CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW,
+                None,
+                str(workspace),
+                ctypes.byref(startup),
+                ctypes.byref(process_info),
+            ):
+                raise WindowsPsecError(
+                    f"CreateProcessW(AppContainer) failed "
+                    f"(WinError {ctypes.get_last_error()})"
+                )
+            process_drained = False
+
+            token = _require_app_container_token(
+                _query_process_token(kernel32, process_info.hProcess)
+            )
+            self.assertEqual(token["app_container_sid"], package_sid)
+            evidence = {
+                "package_sid": package_sid,
+                "token_state": token["state"],
+                "token_user_sid": token["user_sid"],
+                "token_integrity_sid": token["integrity_sid"],
+                "token_groups": token["groups"],
+                "se_change_notify_privilege_present": token[
+                    "se_change_notify_privilege_present"
+                ],
+                "se_change_notify_privilege_enabled": token[
+                    "se_change_notify_privilege_enabled"
+                ],
+                "privilege_count": len(token["privileges"]),
+            }
+
+            _, acl_evidence = _resume_after_filesystem_authorization(
+                kernel32,
+                process_info.hThread,
+                WindowsPsecHandleAclManager(),
+                workspace,
+                scratch,
+                package_sid,
+            )
+            evidence["filesystem_acl"] = acl_evidence
+
+            wait_result = kernel32.WaitForSingleObject(process_info.hProcess, 15000)
+            if wait_result == WAIT_TIMEOUT:
+                kernel32.TerminateProcess(process_info.hProcess, 1)
+                wait_result = kernel32.WaitForSingleObject(process_info.hProcess, 5000)
+            if wait_result != WAIT_OBJECT_0:
+                raise WindowsPsecError(
+                    f"AppContainer process did not exit (wait=0x{wait_result:08x})"
+                )
+            process_drained = True
+            exit_code = wintypes.DWORD()
+            if not kernel32.GetExitCodeProcess(
+                process_info.hProcess, ctypes.byref(exit_code)
+            ):
+                raise WindowsPsecError(
+                    f"GetExitCodeProcess failed (WinError {ctypes.get_last_error()})"
+                )
+            first_exit_code = int(exit_code.value)
+            evidence["first_child_exit_code"] = first_exit_code
+            if first_exit_code == 15:
+                evidence["delete_probe_stage"] = "native_DeleteFileW"
+                evidence["delete_probe_helper"] = str(delete_probe)
+            else:
+                evidence["retry_child_exit_code"] = None
+            evidence["child_exit_code"] = int(exit_code.value)
+            scratch_probe = scratch / "write-probe.txt"
+            evidence["scratch_probe_exists_after_child"] = scratch_probe.exists()
+            native_delete_result = scratch / "delete-native-result.json"
+            if native_delete_result.exists():
+                try:
+                    evidence["native_delete_probe"] = json.loads(
+                        native_delete_result.read_text(encoding="utf-8")
+                    )
+                except (OSError, ValueError) as exc:
+                    evidence["native_delete_probe_error"] = (
+                        f"{type(exc).__name__}: {exc}"
+                    )
+            else:
+                evidence["native_delete_probe"] = "NOT_CREATED"
+            if scratch_probe.exists():
+                owner_result = subprocess.run(
+                    [
+                        "powershell.exe", "-NoProfile", "-Command",
+                        f"Import-Module Microsoft.PowerShell.Security; (Get-Acl -LiteralPath '{scratch_probe}').Owner",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                evidence["scratch_probe_owner"] = {
+                    "returncode": owner_result.returncode,
+                    "stdout": owner_result.stdout.strip(),
+                    "stderr": owner_result.stderr.strip(),
+                }
+                acl_result = subprocess.run(
+                    ["icacls", str(scratch_probe)],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                evidence["scratch_probe_acl"] = {
+                    "returncode": acl_result.returncode,
+                    "stdout": acl_result.stdout,
+                    "stderr": acl_result.stderr,
+                }
+            evidence["scratch_root_sddl"] = next(
+                (
+                    target["sddl"] for target in acl_evidence["targets"]
+                    if target["path"].casefold() == str(scratch).casefold()
+                ),
+                None,
+            )
+            check_names = [
+                "workspace_read",
+                "workspace_write_denied",
+                "scratch_write",
+                "scratch_read",
+                "scratch_delete",
+                "host_profile_canary_denied",
+            ]
+            failed_index = {
+                11: 0, 12: 1, 13: 2, 14: 3, 15: 4, 16: 4, 17: 5, 18: 4,
+            }.get(int(exit_code.value))
+            if exit_code.value == 0:
+                evidence["checks"] = {name: "PASS" for name in check_names}
+            elif failed_index is not None:
+                evidence["checks"] = {
+                    name: (
+                        "FAIL" if index == failed_index
+                        else "PASS" if index < failed_index
+                        else "NOT_RUN"
+                    )
+                    for index, name in enumerate(check_names)
+                }
+            else:
+                evidence["checks"] = {name: "NOT_RUN" for name in check_names}
+            if exit_code.value != 0:
+                evidence["failure_reason"] = (
+                    f"AppContainer filesystem access probe exited {exit_code.value}"
+                )
+                raise AssertionError(
+                    f"AppContainer filesystem access probe failed with exit code {exit_code.value}"
+                )
+            self.assertFalse((workspace / "write-probe.txt").exists())
+            self.assertFalse((scratch / "write-probe.txt").exists())
+            self.assertEqual(
+                (workspace / "read.txt").read_text(encoding="utf-8"),
+                "DCP-APPCONTAINER-WORKSPACE-READ",
+            )
+            acl_evidence["effective_access"] = "PASS"
+            acl_evidence["effective_checks"] = evidence["checks"]
+            evidence["filesystem_acl"] = acl_evidence
+            evidence["state"] = "PASS"
+        except Exception as exc:
+            evidence["state"] = "FAIL"
+            evidence["error_type"] = type(exc).__name__
+            evidence["error_message"] = str(exc)
+            raise
+        finally:
+            if process_info.hProcess:
+                if not process_drained:
+                    kernel32.TerminateProcess(process_info.hProcess, 1)
+                    process_drained = (
+                        kernel32.WaitForSingleObject(process_info.hProcess, 5000)
+                        == WAIT_OBJECT_0
+                    )
+                if process_info.hThread:
+                    kernel32.CloseHandle(process_info.hThread)
+                kernel32.CloseHandle(process_info.hProcess)
+            if attribute_list:
+                kernel32.DeleteProcThreadAttributeList(attribute_list)
+            if profile_sid:
+                advapi32.FreeSid(profile_sid)
+            cleanup_errors = []
+            if profile_created and process_drained:
+                hr = userenv.DeleteAppContainerProfile(profile_name)
+                if hr != 0:
+                    cleanup_errors.append(
+                        f"DeleteAppContainerProfile HRESULT 0x{hr & 0xFFFFFFFF:08x}"
+                    )
+            if canary is not None and process_drained:
+                try:
+                    canary.unlink(missing_ok=True)
+                except OSError as exc:
+                    cleanup_errors.append(f"canary cleanup: {type(exc).__name__}: {exc}")
+            if job_root is not None and job_root.exists() and process_drained:
+                try:
+                    shutil.rmtree(job_root)
+                except OSError as exc:
+                    cleanup_errors.append(f"job-root cleanup: {type(exc).__name__}: {exc}")
+            if evidence:
+                evidence["process_drained"] = process_drained
+                evidence["cleanup_errors"] = cleanup_errors
+                evidence_path.write_text(
+                    json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8"
+                )
+            if not process_drained:
+                raise WindowsPsecError(
+                    f"AppContainer process was not drained; preserving {job_root} "
+                    f"and {canary}"
+                )
+            if cleanup_errors:
+                raise WindowsPsecError("; ".join(cleanup_errors))
+
+
+if __name__ == "__main__":
+    unittest.main()
