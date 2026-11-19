@@ -102,7 +102,8 @@ function Assert-TrustedAcl {
            if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) {
                continue
            }
-           if (($rule.PropagationFlags -band [System.Security.AccessControl.PropagationFlags]::InheritOnly) -ne 0) {
+           if ([string]$rule.PropagationFlags -like "*InheritOnly*" -or
+               ($rule.PropagationFlags -band [System.Security.AccessControl.PropagationFlags]::InheritOnly) -ne 0) {
                continue
            }
            try {
@@ -115,7 +116,7 @@ function Assert-TrustedAcl {
            if (($rights -band $writeMask) -eq 0 -or $sid -in $trustedWriters) {
                continue
            }
-           throw "Untrusted principal '$sid' has write-capable ACL rights on '$target': $($rule.FileSystemRights). SDDL=$($acl.Sddl)"
+           throw "Untrusted principal '$sid' has write-capable ACL rights on '$target': $($rule.FileSystemRights); inheritance=$($rule.InheritanceFlags); propagation=$($rule.PropagationFlags); inherited=$($rule.IsInherited). SDDL=$($acl.Sddl)"
        }
    }
 }
