@@ -131,3 +131,14 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Exact-head checks on the previous code head `6a0210b557af258125521124949034481f2bb044` were in progress at last inspection. The current documentation-only head needs fresh PR checks to satisfy the exact-SHA rule.
 - No merge authorization exists. Keep PR #116 draft; keep all seven Terminal templates disabled.
 - Next exact action: trigger all required workflows for documentation/checkpoint changes, then verify every check on the final head SHA. If checks pass, continue the executor integration as a separate WP-18A implementation slice; do not merge until reviewed and approved.
+
+
+### 2026-11-19 — WP-00B Dashboard Code Navigator completion candidate
+- Branch: `fix/dashboard-code-navigator-cover-all-views-20261119`.
+- Implemented explicit `project-import` and `document-generator` entries in `CODE_NAV_MAPPINGS`.
+- Mapping count now equals all 23 Dashboard navigation tabs; no navigation tab remains unmapped on this branch.
+- Added an exact navigation-vs-mapping assertion and a contract test validating every declared test file/function/class reference.
+- New mapping DOM checks: 18 Project Import IDs and 25 Document Generator IDs all exist in Dashboard source.
+- This is a candidate branch only. CI, browser smoke and review must pass before considering the mapping complete in main.
+- No project import, document generation, authentication, or write behavior was changed; only mapping metadata and tests were modified.
+- Cloud provisioning, VM creation, Terminal execution and PR mutation remain unchanged and gated.
