@@ -619,6 +619,36 @@ def _runtime_root(executable: str) -> Path:
     return parent
 
 
+def _is_same_or_child(path: Path, parent: Path) -> bool:
+    try:
+        path.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
+def _require_program_files_base_runtime(base_home: Path) -> None:
+    """Only trust a base interpreter installed below a protected Program Files root."""
+    candidates = (
+        os.environ.get("ProgramW6432"),
+        os.environ.get("ProgramFiles"),
+    )
+    trusted_roots = []
+    for candidate in candidates:
+        if not candidate:
+            continue
+        root = _trusted_directory(candidate, "Program Files runtime root")
+        if root not in trusted_roots:
+            trusted_roots.append(root)
+    if not any(
+        base_home != root and _is_same_or_child(base_home, root)
+        for root in trusted_roots
+    ):
+        raise WindowsPsecError(
+            "Base Python runtime must be installed below a trusted Program Files directory"
+        )
+
+
 def _runtime_directories(
     executable: str, denied_paths: Sequence[str | os.PathLike] = (),
 ) -> tuple[Path, ...]:
@@ -671,6 +701,7 @@ def _runtime_directories(
     if not base_home.is_absolute():
         raise WindowsPsecError("Python pyvenv.cfg home must be an absolute path")
     base_home = _trusted_directory(base_home, "Base Python runtime")
+    _require_program_files_base_runtime(base_home)
     base_executable = base_home / "python.exe"
     standard_library = base_home / "Lib"
     try:
