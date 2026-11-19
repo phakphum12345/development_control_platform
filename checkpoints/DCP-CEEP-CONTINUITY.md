@@ -259,3 +259,14 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - The five cross-cutting test modules are explicitly flagged for manual requirement ownership rather than silently forced into a category.
 - Full Python unittest discovery is part of the Validate Control Plane job; PowerShell scripts are run only by named Windows steps; Cross-platform Recovery executes a narrower explicit subset.
 - WP-00C remains IN_PROGRESS. File-family classification is not method-level coverage or execution proof.
+
+
+---
+
+## 2026-11-20 — WP-00B 23-view Dashboard candidate mapping
+
+- Inspected PR #151 candidate Dashboard blob `1a72ca2096cb5aa377746cb9c5c8a686dab445fb`.
+- Recorded all 23 candidate view IDs with route group, declared DOM ID count, handler count and test-reference count in `docs/DCP-REQUIREMENTS-TRACEABILITY.md`.
+- Candidate map totals: 23 mappings / 23 navigation IDs; 57 declared test references across 14 files; 0 missing file/function/class references in the PR #151 contract check.
+- The trace explicitly distinguishes browser-local/static views, public GitHub metadata, authenticated Local Auth Proxy views, Owner-scoped Document Workflow, Infrastructure/Cloud Runner gates and inert Terminal catalog/preview.
+- This is structural candidate traceability, not runtime call graph or test execution proof. Main remains at 21 mappings until PR #151 is Owner-approved and merged.
