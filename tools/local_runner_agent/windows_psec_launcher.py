@@ -654,18 +654,24 @@ def _runtime_directories(executable: str) -> tuple[Path, ...]:
         raise WindowsPsecError("Python base runtime home must be an absolute path")
     base_home = _trusted_directory(base_home, "Python base runtime")
     base_executable = base_home / "python.exe"
-    standard_library = base_home / "Lib"
+    standard_library_path = base_home / "Lib"
     if base_executable.is_symlink() or not base_executable.is_file():
         raise WindowsPsecError("Python base runtime is missing python.exe")
-    if standard_library.is_symlink() or not standard_library.is_dir():
-        raise WindowsPsecError("Python base runtime is missing its Lib standard library")
+    try:
+        standard_library = _trusted_directory(
+            standard_library_path, "Python base standard library"
+        )
+    except WindowsPsecError:
+        raise WindowsPsecError(
+            "Python base runtime is missing a canonical Lib standard library"
+        ) from None
 
     directories.extend((base_home, standard_library))
     dll_directory = base_home / "DLLs"
-    if dll_directory.exists():
-        if dll_directory.is_symlink() or not dll_directory.is_dir():
-            raise WindowsPsecError("Python base runtime DLLs path is not a regular directory")
-        directories.append(_trusted_directory(dll_directory, "Python base runtime DLLs"))
+    if dll_directory.exists() or dll_directory.is_symlink():
+        directories.append(_trusted_directory(
+            dll_directory, "Python base runtime DLLs"
+        ))
     return tuple(directories)
 
 
