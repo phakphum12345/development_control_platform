@@ -152,3 +152,11 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - New automated test uses multiline-aware matching so methods inside test classes are validated correctly.
 
 - Branch head before this ledger update: `edc67743c1510f8d9cd5f8e31fba28191f207772`.
+
+
+### 2026-11-19 — Dashboard navigation count correction
+- The Control Center initially displayed `22 tools` despite 23 actual navigation tabs.
+- Updated the initial display to `23 tools` and extended the Code Navigator contract test to assert the displayed count.
+- Runtime search count remains dynamically calculated from the actual navigation buttons.
+
+- Branch head before this ledger update: `7d2d9f93e1a00163f69d6a8bbd260b27401879ed`.
