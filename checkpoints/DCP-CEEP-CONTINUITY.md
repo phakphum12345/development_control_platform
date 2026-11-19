@@ -146,3 +146,14 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - PR #152 head at checkpoint: `c19d65f48f62fc1fb354bde9c5b9947f814bd7fc` (before this ledger commit). Exact-head CI is not yet complete; Windows runner acceptance is optional/skipped on hosted CI and is not PSEC acceptance.
 - No main modification, merge, force-push, branch deletion, cloud provisioning or VM creation.
 - Next: run exact-head CI; inspect PowerShell failure logs; repair only verified defects; audit full diff; update PR evidence. Keep PR #140/#149 open and Draft pending WP-06 sequencing.
+
+
+---
+
+## 2026-11-20 — WP-06 first Windows CI failure and regression-test correction
+
+- Exact head `f4a597fd2e7f911c1cb5a5598636815b834e0c76` ran the native Windows bootstrap test and successfully completed the first setup, idempotent setup, second-worker setup, allowlist persistence and initial ACL setup.
+- The job then failed in the existing acceptance test at `tests/test_local_runner_bootstrap.ps1:67`, before the new negative cases: PowerShell's regex engine rejected the pre-existing single-backslash pattern `BUILTIN\Users` as an invalid escape sequence (`\U`).
+- This is a latent test assertion defect that was previously masked by the earlier missing-parameter failure. The implementation's ACL writes had completed; the test stopped while parsing the ACL regex.
+- Corrected the assertion to use a regex-escaped literal backslash (`BUILTIN\\Users`), consistent with the following credential ACL assertion.
+- New exact head after correction: `e16127fd9769ec8cb80ad8077fd9b7bd8d60c622`. All required CI must rerun on this exact head; no PASS is claimed until then.
