@@ -114,9 +114,9 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             ):
                 paths = _runtime_directories(str(executable), ())
 
-            self.assertEqual(paths[0], executable.parent.parent)
-            self.assertIn(base_home, paths)
-            self.assertIn(base_home / "Lib", paths)
+            self.assertEqual(paths, (base_home,))
+            self.assertTrue((base_home / "Lib").is_dir())
+            self.assertTrue(_paths_overlap(paths[0], base_home / "Lib"))
 
     def test_environment_spec_grants_base_runtime_read_only(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -163,9 +163,10 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             self.assertEqual(payload, b"serialized-policy")
             read_only = tuple(Path(value) for value in build_spec.call_args.kwargs["read_only_paths"])
             self.assertIn(workspace, read_only)
-            self.assertIn(executable.parent.parent, read_only)
             self.assertIn(base_home, read_only)
-            self.assertIn(base_home / "Lib", read_only)
+            self.assertNotIn(executable.parent.parent, read_only)
+            self.assertNotIn(base_home / "Lib", read_only)
+            self.assertTrue(_paths_overlap(base_home, base_home / "Lib"))
             denied = tuple(Path(value) for value in build_spec.call_args.kwargs["denied_paths"])
             self.assertFalse(any(_paths_overlap(base_home, value) for value in denied))
 
@@ -384,7 +385,8 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             ):
                 paths = _runtime_directories(str(base_home / "python.exe"), ())
 
-            self.assertEqual(paths, (base_home, base_home / "Lib"))
+            self.assertEqual(paths, (base_home,))
+            self.assertTrue((base_home / "Lib").is_dir())
 
     def test_venv_pyvenv_config_reparse_point_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
