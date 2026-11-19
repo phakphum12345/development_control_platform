@@ -92,7 +92,7 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
 
     def test_venv_runtime_includes_base_home_and_standard_library(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             program_files = self._program_files_root(root)
             base_home = program_files / "DCP" / "Python312"
             executable = self._make_venv_runtime(root / "venv", base_home)
@@ -106,9 +106,9 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
 
     def test_venv_base_runtime_under_denied_host_profile_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             denied_profile = root / "HostProfile"
-            program_files = root / "Program Files"
+            program_files = self._program_files_root(root)
             base_home = denied_profile / "AppData" / "Python312"
             executable = self._make_venv_runtime(root / "venv", base_home)
 
@@ -118,8 +118,8 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
 
     def test_venv_base_home_parent_traversal_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            program_files = root / "Program Files"
+            root = Path(temporary).resolve()
+            program_files = self._program_files_root(root)
             base_home = program_files / "DCP" / "Python312"
             executable = self._make_venv_runtime(root / "venv", base_home)
             config = executable.parent.parent / "pyvenv.cfg"
@@ -133,8 +133,8 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
 
     def test_venv_duplicate_home_entries_fail_closed(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            program_files = root / "Program Files"
+            root = Path(temporary).resolve()
+            program_files = self._program_files_root(root)
             base_home = program_files / "DCP" / "Python312"
             executable = self._make_venv_runtime(root / "venv", base_home)
             (executable.parent.parent / "pyvenv.cfg").write_text(
@@ -147,8 +147,8 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
 
     def test_venv_base_runtime_overlapping_denied_parent_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            program_files = root / "Program Files"
+            root = Path(temporary).resolve()
+            program_files = self._program_files_root(root)
             denied_parent = program_files / "DCP"
             base_home = denied_parent / "Python312"
             executable = self._make_venv_runtime(root / "venv", base_home)
@@ -167,8 +167,8 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
 
     def test_venv_base_executable_reparse_point_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            program_files = root / "Program Files"
+            root = Path(temporary).resolve()
+            program_files = self._program_files_root(root)
             base_home = program_files / "DCP" / "Python312"
             executable = self._make_venv_runtime(root / "venv", base_home)
             external_executable = root / "external-python.exe"
@@ -185,8 +185,8 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
 
     def test_venv_standard_library_reparse_point_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            program_files = root / "Program Files"
+            root = Path(temporary).resolve()
+            program_files = self._program_files_root(root)
             base_home = program_files / "DCP" / "Python312"
             executable = self._make_venv_runtime(root / "venv", base_home)
             external_lib = root / "ExternalLib"
@@ -215,15 +215,15 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
 
     def test_runtime_path_overlap_detects_parent_and_child(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             self.assertTrue(_paths_overlap(root / "profile", root))
             self.assertTrue(_paths_overlap(root, root / "profile" / "python"))
             self.assertFalse(_paths_overlap(root / "runtime", root / "profile"))
 
     def test_venv_base_runtime_reparse_point_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            program_files = root / "Program Files"
+            root = Path(temporary).resolve()
+            program_files = self._program_files_root(root)
             real_home = program_files / "RealPython"
             real_home.mkdir(parents=True)
             link_home = program_files / "LinkedPython"
