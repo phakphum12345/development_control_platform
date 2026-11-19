@@ -603,6 +603,7 @@ def _paths_overlap(left: str | os.PathLike, right: str | os.PathLike) -> bool:
 
 def _runtime_root(executable: str) -> Path:
     raw_binary = Path(executable)
+    _trusted_directory(raw_binary.parent, "Python executable directory")
     try:
         if raw_binary.is_symlink() or (
             hasattr(raw_binary, "is_junction") and raw_binary.is_junction()
