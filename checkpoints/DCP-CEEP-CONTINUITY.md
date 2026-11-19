@@ -270,3 +270,15 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Candidate map totals: 23 mappings / 23 navigation IDs; 57 declared test references across 14 files; 0 missing file/function/class references in the PR #151 contract check.
 - The trace explicitly distinguishes browser-local/static views, public GitHub metadata, authenticated Local Auth Proxy views, Owner-scoped Document Workflow, Infrastructure/Cloud Runner gates and inert Terminal catalog/preview.
 - This is structural candidate traceability, not runtime call graph or test execution proof. Main remains at 21 mappings until PR #151 is Owner-approved and merged.
+
+
+---
+
+## 2026-11-20 — WP-00B Terminal/Gate/Runner v1 schema trace
+
+- Added source-derived Terminal preview contract: exact template_id/parameters envelope, template-specific bounded integer/full-SHA parameters, seven fixed inert templates.
+- Inspected InfrastructureGateStore: only cloud_provisioning/vm_creation; both OFF by default; enabled must be bool; exact Owner confirmation and capability readiness required; all changes audited. HTTP handler currently ignores unknown JSON keys; record as WP-01 hardening, not strict schema PASS.
+- Added Runner v1 endpoint contract table: register/enroll, ping, claim, terminal-grant, binary artifact upload, heartbeat, checkpoint, logs, finish. Captured consumed fields, bounds, lease ownership and HTTP outcomes.
+- Runner v1 schema limitation recorded: several outer request objects do not reject unknown keys even though nested checkpoint schema is strict. Track exact-key validation as WP-01.
+- Source blobs: terminal_catalog.py@43c7a9b958012911a7ccd3e686841598c7b9c43d; infrastructure_gates.py@c6759ed1cac5fbbf45b3fabf62d94424a84d1181; runner_registry.py@f388a6244112f9c2192ab0ec53633b874b6df161; job_control.py@4295b3adbc1137b7bd706c1c79eb9324f538af7c5.
+- WP-00B remains IN_PROGRESS pending remaining route schemas, handler/service error mapping and Dashboard event/service edges.
