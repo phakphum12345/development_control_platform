@@ -590,14 +590,99 @@ def _apply_sandbox_profile_environment(environment: dict[str, str], scratch: Pat
     environment["TEMP"] = scratch_path
     environment["TMP"] = scratch_path
 
+def _paths_overlap(left: str | os.PathLike, right: str | os.PathLike) -> bool:
+    """Return whether either canonical path contains the other."""
+    first = os.path.normcase(os.path.abspath(os.fspath(left)))
+    second = os.path.normcase(os.path.abspath(os.fspath(right)))
+    try:
+        common = os.path.normcase(os.path.commonpath((first, second)))
+    except ValueError:
+        return False
+    return common == first or common == second
+
+
 def _runtime_root(executable: str) -> Path:
-    binary = Path(executable).resolve(strict=True)
+    raw_binary = Path(executable)
+    try:
+        if raw_binary.is_symlink() or (
+            hasattr(raw_binary, "is_junction") and raw_binary.is_junction()
+        ):
+            raise WindowsPsecError("sandbox executable cannot be a reparse point")
+        binary = raw_binary.resolve(strict=True)
+    except (OSError, RuntimeError):
+        raise WindowsPsecError("sandbox executable is unavailable") from None
     if not binary.is_file():
         raise WindowsPsecError("sandbox executable is not a regular file")
     parent = binary.parent
     if parent.name.casefold() in {"cmd", "bin", "scripts"}:
         return parent.parent
     return parent
+
+
+def _runtime_directories(
+    executable: str, denied_paths: Sequence[str | os.PathLike] = (),
+) -> tuple[Path, ...]:
+    """Resolve venv and base-Python roots without widening any denied boundary.
+
+    A Windows venv's Scripts\\python.exe is only a redirector. Its pyvenv.cfg
+    points at the base installation, which must also be readable by the child.
+    """
+    runtime_root = _trusted_directory(_runtime_root(executable), "Python runtime")
+    roots = [runtime_root]
+    binary_parent = Path(executable).resolve(strict=True).parent
+    if binary_parent.name.casefold() not in {"scripts", "bin"}:
+        return tuple(roots)
+
+    config_path = runtime_root / "pyvenv.cfg"
+    try:
+        if config_path.is_symlink() or (
+            hasattr(config_path, "is_junction") and config_path.is_junction()
+        ):
+            raise WindowsPsecError("Python virtual-environment config is a reparse point")
+        config_path = config_path.resolve(strict=True)
+        if config_path.parent != runtime_root or not config_path.is_file():
+            raise WindowsPsecError("Python virtual-environment config is not canonical")
+        config_text = config_path.read_text(encoding="utf-8-sig")
+    except WindowsPsecError:
+        raise
+    except (OSError, UnicodeError, RuntimeError):
+        raise WindowsPsecError(
+            "Python virtual-environment executable is missing pyvenv.cfg"
+        ) from None
+
+    home_values = []
+    for line in config_text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith(("#", ";")) or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        if key.strip().casefold() == "home":
+            home_values.append(value.strip())
+    if len(home_values) != 1 or not home_values[0] or "\x00" in home_values[0]:
+        raise WindowsPsecError("Python pyvenv.cfg must contain exactly one valid home entry")
+
+    base_home = Path(home_values[0])
+    if not base_home.is_absolute():
+        raise WindowsPsecError("Python pyvenv.cfg home must be an absolute path")
+    base_home = _trusted_directory(base_home, "Base Python runtime")
+    base_executable = base_home / "python.exe"
+    standard_library = base_home / "Lib"
+    try:
+        base_executable = base_executable.resolve(strict=True)
+        standard_library = _trusted_directory(standard_library, "Base Python standard library")
+    except (OSError, RuntimeError):
+        raise WindowsPsecError("Base Python executable or standard library is unavailable") from None
+    if not base_executable.is_file() or base_executable.parent != base_home:
+        raise WindowsPsecError("Base Python executable is not inside its declared home")
+
+    roots.extend((base_home, standard_library))
+    for allowed_root in roots:
+        for denied_root in denied_paths:
+            if _paths_overlap(allowed_root, denied_root):
+                raise WindowsPsecError(
+                    "Python runtime path overlaps a denied host path"
+                )
+    return tuple(roots)
 
 
 def _existing_directories(values: Sequence[str | os.PathLike]) -> tuple[str, ...]:
@@ -626,17 +711,10 @@ def _build_environment_spec(workspace: Path, scratch: Path, executable: str) -> 
         raise WindowsPsecError(
             "optional flatbuffers dependency is missing; run Install-DCP-Windows-PSEC.ps1"
         ) from None
-    runtime_root = _runtime_root(executable)
     system_root = os.environ.get("SYSTEMROOT") or os.environ.get("SystemRoot")
     if not system_root:
         raise WindowsPsecError("SYSTEMROOT is unavailable")
     system_root_path = Path(system_root).resolve(strict=True)
-    system_directories = _existing_directories((
-        system_root_path / "System32",
-        system_root_path / "WinSxS",
-        system_root_path / "SysWOW64",
-    ))
-    read_only = _existing_directories((workspace, runtime_root, *system_directories))
     denied = _existing_directories((
         os.environ.get("USERPROFILE"),
         os.environ.get("PROGRAMDATA"),
@@ -644,6 +722,17 @@ def _build_environment_spec(workspace: Path, scratch: Path, executable: str) -> 
         tempfile.gettempdir(),
         system_root_path / "Temp",
     ))
+    runtime_directories = _runtime_directories(executable, denied)
+    system_directories = _existing_directories((
+        system_root_path / "System32",
+        system_root_path / "WinSxS",
+        system_root_path / "SysWOW64",
+    ))
+    read_only = _existing_directories((workspace, *runtime_directories, *system_directories))
+    for allowed_path in read_only:
+        for denied_path in denied:
+            if _paths_overlap(allowed_path, denied_path):
+                raise WindowsPsecError("PSEC read-only path overlaps a denied host path")
     enumerate_paths = tuple((*read_only, str(scratch)))
     return build_psec_spec(
         read_only_paths=read_only,
