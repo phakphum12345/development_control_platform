@@ -1,5 +1,7 @@
 import unittest
+from unittest.mock import patch
 
+from tools.local_runner_agent.windows_psec import PsecAssessment
 from tools.local_runner_agent.terminal_isolation import (
     IsolationAssessment,
     assess_isolation_backend,
@@ -9,7 +11,7 @@ from tools.local_runner_agent.terminal_isolation import (
 
 class TerminalIsolationContractTests(unittest.TestCase):
     def test_linux_without_bubblewrap_is_blocked(self):
-        result = assess_isolation_backend("linux", executable_lookup=lambda _name: None)
+        result = assess_isolation_backend("linux", executable_lookup=lambda _name, path=None: None)
         self.assertEqual(result.platform, "linux")
         self.assertEqual(result.backend, "bubblewrap-namespaces-seccomp")
         self.assertEqual(result.state, "BLOCKED")
@@ -20,7 +22,7 @@ class TerminalIsolationContractTests(unittest.TestCase):
 
     def test_linux_with_bubblewrap_is_only_ready_for_acceptance(self):
         result = assess_isolation_backend(
-            "linux", executable_lookup=lambda _name: "/usr/bin/bwrap"
+            "linux", executable_lookup=lambda _name, path=None: "/usr/bin/bwrap"
         )
         self.assertEqual(result.state, "READY_FOR_ACCEPTANCE")
         self.assertTrue(result.available)
@@ -30,11 +32,37 @@ class TerminalIsolationContractTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "execution is blocked"):
             require_verified_isolation(result)
 
-    def test_windows_requires_native_appcontainer_launcher(self):
+    def test_windows_without_psec_api_is_blocked(self):
         result = assess_isolation_backend("windows")
-        self.assertEqual(result.backend, "appcontainer-lpac")
+        self.assertEqual(result.backend, "windows-process-security-environment")
         self.assertEqual(result.state, "BLOCKED")
         self.assertFalse(result.available)
+
+    def test_windows_psec_api_is_only_ready_for_acceptance(self):
+        psec = PsecAssessment(
+            backend="windows-process-security-environment",
+            state="READY_FOR_ACCEPTANCE",
+            available=True,
+            version_major=1,
+            version_minor=1,
+            support_flags="0x0000000000000007",
+            supported_features=("filesystem_deny", "filesystem_enumerate", "network_ingress_policy"),
+            missing_features=(),
+            reason="fake PSEC v1.1 support",
+        )
+        with patch(
+            "tools.local_runner_agent.terminal_isolation.probe_psec",
+            return_value=psec,
+        ):
+            result = assess_isolation_backend("windows")
+        self.assertEqual(result.backend, "windows-process-security-environment")
+        self.assertEqual(result.state, "READY_FOR_ACCEPTANCE")
+        self.assertTrue(result.available)
+        self.assertFalse(result.network_isolated)
+        self.assertFalse(result.filesystem_isolated)
+        self.assertFalse(result.process_tree_contained)
+        with self.assertRaisesRegex(RuntimeError, "execution is blocked"):
+            require_verified_isolation(result)
 
     def test_macos_requires_signed_sandbox_helper(self):
         result = assess_isolation_backend("macos")

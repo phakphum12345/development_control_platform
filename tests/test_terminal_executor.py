@@ -1,4 +1,5 @@
 """Tests for the fixed-template Terminal executor; no project scripts are executed."""
+import io
 import os
 import re
 import shutil
@@ -18,10 +19,37 @@ from tools.local_runner_agent.terminal_executor import (
     TerminalExecutionError,
     TerminalScriptExecutor,
     TerminalOutputRedactor,
+    WindowsPsecError,
     redact_terminal_output,
 )
+from tools.local_runner_agent.linux_sandbox import LinuxBubblewrapLauncher, LinuxSandboxError
 
 
+class _TestOnlySandboxCommand:
+    """Explicit unit-test launcher stub; never used by the production Runner."""
+
+    def __init__(self, executable, argv):
+        self.argv = (executable, *argv)
+        self._fd = tempfile.TemporaryFile(mode="w+b")
+
+    @property
+    def seccomp_fd(self):
+        return self._fd.fileno()
+
+    def close(self):
+        self._fd.close()
+
+
+class _TestOnlyPassthroughLauncher:
+    """Exercise executor process handling without claiming OS isolation."""
+
+    def build(self, *, executable, argv, workspace, scratch, environment=None):
+        return _TestOnlySandboxCommand(executable, argv)
+
+
+
+
+@unittest.skipUnless(sys.platform.startswith("linux"), "Linux-only Terminal executor integration tests")
 class TerminalScriptExecutorTests(unittest.TestCase):
     def setUp(self):
         self.isolation_patch = patch(
@@ -39,6 +67,28 @@ class TerminalScriptExecutorTests(unittest.TestCase):
         )
         self.isolation_patch.start()
         self.addCleanup(self.isolation_patch.stop)
+        self.launcher_patch = patch(
+            "tools.local_runner_agent.terminal_executor.LinuxBubblewrapLauncher",
+            _TestOnlyPassthroughLauncher,
+        )
+        self.launcher_patch.start()
+        self.addCleanup(self.launcher_patch.stop)
+        # The test-only launcher accepts the host test interpreter as a stand-in
+        # for /usr/bin; production LinuxBubblewrapLauncher rejects other runtime roots.
+        original_which = shutil.which
+        self.original_which = original_which
+        def test_which(name, path=None):
+            if path == "/usr/bin":
+                return original_which(name) or (
+                    original_which("python3") if name == "python" else None
+                )
+            return original_which(name, path=path)
+        self.which_patch = patch(
+            "tools.local_runner_agent.terminal_executor.shutil.which",
+            side_effect=test_which,
+        )
+        self.which_patch.start()
+        self.addCleanup(self.which_patch.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.workspace = Path(self.temp.name) / "project"
         self.workspace.mkdir()
@@ -190,13 +240,16 @@ class TerminalScriptExecutorTests(unittest.TestCase):
             args=["git", "config"], returncode=0,
             stdout=b"filter.hostile.clean\0filter.Hostile.clean\0",
         )
-        with patch(
-            "tools.local_runner_agent.terminal_executor.subprocess.run",
-            return_value=listed,
-        ):
-            TerminalScriptExecutor._disable_repository_filters(
-                "git", self.workspace, env
-            )
+        with tempfile.TemporaryDirectory() as scratch:
+            with patch(
+                "tools.local_runner_agent.terminal_executor.subprocess.run",
+                return_value=listed,
+            ):
+                TerminalScriptExecutor._disable_repository_filters(
+                    "git", self.workspace, env,
+                    launcher=_TestOnlyPassthroughLauncher(),
+                    scratch=Path(scratch),
+                )
 
         self.assertEqual(env["GIT_CONFIG_COUNT"], "8")
         configured = {
@@ -260,6 +313,141 @@ class TerminalScriptExecutorTests(unittest.TestCase):
                 "python_version", {}, template_version_digest("python_version", {}),
             )
 
+    @unittest.skipUnless(
+        sys.platform.startswith("linux")
+        and shutil.which("bwrap", path="/usr/bin")
+        and (shutil.which("python", path="/usr/bin") or shutil.which("python3", path="/usr/bin")),
+        "Linux bubblewrap runtime or /usr/bin Python is unavailable",
+    )
+    def test_real_bubblewrap_executor_launches_catalog_command_with_seccomp_fd(self):
+        template = dict(preview_template("python_version", {}), execution_enabled=True)
+        executor = TerminalScriptExecutor(enabled=True)
+        with patch(
+            "tools.local_runner_agent.terminal_executor.preview_template",
+            return_value=template,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.LinuxBubblewrapLauncher",
+            LinuxBubblewrapLauncher,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.shutil.which",
+            side_effect=self.original_which,
+        ):
+            result = executor.run(
+                str(uuid.uuid4()), "runner-local", self.workspace,
+                "python_version", {}, template_version_digest("python_version", {}),
+            )
+        self.assertEqual(result.outcome, "succeeded", result)
+        self.assertEqual(result.return_code, 0)
+        self.assertGreater(result.output_bytes, 0)
+        self.assertTrue(Path(result.command[0]).resolve().is_relative_to(Path("/usr/bin").resolve()))
+        self.assertEqual(sorted(item.name for item in self.workspace.iterdir()), ["README.md"])
+
+    @unittest.skipUnless(
+        sys.platform.startswith("linux")
+        and shutil.which("bwrap", path="/usr/bin")
+        and (shutil.which("python", path="/usr/bin") or shutil.which("python3", path="/usr/bin"))
+        and Path("/proc").is_dir(),
+        "Linux bubblewrap, /proc, or /usr/bin Python is unavailable",
+    )
+    def test_real_bubblewrap_timeout_kills_forked_child_after_new_session(self):
+        template = dict(preview_template("python_version", {}), execution_enabled=True)
+        template.update({
+            "executable": "python",
+            "argv": [
+                "-c",
+                "import os,time; child=os.fork(); "
+                "os.setsid() if child == 0 else None; "
+                "print('forked', flush=True); time.sleep(10)",
+            ],
+            "timeout_seconds": 1,
+            "max_output_bytes": 65536,
+        })
+        executor = TerminalScriptExecutor(enabled=True, timeout_ceiling_seconds=1)
+        observed_pids = []
+        original_terminate = TerminalScriptExecutor._terminate_tree
+
+        def descendants(root_pid):
+            found = []
+            pending = [root_pid]
+            while pending:
+                current = pending.pop()
+                children_file = Path(f"/proc/{current}/task/{current}/children")
+                try:
+                    children = [
+                        int(value) for value in children_file.read_text(encoding="ascii").split()
+                    ]
+                except (OSError, ValueError):
+                    children = []
+                found.extend(children)
+                pending.extend(children)
+            return found
+
+        def process_running(pid):
+            try:
+                raw = Path(f"/proc/{pid}/stat").read_text(encoding="ascii")
+                state = raw[raw.rfind(")") + 2:].split()[0]
+                return state not in {"Z", "X"}
+            except FileNotFoundError:
+                return False
+            except (OSError, IndexError):
+                return True
+
+        def capture_and_terminate(process):
+            observed_pids.extend(descendants(process.pid))
+            original_terminate(process)
+
+        executor._terminate_tree = capture_and_terminate
+        with patch(
+            "tools.local_runner_agent.terminal_executor.preview_template",
+            return_value=template,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.template_version_digest",
+            return_value="d" * 64,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.LinuxBubblewrapLauncher",
+            LinuxBubblewrapLauncher,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.shutil.which",
+            side_effect=self.original_which,
+        ):
+            result = executor.run(
+                str(uuid.uuid4()), "runner-local", self.workspace,
+                "python_version", {}, "d" * 64,
+            )
+
+        self.assertEqual(result.outcome, "failed")
+        self.assertEqual(result.error_code, "TERMINAL_TIMEOUT")
+        self.assertGreaterEqual(len(observed_pids), 2, "expected the workload and forked child in the host process tree")
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and any(process_running(pid) for pid in observed_pids):
+            time.sleep(0.02)
+        self.assertFalse(
+            any(process_running(pid) for pid in observed_pids),
+            "a descendant survived bubblewrap parent termination",
+        )
+
+    def test_sandbox_construction_failure_never_falls_back_to_host_process(self):
+        template = dict(preview_template("python_version", {}), execution_enabled=True)
+        executor = TerminalScriptExecutor(enabled=True)
+        with patch(
+            "tools.local_runner_agent.terminal_executor.preview_template",
+            return_value=template,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.template_version_digest",
+            return_value="b" * 64,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.LinuxBubblewrapLauncher",
+            side_effect=LinuxSandboxError("bwrap unavailable"),
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.subprocess.Popen"
+        ) as popen:
+            with self.assertRaisesRegex(TerminalExecutionError, "could not be constructed safely"):
+                executor.run(
+                    str(uuid.uuid4()), "runner-local", self.workspace,
+                    "python_version", {}, "b" * 64,
+                )
+            popen.assert_not_called()
+
     def test_runs_catalog_python_version_in_selected_project_workspace(self):
         template = preview_template("python_version", {})
         enabled_template = dict(template, execution_enabled=True)
@@ -281,6 +469,177 @@ class TerminalScriptExecutorTests(unittest.TestCase):
         self.assertIn("Python", "".join(message for _, message in logs))
         self.assertFalse((self.workspace / ".dcp-terminal-home").exists())
         self.assertTrue((self.workspace / "README.md").is_file())
+
+    def test_windows_terminal_uses_private_workspace_projection_and_cleans_after_close(self):
+        executable = Path(self.temp.name) / "python.exe"
+        executable.write_text("test-only executable placeholder", encoding="utf-8")
+        captured = {}
+
+        class FakeProcess:
+            def __init__(self):
+                self.stdout = io.BytesIO(b"Python test version\\n")
+                self.returncode = 0
+                self.closed = False
+
+            def poll(self):
+                return self.returncode
+
+            def wait(self, timeout=None):
+                return self.returncode
+
+            def close(self):
+                self.closed = True
+
+        class FakeLauncher:
+            def launch(self, command, *, workspace, scratch, environment):
+                captured["workspace"] = Path(workspace)
+                captured["scratch"] = Path(scratch)
+                captured["private_parent"] = Path(workspace).parent.parent
+                captured["process"] = FakeProcess()
+                captured["command"] = tuple(command)
+                return captured["process"]
+
+        assessment = IsolationAssessment(
+            platform="windows",
+            backend="windows-psec",
+            state="VERIFIED",
+            available=True,
+            network_isolated=True,
+            filesystem_isolated=True,
+            process_tree_contained=True,
+            reason="unit-test-only injected verifier",
+        )
+        template = {
+            "id": "python_version",
+            "executable": "python",
+            "argv": ["--version"],
+            "parameters": [],
+            "parameter_values": {},
+            "execution_enabled": True,
+            "mutation_class": "read-only",
+            "network": "denied",
+            "approval_required": False,
+            "working_directory_policy": "assigned_workspace_required",
+            "environment_allowlist": ["PATH", "HOME", "USERPROFILE", "SYSTEMROOT"],
+            "timeout_seconds": 10,
+            "max_output_bytes": 4096,
+        }
+        executor = TerminalScriptExecutor(enabled=True)
+        with patch(
+            "tools.local_runner_agent.terminal_executor.assess_isolation_backend",
+            return_value=assessment,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.preview_template",
+            return_value=template,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.template_version_digest",
+            return_value="c" * 64,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.WindowsPsecLauncher",
+            FakeLauncher,
+        ), patch(
+            "tools.local_runner_agent.terminal_executor.shutil.which",
+            side_effect=lambda name, path=None: (
+                str(executable) if name == "python"
+                else self.original_which(name, path=path)
+            ),
+        ):
+            result = executor.run(
+                str(uuid.uuid4()), "runner-local", self.workspace,
+                "python_version", {}, "c" * 64,
+            )
+
+        self.assertEqual(result.outcome, "succeeded")
+        self.assertEqual(captured["workspace"].parent, captured["scratch"].parent)
+        self.assertTrue(captured["workspace"].parent.name.startswith("dcp-psec-job-"))
+        self.assertNotEqual(captured["workspace"], self.workspace)
+        self.assertFalse(captured["private_parent"].exists())
+        self.assertTrue(captured["process"].closed)
+        self.assertTrue((self.workspace / "README.md").is_file())
+
+    def test_windows_terminal_preserves_projection_when_job_drain_is_unverified(self):
+        executable = Path(self.temp.name) / "python.exe"
+        executable.write_text("test-only executable placeholder", encoding="utf-8")
+        captured = {}
+
+        class FakeProcess:
+            def __init__(self):
+                self.stdout = io.BytesIO(b"")
+                self.returncode = 0
+
+            def poll(self):
+                return self.returncode
+
+            def wait(self, timeout=None):
+                return self.returncode
+
+            def close(self):
+                raise WindowsPsecError("Job Object did not drain")
+
+        class FakeLauncher:
+            def launch(self, command, *, workspace, scratch, environment):
+                captured["workspace"] = Path(workspace)
+                captured["private_parent"] = Path(workspace).parent.parent
+                return FakeProcess()
+
+        assessment = IsolationAssessment(
+            platform="windows",
+            backend="windows-psec",
+            state="VERIFIED",
+            available=True,
+            network_isolated=True,
+            filesystem_isolated=True,
+            process_tree_contained=True,
+            reason="unit-test-only injected verifier",
+        )
+        template = {
+            "id": "python_version",
+            "executable": "python",
+            "argv": ["--version"],
+            "parameters": [],
+            "parameter_values": {},
+            "execution_enabled": True,
+            "mutation_class": "read-only",
+            "network": "denied",
+            "approval_required": False,
+            "working_directory_policy": "assigned_workspace_required",
+            "environment_allowlist": ["PATH", "HOME", "USERPROFILE", "SYSTEMROOT"],
+            "timeout_seconds": 10,
+            "max_output_bytes": 4096,
+        }
+        executor = TerminalScriptExecutor(enabled=True)
+        try:
+            with patch(
+                "tools.local_runner_agent.terminal_executor.assess_isolation_backend",
+                return_value=assessment,
+            ), patch(
+                "tools.local_runner_agent.terminal_executor.preview_template",
+                return_value=template,
+            ), patch(
+                "tools.local_runner_agent.terminal_executor.template_version_digest",
+                return_value="e" * 64,
+            ), patch(
+                "tools.local_runner_agent.terminal_executor.WindowsPsecLauncher",
+                FakeLauncher,
+            ), patch(
+                "tools.local_runner_agent.terminal_executor.shutil.which",
+                side_effect=lambda name, path=None: (
+                    str(executable) if name == "python"
+                    else self.original_which(name, path=path)
+                ),
+            ):
+                with self.assertRaisesRegex(
+                    TerminalExecutionError, "projection preserved"
+                ):
+                    executor.run(
+                        str(uuid.uuid4()), "runner-local", self.workspace,
+                        "python_version", {}, "e" * 64,
+                    )
+            self.assertTrue(captured["workspace"].exists())
+            self.assertTrue(captured["private_parent"].exists())
+        finally:
+            if captured.get("private_parent") and captured["private_parent"].exists():
+                shutil.rmtree(captured["private_parent"], ignore_errors=True)
 
     def test_template_digest_mismatch_fails_before_process_start(self):
         template = preview_template("python_version", {})

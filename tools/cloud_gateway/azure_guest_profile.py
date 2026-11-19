@@ -85,8 +85,11 @@ class AzureGuestProfileFactory:
         if payload.get("ephemeral") is not True:
             raise AzureGuestProfileError("Cloud Runner guest must be ephemeral")
 
+        if os_name not in ("linux", "windows"):
+            raise AzureGuestProfileError("Azure guest profiles support Linux and Windows only")
+        computer_name = vm_name if os_name == "linux" else "DCPW" + vm_name.rsplit("-", 1)[-1].upper()
         profile = {
-            "computerName": vm_name,
+            "computerName": computer_name,
             "adminUsername": self.admin_username,
         }
         if os_name == "linux":
@@ -101,6 +104,4 @@ class AzureGuestProfileFactory:
             }
         elif os_name == "windows":
             profile["adminPassword"] = self._windows_password()
-        else:
-            raise AzureGuestProfileError("Azure guest profiles support Linux and Windows only")
         return profile
