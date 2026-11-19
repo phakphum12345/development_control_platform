@@ -144,6 +144,12 @@ if ([string]::IsNullOrWhiteSpace($programFilesRoot) -or $programFilesRoot.Contai
     throw "The machine 64-bit ProgramFilesDir registry value is invalid."
 }
 $programFilesRoot = [System.IO.Path]::GetFullPath($programFilesRoot)
+$programFilesDrive = New-Object System.IO.DriveInfo([System.IO.Path]::GetPathRoot($programFilesRoot))
+$minimumFreeBytes = [long]1GB
+if ($programFilesDrive.AvailableFreeSpace -lt $minimumFreeBytes) {
+    $availableMiB = [math]::Floor($programFilesDrive.AvailableFreeSpace / 1MB)
+    throw "Trusted runtime installation stopped before making changes: Program Files drive has only $availableMiB MiB free; at least 1024 MiB is required. Free space on that drive first. D: is not an approved fallback unless its root ACL is hardened and independently verified."
+}
 $dcpRoot = Join-Path $programFilesRoot "DCP"
 $baseRuntime = Join-Path $dcpRoot "Python312"
 $basePython = Join-Path $baseRuntime "python.exe"
