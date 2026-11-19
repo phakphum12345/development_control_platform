@@ -131,3 +131,18 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Exact-head checks on the previous code head `6a0210b557af258125521124949034481f2bb044` were in progress at last inspection. The current documentation-only head needs fresh PR checks to satisfy the exact-SHA rule.
 - No merge authorization exists. Keep PR #116 draft; keep all seven Terminal templates disabled.
 - Next exact action: trigger all required workflows for documentation/checkpoint changes, then verify every check on the final head SHA. If checks pass, continue the executor integration as a separate WP-18A implementation slice; do not merge until reviewed and approved.
+
+
+---
+
+## 2026-11-20 — WP-06 trusted repository bootstrap implementation checkpoint
+
+- Main baseline: `985a78d5fba459c8a0cbcf47e5d00a858c6e6228`.
+- Root cause: `Setup-DCP-Local-Runner.ps1` on main lacks `-TrustedRepository`; `tests/test_local_runner_bootstrap.ps1:28` invokes it. Both `Start-DCP-Gateway-Runner.ps1` and legacy `Start-DCP-Local-Runner.ps1` require the persisted Gateway allowlist before execution.
+- Cross-checked consumers: `tools/local_auth_proxy.py::load_gateway_local_settings` validates `allowed_repositories` and `gateway_child_environment` exports `DCP_GATEWAY_ALLOWED_REPOSITORIES`; Gateway `GatewaySettings.from_env` consumes that variable.
+- Created independent main-based branch `work/wp06-trusted-repository-bootstrap`; PR #152 is Draft.
+- Modified `Setup-DCP-Local-Runner.ps1` to persist and protect bounded allowlist settings; expanded `tests/test_local_runner_bootstrap.ps1` for traversal rejection, duplicate case variants, 20-repository cap, 16-worker cap and no-mutation behavior; updated `docs/local-job-control-plane.md` setup sequence.
+- The implementation was written as a scoped WP-06 change; no PSEC launcher/runtime files were copied or changed.
+- PR #152 head at checkpoint: `c19d65f48f62fc1fb354bde9c5b9947f814bd7fc` (before this ledger commit). Exact-head CI is not yet complete; Windows runner acceptance is optional/skipped on hosted CI and is not PSEC acceptance.
+- No main modification, merge, force-push, branch deletion, cloud provisioning or VM creation.
+- Next: run exact-head CI; inspect PowerShell failure logs; repair only verified defects; audit full diff; update PR evidence. Keep PR #140/#149 open and Draft pending WP-06 sequencing.
