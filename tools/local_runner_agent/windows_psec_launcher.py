@@ -711,6 +711,13 @@ def _runtime_directories(
         raise WindowsPsecError("Python pyvenv.cfg home must be an absolute path")
     base_home = _trusted_directory(base_home, "Base Python runtime")
     _require_program_files_base_runtime(base_home)
+    expected_venv_root = base_home / "venvs" / "psec"
+    if os.path.normcase(os.path.abspath(str(runtime_root))) != os.path.normcase(
+        os.path.abspath(str(expected_venv_root))
+    ):
+        raise WindowsPsecError(
+            "Python virtual environment must use the protected Program Files\\DCP\\Python312\\venvs\\psec location"
+        )
     base_executable = base_home / "python.exe"
     standard_library = base_home / "Lib"
     try:
