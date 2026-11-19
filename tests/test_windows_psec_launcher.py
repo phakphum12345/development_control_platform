@@ -158,7 +158,7 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
 
     def test_standalone_runtime_inside_denied_root_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
-            denied_root = Path(temporary) / "HostProfile"
+            denied_root = Path(temporary).resolve() / "HostProfile"
             denied_root.mkdir()
             executable = denied_root / "python.exe"
             executable.write_bytes(b"standalone interpreter fixture")
