@@ -418,3 +418,11 @@ This second pass supersedes the earlier README-derived 21-view estimate with the
 ## 9. HTTP path-family coverage update
 
 The 2026-11-19 source pass now records concrete Gateway GET/POST/DELETE route shapes, Runner credential endpoints, Auth Proxy read allowlists, bounded query rules and same-origin/CSRF checks in `DCP-REQUIREMENTS-TRACEABILITY.md`. Gateway and Auth Proxy each expose GET/POST/DELETE handler dispatch; no PUT/PATCH handler was found. Exact request/response schemas, all error statuses, and the full Proxy allowlist equivalence table remain IN_PROGRESS.
+
+
+### Dashboard Code Navigator coverage check
+- Current navigation: 23 distinct `data-tab` values.
+- Declared `CODE_NAV_MAPPINGS`: 21 entries.
+- Unmapped navigation tabs: `project-import` and `document-generator`.
+- The 21 mapping records declare 48 test references; every referenced test file path exists on current main.
+- The 48 references are declared associations, not evidence that all 48 test functions ran on this audit branch.
