@@ -373,7 +373,7 @@ No source-code behavior was changed by this audit document set. No local test su
 A second source pass inspected Gateway/Auth Proxy dispatch branches and the Dashboard navigation source:
 
 - Dashboard has **23 distinct `data-tab` values**: `home`, `account`, `project-import`, `terminal-studio`, `code-navigator`, `cloud-runners`, `infrastructure`, `dev-tools`, `ui-routes`, `ui-simulator`, `route-colors`, `github-api`, `repo-selector`, `repo`, `pr`, `user`, `workspace`, `evidence`, `gates`, `checkpoint`, `document-generator`, `audit`, `contact`.
-- The in-page `CODE_NAV_MAPPINGS` contains 21 explicit mappings, so it does not currently map every one of the 23 navigation tabs. The README's older 21-view count must be treated as stale until its description is reconciled.
+- The in-page `CODE_NAV_MAPPINGS` contains 21 explicit mappings, so it does not currently map every one of the 23 navigation tabs. The historical inventory's older 21-view count is superseded by this source-derived count.
 - `dashboard/index.html` has 334 observed element IDs; these are DOM IDs, not view count.
 - Gateway and Auth Proxy use `BaseHTTPRequestHandler` dispatch, not Flask-style decorators. Route extraction must inspect `do_GET`, `do_POST`, and `do_DELETE`.
 
