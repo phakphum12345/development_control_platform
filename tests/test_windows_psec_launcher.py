@@ -13,6 +13,7 @@ from tools.local_runner_agent.windows_psec_launcher import (
     WindowsPsecError,
     WindowsPsecLauncher,
     WindowsPsecProcess,
+    _build_environment_spec,
     _apply_sandbox_profile_environment,
     _environment_block,
     _require_app_container_token,
@@ -103,6 +104,48 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             self.assertEqual(paths[0], executable.parent.parent)
             self.assertIn(base_home, paths)
             self.assertIn(base_home / "Lib", paths)
+
+    def test_environment_spec_grants_base_runtime_read_only(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            program_files = self._program_files_root(root)
+            base_home = program_files / "DCP" / "Python312"
+            executable = self._make_venv_runtime(root / "venv", base_home)
+            workspace = root / "workspace"
+            scratch = root / "scratch"
+            system_root = root / "Windows"
+            for directory in (
+                workspace, scratch, system_root / "System32",
+                system_root / "WinSxS", system_root / "SysWOW64",
+                root / "HostProfile", root / "ProgramData", root / "Public",
+            ):
+                directory.mkdir(parents=True, exist_ok=True)
+
+            environment = {
+                "ProgramFiles": str(program_files),
+                "SYSTEMROOT": str(system_root),
+                "USERPROFILE": str(root / "HostProfile"),
+                "PROGRAMDATA": str(root / "ProgramData"),
+                "PUBLIC": str(root / "Public"),
+                "TEMP": str(scratch),
+                "TMP": str(scratch),
+            }
+            with mock.patch.dict(os.environ, environment):
+                with mock.patch(
+                    "tools.local_runner_agent.windows_psec_spec.build_psec_spec",
+                    return_value=b"serialized-policy",
+                ) as build_spec:
+                    payload = _build_environment_spec(workspace, scratch, str(executable))
+
+            self.assertEqual(payload, b"serialized-policy")
+            read_only = tuple(Path(value) for value in build_spec.call_args.kwargs["read_only_paths"])
+            self.assertIn(workspace, read_only)
+            self.assertIn(executable.parent.parent, read_only)
+            self.assertIn(base_home, read_only)
+            self.assertIn(base_home / "Lib", read_only)
+            denied = tuple(Path(value) for value in build_spec.call_args.kwargs["denied_paths"])
+            self.assertTrue(any(_paths_overlap(base_home, value) is False for value in denied))
+            self.assertFalse(any(_paths_overlap(base_home, value) for value in denied))
 
     def test_venv_base_runtime_under_denied_host_profile_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
