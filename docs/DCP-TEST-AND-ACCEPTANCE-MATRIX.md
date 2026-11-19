@@ -136,3 +136,26 @@ This increment enumerates test methods and fixtures from eight security/control-
 - Include non-`test_*` test assets such as `tests/browser_smoke.mjs`, generated bootstrap scripts and PowerShell acceptance scripts.
 - Map each test function to the exact workflow step/job and path-filter conditions.
 - Record exact-head test execution results separately from test definitions.
+
+
+## 8. 2026-11-20 — Additional WP-00C API/security test-function mapping
+
+| Test file | Methods | Fixture / skip notes | Workflow/job mapping |
+|---|---:|---|---|
+| `tests/test_local_auth_proxy_project_routes.py` | 19 | `LocalProjectProxyRouteTests.setUp/tearDown`; no skip markers found | Validate Control Plane / full unittest discovery |
+| `tests/test_cloud_gateway_terminal_catalog.py` | 7 | No skip markers found | Validate Control Plane / full unittest discovery |
+| `tests/test_cloud_gateway_infrastructure_api.py` | 16 | No skip markers found | Validate Control Plane / full unittest discovery |
+| `tests/test_local_auth_proxy.py` | 22 | Includes browser-engine readiness/skip behavior; credential, session, preview, Origin/CSRF and Gateway local settings tests | Validate Control Plane / full unittest discovery; Cross-platform Recovery / explicit Local Auth Proxy test step |
+| `tests/test_cloud_gateway.py` | 8 | HTTP tests use temporary SQLite and a local fake provider; no live provider is contacted | Validate Control Plane / full unittest discovery |
+
+### Additional security assertions established from named tests
+
+- Proxy GET routes: allow only explicit project/job/artifact/runner/terminal/infrastructure paths; reject unknown paths, duplicate/unbounded query parameters and invalid UUID/SHA forms before forwarding.
+- Proxy mutations: session + same-origin + CSRF required; runner drain/enable, job resume/cancel and Terminal actions are constrained to exact paths and empty-object schemas where applicable.
+- Infrastructure: independent cloud-provisioning and VM-creation gates default OFF; Owner confirmation/readiness required; operators cannot delete resources; Terminal catalog remains inert.
+- Document Workflow: no write scope by default; exact path scope, current base digest, content digest and confirmation are checked; traversal, hidden/unsupported paths and idempotency-key content conflicts are rejected.
+- Test definitions are not execution proof. Exact-head workflow evidence remains the separate matrix in this document.
+ 
+### Updated test inventory accounting
+
+The main recursive tree contains 91 files under `tests/`: 88 `test_*` paths and three supporting assets. This corrects the ambiguity between test-file count and all files under the test directory. Function-level mapping is now recorded for 13 selected security/control-plane modules; all remaining modules are still pending.
