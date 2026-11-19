@@ -4,6 +4,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$script:TrustedAclEvidence = @{}
 
 function Assert-Administrator {
    $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
@@ -86,6 +87,12 @@ function Assert-TrustedAcl {
    foreach ($target in $targets) {
        $acl = Get-Acl -LiteralPath $target
        $ownerSid = $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value
+       $script:TrustedAclEvidence[$target] = [pscustomobject]@{
+           path = $target
+           owner_sid = $ownerSid
+           dacl_protected = [bool]$acl.AreAccessRulesProtected
+           sddl = $acl.Sddl
+       }
        if ($ownerSid -notin $trustedOwners) {
            throw "Untrusted owner on '$target': $ownerSid. Expected SYSTEM, Administrators, or TrustedInstaller."
        }
@@ -122,6 +129,12 @@ function Assert-PythonSignature {
    }
    if (-not $signature.SignerCertificate.Subject.Contains("Python Software Foundation")) {
        throw "Unexpected signer for '$Path': $($signature.SignerCertificate.Subject)"
+   }
+   return [pscustomobject]@{
+       path = $Path
+       status = [string]$signature.Status
+       subject = $signature.SignerCertificate.Subject
+       thumbprint = $signature.SignerCertificate.Thumbprint
    }
 }
 
@@ -171,7 +184,7 @@ if (-not (Test-Path -LiteralPath $baseRuntime)) {
    $installerUrl = "https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe"
 
    Invoke-WebRequest -Uri $installerUrl -OutFile $installer -UseBasicParsing
-   Assert-PythonSignature -Path $installer
+   $installerSignature = Assert-PythonSignature -Path $installer
 
    $arguments = '/quiet InstallAllUsers=1 TargetDir="' + $baseRuntime +
        '" Include_launcher=0 Include_test=0 Include_pip=1 Include_doc=0 ' +
@@ -196,7 +209,7 @@ foreach ($requiredPath in @($basePython, $pythonDll, $python3Dll, (Join-Path $st
    Assert-TrustedAcl -Path $requiredPath
 }
 Assert-TrustedAcl -Path $stdlib
-Assert-PythonSignature -Path $basePython
+$basePythonSignature = Assert-PythonSignature -Path $basePython
 
 $versionOutput = & $basePython -c "import sys; print('.'.join(map(str, sys.version_info[:3])))"
 if ($LASTEXITCODE -ne 0 -or $versionOutput.Trim() -ne "3.12.10") {
@@ -292,6 +305,17 @@ catch {
 
 $evidence | Add-Member -Force -NotePropertyName repository_head -NotePropertyValue $head
 $evidence | Add-Member -Force -NotePropertyName runner_exit_code -NotePropertyValue $acceptance.ExitCode
+$evidence | Add-Member -Force -NotePropertyName trusted_runtime -NotePropertyValue ([pscustomobject]@{
+   base_python = $basePython
+   base_python_version = $versionOutput.Trim()
+   base_python_signature = $basePythonSignature
+   installer_signature = $installerSignature
+   venv_python = $venvPython
+   venv_runtime = $runtime
+   psec_api_probe = $probeEvidence
+   acceptance_parent = $AcceptanceParent
+})
+$evidence | Add-Member -Force -NotePropertyName trusted_runtime_acl_evidence -NotePropertyValue @($script:TrustedAclEvidence.Values)
 $artifactDirectory = Join-Path $repoRoot "artifacts"
 if (-not (Test-Path -LiteralPath $artifactDirectory -PathType Container)) {
    New-Item -ItemType Directory -Path $artifactDirectory | Out-Null
