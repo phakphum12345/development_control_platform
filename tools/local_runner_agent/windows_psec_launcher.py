@@ -620,19 +620,36 @@ def _runtime_root(executable: str) -> Path:
     return parent
 
 
+def _program_files_roots() -> tuple[Path, ...]:
+    """Read the 64-bit Program Files location from HKLM, never user env vars."""
+    if os.name != "nt":
+        raise WindowsPsecError("trusted Program Files registry location is only available on Windows")
+    try:
+        import winreg
+
+        access = winreg.KEY_READ | winreg.KEY_WOW64_64KEY
+        with winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\\Microsoft\\Windows\\CurrentVersion",
+            0,
+            access,
+        ) as key:
+            value, _ = winreg.QueryValueEx(key, "ProgramFilesDir")
+    except (OSError, ImportError):
+        raise WindowsPsecError(
+            "cannot read the 64-bit ProgramFilesDir from the machine registry"
+        ) from None
+    if not isinstance(value, str) or not value or "%" in value:
+        raise WindowsPsecError("machine ProgramFilesDir registry value is invalid")
+    return (_trusted_directory(value, "Program Files registry root"),)
+
+
 def _require_program_files_base_runtime(base_home: Path) -> None:
     """Require the single installer-managed DCP Python runtime location."""
-    candidates = (
-        os.environ.get("ProgramW6432"),
-        os.environ.get("ProgramFiles"),
-    )
-    expected_roots = []
-    for candidate in candidates:
-        if not candidate:
-            continue
-        root = _trusted_directory(candidate, "Program Files runtime root")
-        expected = root / "DCP" / "Python312"
-        expected_roots.append(expected)
+    expected_roots = [
+        root / "DCP" / "Python312"
+        for root in _program_files_roots()
+    ]
     if not any(
         os.path.normcase(os.path.abspath(str(base_home)))
         == os.path.normcase(os.path.abspath(str(expected)))
