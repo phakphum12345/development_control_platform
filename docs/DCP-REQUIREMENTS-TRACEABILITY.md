@@ -310,3 +310,54 @@ The Auth Proxy checks the parsed query string separately. Unsupported query comb
 - Inspect `validate_preview_payload`, infrastructure gate store schema and every runner credential handler to capture nested types, bounds, unknown-key policy and error statuses.
 - Enumerate all request/response object fields for non-GET endpoints.
 - Add automated contract tests for route allowlist parity and exact request field sets where source currently accepts unknown keys.
+
+
+## 2026-11-20 — WP-00B complete Dashboard Code Navigator candidate map
+
+**Candidate source:** PR #151 branch `fix/dashboard-code-navigator-cover-all-views-20261119`, Dashboard blob `1a72ca2096cb5aa377746cb9c5c8a686dab445fb`.  
+**Mainline baseline:** 23 distinct navigation IDs and 21 mapping entries. The table below describes the PR #151 candidate with 23 mapping entries; it is not yet mainline.
+
+| View ID | Label | Route group | DOM IDs | Declared handlers | Test refs |
+|---|---|---|---:|---:|---:|
+| `contact` | Contact | workflow | 10 | 2 | 2 |
+| `home` | Overview | workflow | 3 | 0 | 2 |
+| `project-import` | Project Import | repository | 18 | 8 | 3 |
+| `dev-tools` | Emulators & VS Code | developer | 2 | 1 | 2 |
+| `ui-routes` | UI Route Manager | workflow | 5 | 5 | 3 |
+| `ui-simulator` | UI Simulator | developer | 5 | 2 | 2 |
+| `route-colors` | Route Color Manager | workflow | 4 | 3 | 2 |
+| `repo` | Repository Explorer | repository | 4 | 1 | 2 |
+| `pr` | Pull Request Review | quality | 5 | 1 | 1 |
+| `workspace` | GitHub Workspace | repository | 4 | 2 | 2 |
+| `evidence` | SHA & Evidence | security | 3 | 1 | 1 |
+| `gates` | Quality Gate Planner | quality | 3 | 2 | 2 |
+| `checkpoint` | Checkpoint Builder | workflow | 3 | 2 | 1 |
+| `document-generator` | Document Generator | workflow | 25 | 11 | 6 |
+| `audit` | Audit & Safety | security | 3 | 2 | 1 |
+| `github-api` | Research OS API | security | 5 | 1 | 1 |
+| `account` | Password Login | security | 7 | 5 | 4 |
+| `code-navigator` | Code Navigator | developer | 10 | 8 | 2 |
+| `cloud-runners` | Cloud Runner Control | security | 11 | 8 | 4 |
+| `infrastructure` | Infrastructure Manager | security | 20 | 8 | 4 |
+| `repo-selector` | Account & Repo | repository | 7 | 5 | 3 |
+| `user` | User Explorer | repository | 6 | 2 | 2 |
+| `terminal-studio` | Terminal Studio | developer | 21 | 13 | 5 |
+
+### Cross-view boundary findings
+
+- Public GitHub research views (`repo-selector`, `repo`, `user`, `pr`, `workspace`) use public REST metadata and do not establish authenticated repository authorization.
+- `account` uses the same-origin Local Auth Proxy session/login/logout routes; browser code does not receive the Gateway bearer token or HMAC secret.
+- `project-import` is authenticated read-only source inspection; it does not execute or install imported code.
+- `document-generator` has two distinct outputs: browser-local download and an optional Owner-scoped Gateway Document Workflow. Download is not a repository write.
+- `infrastructure` and `cloud-runners` expose control-plane operations but do not prove a paid resource was created; provisioning remains gated and disabled by default.
+- `terminal-studio` catalog/preview/grant handlers do not establish process isolation. All Terminal execution templates remain disabled until the platform isolation acceptance gate is VERIFIED.
+- `ui-routes`, `ui-simulator`, `route-colors`, `gates`, `checkpoint`, `audit`, and `evidence` are browser-local or static validation surfaces; they are not production router, CI, deployment, or external evidence.
+- `code-navigator` is a static mapping and DOM inspection registry. It is not a runtime call graph, symbol indexer or CI evidence collector.
+
+### Candidate map totals and integrity
+
+- 23 mapping records for 23 navigation IDs.
+- 57 declared test references across 14 test files.
+- 0 missing declared file/function/class references according to PR #151's contract test and source-backed audit.
+- DOM ID totals are per-view declarations and may overlap shared elements; they are not a count of unique DOM nodes.
+- This is structural traceability. It does not execute 57 test references or prove every backend service path.
