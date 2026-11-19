@@ -6,6 +6,7 @@ on:
       - ".github/workflows/windows-psec-host-acceptance.yml"
       - "requirements-windows-psec.txt"
       - "scripts/Run-DCP-Windows-PSEC-Host-Acceptance.ps1"
+      - "scripts/Prepare-DCP-Windows-PSEC-TrustedRuntime.ps1"
       - "tools/local_runner_agent/windows_psec*.py"
       - "tests/test_windows_psec*.py"
   push:
@@ -35,6 +36,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Parse trusted-runtime preparation PowerShell
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $scriptPath = Join-Path $PWD "scripts/Prepare-DCP-Windows-PSEC-TrustedRuntime.ps1"
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            $scriptPath, [ref]$tokens, [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String | Write-Error
+            throw "Trusted-runtime preparation script has PowerShell syntax errors."
+          }
 
       - name: Set up Python
         uses: actions/setup-python@v5
