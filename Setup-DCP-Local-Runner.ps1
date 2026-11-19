@@ -40,7 +40,8 @@ function Write-ProtectedJsonFile {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
         [Parameter(Mandatory = $true)][object]$Value,
-        [Parameter(Mandatory = $true)][string]$Identity
+        [Parameter(Mandatory = $true)][string]$Identity,
+        [Parameter(Mandatory = $true)][long]$MaximumBytes
     )
 
     $temporary = $Path + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
@@ -88,7 +89,7 @@ function Write-ProtectedJsonFile {
 
         Move-Item -LiteralPath $temporary -Destination $Path -Force
 
-        $destination = Get-ExistingRegularFile -Path $Path -MaximumBytes $maxSettingsBytes -Label 'Protected local DCP'
+        $destination = Get-ExistingRegularFile -Path $Path -MaximumBytes $MaximumBytes -Label 'Protected local DCP'
         if ($null -eq $destination) {
             throw "Protected file '$Path' was not created."
         }
@@ -241,7 +242,7 @@ $orderedTokens = [ordered]@{}
 foreach ($key in ($tokenMap.Keys | Sort-Object)) {
     $orderedTokens[$key] = $tokenMap[$key]
 }
-Write-ProtectedJsonFile -Path $credentialFile -Value $orderedTokens -Identity $identity
+Write-ProtectedJsonFile -Path $credentialFile -Value $orderedTokens -Identity $identity -MaximumBytes $maxCredentialBytes
 
 # Do not create an empty allowlist for offline enrollment. Preserve and protect an
 # existing settings file, or persist the explicit repositories supplied by Owner.
@@ -250,7 +251,7 @@ if ($settingsFileExists -or $allowedRepositoryMap.Count -gt 0) {
     $settings = [ordered]@{
         allowed_repositories = $orderedRepositories
     }
-    Write-ProtectedJsonFile -Path $settingsFile -Value $settings -Identity $identity
+    Write-ProtectedJsonFile -Path $settingsFile -Value $settings -Identity $identity -MaximumBytes $maxSettingsBytes
 }
 
 Write-Host "Local Runner credential prepared for worker '$WorkerId'."
