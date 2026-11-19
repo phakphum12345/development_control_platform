@@ -450,6 +450,7 @@ class DashboardControlCenterV2Tests(unittest.TestCase):
         self.assertEqual(expected, mapped)
         navigation = set(re.findall(r'<button[^>]*\bdata-tab="([^"]+)"', HTML))
         self.assertEqual(expected, navigation, "Code Navigator must cover every actual navigation tab")
+        self.assertIn('id="dcp-nav-count">23 tools</strong>', HTML)
         for contract in (
             'id:"account",label:"Password Login"',
             'id:"code-navigator",label:"Code Navigator"',
