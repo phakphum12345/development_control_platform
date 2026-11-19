@@ -104,6 +104,63 @@ try {
         throw 'Setup accepted duplicate trusted repositories with different casing.'
     }
 
+    # Existing settings must not be read through a reparse point. Some
+    # Windows hosts do not grant symlink creation to the current token; in that
+    # case record an explicit skip and restore the original file.
+    $settingsTarget = $settingsFile + '.target'
+    Move-Item -LiteralPath $settingsFile -Destination $settingsTarget
+    $symlinkCreated = $false
+    try {
+        try {
+            New-Item -ItemType SymbolicLink -Path $settingsFile -Target $settingsTarget -ErrorAction Stop | Out-Null
+            $symlinkCreated = $true
+        } catch {
+            Write-Warning 'SKIPPED: host did not permit creating a symbolic link for the Gateway settings test.'
+        }
+        if ($symlinkCreated) {
+            $tokensBeforeReparse = (Get-FileHash -LiteralPath $credentialFile -Algorithm SHA256).Hash
+            $reparseRejected = $false
+            try {
+                & $setup -WorkerId 'ci-runner-03'
+            } catch {
+                $reparseRejected = $true
+            }
+            if (-not $reparseRejected) {
+                throw 'Setup followed a reparse-point Gateway settings file.'
+            }
+            if ((Get-FileHash -LiteralPath $credentialFile -Algorithm SHA256).Hash -ne $tokensBeforeReparse) {
+                throw 'Rejected reparse-point settings changed the Runner credential file.'
+            }
+        }
+    } finally {
+        if (Test-Path -LiteralPath $settingsFile) {
+            Remove-Item -LiteralPath $settingsFile -Force
+        }
+        if (Test-Path -LiteralPath $settingsTarget) {
+            Move-Item -LiteralPath $settingsTarget -Destination $settingsFile -Force
+        }
+    }
+
+    # The settings file is bounded independently from Runner credentials.
+    [IO.File]::WriteAllText(
+        $settingsFile,
+        (' ' * 16385),
+        [Text.UTF8Encoding]::new($false)
+    )
+    $oversizedSettingsHash = (Get-FileHash -LiteralPath $settingsFile -Algorithm SHA256).Hash
+    $oversizedSettingsRejected = $false
+    try {
+        & $setup -WorkerId 'ci-runner-03'
+    } catch {
+        $oversizedSettingsRejected = $true
+    }
+    if (-not $oversizedSettingsRejected) {
+        throw 'Setup accepted an oversized Gateway settings file.'
+    }
+    if ((Get-FileHash -LiteralPath $settingsFile -Algorithm SHA256).Hash -ne $oversizedSettingsHash) {
+        throw 'Rejected oversized Gateway settings changed the original file.'
+    }
+
     # The allowlist has a hard maximum. A failed extension must preserve the
     # existing file rather than silently truncating or partially writing it.
     $twentyRepositories = @(1..20 | ForEach-Object { "owner/repo$_" })
