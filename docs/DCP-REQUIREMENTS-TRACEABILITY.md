@@ -361,3 +361,58 @@ The Auth Proxy checks the parsed query string separately. Unsupported query comb
 - 0 missing declared file/function/class references according to PR #151's contract test and source-backed audit.
 - DOM ID totals are per-view declarations and may overlap shared elements; they are not a count of unique DOM nodes.
 - This is structural traceability. It does not execute 57 test references or prove every backend service path.
+
+
+## 2026-11-20 — WP-00B Terminal, Infrastructure Gate and Runner v1 schemas
+
+**Source blobs:** terminal_catalog.py@43c7a9b958012911a7ccd3e686841598c7b9c43d; infrastructure_gates.py@c6759ed1cac5fbbf45b3fabf62d94424a84d1181; runner_registry.py@f388a6244112f9c2192ab0ec53633b874b6df161; job_control.py@4295b3adbc1137b7bd706c1c79eb9324f538af7c5.
+
+### Terminal preview
+
+- HTTP request contract: exactly template_id plus optional parameters; template ID must match [a-z][a-z0-9_-]{0,63}.
+- Parameter names must be declared by the selected template; unknown parameter keys are rejected.
+- integer parameters reject booleans and non-numeric strings, and are bounded by the template's declared minimum/maximum (e.g. Git log limit 1–50).
+- commit_sha requires exactly 40 hexadecimal characters and is normalized to lowercase.
+- Catalog currently has seven curated read-only templates: Git status, Git diff, Git log, Git show commit, Git diff commit, Python version, Node version. Each is execution_enabled=false, network=denied, fixed executable/argv, bounded timeout/output and assigned-workspace policy.
+- preview_template returns a safe argv preview only; it does not execute.
+
+### Infrastructure gates
+
+- Persisted gate names are exactly cloud_provisioning and vm_creation; both initialize OFF.
+- Store requires enabled to be a real boolean (not integer 0/1), nonblank actor, exact per-gate confirmation string when enabling, and readiness exactly True.
+- Disabling does not require confirmation/readiness. Each state change is audited with actor/time.
+- Gateway route requires Owner session, same-origin and CSRF; unknown gate names and invalid values fail closed.
+- HTTP body schema gap: the route reads payload.enabled and payload.confirmation but does not reject unknown JSON keys. Unknown fields are currently ignored by the handler. The persisted store validates consumed fields but does not receive the original payload. Track exact-key enforcement as a WP-01 API hardening task; no claim of strict HTTP schema is made.
+
+### Runner credential API (/v1/runner/*)
+
+All routes require a valid dedicated Runner bearer credential. Dashboard session headers are not a substitute. Gateway returns 401 without Runner identity and 503 if the Job Control Plane/Runner Registry is unavailable.
+
+| Route | Body fields consumed / constraints | State/lease contract | HTTP outcomes observed |
+|---|---|---|---|
+| POST /v1/runner/register, /enroll | host_os, capabilities; registry validates worker identity, OS and capability list | register marks live only for /register; /enroll records offline | 200 {runner}; 400 invalid registry values; 401 credential; 503 registry/job store |
+| POST /v1/runner/ping | JSON object required by body parser; payload fields are ignored | Runner must already be registered; updates liveness | 200 {runner}; 409 not registered; 401/503 |
+| POST /v1/runner/claim | lease_seconds, default 30; JobStore/Scheduler requires integer 5–300 | Runner must be registered, online and not draining; capability-filtered scheduler claim; expired leases recovered first | 200 {job:null|public job}; 409 unregistered/ineligible; 400 invalid lease; 503 registry/scheduler |
+| POST /v1/runner/{job_uuid}/terminal-grant | Exactly authorization_id | Requires active, unexpired lease owned by caller; job must be terminal_script; grant ID must match queued job and binds project/workspace/snapshot/template/parameters digest | 200 {grant}; 400 schema; 403 mismatch/policy; 409 lease/job state; 503 store |
+| POST /v1/runner/{job_uuid}/artifacts | Binary application/octet-stream, bounded Content-Length; no JSON body | Current job lease/worker ownership revalidated; SHA-256 metadata generated | 201 {artifact}; 400 length; 413 size; 415 content type; 409 lease conflict; 503 store |
+| POST /v1/runner/{job_uuid}/heartbeat | lease_seconds, default 30; integer 5–300 | Current worker must own unexpired running/cancel-requested lease | 200 public job; 400 invalid lease; 409 stale/wrong worker; 404 missing; 503 |
+| POST /v1/runner/{job_uuid}/checkpoint | sequence, checkpoint; checkpoint object exactly version,step,safe_to_resume,data; version 1; step [A-Za-z0-9_.:-]{1,80}; JSON <=32 KiB; sensitive field names recursively rejected | Sequence positive, monotonic, lease-bound; identical same-sequence digest is idempotent; conflicting/stale lease rejected | 200 public job with checkpoint; 400 schema/sequence; 409 lease/conflict; 404; 503 |
+| POST /v1/runner/{job_uuid}/logs | message 1–8192 UTF-8 bytes; stream in stdout/stderr/system, default stdout | Current unexpired job lease required | 202 {accepted:true}; 400 invalid; 409 stale lease; 404; 503 |
+| POST /v1/runner/{job_uuid}/finish | outcome in succeeded/failed/cancelled; optional result object; optional error code [A-Z0-9_]{1,64} or null | Current unexpired job lease required; cancel-requested job cannot finish succeeded | 200 public job; 400 invalid outcome/result/error; 409 stale lease/state; 404; 503 |
+
+### Runner HTTP schema limitations
+
+- The outer JSON body for register/enroll, ping, claim, heartbeat, checkpoint, logs and finish is not uniformly checked for an exact key set at the HTTP handler. Some consumed nested objects (notably checkpoint) are strict; extra outer keys are ignored unless downstream validation rejects them.
+- The registry register method validates worker ID, host OS and capabilities; the Gateway derives worker ID from the bearer token, not from browser/user payload.
+- The artifact endpoint is binary, not JSON; its exact content-type/size/lease checks are separate.
+- Track exact outer-key validation for Runner v1 routes as WP-01 hardening. Do not infer that an ignored field is an accepted capability.
+
+### Test evidence links
+
+- Terminal typed preview: tests/test_cloud_gateway_terminal_catalog.py.
+- Infrastructure gates: tests/test_cloud_gateway_infrastructure_gates.py and tests/test_cloud_gateway_infrastructure_api.py.
+- Runner HTTP identity, OIDC, nonce replay and job lifecycle: tests/test_cloud_runner_user_api.py.
+- Job lease/checkpoint/retry invariants: tests/test_cloud_gateway_job_control.py.
+- Runner registration token bootstrap (separate cloud/provider token flow): tests/test_cloud_gateway_runner_bootstrap.py.
+
+WP-00B remains IN_PROGRESS until all route schemas, outer-key behavior, service exception/status mappings and Dashboard event-to-service call edges are enumerated and tested.
