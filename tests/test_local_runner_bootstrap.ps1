@@ -64,7 +64,7 @@ try {
     }
 
     $settingsAcl = (& icacls.exe $settingsFile) -join [Environment]::NewLine
-    if ($LASTEXITCODE -ne 0 -or $settingsAcl -match 'Everyone|Authenticated Users|BUILTIN\Users') {
+    if ($LASTEXITCODE -ne 0 -or $settingsAcl -match 'Everyone|Authenticated Users|BUILTIN\\Users') {
         throw 'Gateway settings ACL grants access to a broad user group or could not be verified.'
     }
 
