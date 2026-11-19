@@ -232,3 +232,18 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Updated on the audit branch: Requirements Traceability, Test and Acceptance Matrix, Implementation Status, Remaining Work Inventory. WP-00B/00C remain IN_PROGRESS.
 - No application source, security control, workflow, provisioning behavior or PR state was changed. No PR merged; no cloud resource provisioned.
 - Next: finish remaining test-function/workflow map and Dashboard event/API/service traces; then run exact-head validation for the latest WP-00 branch head. Continue independent security foundation analysis without crossing the blocked Runner Bootstrap/PSEC dependency.
+
+
+---
+
+## 2026-11-20 — WP-00B strict schema and WP-00C expanded test mapping
+
+- Additional exact Gateway source inspection captured strict request key sets for Document Workflow grants/revokes/proposals/approvals, Terminal template review, Local Folder job creation, UNKNOWN-job resume, cancellation, previews and Runner drain/enable.
+- Recorded the exact mainline Auth Proxy `ALLOWED_GET` tuple plus its separately admitted regex route families and query-string constraints.
+- Flagged one specific schema gap: the infrastructure gate HTTP handler reads `enabled` and `confirmation` but does not itself reject unknown JSON keys; gate-store validation and tests must be inspected before claiming exact schema enforcement.
+- Expanded WP-00C function-level mapping to 13 selected security/control-plane test modules. Additional mappings include Local Auth Proxy route allowlist/mutations (19 methods), Terminal catalog (7), Infrastructure API (16), Local Auth Proxy main (22), and Gateway core (8).
+- Main test directory count confirmed: 91 files total = 88 `test_*` paths plus three support assets. This corrects ambiguity in previous test inventory counts.
+- Latest WP-00 docs branch now includes updated Requirements Traceability and Test/Acceptance Matrix. WP-00B/00C remain IN_PROGRESS; all remaining JSON schemas, route error branches, Dashboard event-to-service edges and test-function/workflow mappings are not complete.
+- Previous exact-head CI on WP-00 head `f9c15b17c9e8a34384242d3f67be6d9a48481c31`: Validate PASS; Linux emulator PASS; Windows Auth Proxy E2E PASS; Ubuntu/Windows Recovery PASS; Windows dynamic-port launcher integration FAIL (job `135764554935`); Windows runner acceptance SKIPPED (job `135764558334`). Failure remains the missing `-TrustedRepository` setup parameter on mainline.
+- No source code or runtime security behavior was changed. No PR merged, no force-push, no cloud provisioning.
+- Next: re-run exact-head checks for the latest docs branch head, continue route schema/service and test trace, then choose the next independent code package only after its file overlap/dependency audit.
