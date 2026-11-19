@@ -123,9 +123,10 @@ if (-not (Test-Path -LiteralPath $requirements -PathType Leaf)) {
    throw "PSEC requirements file is missing: $requirements"
 }
 
-$programFilesRoot = [Environment]::GetEnvironmentVariable("ProgramW6432")
-if ([string]::IsNullOrWhiteSpace($programFilesRoot)) {
-   $programFilesRoot = [Environment]::GetFolderPath("ProgramFiles")
+$programFilesRegistry = Get-ItemProperty -LiteralPath "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion" -Name "ProgramFilesDir"
+$programFilesRoot = [string]$programFilesRegistry.ProgramFilesDir
+if ([string]::IsNullOrWhiteSpace($programFilesRoot) -or $programFilesRoot.Contains("%")) {
+    throw "The machine 64-bit ProgramFilesDir registry value is invalid."
 }
 $programFilesRoot = [System.IO.Path]::GetFullPath($programFilesRoot)
 $dcpRoot = Join-Path $programFilesRoot "DCP"
