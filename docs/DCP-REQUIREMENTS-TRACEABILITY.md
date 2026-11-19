@@ -150,3 +150,13 @@ The following path shapes were confirmed from the Gateway and Auth Proxy dispatc
 - Both HTTP handlers implement GET, POST and DELETE dispatch; no PUT/PATCH handler was found in these two modules.
 
 This is a source-derived route-shape inventory. It does not yet document every request/response JSON schema, every HTTP status/error branch, or the full Auth Proxy `ALLOWED_GET` constant and Gateway service call graph. Those remain open WP-00B work.
+
+
+## 2026-11-19 — Dashboard Code Navigator mapping coverage
+
+- 23 distinct Dashboard navigation tabs were extracted from `data-tab`.
+- `CODE_NAV_MAPPINGS` contains 21 declared records.
+- The two unmapped tabs are `project-import` and `document-generator`.
+- The 21 declared records contain 48 test references; all referenced test file paths exist on current main.
+- These declared links do not prove that the referenced tests were executed on the current PR head or that every handler/API edge is correct.
+- WP-00B follow-up: map the two missing tabs and verify each mapping's handler, API path, auth/CSRF behavior, backend service and test assertion.
