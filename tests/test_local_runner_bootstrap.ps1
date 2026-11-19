@@ -74,6 +74,59 @@ try {
         throw 'Runner credential ACL grants access to a broad user group.'
     }
 
+
+
+    # Invalid and duplicate trust entries must be rejected before replacing
+    # either the credential map or the existing Gateway allowlist.
+    $settingsBeforeInvalid = (Get-FileHash -LiteralPath $settingsFile -Algorithm SHA256).Hash
+    $tokensBeforeInvalid = Get-Content -LiteralPath $credentialFile -Raw
+    $invalidRejected = $false
+    try {
+        & $setup -WorkerId 'ci-runner-03' -TrustedRepository 'owner/../escape'
+    } catch {
+        $invalidRejected = $true
+    }
+    if (-not $invalidRejected) {
+        throw 'Setup accepted a repository path containing traversal segments.'
+    }
+    if ((Get-FileHash -LiteralPath $settingsFile -Algorithm SHA256).Hash -ne $settingsBeforeInvalid -or
+        (Get-Content -LiteralPath $credentialFile -Raw) -cne $tokensBeforeInvalid) {
+        throw 'Rejected repository input changed existing protected settings or credentials.'
+    }
+
+    $duplicateRejected = $false
+    try {
+        & $setup -WorkerId 'ci-runner-03' -TrustedRepository @('owner/mobile-app', 'OWNER/MOBILE-APP')
+    } catch {
+        $duplicateRejected = $true
+    }
+    if (-not $duplicateRejected) {
+        throw 'Setup accepted duplicate trusted repositories with different casing.'
+    }
+
+    # The allowlist has a hard maximum. A failed extension must preserve the
+    # existing file rather than silently truncating or partially writing it.
+    $twentyRepositories = @(1..20 | ForEach-Object { "owner/repo$_" })
+    $twentySettings = [ordered]@{ allowed_repositories = $twentyRepositories }
+    [IO.File]::WriteAllText(
+        $settingsFile,
+        (ConvertTo-Json -InputObject $twentySettings -Compress -Depth 4),
+        [Text.UTF8Encoding]::new($false)
+    )
+    $settingsBeforeLimit = (Get-FileHash -LiteralPath $settingsFile -Algorithm SHA256).Hash
+    $limitRejected = $false
+    try {
+        & $setup -WorkerId 'ci-runner-03' -TrustedRepository 'owner/new-app'
+    } catch {
+        $limitRejected = $true
+    }
+    if (-not $limitRejected) {
+        throw 'Setup accepted more than 20 trusted repositories.'
+    }
+    if ((Get-FileHash -LiteralPath $settingsFile -Algorithm SHA256).Hash -ne $settingsBeforeLimit) {
+        throw 'Rejected allowlist overflow changed the existing Gateway settings file.'
+    }
+
     Write-Host 'Local Runner credential bootstrap tests passed.'
 } finally {
     $env:LOCALAPPDATA = $previousLocalAppData
