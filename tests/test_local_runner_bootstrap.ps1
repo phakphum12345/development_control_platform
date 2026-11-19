@@ -127,6 +127,28 @@ try {
         throw 'Rejected allowlist overflow changed the existing Gateway settings file.'
     }
 
+    # Reject a pre-existing token map that the Gateway itself would refuse.
+    $seventeenWorkers = [ordered]@{}
+    1..17 | ForEach-Object { $seventeenWorkers["worker-$_"] = [Guid]::NewGuid().ToString('N') }
+    [IO.File]::WriteAllText(
+        $credentialFile,
+        (ConvertTo-Json -InputObject $seventeenWorkers -Compress -Depth 4),
+        [Text.UTF8Encoding]::new($false)
+    )
+    $tokensBeforeWorkerLimit = (Get-FileHash -LiteralPath $credentialFile -Algorithm SHA256).Hash
+    $workerLimitRejected = $false
+    try {
+        & $setup -WorkerId 'ci-runner-03'
+    } catch {
+        $workerLimitRejected = $true
+    }
+    if (-not $workerLimitRejected) {
+        throw 'Setup accepted a Runner token map with more than 16 workers.'
+    }
+    if ((Get-FileHash -LiteralPath $credentialFile -Algorithm SHA256).Hash -ne $tokensBeforeWorkerLimit) {
+        throw 'Rejected oversized Runner token map changed the existing credential file.'
+    }
+
     Write-Host 'Local Runner credential bootstrap tests passed.'
 } finally {
     $env:LOCALAPPDATA = $previousLocalAppData
