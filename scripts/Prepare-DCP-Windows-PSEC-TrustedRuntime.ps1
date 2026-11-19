@@ -196,7 +196,9 @@ elseif (-not (Test-Path -LiteralPath $venvPython -PathType Leaf) -or
    throw "The trusted PSEC virtual environment exists but is incomplete. Refusing to overwrite it."
 }
 
+Assert-TrustedAcl -Path $venvParent
 Assert-TrustedAcl -Path $venvRoot
+Assert-TrustedAcl -Path $venvConfig
 Assert-TrustedAcl -Path $venvPython
 $homeEntries = @(
    Get-Content -LiteralPath $venvConfig |
