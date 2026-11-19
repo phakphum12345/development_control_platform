@@ -248,3 +248,65 @@ The above is a route/auth/status-family pass, not a claim that every API schema 
 - Document Generator mapping declares 25 DOM IDs and its browser generation/download plus optional Owner-scoped Document Workflow grant/proposal/approval handlers. A browser download is not a repository write; a local write requires separate scoped grant, exact proposal digest confirmation and read-back verification.
 - PR #151 adds navigation-vs-mapping and declared test-reference validation. Its head CI is not accepted as PASS while the shared Windows dynamic-port bootstrap job fails.
 - The 23-view mapping is candidate-verified on PR #151 only; main remains at 21 mappings until an Owner-approved merge.
+
+
+## 2026-11-20 — WP-00B strict request schemas and Auth Proxy allowlist
+
+### Auth Proxy literal GET allowlist
+
+The mainline `ALLOWED_GET` constant is exactly:
+- `/api/cloud-runners/status`
+- `/api/cloud-runners`
+- `/api/local-projects`
+- `/api/local-projects/roots`
+- `/api/github/repositories`
+- `/api/infrastructure/gates`
+- `/api/runners`
+- `/api/terminal/templates`
+- `/api/infrastructure`
+
+Additional GET paths are admitted only by explicit regex/condition branches:
+- GitHub repository refs, commits and project inspection with bounded owner/repo segments and 40-hex commit SHA.
+- Local Project UUID detail.
+- Job UUID detail, artifacts, events and bounded logs.
+- Custom Terminal template event IDs.
+- Infrastructure UUID detail/events.
+- Cloud Runner UUID-like detail path.
+- Artifact download UUID path.
+- Job preview list/status/content paths, with separate preview-cookie handling.
+
+The Auth Proxy checks the parsed query string separately. Unsupported query combinations are rejected with 404 before Gateway forwarding. The Gateway remains the authorization authority; the proxy's allowlist is only a forwarding boundary.
+
+### Exact body-key constraints confirmed in Gateway source
+
+| Route | Exact JSON keys / constraints | Authorization and result |
+|---|---|---|
+| `POST /api/document-workflow/grants` | Exactly `project_id`, `allowed_paths`, `confirmation` | Owner + Origin + CSRF; 201 `{grant}` |
+| `POST /api/document-workflow/grants/{uuid}/revoke` | Exactly `confirmation` | Owner + Origin + CSRF; 200 `{grant}` |
+| `POST /api/document-workflow/proposals` | Exactly `project_id`, `relative_path`, `content`, `expected_sha256` | Owner + Origin + CSRF; 201 `{proposal}` |
+| `POST /api/document-workflow/proposals/{uuid}/approve` | Exactly `content_sha256`, `confirmation` | Owner + Origin + CSRF; 200 `{write}`; service verifies exact digest and read-back |
+| `POST /api/terminal/templates/{custom-id}/review` | Exactly `decision`, `confirmation`, `source_sha256` | Owner + Origin + CSRF; 200 `{template}`; 404/409/400 domain branches |
+| `POST /api/infrastructure/gates/{gate}` | `enabled` and `confirmation` are consumed by the gate store; unknown-key rejection is not established at the HTTP handler | Owner + Origin + CSRF; 200 `{gate}`; readiness and confirmation rechecked by store |
+| `POST /api/terminal/commands/preview` | Validated by `validate_preview_payload`; only `template_id` and `parameters` are accepted by its contract test | Owner/operator + Origin + CSRF; 200 `{preview,execution_enabled}`; preview never launches a process |
+| `POST /api/jobs` Local Folder | Exactly `source_type`, `project_id`, `snapshot_sha256`, `target`; project ID UUID and snapshot lowercase 64-hex SHA-256 | Owner only + Origin + CSRF; 202 new / 200 idempotent replay |
+| `POST /api/jobs/{uuid}/resume` | Exactly `confirmation` with literal `RESUME UNKNOWN JOB AFTER WORKER STOPPED AND WORKSPACE CLEANED` | Owner only + Origin + CSRF; 200 public job |
+| `POST /api/jobs/{uuid}/cancel` | Empty JSON object only | Owner only + Origin + CSRF; 200 public job |
+| `POST /api/jobs/{uuid}/previews` | Static: only `runtime_kind` and optional `output_relative`; Next.js: exactly `runtime_kind` and `confirm_code_execution=true` | Owner only + Origin + CSRF; job must have succeeded; 201 preview |
+| `POST /api/runners/{worker-id}/{drain\|enable}` | Empty JSON object only | Owner only + Origin + CSRF |
+| Runner credential `POST /v1/runner/{route}` | Route-specific payload; includes host OS/capabilities, lease seconds, checkpoint sequence/checkpoint, log message/stream, finish outcome/result/error code, artifact content length and Terminal authorization ID | Runner credential + registered worker/job lease; 401/409/403/400/413/415/503 branches |
+
+**Important schema limitation:** The infrastructure gate handler reads `enabled` and `confirmation` but does not enforce an exact key set at the HTTP layer. The gate store must be inspected and tests must prove unknown fields cannot influence behavior. This remains a specific WP-00B schema-validation item, not an assumed PASS.
+
+### Test links for these route contracts
+
+- Local Auth Proxy forwarding allowlist and mutation boundaries: `tests/test_local_auth_proxy_project_routes.py` (19 test methods, including allow/deny GET paths, bounded query, artifact digest headers, Owner CSRF mutations, idempotency forwarding and exact empty-body enforcement).
+- Document Workflow exact-scope and digest contract: `tests/test_document_workflow_gateway.py` (11 methods).
+- Terminal catalog and typed preview: `tests/test_cloud_gateway_terminal_catalog.py` (7 methods).
+- Infrastructure and gate authorization: `tests/test_cloud_gateway_infrastructure_api.py` (16 methods).
+- These files are executed by `validate-control-plane.yml` full unittest discovery. The Auth Proxy main module is also explicitly run in `cross-platform-recovery.yml`; the project-routes module is not separately named in that recovery workflow.
+
+### Remaining WP-00B schema work
+
+- Inspect `validate_preview_payload`, infrastructure gate store schema and every runner credential handler to capture nested types, bounds, unknown-key policy and error statuses.
+- Enumerate all request/response object fields for non-GET endpoints.
+- Add automated contract tests for route allowlist parity and exact request field sets where source currently accepts unknown keys.
