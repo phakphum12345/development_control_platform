@@ -84,6 +84,10 @@ function Assert-TrustedAcl {
        0x10000000 -bor  # GENERIC_ALL
        0x40000000       # GENERIC_WRITE
    )
+   # Ancestors are checked for rights that could delete/replace a protected child or mutate
+   # the parent DACL. Child-creation rights alone (for example the default C:\ root LC ACE)
+   # do not modify an existing protected descendant; each path component is also checked
+   # as the final target in its own Assert-TrustedAcl call.
    $ancestorMutationMask = [int](
        0x00000040 -bor  # FILE_DELETE_CHILD can remove/replace a protected child
        0x00010000 -bor  # DELETE
