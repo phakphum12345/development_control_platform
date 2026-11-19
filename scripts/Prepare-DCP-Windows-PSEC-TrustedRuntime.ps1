@@ -144,7 +144,7 @@ if ([string]::IsNullOrWhiteSpace($programFilesRoot) -or $programFilesRoot.Contai
     throw "The machine 64-bit ProgramFilesDir registry value is invalid."
 }
 $programFilesRoot = [System.IO.Path]::GetFullPath($programFilesRoot)
-$programFilesDrive = New-Object System.IO.DriveInfo([System.IO.Path]::GetPathRoot($programFilesRoot))
+$programFilesDrive = New-Object -TypeName System.IO.DriveInfo -ArgumentList ([System.IO.Path]::GetPathRoot($programFilesRoot))
 $minimumFreeBytes = [long]1GB
 if ($programFilesDrive.AvailableFreeSpace -lt $minimumFreeBytes) {
     $availableMiB = [math]::Floor($programFilesDrive.AvailableFreeSpace / 1MB)
