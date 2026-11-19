@@ -70,7 +70,13 @@ class FakePsecDll:
 
 
 class WindowsPsecLauncherUnitTests(unittest.TestCase):
+    def _program_files_root(self, root: Path) -> Path:
+        program_files = root.resolve() / "Program Files"
+        program_files.mkdir(parents=True, exist_ok=True)
+        return program_files.resolve()
+
     def _make_venv_runtime(self, root: Path, base_home: Path) -> Path:
+        root = root.resolve()
         scripts = root / "Scripts"
         scripts.mkdir(parents=True)
         (scripts / "python.exe").write_bytes(b"venv redirector test fixture")
@@ -87,7 +93,7 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
     def test_venv_runtime_includes_base_home_and_standard_library(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            program_files = root / "Program Files"
+            program_files = self._program_files_root(root)
             base_home = program_files / "DCP" / "Python312"
             executable = self._make_venv_runtime(root / "venv", base_home)
 
@@ -103,7 +109,6 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             root = Path(temporary)
             denied_profile = root / "HostProfile"
             program_files = root / "Program Files"
-            program_files.mkdir()
             base_home = denied_profile / "AppData" / "Python312"
             executable = self._make_venv_runtime(root / "venv", base_home)
 
@@ -188,6 +193,7 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             external_lib.mkdir()
             (external_lib / "os.py").write_text("# external", encoding="utf-8")
             lib = base_home / "Lib"
+            (lib / "os.py").unlink()
             lib.rmdir()
             try:
                 os.symlink(external_lib, lib, target_is_directory=True)
@@ -199,7 +205,7 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
 
     def test_venv_without_pyvenv_cfg_fails_closed(self):
         with tempfile.TemporaryDirectory() as temporary:
-            scripts = Path(temporary) / "venv" / "Scripts"
+            scripts = Path(temporary).resolve() / "venv" / "Scripts"
             scripts.mkdir(parents=True)
             executable = scripts / "python.exe"
             executable.write_bytes(b"venv redirector fixture")
