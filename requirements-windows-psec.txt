@@ -1,0 +1,2 @@
+# Optional local Windows PSEC FlatBuffer serializer; pure-Python, no native extension.
+flatbuffers==24.3.25

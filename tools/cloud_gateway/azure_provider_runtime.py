@@ -1,8 +1,10 @@
 """Fail-closed composition for the real Azure ephemeral runner provider."""
 from __future__ import annotations
 
+import json
 import os
 
+from .azure_network_policy import AzureEffectiveNetworkPolicyVerifier
 from .azure_egress import AzureEgressPolicyVerifier
 from .azure_guest_profile import AzureGuestProfileFactory
 from .azure_identity import ManagedIdentityCredential
@@ -19,6 +21,8 @@ _REQUIRED = (
     "DCP_AZURE_ROUTE_TABLE_ID",
     "DCP_AZURE_FIREWALL_ID",
     "DCP_AZURE_FIREWALL_POLICY_ID",
+    "DCP_AZURE_EXPECTED_FIREWALL_IP",
+    "DCP_AZURE_REQUIRED_OUTBOUND_FLOWS_JSON",
     "DCP_AZURE_BUDGET_NAME",
     "DCP_AZURE_PROJECTED_RUN_COST_USD",
     "DCP_AZURE_LINUX_VM_SIZE",
@@ -48,6 +52,7 @@ def build_azure_provider_runtime(
     credential_factory=None,
     arm_factory=None,
     egress_factory=None,
+    effective_network_factory=None,
 ):
     """Return a fully wired Azure provider only after explicit opt-in and config.
 
@@ -99,6 +104,19 @@ def build_azure_provider_runtime(
         egress = egress_factory(arm, values)
     if not callable(egress):
         raise ValueError("A live Azure Firewall egress verifier is required")
+    try:
+        required_flows = json.loads(values["DCP_AZURE_REQUIRED_OUTBOUND_FLOWS_JSON"])
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise ValueError("Azure effective-network outbound flow allowlist is invalid") from exc
+    effective_factory = effective_network_factory or AzureEffectiveNetworkPolicyVerifier
+    effective_network = effective_factory(
+        arm,
+        values["DCP_AZURE_NSG_ID"],
+        required_flows,
+        values["DCP_AZURE_EXPECTED_FIREWALL_IP"],
+    )
+    if not callable(getattr(effective_network, "verify_nic", None)):
+        raise ValueError("An ARM-backed effective NIC egress verifier is required")
 
     vm_sizes = {
         "linux": values["DCP_AZURE_LINUX_VM_SIZE"],
@@ -128,4 +146,5 @@ def build_azure_provider_runtime(
         bootstrap,
         runner_online_checker,
         egress,
+        effective_network,
     )

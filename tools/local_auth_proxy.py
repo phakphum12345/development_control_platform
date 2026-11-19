@@ -652,6 +652,7 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
                     and not github_read_path and not job_read_path
                     and not job_logs_path and not artifact_download_path
                     and not terminal_events_path and not infrastructure_resource_path
+                    and not path.startswith("/api/recon/")
                 )):
                     return self.send_json(404, {"error": "not found"})
                 gateway_path = path + (("?" + parsed.query) if parsed.query else "")
@@ -666,6 +667,10 @@ def make_handler(app: LocalAuthProxy, dashboard_dir: Path):
             target = (root / relative).resolve()
             if root not in target.parents and target != root:
                 return self.send_json(404, {"error": "not found"})
+            if target.is_dir():
+                target = (target / "index.html").resolve()
+                if root not in target.parents:
+                    return self.send_json(404, {"error": "not found"})
             if not target.is_file():
                 return self.send_json(404, {"error": "not found"})
             types = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",

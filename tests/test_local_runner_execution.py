@@ -43,24 +43,52 @@ class FlutterBuildExecutorTests(unittest.TestCase):
             command, windows=True, executable=executable
         )
         self.assertIsInstance(actual, str)
-        expected = (
-            subprocess.list2cmdline([
-                os.environ.get("COMSPEC") or str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "cmd.exe")
-            ])
-            + " /d /s /c "
-            + '"' + subprocess.list2cmdline([executable, *command[1:]]) + '"'
-        )
+        command_processor = FlutterBuildExecutor._trusted_windows_command_processor()
+        arguments = subprocess.list2cmdline(list(command[1:]))
+        command_line = f'"{executable}"' + (f" {arguments}" if arguments else "")
+        expected = f'"{command_processor}" /d /v:off /s /c "{command_line}"'
         self.assertEqual(actual, expected)
         self.assertEqual(
             FlutterBuildExecutor._process_command(
                 command, windows=True, executable=r"C:\Flutter\bin\flutter.exe"
             ),
-            list(command),
+            [r"C:\Flutter\bin\flutter.exe", *command[1:]],
         )
+        posix_executable = str(self.root / "flutter")
         self.assertEqual(
-            FlutterBuildExecutor._process_command(command, windows=False, executable=executable),
-            list(command),
+            FlutterBuildExecutor._process_command(command, windows=False, executable=posix_executable),
+            [posix_executable, *command[1:]],
         )
+
+    def test_windows_batch_launcher_rejects_untrusted_comspec(self):
+        with patch.dict(os.environ, {
+            "SystemRoot": r"C:\Windows",
+            "COMSPEC": r"C:\Temp\cmd.exe",
+        }):
+            with self.assertRaisesRegex(ExecutionError, "COMSPEC must resolve"):
+                FlutterBuildExecutor._trusted_windows_command_processor()
+
+    def test_windows_batch_path_quotes_metacharacters_and_disables_expansion(self):
+        command = ("flutter", "test", "--no-pub")
+        actual = FlutterBuildExecutor._process_command(
+            command, windows=True, executable=r"C:\Flutter&SDK\bin\flutter.cmd"
+        )
+        self.assertIn(r'"C:\Flutter&SDK\bin\flutter.cmd"', actual)
+        self.assertIn("/d /v:off /s /c", actual)
+
+    def test_windows_batch_path_rejects_network_shares(self):
+        with self.assertRaisesRegex(ExecutionError, "absolute local Windows path"):
+            FlutterBuildExecutor._process_command(
+                ("flutter", "test"), windows=True,
+                executable=r"\\server\share\flutter.cmd",
+            )
+
+    def test_windows_batch_path_rejects_percent_expansion(self):
+        with self.assertRaisesRegex(ExecutionError, "unsafe command characters"):
+            FlutterBuildExecutor._process_command(
+                ("flutter", "test"), windows=True,
+                executable=r"C:\Flutter%PATH%\bin\flutter.cmd",
+            )
 
     def test_windows_environment_preserves_sdk_paths_but_not_secrets(self):
         local_app_data = self.root / "original-user-local-appdata"
@@ -84,7 +112,8 @@ class FlutterBuildExecutorTests(unittest.TestCase):
         )
         self.assertEqual(env["PATH"], inherited["PATH"])
         self.assertEqual(env["SystemRoot"], inherited["SystemRoot"])
-        self.assertEqual(env["COMSPEC"], inherited["COMSPEC"])
+        self.assertEqual(env["COMSPEC"], r"C:\Windows\System32\cmd.exe")
+        self.assertEqual(env["GRADLE_USER_HOME"], str(self.workspace / ".gradle"))
         self.assertEqual(env["JAVA_HOME"], inherited["JAVA_HOME"])
         self.assertEqual(env["ANDROID_HOME"], str(sdk))
         self.assertEqual(env["ANDROID_SDK_ROOT"], str(sdk))

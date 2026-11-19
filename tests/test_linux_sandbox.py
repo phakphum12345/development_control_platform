@@ -33,7 +33,10 @@ class LinuxBubblewrapLauncherTests(unittest.TestCase):
             fake_bwrap.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
             fake_bwrap.chmod(0o700)
             with patch("tools.local_runner_agent.linux_sandbox.sys_platform_linux", return_value=True):
-                launcher = LinuxBubblewrapLauncher(executable_lookup=lambda _name: str(fake_bwrap))
+                launcher = LinuxBubblewrapLauncher(
+                    executable_lookup=lambda _name, path=None: str(fake_bwrap),
+                    runtime_bin_dir=root,
+                )
             result = launcher.build(
                 executable="/usr/bin/python3",
                 argv=["--version"],
@@ -66,7 +69,10 @@ class LinuxBubblewrapLauncherTests(unittest.TestCase):
             fake_bwrap.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
             fake_bwrap.chmod(0o700)
             with patch("tools.local_runner_agent.linux_sandbox.sys_platform_linux", return_value=True):
-                launcher = LinuxBubblewrapLauncher(executable_lookup=lambda _name: str(fake_bwrap))
+                launcher = LinuxBubblewrapLauncher(
+                    executable_lookup=lambda _name, path=None: str(fake_bwrap),
+                    runtime_bin_dir=root,
+                )
             with self.assertRaisesRegex(LinuxSandboxError, "separate directory trees"):
                 launcher.build(
                     executable="/usr/bin/python3",
@@ -85,7 +91,10 @@ class LinuxBubblewrapLauncherTests(unittest.TestCase):
             fake_bwrap.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
             fake_bwrap.chmod(0o700)
             with patch("tools.local_runner_agent.linux_sandbox.sys_platform_linux", return_value=True):
-                launcher = LinuxBubblewrapLauncher(executable_lookup=lambda _name: str(fake_bwrap))
+                launcher = LinuxBubblewrapLauncher(
+                    executable_lookup=lambda _name, path=None: str(fake_bwrap),
+                    runtime_bin_dir=root,
+                )
             with self.assertRaisesRegex(LinuxSandboxError, "absolute trusted path"):
                 launcher.build(executable="python3", argv=[], workspace=workspace, scratch=scratch)
             link = Path(root) / "workspace-link"
@@ -94,7 +103,10 @@ class LinuxBubblewrapLauncherTests(unittest.TestCase):
                 launcher.build(executable="/usr/bin/python3", argv=[], workspace=link, scratch=scratch)
 
 
-    @unittest.skipUnless(sys.platform.startswith("linux") and shutil.which("bwrap"), "bubblewrap runtime unavailable")
+    @unittest.skipUnless(
+        sys.platform.startswith("linux") and shutil.which("bwrap", path="/usr/bin"),
+        "approved /usr/bin bubblewrap runtime unavailable",
+    )
     def test_actual_bubblewrap_enforces_filesystem_network_and_scratch_boundaries(self):
         with tempfile.TemporaryDirectory() as root:
             root_path = Path(root)
@@ -138,6 +150,117 @@ class LinuxBubblewrapLauncherTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
             self.assertFalse((workspace / "forbidden.txt").exists())
             self.assertEqual((scratch / "scratch-proof.txt").read_text(encoding="utf-8"), "scratch-ok")
+
+
+    @unittest.skipUnless(
+        sys.platform.startswith("linux") and shutil.which("bwrap", path="/usr/bin"),
+        "approved /usr/bin bubblewrap runtime unavailable",
+    )
+    def test_actual_bubblewrap_denies_socket_families_io_uring_and_capabilities(self):
+        with tempfile.TemporaryDirectory() as root:
+            workspace = Path(root) / "workspace"
+            scratch = Path(root) / "scratch"
+            workspace.mkdir()
+            scratch.mkdir()
+            script = """
+import ctypes
+import errno
+import pathlib
+import socket
+
+status = pathlib.Path('/proc/self/status').read_text()
+cap_eff = next(line.split()[1] for line in status.splitlines() if line.startswith('CapEff:'))
+assert int(cap_eff, 16) == 0, cap_eff
+assert not pathlib.Path('/etc/passwd').exists(), 'host /etc was exposed'
+
+for family in (socket.AF_INET, socket.AF_INET6, socket.AF_UNIX):
+    try:
+        sock = socket.socket(family, socket.SOCK_STREAM)
+    except PermissionError:
+        pass
+    else:
+        sock.close()
+        raise AssertionError(f'socket family {family} was allowed')
+
+try:
+    pair = socket.socketpair()
+except PermissionError:
+    pass
+else:
+    pair[0].close()
+    pair[1].close()
+    raise AssertionError('socketpair was allowed')
+
+libc = ctypes.CDLL(None, use_errno=True)
+params = ctypes.create_string_buffer(120)
+result = libc.syscall(425, 1, ctypes.byref(params))
+assert result == -1 and ctypes.get_errno() == errno.EPERM, (
+    'io_uring_setup was not denied by seccomp',
+    result,
+    ctypes.get_errno(),
+)
+"""
+            sandbox = LinuxBubblewrapLauncher().build(
+                executable="/usr/bin/python3",
+                argv=["-c", script],
+                workspace=workspace,
+                scratch=scratch,
+            )
+            try:
+                result = subprocess.run(
+                    sandbox.argv,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=15,
+                    check=False,
+                    pass_fds=(sandbox.seccomp_fd,),
+                )
+            finally:
+                sandbox.close()
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+
+    @unittest.skipUnless(
+        sys.platform.startswith("linux") and shutil.which("bwrap", path="/usr/bin"),
+        "approved /usr/bin bubblewrap runtime unavailable",
+    )
+    def test_actual_bubblewrap_does_not_follow_workspace_symlink_to_host_secret(self):
+        with tempfile.TemporaryDirectory() as root:
+            root_path = Path(root)
+            workspace = root_path / "workspace"
+            scratch = root_path / "scratch"
+            workspace.mkdir()
+            scratch.mkdir()
+            secret = root_path / "host-secret.txt"
+            secret.write_text("must-not-be-visible", encoding="utf-8")
+            (workspace / "escape.txt").symlink_to(secret)
+            script = (
+                "import pathlib; "
+                "p=pathlib.Path('/workspace/escape.txt'); "
+                "exec(\"try: p.read_text(); raise AssertionError('host secret escaped')\\n"
+                "except FileNotFoundError: pass\")"
+            )
+            sandbox = LinuxBubblewrapLauncher().build(
+                executable="/usr/bin/python3",
+                argv=["-c", script],
+                workspace=workspace,
+                scratch=scratch,
+            )
+            try:
+                result = subprocess.run(
+                    sandbox.argv,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=15,
+                    check=False,
+                    pass_fds=(sandbox.seccomp_fd,),
+                )
+            finally:
+                sandbox.close()
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
 
 
 if __name__ == "__main__":

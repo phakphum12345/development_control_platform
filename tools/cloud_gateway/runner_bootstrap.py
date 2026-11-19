@@ -131,8 +131,74 @@ class AzureRunnerBootstrapFactory:
             "",
         ])
 
+    @staticmethod
+    def _validate_os_profile(vm_name: str, os_name: str, profile: dict) -> None:
+        """Validate guest login controls before minting a registration credential."""
+        if os_name not in ("linux", "windows") or not isinstance(profile, dict):
+            raise RunnerBootstrapError("Azure guest login profile is invalid")
+        expected_computer_name = (
+            vm_name if os_name == "linux"
+            else "DCPW" + vm_name.rsplit("-", 1)[-1].upper()
+        )
+        computer_name = profile.get("computerName")
+        if computer_name != expected_computer_name:
+            raise RunnerBootstrapError("Azure guest computer name does not match the VM and target OS")
+        if len(computer_name) > (64 if os_name == "linux" else 15) or not re.fullmatch(
+            r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?", computer_name
+        ):
+            raise RunnerBootstrapError("Azure guest computer name is invalid for the target OS")
+        admin_username = profile.get("adminUsername")
+        if not isinstance(admin_username, str) or not re.fullmatch(
+            r"[A-Za-z][A-Za-z0-9_-]{2,19}", admin_username
+        ) or admin_username.lower() in {"root", "admin", "administrator", "guest", "system"}:
+            raise RunnerBootstrapError("Azure guest administrator username is invalid")
+
+        if os_name == "linux":
+            if "adminPassword" in profile:
+                raise RunnerBootstrapError("Linux guest login must not use an administrator password")
+            linux = profile.get("linuxConfiguration")
+            if not isinstance(linux, dict) or linux.get("disablePasswordAuthentication") is not True:
+                raise RunnerBootstrapError("Linux password authentication must be disabled")
+            ssh = linux.get("ssh")
+            public_keys = ssh.get("publicKeys") if isinstance(ssh, dict) else None
+            if not isinstance(public_keys, list) or not 1 <= len(public_keys) <= 4:
+                raise RunnerBootstrapError("Linux guest login requires a bounded SSH public key list")
+            for entry in public_keys:
+                if not isinstance(entry, dict) or entry.get("path") != (
+                    "/home/" + admin_username + "/.ssh/authorized_keys"
+                ):
+                    raise RunnerBootstrapError("Linux SSH key path must target the configured administrator")
+                key_data = entry.get("keyData")
+                parts = key_data.split() if isinstance(key_data, str) else []
+                if len(parts) < 2 or parts[0] != "ssh-ed25519":
+                    raise RunnerBootstrapError("Only SSH Ed25519 public keys are accepted")
+                try:
+                    decoded = base64.b64decode(parts[1], validate=True)
+                except (ValueError, base64.binascii.Error) as exc:
+                    raise RunnerBootstrapError("Linux SSH public key encoding is invalid") from exc
+                prefix = len(b"ssh-ed25519").to_bytes(4, "big") + b"ssh-ed25519"
+                if not decoded.startswith(prefix) or len(decoded) != len(prefix) + 4 + 32:
+                    raise RunnerBootstrapError("Linux SSH Ed25519 public key has an invalid payload")
+                if int.from_bytes(decoded[len(prefix):len(prefix) + 4], "big") != 32:
+                    raise RunnerBootstrapError("Linux SSH Ed25519 public key length is invalid")
+        else:
+            if "linuxConfiguration" in profile:
+                raise RunnerBootstrapError("Windows guest profile must not contain Linux login settings")
+            password = profile.get("adminPassword")
+            if not isinstance(password, str) or not 12 <= len(password) <= 123:
+                raise RunnerBootstrapError("Windows guest administrator password length is invalid")
+            if admin_username.lower() in password.lower():
+                raise RunnerBootstrapError("Windows guest password must not contain the administrator username")
+            classes = sum(bool(re.search(pattern, password)) for pattern in (
+                r"[a-z]", r"[A-Z]", r"[0-9]", r"[^A-Za-z0-9]"
+            ))
+            if classes < 3:
+                raise RunnerBootstrapError("Windows guest administrator password does not meet complexity requirements")
+
     def __call__(self, vm_name: str, os_name: str, payload: dict) -> dict:
         repository, labels = self._validate_payload(vm_name, os_name, payload)
+        os_profile = self.os_profile_factory(vm_name, os_name, payload)
+        self._validate_os_profile(vm_name, os_name, os_profile)
         credential = self.github_app.create_registration_token(repository)
         token = getattr(credential, "token", None)
         expires_at = getattr(credential, "expires_at", None)
@@ -144,9 +210,6 @@ class AzureRunnerBootstrapFactory:
         ):
             raise RunnerBootstrapError("GitHub runner registration credential is invalid or expires before the VM extension budget")
         token_expiry_epoch = int(expires_at.timestamp())
-        os_profile = self.os_profile_factory(vm_name, os_name, payload)
-        if not isinstance(os_profile, dict) or not os_profile:
-            raise RunnerBootstrapError("OS profile factory returned an invalid profile")
         if os_name == "linux":
             script = self._linux_script(vm_name, repository, labels, token, token_expiry_epoch)
             extension = {

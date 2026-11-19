@@ -24,6 +24,8 @@ from .provider_router import ProviderRouter
 from .azure_provider_runtime import build_azure_provider_runtime
 from .store import LifecycleConflict, RunnerStore
 from .github_app_runtime import build_github_app_runtime
+from .public_github import PublicGitHubRepositoryCatalog
+from .recon_api import ReconAPIError, fetch_recon_resource
 from .job_control import JobConflict, JobNotFound, JobStore
 from .artifacts import ArtifactError, ArtifactStore
 from .runner_registry import RunnerRegistry, WorkerNotFound
@@ -326,6 +328,19 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
 
         def do_GET(self):
             path = urlparse(self.path).path
+            if path.startswith("/api/recon/"):
+                identity = self.proxy_identity()
+                if not identity:
+                    return self.send_json(401, {"error": "authenticated session required"})
+                if identity.get("role") not in ("owner", "operator"):
+                    return self.send_json(403, {"error": "dashboard role required"})
+                try:
+                    payload = fetch_recon_resource(path)
+                except ReconAPIError as exc:
+                    return self.send_json(exc.status, {"error": exc.public_message})
+                except Exception:
+                    return self.send_json(502, {"error": "Recon source service unavailable"})
+                return self.send_json(200, payload)
             if path == "/healthz":
                 return self.send_json(200, {
                     "status": "ok",
@@ -600,6 +615,45 @@ def make_handler(service, token, proxy_secret=None, public_origin=None, runner_t
                 except (BrokenPipeError, ConnectionResetError):
                     pass
                 return
+            if path.startswith("/v1/runner/"):
+                worker = self.runner_identity()
+                if not worker:
+                    return self.send_json(401, {"error": "runner credentials required"})
+                parts = path[len("/v1/runner/"):].split("/")
+                if len(parts) != 2 or not re.fullmatch(r"[0-9a-f-]{36}", parts[0]):
+                    return self.send_json(404, {"error": "not found"})
+                job_id, action = parts
+                if action != "workspace-cleanup-status":
+                    return self.send_json(404, {"error": "not found"})
+                jobs = self.job_store()
+                if jobs is None:
+                    return self.send_json(503, {"error": "job control plane unavailable"})
+                job = jobs.get(job_id)
+                if (not job or job.get("target") != "terminal_script"
+                        or worker not in (job.get("worker"), job.get("last_worker"))):
+                    return self.send_json(404, {"error": "not found"})
+                terminal_state = job.get("state") in ("succeeded", "failed", "cancelled")
+                no_active_lease = job.get("worker") is None and job.get("lease_until") is None
+                cleanup_safe = (
+                    terminal_state
+                    and no_active_lease
+                    and job.get("last_worker") == worker
+                    and (
+                        job.get("state") in ("succeeded", "cancelled")
+                        or (
+                            job.get("state") == "failed"
+                            and job.get("error_code") == "WORKSPACE_CLEANUP_FAILED"
+                        )
+                    )
+                )
+                return self.send_json(200, {
+                    "job_id": job_id,
+                    "worker_id": worker,
+                    "target": "terminal_script",
+                    "state": job.get("state"),
+                    "updated_at": job.get("updated_at"),
+                    "cleanup_safe": cleanup_safe,
+                })
             if path.startswith("/api/"):
                 identity = self.proxy_identity()
                 if not identity:
@@ -1732,6 +1786,19 @@ def main():
     if not isinstance(runner_tokens, dict):
         raise SystemExit("DCP_RUNNER_TOKENS must be a JSON object")
     github_app, runner_online_checker, runner_cleanup = build_github_app_runtime(settings)
+    if github_app:
+        repository_catalog = github_app.list_installation_repositories
+        repository_authorizer = lambda repository: github_app.is_repository_accessible(repository, refresh=True)
+        repository_ref_catalog = github_app.list_repository_refs
+        repository_commit_resolver = github_app.resolve_repository_commit
+        repository_project_inspector = github_app.inspect_repository_project
+    else:
+        public_catalog = PublicGitHubRepositoryCatalog(settings.allowed_repositories)
+        repository_catalog = public_catalog.list_repositories
+        repository_authorizer = public_catalog.is_repository_accessible
+        repository_ref_catalog = public_catalog.list_repository_refs
+        repository_commit_resolver = public_catalog.resolve_repository_commit
+        repository_project_inspector = public_catalog.inspect_repository_project
     budget_guard = _budget_guard_from_env(settings)
     try:
         azure_provider = build_azure_provider_runtime(
@@ -1742,11 +1809,11 @@ def main():
     service = GatewayService(
         settings, store, ProviderRouter(azure_provider or DisabledProvider(), DisabledProvider()),
         budget_guard, runner_cleanup=runner_cleanup,
-        repository_catalog=github_app.list_installation_repositories if github_app else None,
-        repository_authorizer=(lambda repository: github_app.is_repository_accessible(repository, refresh=True)) if github_app else None,
-        repository_ref_catalog=github_app.list_repository_refs if github_app else None,
-        repository_commit_resolver=github_app.resolve_repository_commit if github_app else None,
-        repository_project_inspector=github_app.inspect_repository_project if github_app else None,
+        repository_catalog=repository_catalog,
+        repository_authorizer=repository_authorizer,
+        repository_ref_catalog=repository_ref_catalog,
+        repository_commit_resolver=repository_commit_resolver,
+        repository_project_inspector=repository_project_inspector,
     )
     service.terminal_template_store = TerminalTemplateStore(
         os.getenv("DCP_GATEWAY_TERMINAL_DATABASE", database_path + ".terminal")
