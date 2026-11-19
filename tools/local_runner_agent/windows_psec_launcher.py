@@ -630,7 +630,7 @@ def _program_files_roots() -> tuple[Path, ...]:
         access = winreg.KEY_READ | winreg.KEY_WOW64_64KEY
         with winreg.OpenKey(
             winreg.HKEY_LOCAL_MACHINE,
-            r"SOFTWARE\\Microsoft\\Windows\\CurrentVersion",
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion",
             0,
             access,
         ) as key:
