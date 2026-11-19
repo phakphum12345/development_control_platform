@@ -112,7 +112,7 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             executable = self._make_venv_runtime(root / "venv", base_home)
             config = executable.parent.parent / "pyvenv.cfg"
             config.write_text(
-                f"home = {base_home / '..' / '..'}\\nversion = 3.12.10\\n",
+                f"home = {base_home / '..' / '..'}\nversion = 3.12.10\n",
                 encoding="utf-8",
             )
             with self.assertRaisesRegex(WindowsPsecError, "canonical directory"):
