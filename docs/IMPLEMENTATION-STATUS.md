@@ -151,3 +151,11 @@ Do not mark a Work Package PASS based only on source presence, test-file presenc
 - The native Windows bootstrap test completed with `Local Runner credential bootstrap tests passed.`; its symlink reparse-point check ran without the host-capability SKIPPED warning.
 - Optional Windows runner acceptance remains SKIPPED. This is not Windows PSEC target-host acceptance.
 - PR #152 remains Draft pending review and Owner decision. No merge is requested.
+
+
+### 2026-11-20 — WP-06 native Windows bootstrap evidence
+
+- On source head `0cb2a4077bc250777cb02d51bd6442ef5ef6e97c`, native Windows PowerShell 5.1 execution of `tests/test_local_runner_bootstrap.ps1` passed with exit code 0.
+- The test used isolated temporary `RUNNER_TEMP` and `LOCALAPPDATA` paths; it did not touch the real user DCP profile. All test assertions completed, including the reparse-point branch without a capability skip.
+- Exact-head CI on that same SHA: six checks PASS; optional Windows runner acceptance SKIPPED. No PSEC/AppContainer/LPAC conclusion follows.
+- Open security review items: confirm or replace `Move-Item -Force` with a tested Windows atomic replacement primitive; verify the DCP parent directory ACL and path-race assumptions; define safe recovery for a partial commit if credential writing succeeds but settings writing fails. Do not describe replacement as race-safe until closed.
