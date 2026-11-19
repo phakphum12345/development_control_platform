@@ -65,3 +65,16 @@
 ## 4. What this status does not claim
 
 This document is a source-and-evidence status snapshot, not a live service health check, local-machine inspection, release certification, security certification, or assertion that all tests were rerun on this branch.
+
+
+---
+
+## 2026-11-20 — WP-00B / WP-00C implementation evidence update
+
+- Gateway and Auth Proxy dispatch source has now been inspected at exact main baseline blobs. The Requirements Traceability document contains the first route-family matrix for GET/POST/DELETE, role checks, CSRF/Origin boundaries, representative response shapes and status/error families.
+- Dashboard mainline remains 23 navigation tabs / 21 Code Navigator mappings. PR #151 adds the two missing mappings and reference-resolution checks on its own branch; it is not mainline until Owner-approved merge.
+- WP-00C has a method-level test register for eight core control-plane/security files, including setup/teardown and skip conditions. The full test inventory contains 91 files under `tests/`: 88 `test_*` paths plus three supporting assets. Full per-function mapping remains IN_PROGRESS.
+- PR #150 latest head before this documentation update was `b4769a69115cefa39a8ac5770b65e5379917142d`; exact-head Windows dynamic-port launcher integration FAILED. Validate, Local-first emulator and Cross-platform Recovery hosted jobs passed; optional self-hosted Windows acceptance was SKIPPED.
+- PR #151 head `87b2c4dd48c6ad21fdeb8fa9cd79173f4409de92` has the same Windows dynamic-port bootstrap failure and optional Windows runner acceptance SKIPPED.
+- Runner bootstrap contract mismatch remains a separate WP-06 dependency: mainline setup script lacks `-TrustedRepository`, while the existing PowerShell acceptance test invokes it and checks persisted repository allowlist settings. Candidate implementation exists on PR #140/#149 branches. No code was copied into the WP-00 docs PR.
+- Overall WP-00 remains IN_PROGRESS; no release or security acceptance claim is made.
