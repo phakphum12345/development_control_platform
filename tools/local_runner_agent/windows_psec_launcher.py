@@ -805,6 +805,29 @@ def _existing_directories(values: Sequence[str | os.PathLike]) -> tuple[str, ...
     return tuple(result)
 
 
+def _validate_runtime_directories(
+    runtime_directories: Sequence[str | os.PathLike],
+    denied_paths: Sequence[str | os.PathLike],
+) -> tuple[Path, ...]:
+    """Require canonical runtime roots that do not overlap denied host paths."""
+    denied = tuple(Path(value) for value in _existing_directories(denied_paths))
+    validated = []
+    seen = set()
+    for value in runtime_directories:
+        runtime = _trusted_directory(value, "Python runtime")
+        key = os.path.normcase(str(runtime))
+        if key in seen:
+            continue
+        for denied_path in denied:
+            if _paths_overlap(runtime, denied_path):
+                raise WindowsPsecError(
+                    "Python runtime path overlaps an explicitly denied host directory"
+                )
+        seen.add(key)
+        validated.append(runtime)
+    return tuple(validated)
+
+
 def _build_environment_spec(workspace: Path, scratch: Path, executable: str) -> bytes:
     try:
         from tools.local_runner_agent.windows_psec_spec import build_psec_spec
@@ -823,7 +846,9 @@ def _build_environment_spec(workspace: Path, scratch: Path, executable: str) -> 
         tempfile.gettempdir(),
         system_root_path / "Temp",
     ))
-    runtime_directories = _runtime_directories(executable, denied)
+    runtime_directories = _validate_runtime_directories(
+        _runtime_directories(executable), denied
+    )
     system_directories = _existing_directories((
         system_root_path / "System32",
         system_root_path / "WinSxS",
