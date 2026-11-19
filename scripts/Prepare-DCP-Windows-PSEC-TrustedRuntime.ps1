@@ -176,6 +176,7 @@ if (-not (Test-Path -LiteralPath $dcpRoot -PathType Container)) {
    New-Item -ItemType Directory -Path $dcpRoot | Out-Null
 }
 Assert-TrustedAcl -Path $dcpRoot
+$installerSignature = $null
 
 if (-not (Test-Path -LiteralPath $baseRuntime)) {
    $downloadRoot = Join-Path $env:TEMP "dcp-psec-python312"
