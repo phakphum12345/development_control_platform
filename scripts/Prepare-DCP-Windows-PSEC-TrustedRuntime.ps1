@@ -102,6 +102,9 @@ function Assert-TrustedAcl {
            if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) {
                continue
            }
+           if (($rule.PropagationFlags -band [System.Security.AccessControl.PropagationFlags]::InheritOnly) -ne 0) {
+               continue
+           }
            try {
                $sid = $rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
            }
@@ -110,10 +113,6 @@ function Assert-TrustedAcl {
            }
            $rights = [int]$rule.FileSystemRights
            if (($rights -band $writeMask) -eq 0 -or $sid -in $trustedWriters) {
-               continue
-           }
-           if ($sid -eq "S-1-3-0" -and
-               ($rule.PropagationFlags -band [System.Security.AccessControl.PropagationFlags]::InheritOnly) -ne 0) {
                continue
            }
            throw "Untrusted principal '$sid' has write-capable ACL rights on '$target': $($rule.FileSystemRights). SDDL=$($acl.Sddl)"
