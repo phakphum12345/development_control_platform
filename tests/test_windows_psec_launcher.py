@@ -341,6 +341,41 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
                 with self.assertRaisesRegex(WindowsPsecError, "reparse point"):
                     _runtime_directories(str(executable), ())
 
+    def test_standalone_runtime_outside_protected_program_files_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            program_files = self._program_files_root(root)
+            untrusted_home = root / "OtherPython"
+            untrusted_home.mkdir()
+            (untrusted_home / "python.exe").write_bytes(b"untrusted interpreter")
+            (untrusted_home / "Lib").mkdir()
+            (untrusted_home / "Lib" / "os.py").write_text("# stdlib", encoding="utf-8")
+
+            with mock.patch(
+                "tools.local_runner_agent.windows_psec_launcher._program_files_roots",
+                return_value=(program_files,),
+            ):
+                with self.assertRaisesRegex(WindowsPsecError, "protected Program Files"):
+                    _runtime_directories(str(untrusted_home / "python.exe"), ())
+
+    def test_standalone_trusted_base_runtime_includes_standard_library(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            program_files = self._program_files_root(root)
+            base_home = program_files / "DCP" / "Python312"
+            base_home.mkdir(parents=True)
+            (base_home / "python.exe").write_bytes(b"trusted interpreter")
+            (base_home / "Lib").mkdir()
+            (base_home / "Lib" / "os.py").write_text("# stdlib", encoding="utf-8")
+
+            with mock.patch(
+                "tools.local_runner_agent.windows_psec_launcher._program_files_roots",
+                return_value=(program_files,),
+            ):
+                paths = _runtime_directories(str(base_home / "python.exe"), ())
+
+            self.assertEqual(paths, (base_home, base_home / "Lib"))
+
     def test_venv_without_pyvenv_cfg_fails_closed(self):
         with tempfile.TemporaryDirectory() as temporary:
             scripts = Path(temporary).resolve() / "venv" / "Scripts"
