@@ -1,3 +1,5 @@
+# Prepares local Runner credentials and the Gateway's explicit repository allowlist.
+# Persisting an allowlist does not enroll a live Runner or enable command execution.
 [CmdletBinding()]
 param(
     [ValidatePattern('^[a-z0-9_.:-]{1,100}$')]
