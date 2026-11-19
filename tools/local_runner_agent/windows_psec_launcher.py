@@ -747,6 +747,28 @@ def _runtime_directories(
         raise WindowsPsecError("Base Python executable or standard library is unavailable") from None
     if not base_executable.is_file() or base_executable.parent != base_home:
         raise WindowsPsecError("Base Python executable is not inside its declared home")
+    required_runtime_files = (
+        base_home / "python312.dll",
+        base_home / "python3.dll",
+        standard_library / "os.py",
+        standard_library / "encodings" / "__init__.py",
+    )
+    for required_file in required_runtime_files:
+        try:
+            if required_file.is_symlink() or (
+                hasattr(required_file, "is_junction") and required_file.is_junction()
+            ):
+                raise WindowsPsecError("Base Python runtime contains a required-file reparse point")
+            if not required_file.is_file():
+                raise WindowsPsecError(
+                    f"Base Python runtime is missing required file: {required_file}"
+                )
+            required_file.resolve(strict=True)
+        except (OSError, RuntimeError):
+            raise WindowsPsecError(
+                f"Base Python runtime is missing required file: {required_file}"
+            ) from None
+    _trusted_directory(standard_library / "encodings", "Base Python encodings directory")
 
     roots.extend((base_home, standard_library))
     for allowed_root in roots:
