@@ -133,7 +133,7 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             base_home = program_files / "DCP" / "Python312"
             executable = self._make_venv_runtime(root / "venv", base_home)
             (executable.parent.parent / "pyvenv.cfg").write_text(
-                f"home = {base_home}\\nhome = {base_home}\\n",
+                f"home = {base_home}\nhome = {base_home}\n",
                 encoding="utf-8",
             )
             with mock.patch.dict(os.environ, {"ProgramFiles": str(program_files)}):
