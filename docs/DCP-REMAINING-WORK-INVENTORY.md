@@ -184,3 +184,11 @@ No merge, deployment, cloud provisioning, VM creation, branch deletion, force-pu
 - `project-import` and `document-generator` are not yet mapped in `CODE_NAV_MAPPINGS`.
 - 48 declared mapping test references resolve to existing mainline test files.
 - WP-00B remains IN_PROGRESS until the two missing tabs and all event-handler/API/service edges are traced.
+
+
+### 2026-11-19 — Documentation drift correction
+- Inspected the Dashboard document generator, Gateway Document Workflow Store, local writer, and lifecycle contract tests.
+- Corrected README's stale statement that the authenticated Dashboard-to-Gateway local document write workflow was not exposed.
+- Corrected the Document Generator operations status from "feature branch" to "present in current mainline source"; exact-head CI, browser integration, host filesystem and deployment acceptance remain separate.
+- Clarified that local document writes do not commit/push to GitHub and PR lifecycle tools are read-only.
+- Branch head before this ledger update: `b1dc863ac7174dc83382ffe58db33eef8f82e0a9`.
