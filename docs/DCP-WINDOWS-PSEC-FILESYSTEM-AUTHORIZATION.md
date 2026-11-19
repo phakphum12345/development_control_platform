@@ -323,7 +323,7 @@ The PSEC launcher therefore treats these as one runtime dependency set:
 
 These directories are added to the read-only PSEC policy and the executable
 search path. Before launch, each directory must be canonical, exist, and
-contain no reparse-point traversal. The base interpreter and `Lib` directory
+have no reparse-point components in their paths. The base interpreter and `Lib` directory
 must exist; a partial Python installation is rejected before process creation.
 
 **Security boundary:** none of these runtime paths may overlap an explicitly
