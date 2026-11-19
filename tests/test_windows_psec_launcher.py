@@ -5,6 +5,7 @@ import io
 import os
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from tools.local_runner_agent.windows_psec_launcher import (
@@ -86,10 +87,12 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
     def test_venv_runtime_includes_base_home_and_standard_library(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            base_home = root / "TrustedRuntime" / "Python312"
+            program_files = root / "Program Files"
+            base_home = program_files / "DCP" / "Python312"
             executable = self._make_venv_runtime(root / "venv", base_home)
 
-            paths = _runtime_directories(str(executable), ())
+            with mock.patch.dict(os.environ, {"ProgramFiles": str(program_files)}):
+                paths = _runtime_directories(str(executable), ())
 
             self.assertEqual(paths[0], executable.parent.parent)
             self.assertIn(base_home, paths)
@@ -99,24 +102,28 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             denied_profile = root / "HostProfile"
+            program_files = root / "Program Files"
             base_home = denied_profile / "AppData" / "Python312"
             executable = self._make_venv_runtime(root / "venv", base_home)
 
-            with self.assertRaisesRegex(WindowsPsecError, "overlaps a denied host path"):
-                _runtime_directories(str(executable), (denied_profile,))
+            with mock.patch.dict(os.environ, {"ProgramFiles": str(program_files)}):
+                with self.assertRaisesRegex(WindowsPsecError, "trusted Program Files"):
+                    _runtime_directories(str(executable), (denied_profile,))
 
     def test_venv_base_home_parent_traversal_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            base_home = root / "TrustedRuntime" / "Python312"
+            program_files = root / "Program Files"
+            base_home = program_files / "DCP" / "Python312"
             executable = self._make_venv_runtime(root / "venv", base_home)
             config = executable.parent.parent / "pyvenv.cfg"
             config.write_text(
                 f"home = {base_home / '..' / '..'}\nversion = 3.12.10\n",
                 encoding="utf-8",
             )
-            with self.assertRaisesRegex(WindowsPsecError, "canonical directory"):
-                _runtime_directories(str(executable), ())
+            with mock.patch.dict(os.environ, {"ProgramFiles": str(program_files)}):
+                with self.assertRaisesRegex(WindowsPsecError, "canonical directory"):
+                    _runtime_directories(str(executable), ())
 
     def test_venv_without_pyvenv_cfg_fails_closed(self):
         with tempfile.TemporaryDirectory() as temporary:
