@@ -94,7 +94,7 @@ function Assert-TrustedAcl {
            sddl = $acl.Sddl
        }
        if ($ownerSid -notin $trustedOwners) {
-           throw "Untrusted owner on '$target': $ownerSid. Expected SYSTEM, Administrators, or TrustedInstaller."
+           throw "Untrusted owner on '$target': $ownerSid. Expected SYSTEM, Administrators, or TrustedInstaller. SDDL=$($acl.Sddl)"
        }
 
        foreach ($rule in $acl.Access) {
@@ -115,7 +115,7 @@ function Assert-TrustedAcl {
                ($rule.PropagationFlags -band [System.Security.AccessControl.PropagationFlags]::InheritOnly) -ne 0) {
                continue
            }
-           throw "Untrusted principal '$sid' has write-capable ACL rights on '$target': $($rule.FileSystemRights)"
+           throw "Untrusted principal '$sid' has write-capable ACL rights on '$target': $($rule.FileSystemRights). SDDL=$($acl.Sddl)"
        }
    }
 }
