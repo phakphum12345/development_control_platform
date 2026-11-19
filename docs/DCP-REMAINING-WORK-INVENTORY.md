@@ -133,3 +133,12 @@ This inventory is source-driven but still IN_PROGRESS. It does not yet enumerate
 - Required acceptance: native Windows PowerShell bootstrap test, dynamic-port integration, Validate Control Plane, Linux Minimal Emulator and Cross-platform Recovery on exact PR head. Optional Windows runner acceptance remains a separate host evidence gate.
 - After Owner-approved WP-06 integration, rebase/reconcile PR #140 and #149 against the new mainline contract; do not cherry-pick either PSEC branch wholesale.
 - WP-12 Windows PSEC remains independently BLOCKED pending actual target-host AppContainer/LPAC and Trusted Python runtime acceptance. Bootstrap PASS cannot be substituted for PSEC PASS.
+
+
+### 2026-11-20 — WP-06 bootstrap hardening result
+
+- PR #152 hardens the now-mainline TrustedRepository producer with reparse-point, regular-file, file-size, worker-count, allowlist-count, duplicate-token/repository and restricted-ACL protections.
+- Exact head `4270c1379fd67649ecf17448cc0f334586d75724` passed Validate, Windows dynamic-port integration, Linux Minimal Emulator, Windows Auth Proxy + Gateway E2E, and Ubuntu/Windows Recovery.
+- The Windows bootstrap acceptance log confirms the test script completed successfully; the reparse-point test did not report a host-capability skip.
+- Optional Windows runner acceptance remains SKIPPED. PSEC target-host acceptance is tracked separately and remains BLOCKED.
+- PR #152 remains Draft; do not treat CI success as merge approval.
