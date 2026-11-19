@@ -183,3 +183,11 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - PR-only Windows PSEC test patterns remain explicitly labeled as branch-only, not mainline evidence.
 - Branch head before this ledger update: `0ecd1597160f4ea91fc1533cb8974aa8d66cbd07`.
 - Full test-function enumeration remains open; no count inferred from GitHub code-search excerpts.
+
+
+### 2026-11-19 — Dashboard Code Navigator coverage checkpoint
+- Latest branch head before this ledger update: `7a6ce1edce9cef50225664c5646e4bf55128a46e`.
+- Confirmed 23 navigation tabs and 21 declared Code Navigator mappings.
+- Missing mapping IDs: `project-import`, `document-generator`.
+- All 48 declared test references resolve to mainline test file paths.
+- Mapping existence is not execution evidence; test-function enumeration and handler/service validation remain open.
