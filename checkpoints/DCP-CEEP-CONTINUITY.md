@@ -169,3 +169,10 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Current source contains 23 distinct navigation tabs and 21 declared Code Navigator mappings.
 - Corrected the provenance wording in the repository inventory and requirements traceability documents.
 - Branch head before this ledger update: `04c4c7a4d02aadb1de3489a811e2f37229d8b355`.
+
+
+### 2026-11-19 — WP-00B HTTP route-shape checkpoint
+- Latest branch head before this ledger update: `b5fb610dab3c90ea8633da6552dfd7d4c8349e98`.
+- Added exact Gateway GET/POST/DELETE route families, Runner credential endpoints and Auth Proxy query/CSRF constraints to the requirements traceability artifact.
+- Confirmed Gateway and Auth Proxy custom handlers implement GET, POST and DELETE; no PUT/PATCH handler was found in these files.
+- Remaining: every JSON schema, response/error branch, full proxy allowlist equivalence, Dashboard event-handler/API/service trace and test-function map.
