@@ -171,7 +171,7 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
                 "tools.local_runner_agent.windows_psec_launcher._program_files_roots",
                 return_value=(program_files,),
             ):
-                with self.assertRaisesRegex(WindowsPsecError, "trusted Program Files"):
+                with self.assertRaisesRegex(WindowsPsecError, "protected Program Files"):
                     _runtime_directories(str(executable), (denied_profile,))
 
     def test_user_programfiles_override_cannot_trust_unregistered_runtime(self):
