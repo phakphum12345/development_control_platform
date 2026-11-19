@@ -67,6 +67,43 @@ class WindowsPsecHostAcceptanceTests(unittest.TestCase):
             r"C:\DCP\workspace",
         )
 
+    def test_expected_runtime_and_workspace_write_denials_are_not_failures(self):
+        results = {
+            "workspace_read": "PASS",
+            "workspace_write_probe": "DENIED",
+            "base_runtime_read": "PASS",
+            "base_runtime_write_probe": "DENIED",
+            "standard_library_read_only": "PASS",
+            "venv_runtime_read_only": "PASS",
+            "scratch_write": "PASS",
+        }
+        self.assertEqual(host._acceptance_failures(results), [])
+
+    def test_unexpected_runtime_or_workspace_write_is_a_failure(self):
+        results = {
+            "workspace_read": "PASS",
+            "workspace_write_probe": "UNEXPECTED_WRITE",
+            "base_runtime_read_only": "PASS",
+            "standard_library_write_probe": "UNEXPECTED_WRITE",
+            "venv_runtime_read_only": "PASS",
+        }
+        self.assertEqual(
+            host._acceptance_failures(results),
+            ["workspace_write_probe", "standard_library_write_probe"],
+        )
+
+    def test_embedded_payload_probes_base_runtime_and_venv_access(self):
+        payload = host._read_only_network_payload()
+        for marker in (
+            "sys.base_prefix",
+            "python312.dll",
+            "standard_library_read_only",
+            "base_runtime_write_probe",
+            "venv_runtime_write_probe",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, payload)
+
     def test_policy_payload_parser_preserves_nonzero_exit_and_output(self):
         with self.assertRaisesRegex(
             host.WindowsPsecError, "exit_code=17"
