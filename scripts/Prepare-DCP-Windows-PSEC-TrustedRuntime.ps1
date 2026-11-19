@@ -110,7 +110,8 @@ function Assert-TrustedAcl {
            if ($ace.AceQualifier -ne [System.Security.AccessControl.AceQualifier]::AccessAllowed) {
                continue
            }
-           if (($ace.AceFlags -band [System.Security.AccessControl.AceFlags]::InheritOnly) -ne 0) {
+           $aceFlags = [int]$ace.AceFlags
+           if (($aceFlags -band 8) -ne 0) {
                continue
            }
            $sid = $ace.SecurityIdentifier.Value
@@ -119,7 +120,7 @@ function Assert-TrustedAcl {
                continue
            }
            $maskHex = "{0:X8}" -f ($rights -band 0xffffffff)
-           throw "Untrusted principal '$sid' has write-capable ACL rights on '$target': mask=0x$maskHex. SDDL=$($acl.Sddl)"
+           throw "Untrusted principal '$sid' has write-capable ACL rights on '$target': mask=0x$maskHex; ace_flags=$($ace.AceFlags). SDDL=$($acl.Sddl)"
        }
    }
 }
