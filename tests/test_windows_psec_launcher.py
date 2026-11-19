@@ -21,6 +21,8 @@ from tools.local_runner_agent.windows_psec_launcher import (
     _program_files_roots,
     _runtime_directories,
     _resume_after_filesystem_authorization,
+    _runtime_directories,
+    _validate_runtime_directories,
 )
 
 
@@ -489,6 +491,93 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
         self.assertEqual(environment["TMP"], str(scratch))
         block = _environment_block(environment)
         self.assertIn(f"LOCALAPPDATA={scratch}\x00", "".join(block))
+
+    def test_python_venv_runtime_includes_base_executable_and_standard_library(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            venv = root / "venv"
+            scripts = venv / "Scripts"
+            base = root / "base-python"
+            scripts.mkdir(parents=True)
+            (scripts / "python.exe").write_bytes(b"venv-python")
+            (venv / "pyvenv.cfg").write_text(
+                f"home = {base}\ninclude-system-site-packages = false\n",
+                encoding="utf-8",
+            )
+            base.mkdir()
+            (base / "python.exe").write_bytes(b"base-python")
+            (base / "Lib").mkdir()
+            (base / "Lib" / "os.py").write_text("# stdlib", encoding="utf-8")
+            (base / "DLLs").mkdir()
+
+            directories = _runtime_directories(str(scripts / "python.exe"))
+
+            self.assertEqual(
+                directories,
+                (venv.resolve(), base.resolve(), (base / "Lib").resolve(),
+                 (base / "DLLs").resolve()),
+            )
+
+    def test_python_venv_runtime_rejects_missing_pyvenv_config(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            scripts = Path(temporary) / "venv" / "Scripts"
+            scripts.mkdir(parents=True)
+            executable = scripts / "python.exe"
+            executable.write_bytes(b"venv-python")
+
+            with self.assertRaisesRegex(WindowsPsecError, "missing.*pyvenv.cfg"):
+                _runtime_directories(str(executable))
+
+    def test_python_venv_runtime_rejects_missing_base_standard_library(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            venv = root / "venv"
+            scripts = venv / "Scripts"
+            base = root / "base-python"
+            scripts.mkdir(parents=True)
+            (scripts / "python.exe").write_bytes(b"venv-python")
+            (venv / "pyvenv.cfg").write_text(
+                f"home = {base}\n", encoding="utf-8"
+            )
+            base.mkdir()
+            (base / "python.exe").write_bytes(b"base-python")
+
+            with self.assertRaisesRegex(WindowsPsecError, "Lib standard library"):
+                _runtime_directories(str(scripts / "python.exe"))
+
+    def test_python_venv_runtime_rejects_base_under_denied_user_profile(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            profile = root / "host-profile"
+            base = profile / "Python312"
+            venv = root / "venv"
+            scripts = venv / "Scripts"
+            scripts.mkdir(parents=True)
+            base.mkdir(parents=True)
+            (scripts / "python.exe").write_bytes(b"venv-python")
+            (venv / "pyvenv.cfg").write_text(
+                f"home = {base}\n", encoding="utf-8"
+            )
+            (base / "python.exe").write_bytes(b"base-python")
+            (base / "Lib").mkdir()
+
+            runtime = _runtime_directories(str(scripts / "python.exe"))
+
+            with self.assertRaisesRegex(
+                WindowsPsecError, "overlaps an explicitly denied host directory"
+            ):
+                _validate_runtime_directories(runtime, (profile,))
+
+    def test_standalone_python_runtime_does_not_require_venv_config(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            runtime = Path(temporary)
+            executable = runtime / "python.exe"
+            executable.write_bytes(b"python")
+
+            self.assertEqual(
+                _runtime_directories(str(executable)),
+                (runtime.resolve(),),
+            )
 
     def test_environment_block_rejects_duplicate_names_case_insensitively(self):
         with self.assertRaisesRegex(WindowsPsecError, "duplicate"):

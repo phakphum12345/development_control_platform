@@ -822,6 +822,18 @@ def _build_environment_spec(workspace: Path, scratch: Path, executable: str) -> 
         os.environ.get("PUBLIC"),
         tempfile.gettempdir(),
         system_root_path / "Temp",
+    )
+    denied = _existing_directories(denied_values)
+    runtime_directories = _validate_runtime_directories(
+        runtime_directories, denied
+    )
+    system_directories = _existing_directories((
+        system_root_path / "System32",
+        system_root_path / "WinSxS",
+        system_root_path / "SysWOW64",
+    ))
+    read_only = _existing_directories((
+        workspace, *runtime_directories, *system_directories
     ))
     runtime_directories = _runtime_directories(executable, denied)
     system_directories = _existing_directories((
@@ -1014,14 +1026,28 @@ class WindowsPsecLauncher:
             raise WindowsPsecError("workspace and scratch must be separate directory trees")
 
         env = dict(environment)
-        runtime_root = _runtime_root(command[0])
+        runtime_directories = _runtime_directories(command[0])
         system_root = os.environ.get("SYSTEMROOT") or os.environ.get("SystemRoot")
         if not system_root:
             raise WindowsPsecError("SYSTEMROOT is unavailable")
-        system32 = Path(system_root) / "System32"
+        system_root_path = Path(system_root).resolve(strict=True)
+        denied_values = (
+            os.environ.get("USERPROFILE"),
+            os.environ.get("PROGRAMDATA"),
+            os.environ.get("PUBLIC"),
+            tempfile.gettempdir(),
+            system_root_path / "Temp",
+        )
+        denied = _existing_directories(denied_values)
+        runtime_directories = _validate_runtime_directories(
+            runtime_directories, denied
+        )
+        system32 = system_root_path / "System32"
         env["SYSTEMROOT"] = system_root
         _apply_sandbox_profile_environment(env, temp)
-        env["PATH"] = ";".join(_existing_directories((runtime_root, system32)))
+        env["PATH"] = ";".join(_existing_directories((
+            *runtime_directories, system32
+        )))
 
         specification = _build_environment_spec(work, temp, command[0])
         create = self.psec_dll.CreateProcessSecurityEnvironment
