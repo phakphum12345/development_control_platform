@@ -98,7 +98,10 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             base_home = program_files / "DCP" / "Python312"
             executable = self._make_venv_runtime(root / "venv", base_home)
 
-            with mock.patch.dict(os.environ, {"ProgramFiles": str(program_files)}):
+            with mock.patch(
+                "tools.local_runner_agent.windows_psec_launcher._program_files_roots",
+                return_value=(program_files,),
+            ):
                 paths = _runtime_directories(str(executable), ())
 
             self.assertEqual(paths[0], executable.parent.parent)
@@ -134,14 +137,18 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             }
             with mock.patch.dict(os.environ, environment):
                 with mock.patch(
-                    "tools.local_runner_agent.windows_psec_launcher.tempfile.gettempdir",
-                    return_value=str(host_temp),
+                    "tools.local_runner_agent.windows_psec_launcher._program_files_roots",
+                    return_value=(program_files,),
                 ):
                     with mock.patch(
-                        "tools.local_runner_agent.windows_psec_spec.build_psec_spec",
-                        return_value=b"serialized-policy",
-                    ) as build_spec:
-                        payload = _build_environment_spec(workspace, scratch, str(executable))
+                        "tools.local_runner_agent.windows_psec_launcher.tempfile.gettempdir",
+                        return_value=str(host_temp),
+                    ):
+                        with mock.patch(
+                            "tools.local_runner_agent.windows_psec_spec.build_psec_spec",
+                            return_value=b"serialized-policy",
+                        ) as build_spec:
+                            payload = _build_environment_spec(workspace, scratch, str(executable))
 
             self.assertEqual(payload, b"serialized-policy")
             read_only = tuple(Path(value) for value in build_spec.call_args.kwargs["read_only_paths"])
@@ -160,7 +167,10 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             base_home = denied_profile / "AppData" / "Python312"
             executable = self._make_venv_runtime(root / "venv", base_home)
 
-            with mock.patch.dict(os.environ, {"ProgramFiles": str(program_files)}):
+            with mock.patch(
+                "tools.local_runner_agent.windows_psec_launcher._program_files_roots",
+                return_value=(program_files,),
+            ):
                 with self.assertRaisesRegex(WindowsPsecError, "trusted Program Files"):
                     _runtime_directories(str(executable), (denied_profile,))
 
@@ -175,7 +185,10 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
                 f"home = {base_home / '..' / '..'}\nversion = 3.12.10\n",
                 encoding="utf-8",
             )
-            with mock.patch.dict(os.environ, {"ProgramFiles": str(program_files)}):
+            with mock.patch(
+                "tools.local_runner_agent.windows_psec_launcher._program_files_roots",
+                return_value=(program_files,),
+            ):
                 with self.assertRaisesRegex(WindowsPsecError, "canonical directory"):
                     _runtime_directories(str(executable), ())
 
@@ -189,7 +202,10 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
                 f"home = {base_home}\nhome = {base_home}\n",
                 encoding="utf-8",
             )
-            with mock.patch.dict(os.environ, {"ProgramFiles": str(program_files)}):
+            with mock.patch(
+                "tools.local_runner_agent.windows_psec_launcher._program_files_roots",
+                return_value=(program_files,),
+            ):
                 with self.assertRaisesRegex(WindowsPsecError, "exactly one valid home"):
                     _runtime_directories(str(executable), ())
 
@@ -200,7 +216,10 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             denied_parent = program_files / "DCP"
             base_home = denied_parent / "Python312"
             executable = self._make_venv_runtime(root / "venv", base_home)
-            with mock.patch.dict(os.environ, {"ProgramFiles": str(program_files)}):
+            with mock.patch(
+                "tools.local_runner_agent.windows_psec_launcher._program_files_roots",
+                return_value=(program_files,),
+            ):
                 with self.assertRaisesRegex(WindowsPsecError, "overlaps a denied host path"):
                     _runtime_directories(str(executable), (denied_parent,))
 
@@ -227,7 +246,10 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
                 os.symlink(external_executable, base_executable)
             except (OSError, NotImplementedError):
                 self.skipTest("file symlink creation is unavailable")
-            with mock.patch.dict(os.environ, {"ProgramFiles": str(program_files)}):
+            with mock.patch(
+                "tools.local_runner_agent.windows_psec_launcher._program_files_roots",
+                return_value=(program_files,),
+            ):
                 with self.assertRaisesRegex(WindowsPsecError, "Base Python executable is a reparse point"):
                     _runtime_directories(str(executable), ())
 
@@ -247,7 +269,10 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
                 os.symlink(external_lib, lib, target_is_directory=True)
             except (OSError, NotImplementedError):
                 self.skipTest("directory symlink creation is unavailable")
-            with mock.patch.dict(os.environ, {"ProgramFiles": str(program_files)}):
+            with mock.patch(
+                "tools.local_runner_agent.windows_psec_launcher._program_files_roots",
+                return_value=(program_files,),
+            ):
                 with self.assertRaisesRegex(WindowsPsecError, "reparse point"):
                     _runtime_directories(str(executable), ())
 
