@@ -494,74 +494,76 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
 
     def test_python_venv_runtime_includes_base_executable_and_standard_library(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            venv = root / "venv"
-            scripts = venv / "Scripts"
-            base = root / "base-python"
-            scripts.mkdir(parents=True)
-            (scripts / "python.exe").write_bytes(b"venv-python")
-            (venv / "pyvenv.cfg").write_text(
-                f"home = {base}\ninclude-system-site-packages = false\n",
-                encoding="utf-8",
-            )
-            base.mkdir()
-            (base / "python.exe").write_bytes(b"base-python")
-            (base / "Lib").mkdir()
-            (base / "Lib" / "os.py").write_text("# stdlib", encoding="utf-8")
-            (base / "DLLs").mkdir()
+            root = Path(temporary).resolve()
+            program_files = self._program_files_root(root)
+            base_home = program_files / "DCP" / "Python312"
+            executable = self._make_venv_runtime(root / "fixture", base_home)
 
-            directories = _runtime_directories(str(scripts / "python.exe"))
+            with mock.patch(
+                "tools.local_runner_agent.windows_psec_launcher._program_files_roots",
+                return_value=(program_files,),
+            ):
+                directories = _runtime_directories(str(executable), ())
 
-            self.assertEqual(
-                directories,
-                (venv.resolve(), base.resolve(), (base / "Lib").resolve(),
-                 (base / "DLLs").resolve()),
-            )
+            # The protected base runtime is the sole read-only root. Its Lib
+            # directory is covered by that root and is not granted separately.
+            self.assertEqual(directories, (base_home,))
+            self.assertTrue((base_home / "python.exe").is_file())
+            self.assertTrue((base_home / "python312.dll").is_file())
+            self.assertTrue((base_home / "python3.dll").is_file())
+            self.assertTrue((base_home / "Lib" / "os.py").is_file())
+            self.assertTrue((base_home / "Lib" / "encodings" / "__init__.py").is_file())
 
     def test_python_venv_runtime_rejects_missing_pyvenv_config(self):
         with tempfile.TemporaryDirectory() as temporary:
-            scripts = Path(temporary) / "venv" / "Scripts"
+            scripts = Path(temporary).resolve() / "venv" / "Scripts"
             scripts.mkdir(parents=True)
             executable = scripts / "python.exe"
             executable.write_bytes(b"venv-python")
 
             with self.assertRaisesRegex(WindowsPsecError, "missing.*pyvenv.cfg"):
-                _runtime_directories(str(executable))
+                _runtime_directories(str(executable), ())
 
     def test_python_venv_runtime_rejects_missing_base_standard_library(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            venv = root / "venv"
-            scripts = venv / "Scripts"
-            base = root / "base-python"
+            root = Path(temporary).resolve()
+            program_files = self._program_files_root(root)
+            base_home = program_files / "DCP" / "Python312"
+            venv_root = base_home / "venvs" / "psec"
+            scripts = venv_root / "Scripts"
             scripts.mkdir(parents=True)
             (scripts / "python.exe").write_bytes(b"venv-python")
-            (venv / "pyvenv.cfg").write_text(
-                f"home = {base}\n", encoding="utf-8"
+            (venv_root / "pyvenv.cfg").write_text(
+                f"home = {base_home}\n", encoding="utf-8"
             )
-            base.mkdir()
-            (base / "python.exe").write_bytes(b"base-python")
+            base_home.mkdir(parents=True, exist_ok=True)
+            (base_home / "python.exe").write_bytes(b"base-python")
+            (base_home / "python312.dll").write_bytes(b"python312")
+            (base_home / "python3.dll").write_bytes(b"python3")
+            # Deliberately omit Lib to exercise the standard-library boundary.
 
-            with self.assertRaisesRegex(WindowsPsecError, "Lib standard library"):
-                _runtime_directories(str(scripts / "python.exe"))
+            with mock.patch(
+                "tools.local_runner_agent.windows_psec_launcher._program_files_roots",
+                return_value=(program_files,),
+            ):
+                with self.assertRaisesRegex(
+                    WindowsPsecError, "Base Python standard library"
+                ):
+                    _runtime_directories(str(scripts / "python.exe"), ())
 
     def test_python_venv_runtime_rejects_base_under_denied_user_profile(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             profile = root / "host-profile"
-            base = profile / "Python312"
-            venv = root / "venv"
-            scripts = venv / "Scripts"
-            scripts.mkdir(parents=True)
-            base.mkdir(parents=True)
-            (scripts / "python.exe").write_bytes(b"venv-python")
-            (venv / "pyvenv.cfg").write_text(
-                f"home = {base}\n", encoding="utf-8"
-            )
-            (base / "python.exe").write_bytes(b"base-python")
-            (base / "Lib").mkdir()
+            program_files = self._program_files_root(profile)
+            base_home = program_files / "DCP" / "Python312"
+            executable = self._make_venv_runtime(root / "fixture", base_home)
 
-            runtime = _runtime_directories(str(scripts / "python.exe"))
+            with mock.patch(
+                "tools.local_runner_agent.windows_psec_launcher._program_files_roots",
+                return_value=(program_files,),
+            ):
+                runtime = _runtime_directories(str(executable), ())
 
             with self.assertRaisesRegex(
                 WindowsPsecError, "overlaps an explicitly denied host directory"
@@ -570,14 +572,34 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
 
     def test_standalone_python_runtime_does_not_require_venv_config(self):
         with tempfile.TemporaryDirectory() as temporary:
-            runtime = Path(temporary)
-            executable = runtime / "python.exe"
-            executable.write_bytes(b"python")
-
-            self.assertEqual(
-                _runtime_directories(str(executable)),
-                (runtime.resolve(),),
+            root = Path(temporary).resolve()
+            program_files = self._program_files_root(root)
+            runtime = program_files / "DCP" / "Python312"
+            runtime.mkdir(parents=True)
+            (runtime / "python.exe").write_bytes(b"python")
+            (runtime / "python312.dll").write_bytes(b"python312")
+            (runtime / "python3.dll").write_bytes(b"python3")
+            (runtime / "Lib" / "encodings").mkdir(parents=True)
+            (runtime / "Lib" / "os.py").write_text("# stdlib", encoding="utf-8")
+            (runtime / "Lib" / "encodings" / "__init__.py").write_text(
+                "# encodings", encoding="utf-8"
             )
+
+            with mock.patch(
+                "tools.local_runner_agent.windows_psec_launcher._program_files_roots",
+                return_value=(program_files,),
+            ):
+                self.assertEqual(
+                    _runtime_directories(str(runtime / "python.exe"), ()),
+                    (runtime.resolve(),),
+                )
+
+    def test_program_files_registry_unavailable_fails_closed(self):
+        with mock.patch.dict("sys.modules", {"winreg": None}):
+            with self.assertRaisesRegex(
+                WindowsPsecError, "cannot read the 64-bit ProgramFilesDir"
+            ):
+                _program_files_roots()
 
     def test_environment_block_rejects_duplicate_names_case_insensitively(self):
         with self.assertRaisesRegex(WindowsPsecError, "duplicate"):
