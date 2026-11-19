@@ -480,10 +480,10 @@ class DashboardControlCenterV2Tests(unittest.TestCase):
                 self.assertTrue(test_path.is_file(), f"Missing mapped test file: {path}")
                 if separator and symbol.startswith("test_"):
                     source = test_path.read_text(encoding="utf-8")
-                    self.assertRegex(source, rf"^\s*(?:async\s+)?def {re.escape(symbol)}\s*\(", f"Missing mapped test function: {reference}")
+                    self.assertRegex(source, rf"(?m)^\s*(?:async\s+)?def {re.escape(symbol)}\s*\(", f"Missing mapped test function: {reference}")
                 elif separator:
                     source = test_path.read_text(encoding="utf-8")
-                    self.assertRegex(source, rf"^\s*class {re.escape(symbol)}\b", f"Missing mapped test class: {reference}")
+                    self.assertRegex(source, rf"(?m)^\s*class {re.escape(symbol)}\b", f"Missing mapped test class: {reference}")
 
     def test_dashboard_build_job_gate_supports_verified_node_framework_targets(self):
         for contract in (
