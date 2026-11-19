@@ -93,8 +93,12 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
         )
         base_home.mkdir(parents=True, exist_ok=True)
         (base_home / "python.exe").write_bytes(b"base interpreter fixture")
+        (base_home / "python312.dll").write_bytes(b"python312 dll fixture")
+        (base_home / "python3.dll").write_bytes(b"python3 dll fixture")
         (base_home / "Lib").mkdir(exist_ok=True)
         (base_home / "Lib" / "os.py").write_text("# stdlib fixture", encoding="utf-8")
+        (base_home / "Lib" / "encodings").mkdir(exist_ok=True)
+        (base_home / "Lib" / "encodings" / "__init__.py").write_text("# encodings", encoding="utf-8")
         return scripts / "python.exe"
 
     def test_venv_runtime_includes_base_home_and_standard_library(self):
@@ -365,8 +369,12 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             base_home = program_files / "DCP" / "Python312"
             base_home.mkdir(parents=True)
             (base_home / "python.exe").write_bytes(b"trusted interpreter")
+            (base_home / "python312.dll").write_bytes(b"python312 dll")
+            (base_home / "python3.dll").write_bytes(b"python3 dll")
             (base_home / "Lib").mkdir()
             (base_home / "Lib" / "os.py").write_text("# stdlib", encoding="utf-8")
+            (base_home / "Lib" / "encodings").mkdir()
+            (base_home / "Lib" / "encodings" / "__init__.py").write_text("# encodings", encoding="utf-8")
 
             with mock.patch(
                 "tools.local_runner_agent.windows_psec_launcher._program_files_roots",
