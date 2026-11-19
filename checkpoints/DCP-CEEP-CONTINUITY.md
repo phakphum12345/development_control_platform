@@ -142,3 +142,13 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - This is a candidate branch only. CI, browser smoke and review must pass before considering the mapping complete in main.
 - No project import, document generation, authentication, or write behavior was changed; only mapping metadata and tests were modified.
 - Cloud provisioning, VM creation, Terminal execution and PR mutation remain unchanged and gated.
+
+
+### 2026-11-19 — Code Navigator reference audit
+- Audited all 57 declared Code Navigator test references across 14 unique mainline test files.
+- Found six stale symbol references in existing mappings: five references to `test_github_requests_are_public_read_only` and one to `test_registry_remains_empty_and_write_actions_disabled`; neither symbol exists in `tests/test_dashboard_contract.py`.
+- Replaced them with existing tests: `test_public_research_and_private_github_app_import_are_separate` and `test_all_tool_views_exist`.
+- Re-ran source-backed symbol/path inspection: 57 references, 14 files, 0 missing file/function/class symbols.
+- New automated test uses multiline-aware matching so methods inside test classes are validated correctly.
+
+- Branch head before this ledger update: `edc67743c1510f8d9cd5f8e31fba28191f207772`.
