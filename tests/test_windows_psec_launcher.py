@@ -333,6 +333,8 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             (external_lib / "os.py").write_text("# external", encoding="utf-8")
             lib = base_home / "Lib"
             (lib / "os.py").unlink()
+            (lib / "encodings" / "__init__.py").unlink()
+            (lib / "encodings").rmdir()
             lib.rmdir()
             try:
                 os.symlink(external_lib, lib, target_is_directory=True)
@@ -406,6 +408,29 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
                 return_value=(program_files,),
             ):
                 with self.assertRaisesRegex(WindowsPsecError, "config is a reparse point"):
+                    _runtime_directories(str(executable), ())
+
+    def test_venv_nested_encodings_reparse_point_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            program_files = self._program_files_root(root)
+            base_home = program_files / "DCP" / "Python312"
+            executable = self._make_venv_runtime(root / "venv", base_home)
+            external_encodings = root / "ExternalEncodings"
+            external_encodings.mkdir()
+            (external_encodings / "__init__.py").write_text("# external", encoding="utf-8")
+            encodings = base_home / "Lib" / "encodings"
+            (encodings / "__init__.py").unlink()
+            encodings.rmdir()
+            try:
+                os.symlink(external_encodings, encodings, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest("directory symlink creation is unavailable")
+            with mock.patch(
+                "tools.local_runner_agent.windows_psec_launcher._program_files_roots",
+                return_value=(program_files,),
+            ):
+                with self.assertRaisesRegex(WindowsPsecError, "reparse point"):
                     _runtime_directories(str(executable), ())
 
     def test_venv_without_pyvenv_cfg_fails_closed(self):
