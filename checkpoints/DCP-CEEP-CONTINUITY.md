@@ -216,3 +216,19 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - PR #138 remains a cross-fork comparison from `phakphumwiri-boop/development_control_platform`; do not merge wholesale.
 - WP-00A remains PASS for the exact main tree/path inventory. WP-00B/00C/00D remain IN_PROGRESS. Exact route schemas, complete handler/service trace, per-test-function mapping and documentation reconciliation remain outstanding.
 - Next action: keep all PRs Draft/open; do not merge or rewrite history. Resolve the existing #140/#149 runner-bootstrap dependency through an Owner-reviewed sequencing decision, then re-run required CI on the exact affected heads. Continue WP-00 traceability and independent work only where it does not depend on this blocked prerequisite.
+
+
+---
+
+## 2026-11-20 — WP-00B / WP-00C source trace continuation
+
+- Baseline main remains `985a78d5fba459c8a0cbcf47e5d00a858c6e6228`; no mainline changes were made.
+- PR #150 head before this checkpoint was `b4769a69115cefa39a8ac5770b65e5379917142d`. Its exact-head jobs: Validate PASS; Local-first Minimal Emulator Linux PASS and Windows Auth Proxy + Gateway E2E PASS; Cross-platform Recovery Ubuntu PASS and Windows PASS; Windows dynamic-port launcher integration FAIL (job `135733550078`); optional Windows runner acceptance SKIPPED (job `135733552694`).
+- Exact failure: `tests/test_local_runner_bootstrap.ps1:28` passes `-TrustedRepository` to mainline `Setup-DCP-Local-Runner.ps1`; PowerShell rejects the unknown parameter. This remains a Runner Bootstrap contract/dependency issue, not a WP-00 documentation change.
+- PR #151 head `87b2c4dd48c6ad21fdeb8fa9cd79173f4409de92`: Validate, package, Linux Minimal Emulator, Windows Auth Proxy + Gateway E2E, and Ubuntu/Windows Recovery passed; Windows dynamic-port launcher integration failed (job `135720966046`); optional Windows runner acceptance skipped (job `135720969555`).
+- Main Dashboard source has 23 `data-tab` navigation IDs but only 21 `CODE_NAV_MAPPINGS`. PR #151 adds the two missing `project-import` and `document-generator` entries; candidate branch contains 23 mapping records and reference-resolution checks. Do not count it as mainline completion before merge.
+- Gateway and Auth Proxy dispatch were inspected at exact main blobs: `server.py@583eb48f4d37281e2485fc3331a893996c75f2ef`, `local_auth_proxy.py@22e2a27ce9bcd630c17d665215322fd4ffcdca8b`. Requirements Traceability now contains route-family/method/role/CSRF/response/status mapping and explicit remaining schema gaps.
+- WP-00C exact test tree count: 91 files under `tests/` = 88 `test_*` paths + three support assets. Method/setup/skip mapping was added for eight high-risk test modules; full remaining test-function and workflow/job map remains open.
+- Updated on the audit branch: Requirements Traceability, Test and Acceptance Matrix, Implementation Status, Remaining Work Inventory. WP-00B/00C remain IN_PROGRESS.
+- No application source, security control, workflow, provisioning behavior or PR state was changed. No PR merged; no cloud resource provisioned.
+- Next: finish remaining test-function/workflow map and Dashboard event/API/service traces; then run exact-head validation for the latest WP-00 branch head. Continue independent security foundation analysis without crossing the blocked Runner Bootstrap/PSEC dependency.
