@@ -448,7 +448,7 @@ class DashboardControlCenterV2Tests(unittest.TestCase):
         self.assertIsNotNone(match, "Code Navigator mapping registry must exist")
         mapped = set(re.findall(r'id:"([^"]+)"', match.group(1)))
         self.assertEqual(expected, mapped)
-        navigation = set(re.findall(r'<button[^>]*\\bdata-tab="([^"]+)"', HTML))
+        navigation = set(re.findall(r'<button[^>]*\bdata-tab="([^"]+)"', HTML))
         self.assertEqual(expected, navigation, "Code Navigator must cover every actual navigation tab")
         for contract in (
             'id:"account",label:"Password Login"',
@@ -469,7 +469,7 @@ class DashboardControlCenterV2Tests(unittest.TestCase):
 
 
     def test_code_navigator_mapping_test_references_resolve(self):
-        match = re.search(r"const CODE_NAV_MAPPINGS=\\[(.*?)\\n\\];", HTML, re.DOTALL)
+        match = re.search(r"const CODE_NAV_MAPPINGS=\[(.*?)\n\];", HTML, re.DOTALL)
         self.assertIsNotNone(match, "Code Navigator mapping registry must exist")
         references = re.findall(r'"(tests/[^"]+)"', match.group(1))
         self.assertTrue(references, "Each Code Navigator map should declare test evidence")
@@ -480,10 +480,10 @@ class DashboardControlCenterV2Tests(unittest.TestCase):
                 self.assertTrue(test_path.is_file(), f"Missing mapped test file: {path}")
                 if separator and symbol.startswith("test_"):
                     source = test_path.read_text(encoding="utf-8")
-                    self.assertRegex(source, rf"^\\s*(?:async\\s+)?def {re.escape(symbol)}\\s*\\(", f"Missing mapped test function: {reference}")
+                    self.assertRegex(source, rf"^\s*(?:async\s+)?def {re.escape(symbol)}\s*\(", f"Missing mapped test function: {reference}")
                 elif separator:
                     source = test_path.read_text(encoding="utf-8")
-                    self.assertRegex(source, rf"^\\s*class {re.escape(symbol)}\\b", f"Missing mapped test class: {reference}")
+                    self.assertRegex(source, rf"^\s*class {re.escape(symbol)}\b", f"Missing mapped test class: {reference}")
 
     def test_dashboard_build_job_gate_supports_verified_node_framework_targets(self):
         for contract in (
