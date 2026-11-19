@@ -192,3 +192,25 @@ No merge, deployment, cloud provisioning, VM creation, branch deletion, force-pu
 - Corrected the Document Generator operations status from "feature branch" to "present in current mainline source"; exact-head CI, browser integration, host filesystem and deployment acceptance remain separate.
 - Clarified that local document writes do not commit/push to GitHub and PR lifecycle tools are read-only.
 - Branch head before this ledger update: `b1dc863ac7174dc83382ffe58db33eef8f82e0a9`.
+
+
+---
+
+## 2026-11-20 — WP-00B / WP-00C source trace increment
+
+**Main baseline remains:** `985a78d5fba459c8a0cbcf47e5d00a858c6e6228`.
+
+### WP-00B
+- Gateway `do_GET`, `do_POST`, `do_DELETE` and Auth Proxy dispatch have been traced into route families, role boundaries, same-origin/CSRF enforcement, bounded query shapes, representative success response shapes and common status/error paths. See `docs/DCP-REQUIREMENTS-TRACEABILITY.md`.
+- Dashboard mainline has 23 navigation tabs and 21 mapping records. PR #151 contains a 23-record candidate mapping with explicit Project Import and Document Generator entries and reference integrity tests. Candidate-only; not yet mainline.
+- Still open: every JSON request/response schema, all route-specific error branches, full Auth Proxy/Gateway allowlist equivalence, and every Dashboard event-handler → API → service call edge.
+
+### WP-00C
+- The recursive main tree contains 91 files under `tests/`: 88 paths beginning `tests/test_*` and three support assets (`browser_smoke.mjs`, `emit_runner_bootstrap_scripts.py`, `live_gateway_preflight.py`).
+- A method/fixture/skip inventory has been recorded for eight high-risk files: Job Control, proxy authorization, dynamic port, Local Project Gateway, Document Workflow, Terminal Grants, Terminal Executor and SQLite security.
+- Still open: enumerate all remaining test functions/classes, fixtures and skip markers; map each test to workflow/job/path filters; distinguish test definitions from exact-head execution evidence.
+
+### Active blocker
+The shared Windows dynamic-port launcher integration is failing on both PR #150 and #151 because `tests/test_local_runner_bootstrap.ps1` passes `-TrustedRepository` to mainline `Setup-DCP-Local-Runner.ps1`, which does not declare the parameter. Treat this as a separate Runner Bootstrap dependency; do not duplicate or merge PSEC code without an Owner-reviewed sequencing decision.
+
+WP-00B and WP-00C remain IN_PROGRESS. No implementation, acceptance or merge completion is claimed.
