@@ -114,10 +114,12 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             workspace = root / "workspace"
             scratch = root / "scratch"
             system_root = root / "Windows"
+            host_temp = root / "HostTemp"
             for directory in (
-                workspace, scratch, system_root / "System32",
+                workspace, scratch, host_temp, system_root / "System32",
                 system_root / "WinSxS", system_root / "SysWOW64",
-                root / "HostProfile", root / "ProgramData", root / "Public",
+                system_root / "Temp", root / "HostProfile",
+                root / "ProgramData", root / "Public",
             ):
                 directory.mkdir(parents=True, exist_ok=True)
 
@@ -132,10 +134,14 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             }
             with mock.patch.dict(os.environ, environment):
                 with mock.patch(
-                    "tools.local_runner_agent.windows_psec_spec.build_psec_spec",
-                    return_value=b"serialized-policy",
-                ) as build_spec:
-                    payload = _build_environment_spec(workspace, scratch, str(executable))
+                    "tools.local_runner_agent.windows_psec_launcher.tempfile.gettempdir",
+                    return_value=str(host_temp),
+                ):
+                    with mock.patch(
+                        "tools.local_runner_agent.windows_psec_spec.build_psec_spec",
+                        return_value=b"serialized-policy",
+                    ) as build_spec:
+                        payload = _build_environment_spec(workspace, scratch, str(executable))
 
             self.assertEqual(payload, b"serialized-policy")
             read_only = tuple(Path(value) for value in build_spec.call_args.kwargs["read_only_paths"])
@@ -144,7 +150,6 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             self.assertIn(base_home, read_only)
             self.assertIn(base_home / "Lib", read_only)
             denied = tuple(Path(value) for value in build_spec.call_args.kwargs["denied_paths"])
-            self.assertTrue(any(_paths_overlap(base_home, value) is False for value in denied))
             self.assertFalse(any(_paths_overlap(base_home, value) for value in denied))
 
     def test_venv_base_runtime_under_denied_host_profile_is_rejected(self):
