@@ -160,3 +160,91 @@ This is a source-derived route-shape inventory. It does not yet document every r
 - The 21 declared records contain 48 test references; all referenced test file paths exist on current main.
 - These declared links do not prove that the referenced tests were executed on the current PR head or that every handler/API edge is correct.
 - WP-00B follow-up: map the two missing tabs and verify each mapping's handler, API path, auth/CSRF behavior, backend service and test assertion.
+
+
+---
+
+## 2026-11-20 — WP-00B Gateway/Auth Proxy dispatch contract pass
+
+**Exact source baseline:** `main@985a78d5fba459c8a0cbcf47e5d00a858c6e6228`  
+**Source blobs:** `tools/cloud_gateway/server.py@583eb48f4d37281e2485fc3331a893996c75f2ef`; `tools/local_auth_proxy.py@22e2a27ce9bcd630c17d665215322fd4ffcdca8b`.
+
+This pass traces the actual `do_GET`, `do_POST`, and `do_DELETE` dispatch blocks. The route families below are source-derived; they are not a substitute for OpenAPI schema validation or a live deployment test.
+
+### Gateway GET route / authorization / response contract
+
+| Route family | Gateway identity / role gate | Success shape observed | Important non-success branches |
+|---|---|---|---|
+| `GET /healthz` | Public | `{status, provisioning_enabled}` | No identity check |
+| `GET /api/auth/session` | Validated proxy identity | `{authenticated, csrfToken, user:{displayName,role}}` | 401 without proxy identity |
+| `GET /api/github/repositories` | Validated proxy identity | `{repositories:[...]}` | 401; 503 when GitHub App catalog is unavailable |
+| `GET /api/github/repositories/{owner}/{repo}/refs?kind=branches\|tags` | Validated proxy identity; repository access revalidated by service | `{repository,kind,refs}` | 400 invalid repo/kind/SHA; 403 inaccessible repository; 404 unknown path; 503 provider inspection failure |
+| `GET /api/github/repositories/{owner}/{repo}/commits/{sha40}` | Validated proxy identity; service authorization | `{repository,...commit}` | 400 invalid SHA/repo; 403 inaccessible; 503 verification unavailable |
+| `GET /api/github/repositories/{owner}/{repo}/projects/{sha40}` | Validated proxy identity; service authorization | Project inspection object | 400 invalid SHA/repo; 403 inaccessible; 503 inspection unavailable |
+| `GET /api/local-projects`, `/roots`, `/{uuid}` | Owner only | `{projects:[...]}`, `{roots:[...]}`, or one public project | 401 unauthenticated; 403 non-owner; 404 invalid/missing project; 503 registry unavailable/read failed |
+| `GET /api/document-workflow/grants?project_id=...`, `/target?project_id=...&path=...`, `/proposals/{uuid}` | Owner only | `{grants:[...]}`, `{target:...}`, or `{proposal:...}` | 401/403; 503 unconfigured/read failure; domain-specific `DocumentWorkflowError.status_code` |
+| `GET /api/terminal/templates`, `/templates/{custom-id}/events` | Owner or operator | `{templates:[...],execution_enabled:boolean}` or `{events:[...]}` | 401; 403 role; 503 template store unavailable |
+| `GET /api/jobs`, `/{uuid}`, `/{uuid}/logs`, `/{uuid}/artifacts`, `/{uuid}/events` | Owner or operator | `{jobs:[...]}`, public job, `{logs:[...]}`, `{artifacts:[...]}`, `{events:[...]}` | 401/403; 400 invalid ID/pagination; 404 missing job/artifact; 503 store unavailable |
+| `GET /api/jobs/{uuid}/previews`, `/{uuid}/previews/{runtime_uuid}[/content/{relative_path}]` | Owner only (additional to owner/operator job gate) | `{previews:[...]}`, preview status, or `{content_type,body_base64}` | 401/403; 404 missing job/runtime/worker; 503 preview dependencies unavailable |
+| `GET /api/runners` | Owner or operator | `{runners:[...]}` | 401 for missing/invalid dashboard identity; 503 registry unavailable |
+| `GET /api/infrastructure/gates`, `/api/infrastructure[?view=catalog]`, `/{uuid}[/events]` | Owner or operator | `{gates:...}`, catalog, `{resources:[...]}`, resource or `{events:[...]}` | 401/403; 400 invalid UUID; 404 missing resource; 409 lifecycle conflict; 503 manager unavailable/failure |
+| `GET /api/artifacts/{id}/download` | Owner or operator | Binary attachment; SHA-256 ETag; private/no-store and nosniff headers | 401; 404 missing/invalid artifact; 503 store unavailable |
+| `GET /api/cloud-runners/status`, `/api/cloud-runners`, `/{runner_id}` | Validated dashboard identity (role-specific rules remain in provider/service layer) | Control status, `{runners:[...]}`, or one runner | 401; 400 invalid runner ID; 404 missing; 503 provider status unavailable |
+
+### Gateway POST route / authorization / request contract
+
+| Route family | Gateway authorization | Request / safety contract observed | Success / failure behavior |
+|---|---|---|---|
+| `POST /api/terminal/authorize` | Owner + same-origin + CSRF | Typed grant request; template and project/workspace scope validated by grant service | 201 `{grant}`; 401/403; 400/409 domain validation; 503 fail-closed |
+| `POST /api/terminal/jobs` | Owner + same-origin + CSRF | Requires valid `Idempotency-Key`; binds template, project/workspace and authorization grant; execution-disabled catalog returns 409 | 202 new / 200 idempotent replay; 400/403/409/503 |
+| `POST /api/terminal/grants/{uuid}/revoke` | Owner + same-origin + CSRF | Grant ID in path; revocation is state-checked | 200 `{revoked:true}`; 409 already consumed/revoked/missing; 400/503 |
+| `POST /api/document-workflow/grants` | Owner + same-origin + CSRF | Explicit project ID, allowed paths and confirmation; grant store validates scope | 201 `{grant}`; 400 invalid fields; 503 unavailable |
+| `POST /api/document-workflow/grants/{uuid}/revoke` | Owner + same-origin + CSRF | Exact grant reference and confirmation | 200 on revoke; 400/404/409/503 according to workflow error |
+| `POST /api/document-workflow/proposals` | Owner + same-origin + CSRF | Proposal binds project, scoped path, base digest, content digest and idempotency | 201 proposal; invalid/stale scope rejected |
+| `POST /api/document-workflow/proposals/{uuid}/approve` | Owner + same-origin + CSRF | Separate explicit confirmation bound to exact proposal/content digest; server read-back verification | 200 verified result; stale/conflicting proposal rejected |
+| `POST /api/terminal/templates/import`, `/review`, `/api/terminal/commands/preview` | Owner + same-origin + CSRF | JSON object, bounded body; imported packs remain inert pending review; preview is not process launch | Domain-specific 200/201; 400/403/409/503 |
+| `POST /api/infrastructure/gates/{cloud_provisioning\|vm_creation}` | Owner/operator session; gate mutation is Owner-only; same-origin + CSRF | Explicit gate state payload validated by backend | Backend-confirmed gate state; 400/403/409 |
+| `POST /api/infrastructure` | Owner/operator + same-origin + CSRF; create gate and provider checks remain independent | Resource request plus idempotency key | 202/201 or domain-specific denial; provider remains disabled by default |
+| `POST /api/infrastructure/{uuid}/{start\|stop\|restart}` | Owner/operator + same-origin + CSRF | Empty JSON object only | 200 or 400/403/404/409 |
+| `POST /api/jobs` | Owner/operator + same-origin + CSRF | Idempotency key; GitHub source binds verified commit; Local Folder is Owner-only and binds registered project ID + SHA-256 snapshot + supported target | 202 new / 200 replay; 400/403/404/409/503 |
+| `POST /api/jobs/{uuid}/resume` | Owner only + same-origin + CSRF | Owner confirmation required for UNKNOWN job after worker stop/workspace cleanup | 200 public job; 400/403/404/409 |
+| `POST /api/jobs/{uuid}/cancel` | Owner only + same-origin + CSRF | Empty JSON object only | 200 public job; 400/403/404/409 |
+| `POST /api/jobs/{uuid}/previews` | Owner only + same-origin + CSRF | Job must succeed; static preview has bounded supported fields; Next.js requires explicit `confirm_code_execution=true` and matching build path | 201 preview; 400/403/409/503 |
+| `POST /api/runners/{worker-id}/{drain\|enable}` | Owner only + same-origin + CSRF | Empty JSON object only | 200 or 400/403/404 |
+| `POST /v1/runner/*` | Runner credential identity, separate from dashboard session | Register/enroll, ping, claim, heartbeat/checkpoint/log/artifact/finish and terminal grant paths are lease-bound; payload validation occurs per route | 200 on accepted operations; 400/401/403/404/409/503 depending on credential, lease and registry state |
+
+### Gateway DELETE
+
+| Route | Authorization | Contract |
+|---|---|---|
+| `DELETE /api/jobs/{job_uuid}/previews/{preview_uuid}` | Owner + same-origin + session CSRF | Stops the scoped preview and revokes its preview cookie |
+| `DELETE /api/infrastructure/{resource_uuid}` | Owner + same-origin + session CSRF | Resource removal is delegated to Infrastructure Manager; missing/conflicting resource is not treated as success |
+| `DELETE /api/cloud-runners/{runner_id}` | Owner + same-origin + session CSRF | Provider lifecycle request; provider and provisioning gates remain enforced |
+
+### Auth Proxy boundary and query validation
+
+- Auth Proxy owns the browser cookie session and CSRF/Origin checks; it does not trust browser-supplied role claims. Gateway repeats identity and role authorization for the actual operation.
+- GET is an explicit allowlist/regex forwarding surface. Unsupported paths or query strings return 404 rather than being forwarded generically.
+- Allowed query shapes include GitHub refs exactly `kind=branches` or `kind=tags`; Infrastructure catalog exactly `view=catalog`; job list `limit=1..200`; logs with `after_id <= 9223372036854775807` and `limit <= 500`.
+- Preview content uses a separate authenticated preview cookie and bounded response size. Artifact download is separately validated for attachment disposition, SHA-256 ETag and bounded response.
+- POST and DELETE require exact same-origin, session-bound CSRF and reject query strings. Login uses a pre-authentication CSRF session, validates username/password types and limits failed attempts to five per IP in a 15-minute window. Job cancel, infrastructure lifecycle and runner drain/enable accept an empty object only.
+- Both handlers implement GET, POST, DELETE and OPTIONS; OPTIONS returns 405. No PUT/PATCH handler is present in these modules.
+
+### Remaining WP-00B gaps after this pass
+
+1. Full request/response JSON schema and field constraints for every route (including Runner credential routes).
+2. Exact Auth Proxy `ALLOWED_GET` constant and one-to-one comparison with every Gateway GET route, including routes intentionally inaccessible from Dashboard.
+3. Full Gateway handler-to-service method call graph and exception/status mapping for all branches.
+4. Dashboard event listener → frontend function → API call → Gateway branch → service method mapping for every control.
+5. Automated extraction or regression test that detects route inventory drift.
+
+The above is a route/auth/status-family pass, not a claim that every API schema is complete.
+
+## 2026-11-20 — WP-00B Dashboard 23-view candidate reconciliation
+
+- Main baseline has 23 distinct `data-tab` navigation IDs and 21 Code Navigator records.
+- PR #151 head `87b2c4dd48c6ad21fdeb8fa9cd79173f4409de92` adds the missing `project-import` and `document-generator` mappings; its candidate mapping count is 23.
+- Project Import mapping declares 18 DOM IDs and its session/catalog/refs/commit-inspection/local-project handlers. It is read-only and binds GitHub source to a verified commit SHA or Local Folder to a snapshot SHA-256.
+- Document Generator mapping declares 25 DOM IDs and its browser generation/download plus optional Owner-scoped Document Workflow grant/proposal/approval handlers. A browser download is not a repository write; a local write requires separate scoped grant, exact proposal digest confirmation and read-back verification.
+- PR #151 adds navigation-vs-mapping and declared test-reference validation. Its head CI is not accepted as PASS while the shared Windows dynamic-port bootstrap job fails.
+- The 23-view mapping is candidate-verified on PR #151 only; main remains at 21 mappings until an Owner-approved merge.
