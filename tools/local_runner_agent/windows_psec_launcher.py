@@ -674,8 +674,14 @@ def _runtime_directories(
     base_executable = base_home / "python.exe"
     standard_library = base_home / "Lib"
     try:
+        if base_executable.is_symlink() or (
+            hasattr(base_executable, "is_junction") and base_executable.is_junction()
+        ):
+            raise WindowsPsecError("Base Python executable is a reparse point")
         base_executable = base_executable.resolve(strict=True)
         standard_library = _trusted_directory(standard_library, "Base Python standard library")
+    except WindowsPsecError:
+        raise
     except (OSError, RuntimeError):
         raise WindowsPsecError("Base Python executable or standard library is unavailable") from None
     if not base_executable.is_file() or base_executable.parent != base_home:
