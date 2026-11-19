@@ -247,3 +247,15 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Previous exact-head CI on WP-00 head `f9c15b17c9e8a34384242d3f67be6d9a48481c31`: Validate PASS; Linux emulator PASS; Windows Auth Proxy E2E PASS; Ubuntu/Windows Recovery PASS; Windows dynamic-port launcher integration FAIL (job `135764554935`); Windows runner acceptance SKIPPED (job `135764558334`). Failure remains the missing `-TrustedRepository` setup parameter on mainline.
 - No source code or runtime security behavior was changed. No PR merged, no force-push, no cloud provisioning.
 - Next: re-run exact-head checks for the latest docs branch head, continue route schema/service and test trace, then choose the next independent code package only after its file overlap/dependency audit.
+
+
+---
+
+## 2026-11-20 — WP-00C all-test-file requirement-family assignment
+
+- Enumerated all 88 `tests/test_*` paths from the exact main recursive tree and assigned every path to one primary requirement family. The Test and Acceptance Matrix now lists each path and its category.
+- Test directory count remains 91 total files: 88 test-prefixed modules/scripts plus `browser_smoke.mjs`, `emit_runner_bootstrap_scripts.py`, and `live_gateway_preflight.py`.
+- Thirteen selected security/control-plane modules now have method-level mapping. The remaining 75 modules still need function/class/fixture/skip enumeration and precise workflow/job/path-filter mapping.
+- The five cross-cutting test modules are explicitly flagged for manual requirement ownership rather than silently forced into a category.
+- Full Python unittest discovery is part of the Validate Control Plane job; PowerShell scripts are run only by named Windows steps; Cross-platform Recovery executes a narrower explicit subset.
+- WP-00C remains IN_PROGRESS. File-family classification is not method-level coverage or execution proof.
