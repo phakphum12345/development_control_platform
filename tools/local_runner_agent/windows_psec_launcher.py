@@ -676,6 +676,20 @@ def _runtime_directories(
                     raise WindowsPsecError(
                         "Python runtime path overlaps a denied host path"
                     )
+        _require_program_files_base_runtime(runtime_root)
+        base_executable = Path(executable).resolve(strict=True)
+        if base_executable.name.casefold() != "python.exe" or base_executable.parent != runtime_root:
+            raise WindowsPsecError("standalone PSEC interpreter must be the trusted base python.exe")
+        standard_library = _trusted_directory(
+            runtime_root / "Lib", "Base Python standard library"
+        )
+        roots.append(standard_library)
+        for allowed_root in roots:
+            for denied_root in denied_paths:
+                if _paths_overlap(allowed_root, denied_root):
+                    raise WindowsPsecError(
+                        "Python runtime path overlaps a denied host path"
+                    )
         return tuple(roots)
 
     config_path = runtime_root / "pyvenv.cfg"
