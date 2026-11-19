@@ -174,6 +174,33 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
                 with self.assertRaisesRegex(WindowsPsecError, "protected Program Files"):
                     _runtime_directories(str(executable), (denied_profile,))
 
+    def test_program_files_root_comes_from_64bit_machine_registry(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            registered_root = self._program_files_root(root)
+            user_override = root / "UserControlledProgramFiles"
+            user_override.mkdir()
+            fake_winreg = mock.MagicMock()
+            fake_winreg.KEY_READ = 0x20019
+            fake_winreg.KEY_WOW64_64KEY = 0x0100
+            fake_winreg.HKEY_LOCAL_MACHINE = object()
+            fake_key = mock.MagicMock()
+            fake_winreg.OpenKey.return_value.__enter__.return_value = fake_key
+            fake_winreg.QueryValueEx.return_value = (str(registered_root), 2)
+
+            with mock.patch.dict("sys.modules", {"winreg": fake_winreg}):
+                with mock.patch.dict(os.environ, {"ProgramFiles": str(user_override)}):
+                    roots = _program_files_roots()
+
+            self.assertEqual(roots, (registered_root,))
+            fake_winreg.OpenKey.assert_called_once_with(
+                fake_winreg.HKEY_LOCAL_MACHINE,
+                "SOFTWARE\\Microsoft\\Windows\\CurrentVersion",
+                0,
+                fake_winreg.KEY_READ | fake_winreg.KEY_WOW64_64KEY,
+            )
+            fake_winreg.QueryValueEx.assert_called_once_with(fake_key, "ProgramFilesDir")
+
     def test_user_programfiles_override_cannot_trust_unregistered_runtime(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
