@@ -631,7 +631,7 @@ def _require_program_files_base_runtime(base_home: Path) -> None:
         if not candidate:
             continue
         root = _trusted_directory(candidate, "Program Files runtime root")
-        expected = _trusted_directory(root / "DCP", "DCP runtime directory") / "Python312"
+        expected = root / "DCP" / "Python312"
         expected_roots.append(expected)
     if not any(
         os.path.normcase(os.path.abspath(str(base_home)))
