@@ -101,3 +101,52 @@ Auth Proxy GET is an allowlisted read surface; POST and DELETE mutations enforce
 - Map every one of the 23 tabs to its event listeners, called functions, API method/path, server handler, role/CSRF check and test.
 - Reconcile README and Code Navigator's 21-entry registry with the 23 actual navigation tabs.
 - Count and map individual test functions, fixtures, skips and test workflow jobs; path inventory alone is not test coverage.
+
+
+## 2026-11-19 — Exact HTTP path-family refinement
+
+The following path shapes were confirmed from the Gateway and Auth Proxy dispatch source. UUID means the bounded 36-character UUID pattern in the handler; Git commit SHA means 40 hexadecimal characters.
+
+### Gateway GET
+
+- `/healthz`
+- `/api/auth/session`
+- `/api/github/repositories`
+- `/api/github/repositories/{owner}/{repo}/refs?kind=branches|tags`
+- `/api/github/repositories/{owner}/{repo}/commits/{sha40}`
+- `/api/github/repositories/{owner}/{repo}/projects/{sha40}`
+- `/api/local-projects`, `/roots`, `/{uuid}`
+- `/api/document-workflow/grants?project_id=...`, `/target?project_id=...&path=...`, `/proposals/{uuid}`
+- `/api/terminal/templates`, `/templates/{custom-id}/events`
+- `/api/jobs`, `/{uuid}`, `/{uuid}/logs`, `/{uuid}/artifacts`, `/{uuid}/events`, `/{uuid}/previews`, `/{uuid}/previews/{runtime-uuid}`, optional `/content/{relative-path}`
+- `/api/runners`
+- `/api/infrastructure/gates`, `/api/infrastructure`, `/api/infrastructure/{uuid}` and resource events
+- `/api/artifacts/{uuid}/download`
+- `/api/cloud-runners/status`, `/api/cloud-runners`, `/api/cloud-runners/{runner-id}`
+
+### Gateway POST
+
+- `/api/terminal/jobs`, `/api/terminal/grants/{uuid}/revoke`, `/api/terminal/authorize`
+- `/api/document-workflow/grants`, `/api/document-workflow/grants/{uuid}/revoke`, `/api/document-workflow/proposals`, `/api/document-workflow/proposals/{uuid}/approve`
+- `/api/infrastructure/gates/cloud_provisioning`, `/vm_creation`
+- `/api/terminal/templates/{custom-id}/review`, `/api/terminal/templates/import`, `/api/terminal/commands/preview`
+- `/api/infrastructure`, `/api/infrastructure/{uuid}/start|stop|restart`
+- `/api/jobs`, `/api/jobs/{uuid}/resume`, `/cancel`, `/api/jobs/{uuid}/previews`
+- `/api/runners/{worker-id}/drain|enable`
+- Runner credential routes: `/v1/runner/register`, `/enroll`, `/ping`, `/claim`, `/{job-uuid}/terminal-grant`, `/artifacts`, `/heartbeat`, `/checkpoint`, `/logs`, `/finish`
+
+### Gateway DELETE
+
+- `/api/jobs/{job-uuid}/previews/{preview-uuid}`
+- `/api/infrastructure/{resource-uuid}`
+- `/api/cloud-runners/{runner-id}`
+
+### Auth Proxy forwarding constraints
+
+- GET uses explicit allowlists and regex patterns. GitHub refs query accepts exactly `kind=branches` or `kind=tags`; infrastructure catalog accepts `view=catalog`; job list accepts bounded `limit` (1–200); logs accept bounded `after_id` and `limit` (limit ≤500 and signed 64-bit cursor bound). Unsupported query strings are rejected.
+- Preview reads use authenticated session/preview cookie and bounded response sizes; artifact download is a separate allowlisted path.
+- POST requires same-origin and an authenticated session plus CSRF. Login has a pre-authentication CSRF challenge; logout requires authenticated CSRF. Job cancellation accepts an empty JSON object only. Infrastructure lifecycle and Runner drain/enable also require empty objects.
+- DELETE requires same-origin and session-bound CSRF before forwarding.
+- Both HTTP handlers implement GET, POST and DELETE dispatch; no PUT/PATCH handler was found in these two modules.
+
+This is a source-derived route-shape inventory. It does not yet document every request/response JSON schema, every HTTP status/error branch, or the full Auth Proxy `ALLOWED_GET` constant and Gateway service call graph. Those remain open WP-00B work.
