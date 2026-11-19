@@ -376,6 +376,30 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
 
             self.assertEqual(paths, (base_home, base_home / "Lib"))
 
+    def test_venv_pyvenv_config_reparse_point_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            program_files = self._program_files_root(root)
+            base_home = program_files / "DCP" / "Python312"
+            executable = self._make_venv_runtime(root / "venv", base_home)
+            config = executable.parent.parent / "pyvenv.cfg"
+            external_config = root / "external-pyvenv.cfg"
+            external_config.write_text(
+                f"home = {base_home}\\nversion = 3.12.10\\n",
+                encoding="utf-8",
+            )
+            config.unlink()
+            try:
+                os.symlink(external_config, config)
+            except (OSError, NotImplementedError):
+                self.skipTest("file symlink creation is unavailable")
+            with mock.patch(
+                "tools.local_runner_agent.windows_psec_launcher._program_files_roots",
+                return_value=(program_files,),
+            ):
+                with self.assertRaisesRegex(WindowsPsecError, "config is a reparse point"):
+                    _runtime_directories(str(executable), ())
+
     def test_venv_without_pyvenv_cfg_fails_closed(self):
         with tempfile.TemporaryDirectory() as temporary:
             scripts = Path(temporary).resolve() / "venv" / "Scripts"
