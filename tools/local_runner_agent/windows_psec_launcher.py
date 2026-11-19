@@ -711,7 +711,6 @@ def _runtime_directories(
             runtime_root / "Lib", "Base Python standard library"
         )
         _require_base_runtime_files(runtime_root, standard_library)
-        roots.append(standard_library)
         for allowed_root in roots:
             for denied_root in denied_paths:
                 if _paths_overlap(allowed_root, denied_root):
@@ -777,7 +776,7 @@ def _runtime_directories(
         raise WindowsPsecError("Base Python executable is not inside its declared home")
     _require_base_runtime_files(base_home, standard_library)
 
-    roots.extend((base_home, standard_library))
+    roots = [base_home]
     for allowed_root in roots:
         for denied_root in denied_paths:
             if _paths_overlap(allowed_root, denied_root):
