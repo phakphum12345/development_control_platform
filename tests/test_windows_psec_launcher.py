@@ -385,7 +385,7 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
             config = executable.parent.parent / "pyvenv.cfg"
             external_config = root / "external-pyvenv.cfg"
             external_config.write_text(
-                f"home = {base_home}\\nversion = 3.12.10\\n",
+                f"home = {base_home}\nversion = 3.12.10\n",
                 encoding="utf-8",
             )
             config.unlink()
