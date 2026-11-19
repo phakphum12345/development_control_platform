@@ -122,3 +122,14 @@ Existing roadmap, backlog and continuity documents require reconciliation with m
 ## 9. Current limitations
 
 This inventory is source-driven but still IN_PROGRESS. It does not yet enumerate every atomic acceptance criterion for all 78 tool files and 86 test files. No total atomic task count is claimed until WP-00B/00C produce a traceable one-to-one register. No implementation completion, host acceptance or merge is claimed by this document.
+
+
+### 2026-11-19 — WP-00B Dashboard Code Navigator completion candidate
+- Branch: `fix/dashboard-code-navigator-cover-all-views-20261119`.
+- Implemented explicit `project-import` and `document-generator` entries in `CODE_NAV_MAPPINGS`.
+- Mapping count now equals all 23 Dashboard navigation tabs; no navigation tab remains unmapped on this branch.
+- Added an exact navigation-vs-mapping assertion and a contract test validating every declared test file/function/class reference.
+- New mapping DOM checks: 18 Project Import IDs and 25 Document Generator IDs all exist in Dashboard source.
+- This is a candidate branch only. CI, browser smoke and review must pass before considering the mapping complete in main.
+- No project import, document generation, authentication, or write behavior was changed; only mapping metadata and tests were modified.
+- Cloud provisioning, VM creation, Terminal execution and PR mutation remain unchanged and gated.
