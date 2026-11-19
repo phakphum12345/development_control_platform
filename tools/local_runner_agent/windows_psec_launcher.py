@@ -620,33 +620,26 @@ def _runtime_root(executable: str) -> Path:
     return parent
 
 
-def _is_same_or_child(path: Path, parent: Path) -> bool:
-    try:
-        path.relative_to(parent)
-        return True
-    except ValueError:
-        return False
-
-
 def _require_program_files_base_runtime(base_home: Path) -> None:
-    """Only trust a base interpreter installed below a protected Program Files root."""
+    """Require the single installer-managed DCP Python runtime location."""
     candidates = (
         os.environ.get("ProgramW6432"),
         os.environ.get("ProgramFiles"),
     )
-    trusted_roots = []
+    expected_roots = []
     for candidate in candidates:
         if not candidate:
             continue
         root = _trusted_directory(candidate, "Program Files runtime root")
-        if root not in trusted_roots:
-            trusted_roots.append(root)
+        expected = _trusted_directory(root / "DCP", "DCP runtime directory") / "Python312"
+        expected_roots.append(expected)
     if not any(
-        base_home != root and _is_same_or_child(base_home, root)
-        for root in trusted_roots
+        os.path.normcase(os.path.abspath(str(base_home)))
+        == os.path.normcase(os.path.abspath(str(expected)))
+        for expected in expected_roots
     ):
         raise WindowsPsecError(
-            "Base Python runtime must be installed below a trusted Program Files directory"
+            "Base Python runtime must use the protected Program Files\\DCP\\Python312 location"
         )
 
 
