@@ -126,6 +126,77 @@ class WindowsPsecLauncherUnitTests(unittest.TestCase):
                 with self.assertRaisesRegex(WindowsPsecError, "canonical directory"):
                     _runtime_directories(str(executable), ())
 
+    def test_venv_duplicate_home_entries_fail_closed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            program_files = root / "Program Files"
+            base_home = program_files / "DCP" / "Python312"
+            executable = self._make_venv_runtime(root / "venv", base_home)
+            (executable.parent.parent / "pyvenv.cfg").write_text(
+                f"home = {base_home}\\nhome = {base_home}\\n",
+                encoding="utf-8",
+            )
+            with mock.patch.dict(os.environ, {"ProgramFiles": str(program_files)}):
+                with self.assertRaisesRegex(WindowsPsecError, "exactly one valid home"):
+                    _runtime_directories(str(executable), ())
+
+    def test_venv_base_runtime_overlapping_denied_parent_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            program_files = root / "Program Files"
+            denied_parent = program_files / "DCP"
+            base_home = denied_parent / "Python312"
+            executable = self._make_venv_runtime(root / "venv", base_home)
+            with mock.patch.dict(os.environ, {"ProgramFiles": str(program_files)}):
+                with self.assertRaisesRegex(WindowsPsecError, "overlaps a denied host path"):
+                    _runtime_directories(str(executable), (denied_parent,))
+
+    def test_standalone_runtime_inside_denied_root_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            denied_root = Path(temporary) / "HostProfile"
+            denied_root.mkdir()
+            executable = denied_root / "python.exe"
+            executable.write_bytes(b"standalone interpreter fixture")
+            with self.assertRaisesRegex(WindowsPsecError, "overlaps a denied host path"):
+                _runtime_directories(str(executable), (denied_root,))
+
+    def test_venv_base_executable_reparse_point_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            program_files = root / "Program Files"
+            base_home = program_files / "DCP" / "Python312"
+            executable = self._make_venv_runtime(root / "venv", base_home)
+            external_executable = root / "external-python.exe"
+            external_executable.write_bytes(b"external interpreter fixture")
+            base_executable = base_home / "python.exe"
+            base_executable.unlink()
+            try:
+                os.symlink(external_executable, base_executable)
+            except (OSError, NotImplementedError):
+                self.skipTest("file symlink creation is unavailable")
+            with mock.patch.dict(os.environ, {"ProgramFiles": str(program_files)}):
+                with self.assertRaisesRegex(WindowsPsecError, "Base Python executable is a reparse point"):
+                    _runtime_directories(str(executable), ())
+
+    def test_venv_standard_library_reparse_point_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            program_files = root / "Program Files"
+            base_home = program_files / "DCP" / "Python312"
+            executable = self._make_venv_runtime(root / "venv", base_home)
+            external_lib = root / "ExternalLib"
+            external_lib.mkdir()
+            (external_lib / "os.py").write_text("# external", encoding="utf-8")
+            lib = base_home / "Lib"
+            lib.rmdir()
+            try:
+                os.symlink(external_lib, lib, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest("directory symlink creation is unavailable")
+            with mock.patch.dict(os.environ, {"ProgramFiles": str(program_files)}):
+                with self.assertRaisesRegex(WindowsPsecError, "reparse point"):
+                    _runtime_directories(str(executable), ())
+
     def test_venv_without_pyvenv_cfg_fails_closed(self):
         with tempfile.TemporaryDirectory() as temporary:
             scripts = Path(temporary) / "venv" / "Scripts"
