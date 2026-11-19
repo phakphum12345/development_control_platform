@@ -18,6 +18,7 @@ from tools.local_runner_agent.windows_psec_launcher import (
     _environment_block,
     _require_app_container_token,
     _paths_overlap,
+    _program_files_roots,
     _runtime_directories,
     _resume_after_filesystem_authorization,
 )
