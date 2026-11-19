@@ -133,61 +133,55 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Next exact action: trigger all required workflows for documentation/checkpoint changes, then verify every check on the final head SHA. If checks pass, continue the executor integration as a separate WP-18A implementation slice; do not merge until reviewed and approved.
 
 
-## 2026-11-14 — WP-18A executor integration and WP-18C recovery continuation
+---
 
-- Repository: `phakphum12345/development_control_platform`; protocol: DCP-CEEP v1.0.
-- PR #116 remains OPEN / DRAFT / NOT MERGED; exact head `c811f0fee91f5ad43850359f4adfae506c3a502a`; its three exact-head workflows passed.
-- PR #117 — Linux bubblewrap executor integration — remains OPEN / DRAFT / NOT MERGED, stacked on PR #116's branch. Exact head `45b1650e740b4f4667ca21c793fab0d670c84a73`.
-- PR #117 exact-head checks: Cross-platform Recovery Acceptance #167 PASS; Validate Control Plane #745 PASS; Local-first Minimal Emulator #531 PASS. Windows runner acceptance matrix SKIPPED because no eligible self-hosted acceptance Runner was available; SKIPPED is not PASS.
-- PR #117 integrates the Linux bubblewrap launcher into TerminalScriptExecutor, passes the seccomp FD, pins bubblewrap/workload executables to /usr/bin, performs Git filter discovery inside the sandbox, and retains the VERIFIED gate. All seven built-in templates remain disabled. No user-host acceptance is claimed.
-- Started stacked branch `work/wp18c-terminal-recovery` from PR #117 head `45b1650e740b4f4667ca21c793fab0d670c84a73`.
-- WP-18C implementation in progress: runner-authenticated cleanup status endpoint; conservative reconciliation only for old terminal_script workspaces with matching ownership and Gateway `cleanup_safe=true`; UNKNOWN, lease-expired, active, mismatched, recent, unavailable and preview-retained workspaces are preserved.
-- Added Linux-only detached-child timeout test using bubblewrap parent-death/PID-namespace containment. Exact-head CI for this WP-18C branch has not yet run.
-- Current WP-18C branch head: `3fb72e498d7b3b1decda44a16f054532e04ce50f`.
-- No merge, deployment, template enablement or deletion is authorized. Continue with tests, exact-head CI, Draft PR and evidence reconciliation; do not merge without separate explicit approval.
+## 2026-11-20 — WP-06 trusted repository bootstrap implementation checkpoint
 
-
-## 2026-11-14 — WP-18C exact-head CI completion
-
-- PR #118: [feat(terminal): add conservative WP-18C recovery and descendant cleanup](https://github.com/phakphum12345/development_control_platform/pull/118), OPEN / DRAFT / NOT MERGED.
-- PR #118 is stacked on PR #117's branch `work/wp18a-linux-executor-integration`; base SHA `45b1650e740b4f4667ca21c793fab0d670c84a73`.
-- Code/test head before this ledger-only update: `a8a79cdf4f0a82b9dc55419f79fc0d8386de8554`.
-- Exact-head CI on `a8a79cdf4f0a82b9dc55419f79fc0d8386de8554`:
-  - Cross-platform Recovery Acceptance #168: PASS (Ubuntu and Windows jobs).
-  - Validate Control Plane #746: PASS.
-  - Local-first Minimal Emulator #532: PASS.
-  - Windows runner acceptance matrix: SKIPPED; no eligible self-hosted host acceptance Runner. SKIPPED is not PASS.
-- Linux executor suite: 23 tests PASS, including actual bubblewrap executor launch with seccomp FD inheritance and a forked child that calls `setsid()`; the child did not survive launcher termination.
-- Linux sandbox suite: 5 tests PASS, including actual bubblewrap filesystem/network/scratch boundary test.
-- Pipeline E2E verifies Gateway cleanup status is available only to the owning Runner. Workspace reconciliation tests verify that UNKNOWN, recent, mismatched, unavailable and preview-retained workspaces are preserved.
-- WP-18C remains PARTIAL: automatic cleanup is limited to Gateway-attested terminal Terminal jobs. UNKNOWN and LEASE_EXPIRED workspaces are intentionally preserved; this is not a universal orphan cleaner. Windows AppContainer/LPAC and macOS helper remain BLOCKED.
-- PR #117 remains OPEN / DRAFT / NOT MERGED; PR #116 remains its base dependency. No branch has been merged to main.
-- No user-host acceptance, deployment, template enablement or deletion was performed or authorized. After this ledger-only update, re-check exact-head CI on the new branch SHA before treating it as current evidence.
+- Main baseline: `985a78d5fba459c8a0cbcf47e5d00a858c6e6228`.
+- Root cause: `Setup-DCP-Local-Runner.ps1` on main lacks `-TrustedRepository`; `tests/test_local_runner_bootstrap.ps1:28` invokes it. Both `Start-DCP-Gateway-Runner.ps1` and legacy `Start-DCP-Local-Runner.ps1` require the persisted Gateway allowlist before execution.
+- Cross-checked consumers: `tools/local_auth_proxy.py::load_gateway_local_settings` validates `allowed_repositories` and `gateway_child_environment` exports `DCP_GATEWAY_ALLOWED_REPOSITORIES`; Gateway `GatewaySettings.from_env` consumes that variable.
+- Created independent main-based branch `work/wp06-trusted-repository-bootstrap`; PR #152 is Draft.
+- Modified `Setup-DCP-Local-Runner.ps1` to persist and protect bounded allowlist settings; expanded `tests/test_local_runner_bootstrap.ps1` for traversal rejection, duplicate case variants, 20-repository cap, 16-worker cap and no-mutation behavior; updated `docs/local-job-control-plane.md` setup sequence.
+- The implementation was written as a scoped WP-06 change; no PSEC launcher/runtime files were copied or changed.
+- PR #152 head at checkpoint: `c19d65f48f62fc1fb354bde9c5b9947f814bd7fc` (before this ledger commit). Exact-head CI is not yet complete; Windows runner acceptance is optional/skipped on hosted CI and is not PSEC acceptance.
+- No main modification, merge, force-push, branch deletion, cloud provisioning or VM creation.
+- Next: run exact-head CI; inspect PowerShell failure logs; repair only verified defects; audit full diff; update PR evidence. Keep PR #140/#149 open and Draft pending WP-06 sequencing.
 
 
-## 2026-11-14 — WP-18D exact-head CI completion
+---
 
-- PR #119: [test(terminal): add Linux adversarial sandbox acceptance](https://github.com/phakphum12345/development_control_platform/pull/119), OPEN / DRAFT / NOT MERGED.
-- PR #119 code/test head with completed CI: `57399f94d8ece4c706eb373ec74f9c3bcda3e61f`.
-- Exact-head workflows on that code/test head:
-  - Cross-platform Recovery Acceptance #170: PASS (Ubuntu and Windows jobs).
-  - Local-first Minimal Emulator #534: PASS (Linux and Windows jobs).
-  - Validate Control Plane #748: PASS.
-  - Windows runner acceptance matrix: SKIPPED; no eligible self-hosted host acceptance Runner. SKIPPED is not PASS.
-- Ubuntu host-acceptance harness: PASS on the ephemeral GitHub-hosted runner, 5/5 tests, 0 skipped, 0 failures, 0 errors. Evidence: Bubblewrap 0.11.1; Linux 7.0.0-1016-aws; x86_64; UID/GID 1001. This is CI-host evidence only.
-- WP-18D remains PARTIAL until the harness is run on the actual target Linux host. Windows AppContainer/LPAC remains BLOCKED and user-host acceptance remains UNKNOWN.
-- This checkpoint is followed by a small evidence-schema refinement that records both the harness interpreter version and the exact /usr/bin Python runtime versions; re-check CI against the resulting new head.
-- PR #116, #117 and #118 remain OPEN / DRAFT / NOT MERGED. No merge to main, deployment or Terminal template enablement is authorized.
+## 2026-11-20 — WP-06 first Windows CI failure and regression-test correction
+
+- Exact head `f4a597fd2e7f911c1cb5a5598636815b834e0c76` ran the native Windows bootstrap test and successfully completed the first setup, idempotent setup, second-worker setup, allowlist persistence and initial ACL setup.
+- The job then failed in the existing acceptance test at `tests/test_local_runner_bootstrap.ps1:67`, before the new negative cases: PowerShell's regex engine rejected the pre-existing single-backslash pattern `BUILTIN\Users` as an invalid escape sequence (`\U`).
+- This is a latent test assertion defect that was previously masked by the earlier missing-parameter failure. The implementation's ACL writes had completed; the test stopped while parsing the ACL regex.
+- Corrected the assertion to use a regex-escaped literal backslash (`BUILTIN\\Users`), consistent with the following credential ACL assertion.
+- New exact head after correction: `e16127fd9769ec8cb80ad8077fd9b7bd8d60c622`. All required CI must rerun on this exact head; no PASS is claimed until then.
 
 
-## 2026-11-14 — WP-18D exact-head evidence refinement accepted
+---
 
-- PR #119 code/test head `a497117adfcdb68f9e6a52b385f28fbec21ec621`: all exact-head workflows PASS.
-- Cross-platform Recovery Acceptance #171: PASS (Ubuntu and Windows).
-- Local-first Minimal Emulator #535: PASS (Linux and Windows).
-- Validate Control Plane #749: PASS.
-- Linux host acceptance harness on the ephemeral Ubuntu CI host: PASS, 5/5, 0 skipped, 0 failures, 0 errors. Exact evidence: Bubblewrap 0.11.1; Linux 7.0.0-1016-aws; x86_64; UID/GID 1001; harness Python 3.12.16; Terminal runtime Python 3.14.4; sandbox test Python 3.14.4.
-- Windows runner acceptance matrix: SKIPPED; no eligible self-hosted host acceptance Runner. No target Windows or Linux host acceptance is claimed.
-- PR #119 remains OPEN / DRAFT / NOT MERGED; PR #118 remains OPEN / DRAFT / NOT MERGED; PR #117 and #116 remain OPEN / DRAFT / NOT MERGED. These are stacked dependencies; do not merge a child before its base.
-- WP-18D is PARTIAL pending the target Linux host run. WP-18B Windows native process isolation and LPAC remain BLOCKED pending implementation and host acceptance. Terminal templates remain disabled.
-- This checkpoint follows code/test head `a497117adfcdb68f9e6a52b385f28fbec21ec621`; re-check exact-head CI on the resulting checkpoint commit before treating it as current.
+## 2026-11-20 — WP-06 bootstrap hardening exact-head acceptance
+
+- PR #140 merged by Owner into main at `eaa9ceb91088c39b90d9b11b3817dc793e40005a`; its original `-TrustedRepository` bootstrap contract is now mainline.
+- PR #152 is a follow-up hardening branch based on that new mainline. It rejects reparse-point/non-regular paths, bounds file sizes and counts, validates allowlist/token schemas, writes protected JSON via exclusive temp files and tests failure-without-mutation.
+- On exact head `4270c1379fd67649ecf17448cc0f334586d75724`: Validate PASS; Windows dynamic-port integration PASS; Linux Minimal Emulator PASS; Windows Auth Proxy + Gateway E2E PASS; Ubuntu and Windows Recovery PASS.
+- Native Windows bootstrap acceptance output includes `Local Runner credential bootstrap tests passed.`; the symlink test did not emit its capability-based SKIPPED warning.
+- Optional Windows runner acceptance is SKIPPED; this does not certify PSEC/AppContainer/LPAC.
+- PR #152 remains Draft and unmerged. No cloud resource provisioning or VM creation occurred.
+
+
+---
+
+## 2026-11-20 — WP-06 native Windows acceptance and security audit checkpoint
+
+- Worktree: `D:\\DCP-WP06-TEST`; branch: `work/wp06-trusted-repository-bootstrap`.
+- Exact tested source/document head before this checkpoint: `0cb2a4077bc250777cb02d51bd6442ef5ef6e97c`.
+- Native test command ran under Windows PowerShell 5.1 with an isolated `RUNNER_TEMP`; the test used a temporary `LOCALAPPDATA` beneath that isolated directory and did not touch the real `%LOCALAPPDATA%\\DCP` profile.
+- Result: `tests/test_local_runner_bootstrap.ps1` completed with `Local Runner credential bootstrap tests passed.` and native process exit code `0`.
+- The run exercised first enrollment, idempotent token preservation, second-worker unique token, persisted two-repository allowlist, ACL inspection, traversal rejection, case-insensitive duplicate rejection, settings reparse-point rejection, oversized settings rejection, 20-repository limit, and 16-worker limit. The symlink branch ran; no capability-based SKIPPED warning appeared.
+- CI on the same tested head `0cb2a407...`: Validate, Windows dynamic-port integration, Linux Minimal Emulator, Windows Auth Proxy + Gateway E2E, Ubuntu Recovery and Windows Recovery PASS; optional Windows runner acceptance SKIPPED.
+- Security audit remains OPEN for the file replacement and parent-directory boundary: `Move-Item -Force` has not yet been demonstrated to provide the required atomic replacement semantics for an existing destination under Windows PowerShell 5.1; the DCP parent directory ACL and replacement race behavior have not been independently verified. Do not claim race-safe atomic replacement until those properties are tested or implementation is hardened.
+- The two-file update is not transactional: credentials are committed before Gateway settings. Validation failures are proven not to mutate either file, but an I/O/ACL failure during the second write could leave a partial update. This remains a reliability/security-hardening follow-up.
+- Historical WP-18 checkpoints above are retained unchanged. WP-06 bootstrap acceptance does not certify PSEC, AppContainer/LPAC, Trusted Python runtime, process-tree containment or Terminal OS isolation.
+- PR #152 remains Draft / unmerged. No cloud provisioning, deployment, VM creation, branch rewrite or merge was performed.
