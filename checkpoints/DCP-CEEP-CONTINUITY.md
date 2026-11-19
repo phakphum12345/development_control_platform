@@ -176,3 +176,10 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Added exact Gateway GET/POST/DELETE route families, Runner credential endpoints and Auth Proxy query/CSRF constraints to the requirements traceability artifact.
 - Confirmed Gateway and Auth Proxy custom handlers implement GET, POST and DELETE; no PUT/PATCH handler was found in these files.
 - Remaining: every JSON schema, response/error branch, full proxy allowlist equivalence, Dashboard event-handler/API/service trace and test-function map.
+
+
+### 2026-11-19 — Mainline test-path audit correction
+- Corrected the traceability matrix to reference only test files present in the current main baseline.
+- PR-only Windows PSEC test patterns remain explicitly labeled as branch-only, not mainline evidence.
+- Branch head before this ledger update: `0ecd1597160f4ea91fc1533cb8974aa8d66cbd07`.
+- Full test-function enumeration remains open; no count inferred from GitHub code-search excerpts.
