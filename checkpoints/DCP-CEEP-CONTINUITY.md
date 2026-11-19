@@ -157,3 +157,15 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - This is a latent test assertion defect that was previously masked by the earlier missing-parameter failure. The implementation's ACL writes had completed; the test stopped while parsing the ACL regex.
 - Corrected the assertion to use a regex-escaped literal backslash (`BUILTIN\\Users`), consistent with the following credential ACL assertion.
 - New exact head after correction: `e16127fd9769ec8cb80ad8077fd9b7bd8d60c622`. All required CI must rerun on this exact head; no PASS is claimed until then.
+
+
+---
+
+## 2026-11-20 — WP-06 bootstrap hardening exact-head acceptance
+
+- PR #140 merged by Owner into main at `eaa9ceb91088c39b90d9b11b3817dc793e40005a`; its original `-TrustedRepository` bootstrap contract is now mainline.
+- PR #152 is a follow-up hardening branch based on that new mainline. It rejects reparse-point/non-regular paths, bounds file sizes and counts, validates allowlist/token schemas, writes protected JSON via exclusive temp files and tests failure-without-mutation.
+- On exact head `4270c1379fd67649ecf17448cc0f334586d75724`: Validate PASS; Windows dynamic-port integration PASS; Linux Minimal Emulator PASS; Windows Auth Proxy + Gateway E2E PASS; Ubuntu and Windows Recovery PASS.
+- Native Windows bootstrap acceptance output includes `Local Runner credential bootstrap tests passed.`; the symlink test did not emit its capability-based SKIPPED warning.
+- Optional Windows runner acceptance is SKIPPED; this does not certify PSEC/AppContainer/LPAC.
+- PR #152 remains Draft and unmerged. No cloud resource provisioning or VM creation occurred.
