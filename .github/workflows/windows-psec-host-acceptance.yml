@@ -52,6 +52,12 @@ jobs:
             throw "Trusted-runtime preparation script has PowerShell syntax errors."
           }
 
+      - name: Audit machine Program Files ACL without mutation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          & .\scripts\Prepare-DCP-Windows-PSEC-TrustedRuntime.ps1 -AuditProgramFilesAclOnly
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
