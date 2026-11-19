@@ -141,3 +141,9 @@ This inventory is source-driven but still IN_PROGRESS. It does not yet enumerate
 - Replaced them with existing tests: `test_public_research_and_private_github_app_import_are_separate` and `test_all_tool_views_exist`.
 - Re-ran source-backed symbol/path inspection: 57 references, 14 files, 0 missing file/function/class symbols.
 - New automated test uses multiline-aware matching so methods inside test classes are validated correctly.
+
+
+### 2026-11-19 — Dashboard navigation count correction
+- The Control Center initially displayed `22 tools` despite 23 actual navigation tabs.
+- Updated the initial display to `23 tools` and extended the Code Navigator contract test to assert the displayed count.
+- Runtime search count remains dynamically calculated from the actual navigation buttons.
