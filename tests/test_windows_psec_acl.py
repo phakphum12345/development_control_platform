@@ -119,7 +119,7 @@ class WindowsPsecAclManagerTests(unittest.TestCase):
     def test_rejects_non_job_private_layout_before_any_acl_write(self):
         with tempfile.TemporaryDirectory() as parent:
             work = Path(parent).resolve() / "workspace"
-            scratch = Path(parent) / "scratch"
+            scratch = Path(parent).resolve() / "scratch"
             work.mkdir()
             scratch.mkdir()
             api = FakeAclApi()
