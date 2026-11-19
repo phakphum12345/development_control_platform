@@ -191,3 +191,11 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Missing mapping IDs: `project-import`, `document-generator`.
 - All 48 declared test references resolve to mainline test file paths.
 - Mapping existence is not execution evidence; test-function enumeration and handler/service validation remain open.
+
+
+### 2026-11-19 — Documentation drift correction
+- Inspected the Dashboard document generator, Gateway Document Workflow Store, local writer, and lifecycle contract tests.
+- Corrected README's stale statement that the authenticated Dashboard-to-Gateway local document write workflow was not exposed.
+- Corrected the Document Generator operations status from "feature branch" to "present in current mainline source"; exact-head CI, browser integration, host filesystem and deployment acceptance remain separate.
+- Clarified that local document writes do not commit/push to GitHub and PR lifecycle tools are read-only.
+- Branch head before this ledger update: `b1dc863ac7174dc83382ffe58db33eef8f82e0a9`.
