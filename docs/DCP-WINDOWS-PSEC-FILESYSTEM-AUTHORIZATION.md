@@ -305,3 +305,44 @@ against the real Win32 API on the target host. GitHub Actions for the current
 PR head are also still running. A passing parser/unit test does not establish
 effective AppContainer access, ancestor traversal, handle-relative safety, or
 permission to integrate the manager into the launcher.
+
+## 14. Python virtual-environment runtime closure
+
+A Windows virtual environment is not a self-contained interpreter. Its
+`Scripts\\python.exe` depends on the environment's `pyvenv.cfg` and the
+base Python installation named by the `home` entry. The base installation
+provides `python.exe`, the `Lib` standard library, and (when present) the
+`DLLs` extension-module directory.
+
+The PSEC launcher therefore treats these as one runtime dependency set:
+
+- the virtual-environment root containing `pyvenv.cfg` and venv-local packages;
+- the canonical base-runtime directory containing `python.exe`;
+- the base runtime's `Lib` directory;
+- the base runtime's `DLLs` directory when present.
+
+These directories are added to the read-only PSEC policy and the executable
+search path. Before launch, each directory must be canonical, exist, and
+contain no reparse-point traversal. The base interpreter and `Lib` directory
+must exist; a partial Python installation is rejected before process creation.
+
+**Security boundary:** none of these runtime paths may overlap an explicitly
+denied host directory, including `USERPROFILE`, `PROGRAMDATA`, `PUBLIC`,
+the host temporary directory, or `SYSTEMROOT\\Temp`. A base Python runtime
+installed under the interactive user's profile is therefore not eligible for
+PSEC execution. Do not work around this check by allowing the whole user
+profile or by removing the deny policy. Install a complete base runtime in a
+dedicated trusted location outside the denied roots, then recreate the venv
+against that runtime.
+
+A standalone Python executable outside a `Scripts`/`bin` virtual-environment
+layout continues to use its executable directory as its runtime root. A
+virtual-environment-style Python executable without a readable `pyvenv.cfg`,
+a unique absolute `home` entry, a base `python.exe`, or a base `Lib`
+directory fails closed.
+
+Unit coverage includes complete venv runtime discovery, missing configuration,
+incomplete base standard library, rejection beneath a denied user profile, and
+standalone interpreter handling. These checks establish runtime-path policy;
+they do not replace target-host PSEC acceptance or prove that a particular
+installed Python distribution is complete.
