@@ -159,3 +159,38 @@ This increment enumerates test methods and fixtures from eight security/control-
 ### Updated test inventory accounting
 
 The main recursive tree contains 91 files under `tests/`: 88 `test_*` paths and three supporting assets. This corrects the ambiguity between test-file count and all files under the test directory. Function-level mapping is now recorded for 13 selected security/control-plane modules; all remaining modules are still pending.
+
+
+## 9. 2026-11-20 — Mainline test-file to requirement-family inventory
+
+The 88 `tests/test_*` paths are grouped below by their primary requirement family. This is a filename-level classification only; files that span multiple areas remain listed once under their primary test concern. All 88 paths are assigned; three other files under `tests/` are support assets, not test modules.
+
+| Requirement family | Count | Test files |
+|---|---:|---|
+| CORE / Gateway / Auth / policy | 37 | `test_cloud_gateway.py`, `test_cloud_gateway_artifact_download.py`, `test_cloud_gateway_artifacts.py`, `test_cloud_gateway_azure_egress.py`, `test_cloud_gateway_azure_guest_profile.py`, `test_cloud_gateway_azure_provider_runtime.py`, `test_cloud_gateway_azure_security.py`, `test_cloud_gateway_azure_vm.py`, `test_cloud_gateway_budget_lifecycle.py`, `test_cloud_gateway_dynamic_port.py`, `test_cloud_gateway_github_app.py`, `test_cloud_gateway_infrastructure.py`, `test_cloud_gateway_infrastructure_api.py`, `test_cloud_gateway_infrastructure_gates.py`, `test_cloud_gateway_job_control.py`, `test_cloud_gateway_local_mode.py`, `test_cloud_gateway_local_projects.py`, `test_cloud_gateway_oidc_edge_signer.py`, `test_cloud_gateway_oidc_ingress_contract.py`, `test_cloud_gateway_orka.py`, `test_cloud_gateway_orka_bootstrap.py`, `test_cloud_gateway_preflight.py`, `test_cloud_gateway_provider_budget.py`, `test_cloud_gateway_provider_router.py`, `test_cloud_gateway_proxy_authorization.py`, `test_cloud_gateway_runner_bootstrap.py`, `test_cloud_gateway_runner_cleanup.py`, `test_cloud_gateway_runner_registry.py`, `test_cloud_gateway_runner_terminal_grant.py`, `test_cloud_gateway_runtime.py`, `test_cloud_gateway_scheduler_integration.py`, `test_cloud_gateway_terminal_catalog.py`, `test_cloud_gateway_terminal_templates.py`, `test_cloud_runner_openapi.py`, `test_cloud_runner_user_api.py`, `test_local_auth_proxy.py`, `test_local_auth_proxy_project_routes.py` |
+| Project intake / import | 3 | `test_local_project_cli.py`, `test_local_project_registry.py`, `test_local_project_snapshot.py` |
+| Local Runner / workspace / recovery | 16 | `test_local_runner_agent.py`, `test_local_runner_bootstrap.ps1`, `test_local_runner_checkout.py`, `test_local_runner_cli.py`, `test_local_runner_execution.py`, `test_local_runner_hardlink_containment.py`, `test_local_runner_launcher_contract.py`, `test_local_runner_legacy_launcher_contract.py`, `test_local_runner_manager.py`, `test_local_runner_pipeline_e2e.py`, `test_local_runner_readiness.py`, `test_local_runner_service.py`, `test_local_runner_workspace.py`, `test_runner_agent.py`, `test_runner_agent_gateway_e2e.py`, `test_runner_preflight.py` |
+| Build / runtime / preview / browser | 5 | `test_authenticated_preview.py`, `test_browser_test.py`, `test_local_browser_testing.py`, `test_local_runtime.py`, `test_local_web_build.py` |
+| Dashboard / UI | 6 | `test_cloud_runner_dashboard_contract.py`, `test_dashboard_contract.py`, `test_dashboard_document_lifecycle_contract.py`, `test_dashboard_dynamic_port.ps1`, `test_dashboard_launcher.ps1`, `test_dashboard_launcher_contract.py` |
+| Terminal / OS isolation | 6 | `test_linux_sandbox.py`, `test_terminal_command_pack_schema.py`, `test_terminal_execution_contract.py`, `test_terminal_executor.py`, `test_terminal_grants.py`, `test_terminal_isolation.py` |
+| Data / storage | 1 | `test_sqlite_security.py` |
+| AI / intelligence | 2 | `test_architecture_planner.py`, `test_project_intelligence.py` |
+| Document workflow | 2 | `test_document_workflow_gateway.py`, `test_document_workflow_writer.py` |
+| MCP | 2 | `test_native_mcp_engine.py`, `test_native_mcp_server.py` |
+| Release / install | 1 | `test_release_packaging.py` |
+| Owner security | 1 | `test_reset_owner_password.py` |
+| Developer environment | 1 | `test_dev_environment.py` |
+| Cross-cutting / manual classification required | 5 | `test_cloud_runner_backend.py`, `test_cloud_runner_e2e_acceptance.py`, `test_cloud_runner_workflow_client.py`, `test_live_gateway_preflight.py`, `test_local_image_lab.py` |
+
+### Workflow execution relationship
+
+- `validate-control-plane.yml` runs full Python unittest discovery, so all discoverable Python `test_*` modules are included in the `validate` job unless their test decorators skip them at runtime. The PowerShell `test_*.ps1` scripts are executed only by named Windows steps.
+- `cross-platform-recovery.yml` explicitly executes selected Job Control, Cloud Runner API, Local Runner pipeline/hardlink, Local Auth Proxy, Flutter execution and Linux sandbox modules on Ubuntu/Windows matrix runners.
+- `package-release.yml` runs packaging acceptance; `deploy-pages.yml` is a deployment workflow, not a general unit-test workflow.
+- This inventory does not assert that every test method passed on every workflow. Exact job/commit evidence remains in Sections 2 and 6.
+
+### Remaining WP-00C work
+
+- Function/class/fixture/skip enumeration is still incomplete for the remaining 75 test modules.
+- The five cross-cutting modules need manual requirement ownership and workflow-job classification.
+- PowerShell scripts and browser smoke support assets need their own step-level acceptance mapping.
