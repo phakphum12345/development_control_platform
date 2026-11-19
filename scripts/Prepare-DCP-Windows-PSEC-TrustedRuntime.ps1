@@ -98,25 +98,27 @@ function Assert-TrustedAcl {
            throw "Untrusted owner on '$target': $ownerSid. Expected SYSTEM, Administrators, or TrustedInstaller. SDDL=$($acl.Sddl)"
        }
 
-       foreach ($rule in $acl.Access) {
-           if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) {
+       $rawDescriptor = New-Object -TypeName System.Security.AccessControl.RawSecurityDescriptor -ArgumentList $acl.Sddl
+       $dacl = $rawDescriptor.DiscretionaryAcl
+       if ($null -eq $dacl) {
+           throw "Trusted runtime path has no discretionary ACL: $target"
+       }
+       foreach ($ace in $dacl) {
+           if ($ace -isnot [System.Security.AccessControl.QualifiedAce]) {
+               throw "Unsupported DACL ACE type on '$target': $($ace.GetType().FullName)"
+           }
+           if ($ace.AceQualifier -ne [System.Security.AccessControl.AceQualifier]::AccessAllowed) {
                continue
            }
-           if ([string]$rule.PropagationFlags -like "*InheritOnly*" -or
-               ($rule.PropagationFlags -band [System.Security.AccessControl.PropagationFlags]::InheritOnly) -ne 0) {
+           if (($ace.AceFlags -band [System.Security.AccessControl.AceFlags]::InheritOnly) -ne 0) {
                continue
            }
-           try {
-               $sid = $rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
-           }
-           catch {
-               throw "Could not resolve ACL principal on '$target': $($rule.IdentityReference)"
-           }
-           $rights = [int]$rule.FileSystemRights
+           $sid = $ace.SecurityIdentifier.Value
+           $rights = [int]$ace.AccessMask
            if (($rights -band $writeMask) -eq 0 -or $sid -in $trustedWriters) {
                continue
            }
-           throw "Untrusted principal '$sid' has write-capable ACL rights on '$target': $($rule.FileSystemRights); inheritance=$($rule.InheritanceFlags); propagation=$($rule.PropagationFlags); inherited=$($rule.IsInherited). SDDL=$($acl.Sddl)"
+           throw "Untrusted principal '$sid' has write-capable ACL rights on '$target': mask=0x$('{0:X8}' -f ($rights -band 0xffffffff)). SDDL=$($acl.Sddl)"
        }
    }
 }
