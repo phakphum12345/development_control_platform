@@ -270,7 +270,7 @@ $probeStderr = Join-Path $env:TEMP "dcp-psec-runtime-probe.stderr.log"
 Remove-Item -LiteralPath $probeStdout, $probeStderr -Force -ErrorAction SilentlyContinue
 $probe = Start-Process -FilePath $venvPython -ArgumentList @("-m", "tools.local_runner_agent.windows_psec") -NoNewWindow -Wait -PassThru -RedirectStandardOutput $probeStdout -RedirectStandardError $probeStderr
 if ($probe.ExitCode -ne 0) {
-   throw "Trusted-runtime PSEC API probe failed with exit code $($probe.ExitCode). See $probeStderr"
+   throw "Trusted-runtime PSEC API probe failed with exit code $($probe.ExitCode). stdout=$probeStdout stderr=$probeStderr"
 }
 $probeEvidence = Get-Content -LiteralPath $probeStdout -Raw | ConvertFrom-Json
 if ($probeEvidence.state -ne "READY_FOR_ACCEPTANCE") {
@@ -333,7 +333,8 @@ Write-Output "Repository HEAD: $head"
 Write-Output "Acceptance state: $($evidence.state)"
 Write-Output "Evidence file: $artifactPath"
 
-if ($acceptance.ExitCode -ne 0 -or $evidence.state -ne "PASS") {
+if ($acceptance.ExitCode -ne 0 -or $evidence.state -ne "PASS" -or
+   $evidence.cleanup.state -ne "PASS" -or $evidence.canary_cleanup.state -ne "PASS") {
    throw "Target-host PSEC acceptance did not PASS. See $artifactPath and $acceptanceStderr. Production VERIFIED remains closed."
 }
 
