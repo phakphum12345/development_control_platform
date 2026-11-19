@@ -177,3 +177,10 @@ No merge, deployment, cloud provisioning, VM creation, branch deletion, force-pu
 - PR-only Windows PSEC test patterns remain explicitly labeled as branch-only, not mainline evidence.
 - Branch head before this ledger update: `0ecd1597160f4ea91fc1533cb8974aa8d66cbd07`.
 - Full test-function enumeration remains open; no count inferred from GitHub code-search excerpts.
+
+
+### 2026-11-19 — Dashboard view mapping gap
+- 23 navigation tabs exist; 21 Code Navigator mappings are declared.
+- `project-import` and `document-generator` are not yet mapped in `CODE_NAV_MAPPINGS`.
+- 48 declared mapping test references resolve to existing mainline test files.
+- WP-00B remains IN_PROGRESS until the two missing tabs and all event-handler/API/service edges are traced.
