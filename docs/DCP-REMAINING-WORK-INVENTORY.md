@@ -122,3 +122,14 @@ Existing roadmap, backlog and continuity documents require reconciliation with m
 ## 9. Current limitations
 
 This inventory is source-driven but still IN_PROGRESS. It does not yet enumerate every atomic acceptance criterion for all 78 tool files and 86 test files. No total atomic task count is claimed until WP-00B/00C produce a traceable one-to-one register. No implementation completion, host acceptance or merge is claimed by this document.
+
+
+---
+
+## 2026-11-20 — WP-06 Runner Bootstrap dependency
+
+- Separate the trusted-repository settings producer from Windows PSEC. The mainline launcher and Auth Proxy already consume `gateway-local-settings.json`; the mainline setup script did not accept `-TrustedRepository` or persist the allowlist.
+- PR #152 (`work/wp06-trusted-repository-bootstrap`) implements the missing bootstrap contract on a main-based branch. It is Draft and exact-head CI is pending.
+- Required acceptance: native Windows PowerShell bootstrap test, dynamic-port integration, Validate Control Plane, Linux Minimal Emulator and Cross-platform Recovery on exact PR head. Optional Windows runner acceptance remains a separate host evidence gate.
+- After Owner-approved WP-06 integration, rebase/reconcile PR #140 and #149 against the new mainline contract; do not cherry-pick either PSEC branch wholesale.
+- WP-12 Windows PSEC remains independently BLOCKED pending actual target-host AppContainer/LPAC and Trusted Python runtime acceptance. Bootstrap PASS cannot be substituted for PSEC PASS.
