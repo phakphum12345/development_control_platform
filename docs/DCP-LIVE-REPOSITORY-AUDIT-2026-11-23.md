@@ -182,3 +182,58 @@ The validate workflow is not PASS until the validate job completes successfully.
 - Full repository audit and release acceptance: **NOT COMPLETE**.
 
 Next actions: finish PR #153 exact-head CI; reconcile the stale documentation counts with an explicit counting convention; map concrete route handlers and Dashboard actions to source and tests; inspect fixtures/skips and review threads; then continue work-package acceptance without weakening any safety gates.
+
+
+## 9. WP-00B source/API/Dashboard mapping — first pass
+
+All observations below are from exact main SHA `eaa9ceb91088c39b90d9b11b3817dc793e40005a`.
+
+### Source boundaries inspected
+
+| Area | Main source | Observed responsibility | Current evidence limit |
+|---|---|---|---|
+| Gateway HTTP API | `tools/cloud_gateway/server.py` (1,894 lines) | HTTP method dispatch for health, auth/session, GitHub repository/refs/project inspection, Local Projects, Jobs, Runner, Cloud Runner, Infrastructure, Artifacts, Terminal, Document Workflow and Recon API families | Route-family inventory only; not a complete method/path/body/schema/role/CSRF table |
+| Local Auth Proxy | `tools/local_auth_proxy.py` (971 lines) | Same-origin login/logout/session, CSRF/session enforcement, allowlisted Gateway forwarding, jobs/previews/artifacts, cloud runner and infrastructure actions | Forwarding and deny rules need a complete pairwise comparison with Gateway route contracts |
+| Dashboard | `dashboard/index.html` (2,639 lines) | Single-page view markup, inline handlers, API calls, Code Navigator registry, local-only UI tools and runner/terminal controls | Static source inspection is not a full user-journey or accessibility acceptance |
+| Main validation workflow | `.github/workflows/validate-control-plane.yml` (573 lines) | Python unittest discovery, embedded JavaScript syntax, dependency audit, Chromium/Firefox/WebKit preview tests, dashboard browser smoke, YAML/schema validation and Windows integration | Self-hosted Windows runner acceptance is gated behind manual workflow dispatch input and was SKIPPED on this PR |
+
+### Gateway route families observed
+
+- GET: health/session, GitHub repository catalog/refs/commit/project inspection, Local Projects/roots, Jobs/logs/previews, Runners, Cloud Runners/status, Infrastructure/gates, Terminal templates/events, Document Workflow grants/target, Artifacts download, Recon and runner-agent endpoints.
+- POST: Jobs/create/resume/cancel/preview lifecycle, Terminal authorize/jobs/command preview/template import, Infrastructure create/actions/gates, Runner drain/enable, Cloud Runner create, Document Workflow grant/revoke/proposal/approve and runner-agent claim/ping endpoints.
+- DELETE: Job preview stop, Infrastructure resource deletion and Cloud Runner deletion.
+- The Proxy adds login/logout/session and serves Dashboard content; it applies an allowlist and route-specific matching before forwarding requests. Unknown API routes are explicitly denied.
+
+This list intentionally describes families, not a complete API contract. Query-string handling, path parameters, request bodies, authorization roles, CSRF, idempotency, response schemas and all failure paths remain to be enumerated.
+
+### Dashboard mapping
+
+The current `CODE_NAV_MAPPINGS` registry contains **21** view mappings on main:
+
+`contact`, `home`, `dev-tools`, `ui-routes`, `ui-simulator`, `route-colors`, `repo`, `pr`, `workspace`, `evidence`, `gates`, `checkpoint`, `audit`, `github-api`, `account`, `code-navigator`, `cloud-runners`, `infrastructure`, `repo-selector`, `user`, `terminal-studio`.
+
+The test `tests/test_dashboard_contract.py::test_code_navigator_covers_all_dashboard_views` asserts exact set equality for these 21 IDs. This is mapping-integrity evidence, not 21 E2E user journeys. The current main test `test_all_tool_views_exist` checks a smaller set of core view IDs; its expected list is not the full mapping registry. The PR #151 historical diff claim of 23 mapped views must therefore not be copied to current main without reconciling the exact branch and view-set definition.
+
+### Test/workflow links inspected
+
+- Dashboard mapping and view contracts: `tests/test_dashboard_contract.py`.
+- Local Auth Proxy authentication, CSRF, allowlist and browser-preview flows: `tests/test_local_auth_proxy.py`.
+- Dashboard launcher lifecycle: `tests/test_dashboard_launcher_contract.py` and Windows PowerShell `tests/test_dashboard_dynamic_port.ps1`.
+- Cloud Runner Dashboard contract: `tests/test_cloud_runner_dashboard_contract.py`; provider lifecycle E2E contract: `tests/test_cloud_runner_e2e_acceptance.py`.
+- Windows PSEC host-acceptance harness contract: `tests/test_windows_psec_host_acceptance.py`; its non-Windows branch explicitly reports BLOCKED/skips native host acceptance.
+- `validate-control-plane.yml` runs `python -m unittest discover -s tests -v`, targeted real-browser preview tests for Chromium/Firefox/WebKit, `node tests/browser_smoke.mjs`, YAML/JSON Schema validation, and a Windows dynamic-port/launcher integration job.
+- The self-hosted Windows runner job is conditional on `workflow_dispatch` and `inputs.run_self_hosted_windows_acceptance == true`; a skipped job cannot be counted as host acceptance.
+
+### Review register cross-check
+
+PR #152 has one submitted COMMENTED review (review ID `PRR_kwDOVTLXVs8AAAABZs4Tsg`) and a corresponding general PR comment (comment ID `6019748786`), not an empty review history. The review explicitly requests follow-up on parent-directory DACL protection, two-file transaction/recovery behavior, atomic replacement proof and failure-injection tests. The inline review-thread endpoint returned an empty list; that does not negate the general review/comment. PR #152 remains Draft/HOLD.
+
+## 10. Updated WP-00 progress
+
+- WP-00A recursive tree inventory: **PASS for path enumeration only**.
+- WP-00B source/API/Dashboard route mapping: **PARTIAL** — primary source boundaries, route families and all 21 Code Navigator mappings identified; complete route/security contract remains open.
+- WP-00C test/fixture/skip/workflow-job mapping: **PARTIAL** — 117 test-path files counted and representative high-risk tests/workflow jobs inspected; complete test collection, fixture/data, skip and requirement crosswalk remains open.
+- WP-00D requirement-to-source-to-test-to-acceptance trace: **IN_PROGRESS** — existing traceability document is explicitly first-pass and incomplete.
+- Full repository audit and release acceptance: **NOT COMPLETE**.
+
+Next actions: finish exact-head CI for the updated PR; build a method/path/auth/CSRF/idempotency API matrix; reconcile Dashboard registry against actual rendered views and E2E journeys; enumerate test collection/skip markers and fixture dependencies; audit all PR review comments and open work packages; preserve all unresolved host and security gates.
