@@ -257,3 +257,14 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Repository rulesets API returned an empty list. Classic branch protection API returned HTTP 403 Resource not accessible by integration.
 - Branch protection and required-status-check enforcement therefore remain UNKNOWN / NOT VERIFIED. An authorized repository administrator must inspect repository Settings → Branches / Rulesets before any merge decision.
 - This check does not authorize merge; PR #153 remains Draft/HOLD.
+
+
+## 2026-11-23 — WP-01 API security acceptance decomposition
+
+- Created docs/DCP-WP01-API-SECURITY-ACCEPTANCE.md (commit 9415dde8fcb560d526c3c09775b6f475ce86441b).
+- Added an index entry to docs/INDEX.md (commit 0d216dcd50d4f7ecec0e4048f75e7922951308af).
+- Decomposed WP-01 into 16 atomic API security acceptance items covering signed Proxy identity, CSRF/same-origin, body parsing, role checks, Proxy GET/POST/DELETE allowlists, unsupported verbs, idempotency, response headers, Gateway/Proxy parity, query/path canonicalization and Runner credentials.
+- Inspected Gateway source and Local Auth Proxy source at main SHA eaa9ceb91088c39b90d9b11b3817dc793e40005a, plus three representative authorization/route test files.
+- Explicit gaps recorded: exhaustive method/path/query/body/role/CSRF/idempotency matrix; unsupported PUT/PATCH/OPTIONS semantics; encoded path and duplicate-query edge cases; full response status/header matrix; runner credential replay/rotation coverage.
+- No runtime source or test code changed. WP-01 remains IN_PROGRESS; this is a source/test trace and test plan, not acceptance.
+- Exact-head CI must be refreshed after these commits. Previous CI observations on c0bcf213... are not transferable.
