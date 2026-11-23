@@ -224,3 +224,15 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - WP-00 state: 00A PASS for recursive path enumeration; 00B PARTIAL; 00C PARTIAL; 00D PARTIAL/IN PROGRESS; WP-31 NOT STARTED.
 - No source code, runtime configuration, workflow, branch settings or production resources changed. No PR was merged, no deployment/release occurred, and all seven Terminal templates remain disabled.
 - Next: poll CI for exact head fa853c...; continue atomic WP-01–17 decomposition and full route/test/workflow trace; then address documented high-risk PR review findings in isolated PR scope only after full READ/ANALYZE.
+
+
+## 2026-11-23 — PR lineage and exact-head refresh
+
+- Audit branch latest source commit before this ledger update: bba5b2ff5254fc1441f5d72e3f1c0e51e00224c9.
+- PR #153 remains OPEN / DRAFT / HOLD, base main at eaa9ceb91088c39b90d9b11b3817dc793e40005a.
+- Refreshed live metadata for PRs #138, #144, #149, #150, #151, #152 and #153.
+- PR #144 is CLOSED/MERGED into feature base work/wp18b1-windows-psec-filesystem-authorization, not main. PR #138 remains OPEN and mergeable=false with a 140-file diff; do not merge wholesale.
+- PRs #149–#152 remain OPEN/DRAFT. PR #152 remains HOLD for parent-directory DACL, two-file transaction/recovery, atomic replacement proof and failure-injection test gaps.
+- Appended PR lineage clarification and exact-head workflow status to the live audit.
+- CI evidence recorded for then-current audit head c51d46b... was all queued at observation, except the optional self-hosted Windows runner acceptance job, which was skipped. This evidence is now stale because the audit document and this ledger create new commits; poll the exact latest head.
+- No source/runtime/workflow changes, no merge, deployment, release, Terminal enablement or destructive cleanup.
