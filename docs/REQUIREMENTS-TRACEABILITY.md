@@ -175,3 +175,41 @@
 7. Current exact-head CI for PR #116 and all subsequent changes.
 
 Do not mark this document COMPLETE until every unresolved gap is closed or explicitly deferred with an owner decision and reason.
+
+
+## 2026-11-23 current-main traceability reconciliation
+
+This append-only section preserves the original baseline at 62d72bddd028399d0b96cd9c2f6e3b16a704b758. The original 86-file inventory and its RQ-001…RQ-024 source/test mapping remain historical evidence for that SHA.
+
+### New baseline and evidence boundary
+
+- Current main SHA audited: eaa9ceb91088c39b90d9b11b3817dc793e40005a.
+- Recursive tree: 340 blob paths; response not truncated.
+- Current test-path inventory: 117 files under the 2026-11-23 path/name counting rule. This is not a collected-test count and does not supersede the historical 86-file list.
+- Current GitHub Actions workflow files: 9.
+- Current Code Navigator registry: 21 mappings; exact-set assertion in tests/test_dashboard_contract.py. The Dashboard declared-view count and Code Navigator mapping count are distinct.
+
+### Targeted high-risk trace checks
+
+The following suites were re-read at the current-main SHA:
+
+- tests/test_cloud_gateway_proxy_authorization.py — role-boundary negative tests and temporary-directory lifecycle.
+- tests/test_local_auth_proxy.py — authentication/CSRF/unknown-route denial, optional browser skips and symlink capability skips.
+- tests/test_local_auth_proxy_project_routes.py — path/query allowlist and mutation CSRF checks.
+- tests/test_windows_psec_host_acceptance.py — non-Windows skip for a Windows-only native host harness.
+- tests/test_windows_psec_acl_real_host.py — native NTFS acceptance guarded by host/capability condition.
+- tests/test_local_runner_pipeline_e2e.py — generated POSIX/Windows process fixtures with platform-specific skips.
+- tests/test_terminal_isolation.py — readiness/BLOCKED contracts, not proof of production OS enforcement.
+- tests/test_dashboard_contract.py — static Dashboard/view/mapping contracts, not interactive E2E for every view.
+- tests/test_cloud_runner_e2e_acceptance.py — controlled provider lifecycle harness, not proof of live production provisioning.
+- tests/test_local_runner_bootstrap.ps1 — PowerShell acceptance script, not part of Python unittest discovery by itself.
+
+Generated inline fixtures were observed (temporary directories, generated scripts/shims, in-memory stores and synthetic artifact bytes). No fixture directory under the named fixture/testdata/golden/samples convention was found; that path search does not prove absence of inline/generated fixtures.
+
+### Workflow relationship and unresolved work
+
+The current validate-control-plane workflow runs Python unittest discovery, browser-preview checks, dashboard browser smoke, schema/YAML checks and Windows dynamic-port integration. Its self-hosted Windows runner acceptance is gated behind manual workflow_dispatch input and may be SKIPPED on ordinary PR runs. Cross-platform Recovery and Local-first Emulator are separate hosted CI evidence. Every future RQ row update must record exact run/job/SHA, skip counts/reasons and environment.
+
+The 24 RQ groups remain the canonical first-pass requirement identifiers. Their 2026-11-23 WP/source/test/acceptance navigation crosswalk is in docs/DCP-LIVE-REPOSITORY-AUDIT-2026-11-23.md. The mapping is not complete acceptance: exhaustive API contract parity, every test-function-to-RQ link, every Dashboard handler journey, non-code requirements, and target-host evidence remain open.
+
+Do not change any RQ or requirement status to PASS based only on source presence, test presence, stale SHA, queued/in-progress CI, skipped job or hosted CI where a local host is required.

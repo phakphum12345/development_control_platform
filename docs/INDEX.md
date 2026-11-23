@@ -21,6 +21,7 @@
 - [Remaining Work Inventory](DCP-REMAINING-WORK-INVENTORY.md) — Work Package register and gaps; not the final atomic task count.
 - [Repository Audit 2026-11-11](DCP-REPOSITORY-AUDIT-2026-11-11.md)
 - [Repository Audit 2026-11-12](DCP-REPOSITORY-AUDIT-2026-11-12.md)
+- [Live Repository Audit 2026-11-23](DCP-LIVE-REPOSITORY-AUDIT-2026-11-23.md) — current main SHA, open PR register, exact-head CI evidence and audit limitations.
 - [Acceptance Test Plan](DCP-ACCEPTANCE-TEST-PLAN.md)
 
 ## Architecture and platform
@@ -86,3 +87,7 @@
 ## Maintenance rule
 
 Every Work Package must update the relevant implementation, requirements, test and acceptance documentation. Preserve historical audit records; append dated, exact-SHA checkpoints rather than rewriting old evidence. If a document conflicts with source code or a newer exact-SHA checkpoint, mark the older statement stale and reconcile it through a reviewed change.
+
+- [WP-01 API Security Acceptance](DCP-WP01-API-SECURITY-ACCEPTANCE.md) — atomic Gateway/Local Auth Proxy security requirements, inspected source/test anchors, known gaps and execution plan.
+
+- [WP-01B Gateway/Proxy Route Crosswalk](DCP-WP01B-GATEWAY-PROXY-ROUTE-CROSSWALK.md) — source-derived method/path families, Proxy exposure differences, and prioritized positive/negative test matrix.
