@@ -277,3 +277,13 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - WP-01 remains IN PROGRESS: route/method matrix, authorization/CSRF/body/idempotency contracts, negative tests, and direct-vs-proxy boundary tests remain open.
 - Exact previous-head CI observation: Validate Control Plane completed SUCCESS (validate and Windows dynamic-port launcher integration PASS; optional self-hosted Windows runner acceptance SKIPPED); Windows Local Auth Proxy + Gateway E2E PASS; Ubuntu Recovery Acceptance PASS. Windows Recovery Acceptance and Linux Minimal Emulator were still running at observation time.
 - The documentation update changes the PR head; all CI evidence must be re-polled for the new exact head before any acceptance decision. No merge, deploy, or runtime activation authorized.
+
+
+## 2026-11-23 — WP-01B Gateway/Proxy route-surface crosswalk
+
+- Added `docs/DCP-WP01B-GATEWAY-PROXY-ROUTE-CROSSWALK.md` in commit `4848ff640df29b55577a1b8c3659911fe8913b1b`.
+- Crosswalk records Gateway GET/POST/DELETE dispatch families and Local Auth Proxy GET/POST/DELETE/OPTIONS families against source blobs `9a55bccf216cff1b934bebd643e68364305449aa` and `2d8708216f85c28e70f358c0672152353c6b59bc` from main baseline `eaa9ceb91088c39b90d9b11b3817dc793e40005a`.
+- Explicitly distinguishes the narrower Proxy allowlist from Gateway route families; route differences must be classified as intentionally not proxied or required/missing, not blindly widened.
+- Added ten prioritized positive/negative test groups covering unsupported verbs, OPTIONS/CORS, Origin/CSRF, allowlists, direct Gateway access, Runner identity, idempotency, parser bounds and response contracts.
+- This is static source analysis only. WP-01 remains IN_PROGRESS; no runtime source/tests changed and no acceptance, merge, deployment, Terminal activation or cloud provisioning is claimed.
+- Re-poll all CI against the resulting exact branch head before making any status claim.
