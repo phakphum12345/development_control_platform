@@ -118,6 +118,38 @@ class LocalProjectProxyRouteTests(unittest.TestCase):
             finally:
                 exc.close()
 
+    def test_options_and_unsupported_methods_have_explicit_boundary(self):
+        for method, expected_status in (("OPTIONS", 405), ("PUT", 501), ("PATCH", 501)):
+            request = Request(
+                self.base + "/api/local-projects",
+                method=method,
+                headers={"Cookie": "DCP_LOCAL_SESSION=" + self.sid},
+            )
+            with self.subTest(method=method):
+                try:
+                    with urlopen(request, timeout=5) as response:
+                        status = response.status
+                except HTTPError as exc:
+                    try:
+                        status = exc.code
+                    finally:
+                        exc.close()
+                self.assertEqual(status, expected_status)
+        self.assertEqual(self.gateway_requests, [])
+
+    def test_rejects_encoded_path_separators_and_duplicate_query_keys(self):
+        for path in (
+            "/api/local-projects/123e4567-e89b-42d3-a456-426614174000%2Fextra",
+            "/api/github/repositories/example/demo/refs?kind=tags&kind=branches",
+            "/api/github/repositories/example/demo/refs?kind=%74ags",
+        ):
+            with self.subTest(path=path):
+                status, body = self.get(path)
+                self.assertEqual(status, 404)
+                self.assertEqual(body["error"], "not found")
+        self.assertEqual(self.gateway_requests, [])
+
+
     def test_allows_only_project_collection_root_and_uuid_reads(self):
         for path in (
             "/api/local-projects",
