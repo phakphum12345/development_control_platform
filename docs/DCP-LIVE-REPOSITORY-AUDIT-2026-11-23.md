@@ -457,3 +457,30 @@ No workflow-level all-green conclusion is made. Results apply only to the exact 
 - WP-00D: PARTIAL / IN PROGRESS — Master Command crosswalk and stale baseline reconciliation recorded; complete documentation revision and atomic WP-01–17 acceptance breakdown remain open.
 - WP-31: NOT STARTED.
 - Repository completion/release: NOT VERIFIED.
+
+
+## 20. PR lineage and live-state refresh — 2026-11-23
+
+The requested historical PR set was re-read from GitHub after the WP crosswalk update:
+
+| PR | Current state | Base / head finding | Action |
+|---|---|---|---|
+| #138 | OPEN, not Draft, mergeable=false | Fork branch main → feature base work/wp18b1-windows-psec-filesystem-authorization; 140 files | Preserve; do not merge wholesale |
+| #144 | CLOSED / MERGED | integration/pr138-source-fork-reconciliation-20261115 → same feature base; merge result is on that feature lineage, not main | Keep as feature-branch integration history; do not mistake for main merge |
+| #149 | OPEN / DRAFT | main base eaa9ceb...; head d1dd866... | Keep separate; hosted PSEC probe remains internally BLOCKED |
+| #150 | OPEN / DRAFT | main base eaa9ceb...; head aaa18c... | Historical audit candidate; do not treat its old inventory as current |
+| #151 | OPEN / DRAFT | main base eaa9ceb...; head d17d6f... | Candidate dashboard mapping; static mapping evidence is not user-journey E2E |
+| #152 | OPEN / DRAFT | main base eaa9ceb...; head b282acc... | Preserve HOLD due to four unresolved protected-file persistence review findings |
+| #153 | OPEN / DRAFT | main base eaa9ceb...; head c51d46b... | This live WP-00 audit PR; no merge authorization |
+
+The PR #144 record is important: it is closed/merged, but its base was the WP-18B.1 feature branch. It does not prove that the fork reconciliation was merged into main. PR #138 remains open and non-mergeable; do not merge its 140-file diff wholesale.
+
+### PR #153 exact-head workflow refresh
+
+For exact head c51d46bcccfe78b46cb5f063f98dcf0a955c5d28, latest workflow runs observed:
+
+- Validate Control Plane: run 45156051645, queued at poll; validate job 137629135893 and Windows dynamic-port job 137629135740 queued; self-hosted runner acceptance job 137629137370 skipped.
+- Cross-platform Recovery Acceptance: run 45156051506, queued; Windows job 137629120932 and Ubuntu job 137629121466 queued.
+- Local-first Minimal Emulator: run 45156051508, queued; Windows job 137629137327 and Linux job 137629137890 queued.
+
+No PASS is assigned to these queued runs. Previous SHA results do not transfer.
