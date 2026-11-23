@@ -354,3 +354,106 @@ The complete per-file skip census and actual collected test counts remain open; 
 - WP-00C: **PARTIAL**, with representative high-risk test suites, inline fixture patterns and skip conditions documented; full census still open.
 - WP-00D: **IN PROGRESS**, atomic requirements-to-acceptance trace remains open.
 - Overall WP-00 audit: **IN PROGRESS**; no release/host acceptance is implied.
+
+## 17. Master Engineering Command crosswalk — WP-00D
+
+The controlling scope was re-read from the user's complete Master Engineering Command. The required lifecycle is READ → ANALYZE → MODIFY → TEST → AUDIT → MERGE → VERIFY → FOLLOW-UP. This audit PR is currently in READ/ANALYZE/DOCUMENTATION; it is not authorization to merge, deploy, enable Terminal execution or release.
+
+### 17.1 Requirement-to-Work-Package crosswalk
+
+The following WP assignments are an audit navigation aid over the existing 24 requirement groups. They do not change canonical requirement IDs or claim that a WP is complete.
+
+| Requirement | Master WP mapping | Existing source/test anchors | Acceptance still required |
+|---|---|---|---|
+| RQ-001 Gateway health/API safety | WP-01, WP-26, WP-31 | Gateway server/service; Gateway/OpenAPI tests | Complete API schema/auth/error matrix; deployed API acceptance |
+| RQ-002 Owner authentication/proxy identity | WP-01, WP-19, WP-26 | Local Auth Proxy/Gateway; Proxy/project-route/authorization tests | Real Windows Dashboard → Proxy → Gateway E2E |
+| RQ-003 GitHub App catalog/import | WP-03, WP-21, WP-24 | GitHub App/runtime, Local Project Registry; GitHub App/local project/snapshot tests | Live authorized owner import and full Dashboard flow |
+| RQ-004 Durable Jobs/leases/checkpoints | WP-02, WP-22 | Job Control Plane/store/scheduler; job-control/scheduler/Cloud Runner tests | Independent Runner interruption and host recovery |
+| RQ-005 Runner enrollment/claim/heartbeat/cleanup | WP-05, WP-18C, WP-22 | Runner registry/bootstrap/cleanup and Local Runner; registry/cleanup/agent E2E tests | Actual process-tree/workspace cleanup after service interruption |
+| RQ-006 Artifact integrity/provenance | WP-20, WP-24 | Artifact store/uploader/Proxy; artifact/download/pipeline tests | Dashboard-to-download SHA-256 provenance and read-back |
+| RQ-007 Local Folder trust/snapshots | WP-21, WP-24 | Local Project/checkout/workspace; snapshot/checkout/workspace tests | Dependency-managed targets and real-host acceptance |
+| RQ-008 Build/framework adapters | WP-23, WP-24 | Web build/execution/pipeline; build/execution/pipeline tests | Supported framework matrix, dependency policy, runtime/HMR/WebSocket |
+| RQ-009 Runtime/authenticated preview | WP-24, WP-25 | Runtime/Gateway preview/Proxy; runtime/preview/Proxy tests | Imported-project preview and runtime-process acceptance |
+| RQ-010 Browser testing/accessibility | WP-25, WP-31 | Browser test/Dashboard; browser/preview/browser-smoke tests | Trace artifacts, visual baselines, keyboard and full WCAG/axe |
+| RQ-011 Terminal typed commands/grants | WP-18, WP-19, WP-26 | Terminal catalog/grants/authorization/executor; Terminal/Gateway tests | End-to-end authorization/execution only after verified OS isolation |
+| RQ-012 Linux OS isolation | WP-18A, WP-18C, WP-18D, WP-18E | Terminal isolation/Linux sandbox; isolation/Linux sandbox tests | Integrate/verify launcher and real target-Linux adversarial acceptance |
+| RQ-013 Windows/macOS OS isolation | WP-18B, WP-18D, WP-18E | Native platform helpers/PSEC; PSEC/launcher/host-harness tests | Windows PSEC and macOS platform-specific target-host acceptance; PSEC is not LPAC |
+| RQ-014 Infrastructure/provider/budget gates | WP-14, WP-26, WP-28 | Infrastructure/gates/Azure/Orka/budget; infrastructure/provider/budget tests | Explicit live provider acceptance; no implicit paid resources |
+| RQ-015 OIDC/trusted proxy security | WP-02, WP-15, WP-26 | OIDC signer/ingress/Gateway/Proxy; OIDC/proxy authorization tests | Deployment-specific identity, replay, ingress and key rotation |
+| RQ-016 Dashboard view/navigation | WP-19, WP-25, WP-27 | Dashboard HTML/PWA/route registry; Dashboard contract/launcher/browser smoke | Keyboard/screen-reader and cross-browser visual acceptance |
+| RQ-017 Document generation/durable writing | WP-17, WP-24, WP-27, WP-28 | Document Workflow; gateway/writer/Dashboard lifecycle tests | Authenticated Dashboard-to-writer E2E and interruption recovery |
+| RQ-018 MCP read-only engine | WP-29 | MCP engine; native MCP server/engine tests | Capability lifecycle and bounded plugin contract |
+| RQ-019 Project intelligence/planning | WP-29 | Project intelligence/planner; intelligence/planner tests | Owner-approved bounded Analyze/Propose/Apply/Verify |
+| RQ-020 Developer environment/workspace | WP-27 | Dev environment/runner manager/Dashboard; environment/manager/Dashboard tests | Complete editable Developer Workspace and workflow builder |
+| RQ-021 Local Image Lab | WP-27, WP-28 | Local Image Lab; Local Image Lab tests | UI, storage, safety and recovery E2E |
+| RQ-022 SQLite/data integrity | WP-02, WP-28, WP-30 | SQLite security/durable stores; SQLite/job-control tests | Backup/restore and corruption/recovery drills |
+| RQ-023 Local Runner readiness/launchers | WP-19, WP-22, WP-30 | Local Runner agent/setup scripts; readiness/launcher/PowerShell tests | Supported Windows host startup/stop/restart/interruption |
+| RQ-024 Self-test/upgrade/rollback | WP-30, WP-31 | Doctor/preflight/self-check; preflight/readiness/Dashboard tests | Signed versioned upgrade, rollback and DR acceptance |
+
+### 17.2 Work-package dependency and acceptance sequence
+
+| Sequence | Work packages | Required output / exit evidence | Current disposition |
+|---|---|---|---|
+| 0 — Baseline and trace | WP-00A–D | Exact-SHA inventory, API/Dashboard/test/workflow map, reconciled docs and atomic traceability | WP-00A path inventory PASS; WP-00B/C PARTIAL; WP-00D IN PROGRESS |
+| 1 — Core control plane | WP-01–17 | Per-subsystem code review, data/state invariants, security tests, failure/recovery tests and exact-head CI | Existing capabilities are documented; not all are independently re-accepted in this audit |
+| 2 — Isolation foundation | WP-18A–E | Linux/Windows platform-specific launcher and adversarial host evidence, cleanup proof, policy consistency | PARTIAL/BLOCKED; no Terminal enablement |
+| 3 — Local host E2E | WP-19 | Supported Windows host end-to-end evidence across Dashboard/Proxy/Gateway/Runner | UNKNOWN |
+| 4 — Product workflow closure | WP-20–27 | Provenance, Local Folder, recovery, adapters, import-build-preview-test, accessibility, supply chain and workspace acceptance | PARTIAL by existing register |
+| 5 — Operational readiness | WP-28–30 | Restore drills, monitoring, AI/MCP authorization, signed upgrade/rollback | PARTIAL by existing register |
+| 6 — Final gate | WP-31 | Complete repository-wide exact-SHA regression/security/recovery/host/deployment/release audit | NOT STARTED |
+
+WP-01–17 are a master-level range; the current DCP-REMAINING-WORK-INVENTORY.md groups many features by subsystem rather than providing a fully atomic WP-01…WP-17 exit checklist. Do not infer that each individual WP in that range has a separately verified PASS. A later reconciliation must add atomic acceptance IDs without rewriting historical evidence.
+
+### 17.3 Documentation baseline reconciliation
+
+The following documents on main still identify the older baseline 62d72bddd028399d0b96cd9c2f6e3b16a704b758 and audit date 2026-11-14:
+
+- docs/IMPLEMENTATION-STATUS.md
+- docs/REQUIREMENTS-TRACEABILITY.md
+- docs/DCP-REMAINING-WORK-INVENTORY.md
+
+Their counts and evidence remain valid only for their recorded baseline. They must not be silently relabelled as current-main evidence. This audit uses eaa9ceb91088c39b90d9b11b3817dc793e40005a and separately records newer tree/source observations. A reviewed follow-up should either create a new exact-SHA status/traceability revision or append a clearly dated reconciliation section to each document, preserving historical statements.
+
+### 17.4 Required evidence fields for subsequent WP closure
+
+Every atomic acceptance item must record:
+
+1. Requirement and WP/atomic task ID.
+2. Exact source path and symbol/route/view/action.
+3. Exact test path and test function or test ID.
+4. Workflow name, run ID, job ID, environment and exact commit SHA.
+5. Passed, failed, skipped and not-collected counts; skip reason.
+6. Security and data-integrity review result.
+7. Target-host evidence when required, including OS/build/capability.
+8. Known limitations, rollback/recovery path and unresolved blockers.
+9. PR/review state and explicit merge authorization.
+10. Post-merge main SHA and follow-up verification.
+
+A source/test link without exact execution evidence remains implementation/test coverage evidence, not PASS. A hosted workflow is not local target-host verification. A skipped job is never PASS.
+
+## 18. PR #153 current exact-head CI observation
+
+Current audit head: 22c34056cf65fcc7db670deac3a8a5a576bb9ec5.
+
+Latest poll (2026-11-23):
+
+| Workflow / job | Run ID / Job ID | State |
+|---|---:|---|
+| Validate Control Plane — validate | 45155558056 / 137627458388 | IN PROGRESS — dashboard/Python contracts |
+| Validate Control Plane — Windows dynamic-port launcher integration | 45155558056 / 137627458831 | IN PROGRESS — real cmd.exe Runner job-to-artifact pipeline |
+| Validate Control Plane — self-hosted Windows runner acceptance | 45155558056 / 137627460298 | SKIPPED |
+| Cross-platform Recovery — Ubuntu | 45155558043 / 137627458750 | PASS |
+| Cross-platform Recovery — Windows | 45155558043 / 137627459324 | QUEUED |
+| Local-first Minimal Emulator — Linux | 45155558031 / 137627459218 | QUEUED |
+| Local-first Minimal Emulator — Windows | 45155558031 / 137627459514 | QUEUED |
+
+No workflow-level all-green conclusion is made. Results apply only to the exact head above; any further commit requires another exact-head CI refresh.
+
+## 19. Updated WP-00 state
+
+- WP-00A: PASS for complete recursive path enumeration at exact main SHA.
+- WP-00B: PARTIAL — source boundaries, API security families and 21 Code Navigator mappings inspected; exhaustive route/schema/handler parity remains open.
+- WP-00C: PARTIAL — test-path inventory and targeted high-risk skip/fixture samples inspected; full collection and per-file trace remains open.
+- WP-00D: PARTIAL / IN PROGRESS — Master Command crosswalk and stale baseline reconciliation recorded; complete documentation revision and atomic WP-01–17 acceptance breakdown remain open.
+- WP-31: NOT STARTED.
+- Repository completion/release: NOT VERIFIED.
