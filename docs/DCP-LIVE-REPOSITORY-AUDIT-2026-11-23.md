@@ -19,6 +19,7 @@
 | Open issues | 0 | Live GitHub open-issue search |
 | Branches | 162 | Branch search paginated: 100 + 62; final cursor empty |
 | Main combined status entries | 0 returned | No status entries were returned by the combined-status endpoint; this is not proof that every workflow is green |
+| Open PR count after this audit PR was opened | 6 | The five-PR register below is the pre-creation source snapshot; PR #153 is this audit's delivery PR and is intentionally excluded from that baseline register |
 | Branch protection | NOT AUDITED in this pass | Do not assume required checks are enforced by branch protection |
 
 The audit baseline is the current main commit above, not the older `985a78d5fba459c8a0cbcf47e5d00a858c6e6228` baseline used by the 2026-11-19 audit documents on PR #150.
