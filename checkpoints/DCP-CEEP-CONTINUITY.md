@@ -268,3 +268,12 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Explicit gaps recorded: exhaustive method/path/query/body/role/CSRF/idempotency matrix; unsupported PUT/PATCH/OPTIONS semantics; encoded path and duplicate-query edge cases; full response status/header matrix; runner credential replay/rotation coverage.
 - No runtime source or test code changed. WP-01 remains IN_PROGRESS; this is a source/test trace and test plan, not acceptance.
 - Exact-head CI must be refreshed after these commits. Previous CI observations on c0bcf213... are not transferable.
+
+## 2026-11-23 — WP-01A source dispatch inventory
+
+- Added `WP-01A` to `docs/DCP-WP01-API-SECURITY-ACCEPTANCE.md` in commit `15298ffc67648050a9ee217f22468c713f823ac7`.
+- Static source review pinned the main-branch Gateway and Proxy source blobs and enumerated explicit HTTP handler methods and dispatch families.
+- Gateway explicitly implements GET/POST/DELETE; Proxy explicitly implements GET/POST/DELETE/OPTIONS. Absence of custom PUT/PATCH handlers is not treated as proof of externally observed status behavior.
+- WP-01 remains IN PROGRESS: route/method matrix, authorization/CSRF/body/idempotency contracts, negative tests, and direct-vs-proxy boundary tests remain open.
+- Exact previous-head CI observation: Validate Control Plane completed SUCCESS (validate and Windows dynamic-port launcher integration PASS; optional self-hosted Windows runner acceptance SKIPPED); Windows Local Auth Proxy + Gateway E2E PASS; Ubuntu Recovery Acceptance PASS. Windows Recovery Acceptance and Linux Minimal Emulator were still running at observation time.
+- The documentation update changes the PR head; all CI evidence must be re-polled for the new exact head before any acceptance decision. No merge, deploy, or runtime activation authorized.
