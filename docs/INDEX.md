@@ -21,6 +21,7 @@
 - [Remaining Work Inventory](DCP-REMAINING-WORK-INVENTORY.md) — Work Package register and gaps; not the final atomic task count.
 - [Repository Audit 2026-11-11](DCP-REPOSITORY-AUDIT-2026-11-11.md)
 - [Repository Audit 2026-11-12](DCP-REPOSITORY-AUDIT-2026-11-12.md)
+- [Live Repository Audit 2026-11-23](DCP-LIVE-REPOSITORY-AUDIT-2026-11-23.md) — current main SHA, open PR register, exact-head CI evidence and audit limitations.
 - [Acceptance Test Plan](DCP-ACCEPTANCE-TEST-PLAN.md)
 
 ## Architecture and platform
