@@ -237,3 +237,80 @@ PR #152 has one submitted COMMENTED review (review ID `PRR_kwDOVTLXVs8AAAABZs4Ts
 - Full repository audit and release acceptance: **NOT COMPLETE**.
 
 Next actions: finish exact-head CI for the updated PR; build a method/path/auth/CSRF/idempotency API matrix; reconcile Dashboard registry against actual rendered views and E2E journeys; enumerate test collection/skip markers and fixture dependencies; audit all PR review comments and open work packages; preserve all unresolved host and security gates.
+
+
+## 11. WP-00B API contract security pass — additional source evidence
+
+The following is a focused source-level contract map, not a claim that every API has been exhaustively documented.
+
+### Local Auth Proxy read boundary
+
+At main baseline, `tools/local_auth_proxy.py` defines an explicit `ALLOWED_GET` tuple for selected read endpoints. Additional GET routes are accepted only through route-specific predicates, including:
+
+- `/api/jobs`, job detail, logs and artifact/preview reads with bounded query parsing.
+- `/api/github/repositories` and repository refs/project inspection.
+- `/api/local-projects/{uuid}`.
+- `/api/terminal/events/{...}` and infrastructure resource/gate reads.
+- `/api/recon/...` is separately allowed by the current predicate.
+- Artifact download and authenticated preview proxy routes are separately handled.
+
+The Proxy rejects unrecognized API paths with 404 rather than forwarding arbitrary `/api/*` paths. Query strings are parsed and bounded for selected endpoints (for example job list limits and log cursor/limit). This allowlist is an important security boundary; every Gateway route addition should have an intentional Proxy policy decision and negative test.
+
+### Mutating route families and controls observed in Gateway
+
+| Mutation family | Route shape observed | Controls visible in source |
+|---|---|---|
+| Terminal job create | `POST /api/terminal/jobs` | Owner role, signed identity, CSRF, required Idempotency-Key, session-scoped idempotency and conflict handling |
+| Terminal authorize/grant/template import/command preview | `POST /api/terminal/authorize`, grant/revoke, `/api/terminal/templates/import`, `/api/terminal/commands/preview` | Signed identity, CSRF; owner for authorization/import/grant operations; owner/operator for command preview |
+| Document Workflow | `POST /api/document-workflow/grants`, proposals, revoke/approve | Owner role and CSRF; proposal call carries idempotency key |
+| Infrastructure | `POST /api/infrastructure[/...]`, gate toggle | Owner/operator for selected actions, CSRF; create operation passes idempotency key |
+| Jobs | `POST /api/jobs`, `/{id}/resume`, `/{id}/cancel`, `/{id}/previews` | Owner/operator base; CSRF; owner-only Local Folder job, UNKNOWN resume, cancellation and preview creation |
+| Runner control | `POST /api/runners/{worker}/...` and `/v1/runner/*` | Signed dashboard identity plus owner/CSRF for management; separate runner identity for agent protocol |
+| Destructive operations | `DELETE /api/jobs/{job}/previews/{runtime}`, `/api/infrastructure/{resource}`, `/api/cloud-runners/{id}` | Owner role and CSRF; preview deletion also requires same-origin |
+
+### Proxy-side mutation boundary
+
+The Proxy requires same-origin for POST, requires a pre-authentication CSRF session for login, authenticated session + CSRF for logout and job mutations, and forwards only explicitly matched job routes. This means the Proxy's GET allowlist and POST/DELETE route matchers should be tested against both allowed and denied route variants, including query-string variants and malformed IDs.
+
+### Remaining API audit gaps
+
+- No generated exhaustive method × path × query × body-schema × role × CSRF × idempotency matrix exists yet.
+- Route-family matching was inspected in Gateway and Proxy, but complete branch-by-branch comparison is not finished.
+- Need tests proving every mutating Gateway route is reachable only through an intentionally allowed Proxy path (or intentionally unavailable) and that malformed path/query variants fail closed.
+- Need inspect all `do_PUT`/`do_PATCH` handling and confirm whether any API methods exist beyond GET/POST/DELETE.
+- Need map API response schemas and error/status semantics to dashboard callers.
+
+## 12. WP-00C test, fixture and skip evidence — current scope
+
+- The recursive tree search found no directory/file paths named `fixtures`, `fixture`, `testdata`, `golden` or `samples` under the explicit path-name convention. This does **not** prove that tests have no fixture data: test data may be inline, generated in temporary directories, or stored under other names.
+- Representative test suites inspected include Dashboard contract, Local Auth Proxy, Cloud Runner Dashboard contract, Cloud Runner E2E acceptance, Windows PSEC host acceptance, local Runner pipeline and launcher contracts.
+- `validate-control-plane.yml` runs Python `unittest discover -s tests -v`, explicit real Chromium/Firefox/WebKit preview-proxy tests, Node dashboard browser smoke, YAML/JSON Schema validation, and dedicated Windows integration steps.
+- The self-hosted Windows runner job is explicitly conditional on `workflow_dispatch` plus `inputs.run_self_hosted_windows_acceptance == true`; ordinary PR runs skip it.
+- The Windows PSEC host-acceptance test suite contains a non-Windows blocked/skip branch; hosted Windows GitHub runners and self-hosted target-host acceptance must not be conflated.
+- A full automated census of all 117 test-path files for skip decorators, test discovery, fixtures, and CI selection has **not** been completed. The earlier 117 count is a path inventory, not a count of collected test cases or passed tests.
+
+## 13. PR #153 CI refresh — latest observed state
+
+For exact head `2757d441c716f231b682691035a8b28fd05516f9`, at the latest poll:
+
+| Workflow/job | Run / Job | Result |
+|---|---:|---|
+| Validate Control Plane — Windows dynamic-port launcher integration | Run 45154961048 / Job 137625506399 | **PASS** |
+| Validate Control Plane — main validate job | Run 45154961048 / Job 137625507039 | **IN PROGRESS**, executing dashboard/Python contracts |
+| Validate Control Plane — self-hosted Windows runner acceptance | Run 45154961048 / Job 137625509738 | **SKIPPED** |
+| Cross-platform Recovery — Windows | Run 45154961165 / Job 137625502400 | **IN PROGRESS**, Local Runner interruption/recovery pipeline |
+| Cross-platform Recovery — Ubuntu | Run 45154961165 / Job 137625503077 | **IN PROGRESS**, installing bubblewrap |
+| Local-first Minimal Emulator — Linux | Run 45154961121 / Job 137625584155 | **QUEUED** |
+| Local-first Minimal Emulator — Windows | Run 45154961121 / Job 137625584483 | **QUEUED** |
+
+No conclusion is assigned to workflows with active or queued jobs. The exact-head validation workflow is not green while the validate job remains in progress and self-hosted acceptance is skipped.
+
+## 14. Updated WP-00 status
+
+- WP-00A recursive repository path inventory: **PASS for path enumeration only**.
+- WP-00B source/API/Dashboard mapping: **PARTIAL** — source boundaries, 21 Dashboard mappings, Proxy GET allowlist and representative mutating-route controls mapped; exhaustive method/path/security contract remains open.
+- WP-00C test/fixture/skip/workflow mapping: **PARTIAL** — 117 test paths counted and representative suites/workflow steps inspected; all-file skip/fixture/collection crosswalk remains open.
+- WP-00D requirement-to-source-to-test-to-acceptance trace: **IN PROGRESS**.
+- Full repository audit and release acceptance: **NOT COMPLETE**.
+
+Next: finish exact-head CI; complete GET/POST/DELETE and unsupported-method matrix; inspect Proxy/Gateway route parity with negative tests; complete skip and collected-test census in manageable batches; then reconcile each requirement and work-package acceptance criterion against actual source, test, workflow and host evidence.
