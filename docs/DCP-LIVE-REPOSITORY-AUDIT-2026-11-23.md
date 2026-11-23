@@ -133,3 +133,52 @@ Next actions:
 6. Re-run exact-head checks after any changes; keep all PRs Draft/HOLD until review and acceptance gates are satisfied.
 
 **Audit result:** IN_PROGRESS. This document records the observed state and evidence boundaries; it is not a release or security certification.
+
+
+## 7. WP-00A recursive tree inventory — completed 2026-11-23
+
+The Git Trees API was queried recursively at the exact current-main commit SHA `eaa9ceb91088c39b90d9b11b3817dc793e40005a`. GitHub returned `truncated=false`; all 340 blob paths were enumerated.
+
+| Classification | Count | Counting rule |
+|---|---:|---|
+| All repository files | 340 | Blob entries in the recursive tree |
+| Source files | 111 | `.py` and `.ps1` implementation files outside test paths and workflow definitions |
+| Test files | 117 | Files under `tests/` plus the explicitly named test scripts discovered in the tree |
+| GitHub Actions workflow files | 9 | Files directly under `.github/workflows/` |
+| Documentation/checkpoint/README files | 73 | Files under `docs/`, `checkpoints/`, plus root `README.md` |
+
+Top-level areas observed: `.github`, `.vscode`, `checkpoints`, `config`, `dashboard`, `deploy`, `docs`, `packaging`, `schemas`, `scripts`, `states`, `tests`, and `tools`, plus root launchers and dependency manifests.
+
+This is a path inventory, not a semantic audit of every implementation file. The source count is deliberately narrow: it counts Python and PowerShell implementation files only, not HTML/JavaScript embedded in the Dashboard, schemas, YAML configuration, or workflow definitions. The test count includes test-named files in the test directory; it does not assert that each test is collected or executed by every workflow.
+
+### Stale inventory fields found in current-main documents
+
+- `docs/IMPLEMENTATION-STATUS.md` reports `docs/` = 58, while the current recursive tree contains 73 documentation/checkpoint/README files under the counting rule above. These are different scopes and the older figure is not a current full-repository document count.
+- `docs/REQUIREMENTS-TRACEABILITY.md` labels its test-file inventory as an 86-file baseline; the current tree has 117 test files under the counting rule above. The existing requirement map is also explicitly first-pass and leaves atomic acceptance criteria open.
+- The current-main implementation status records WP-00 source/API/Dashboard/requirements mapping as IN_PROGRESS and WP-31 as NOT STARTED. WP-18 platform acceptance and WP-19 Windows host E2E remain blocked/unknown as described in that document.
+
+Do not silently replace these historical figures: update them only through a separately reviewed reconciliation that records the exact baseline and counting rule.
+
+### PR #153 exact-head CI refresh
+
+At PR head `4ab7bb02a517b4f93543a429c4540c33166cd814`:
+
+| Workflow / job | Run ID | Observed result |
+|---|---:|---|
+| Local-first Minimal Emulator — Windows + Linux jobs | 45153995853 | PASS |
+| Cross-platform Recovery — Ubuntu + Windows jobs | 45153995851 | PASS |
+| Validate Control Plane — Windows dynamic-port integration | 45153995875 | PASS |
+| Validate Control Plane — validate job | 45153995875 | IN_PROGRESS at last observation; WebKit preview-proxy step running |
+| Validate Control Plane — Windows runner acceptance | 45153995875 | SKIPPED |
+
+The validate workflow is not PASS until the validate job completes successfully. The skipped Windows runner acceptance remains a separate evidence gap. These results apply only to the exact PR head above and must be refreshed if the branch changes.
+
+## 8. Updated WP-00 status
+
+- WP-00A recursive repository path inventory: **PASS for path enumeration only** (exact main SHA, complete non-truncated tree response).
+- WP-00B source/API/Dashboard route mapping: **IN_PROGRESS**.
+- WP-00C test/fixture/skip/workflow-job mapping: **IN_PROGRESS**; inventory counts are complete, execution/collection mapping is not.
+- WP-00D requirement-to-source-to-test-to-acceptance trace: **IN_PROGRESS**.
+- Full repository audit and release acceptance: **NOT COMPLETE**.
+
+Next actions: finish PR #153 exact-head CI; reconcile the stale documentation counts with an explicit counting convention; map concrete route handlers and Dashboard actions to source and tests; inspect fixtures/skips and review threads; then continue work-package acceptance without weakening any safety gates.
