@@ -88,3 +88,88 @@ The list above is deliberately limited to test functions directly observed in th
 - The self-hosted Windows acceptance job being skipped is not PASS.
 - No route was changed in this WP-01 documentation pass.
 - Do not enable Terminal templates, provision infrastructure, merge, deploy or release as part of this work.
+
+## WP-01A — Source-derived HTTP dispatch inventory (2026-11-23)
+
+This inventory is a static source review of the current `main` versions of:
+- `tools/cloud_gateway/server.py` (blob `9a55bccf216cff1b934bebd643e68364305449aa`)
+- `tools/local_auth_proxy.py` (blob `2d8708216f85c28e70f358c0672152353c6b59bc`)
+
+It records explicit handler dispatch observed in source. It is not a runtime proof that every route is secure, reachable, or correctly authorized. The branch-specific acceptance status remains **IN PROGRESS**.
+
+### HTTP method surface
+
+| Component | Explicit handler methods | Source anchors | Static observation |
+|---|---|---|---|
+| Cloud Gateway | GET, POST, DELETE | `Handler.do_GET` line 329; `do_POST` line 869; `do_DELETE` line 1623 | No explicit PUT, PATCH, or OPTIONS handler found in this class |
+| Local Auth Proxy | GET, POST, DELETE, OPTIONS | `Handler.do_GET` line 517; `do_POST` line 681; `do_DELETE` line 874; `do_OPTIONS` line 911 | OPTIONS is explicitly handled; unsupported verbs have no explicit handler in this class |
+
+The absence of a custom method handler is not, by itself, proof of the externally observed status code. WP-01 tests must assert status, headers, and absence of side effects for unsupported verbs.
+
+### Cloud Gateway GET dispatch families
+
+Observed in `do_GET` (starting line 329):
+- `/healthz` (line 344)
+- `/api/recon/…` (line 331)
+- Document Workflow grants/target and proposal matching (lines 352–366)
+- Local Projects collection, roots, and descendants (lines 376–394)
+- Terminal templates (line 426)
+- Jobs collection, UUID job detail, logs, and preview collection (lines 442–476)
+- Runners collection (line 538)
+- Infrastructure gates and collection/descendants (lines 546–566)
+- Artifact download suffix route (line 588)
+- Runner protocol `/v1/runner/…` (line 618)
+- General API dispatch includes auth session, GitHub repositories/refs, and Cloud Runner status/collection/descendants (lines 657–735)
+
+### Cloud Gateway POST dispatch families
+
+Observed in `do_POST` (starting line 869):
+- Terminal jobs, authorization, templates import, and command preview (lines 871, 992, 1148, 1169)
+- Document Workflow grants and proposals (lines 1017–1021)
+- Infrastructure collection and gate mutation (lines 1086, 1209–1223)
+- Jobs collection, preview creation, local-folder/repository job creation, and unknown-job resume (lines 1257–1388)
+- Runner register/enroll, ping, claim, and worker protocol routes (lines 1407–1533)
+- Cloud Runner/provisioning and related API dispatch (lines 1547–1613)
+
+### Cloud Gateway DELETE dispatch families
+
+Observed in `do_DELETE` (starting line 1623):
+- Exact UUID job-preview stop route (line 1625)
+- Infrastructure descendant deletion (line 1644)
+- Cloud Runner descendant deletion (line 1667)
+
+### Local Auth Proxy GET allowlist families
+
+Observed in `do_GET` (starting line 517):
+- Health and authenticated session endpoints (lines 520–523)
+- Job preview listing (line 535)
+- Explicit API read allowlist predicates for GitHub repository/refs, jobs collection/detail/logs, artifact downloads, terminal events, infrastructure resources, and Cloud Runner descendants (lines 595–655)
+- Dashboard/static asset serving follows the API dispatch section (line 666)
+
+### Local Auth Proxy POST dispatch families
+
+Observed in `do_POST` (starting line 681):
+- Login/logout (lines 689–715)
+- Job creation, resume, cancellation, and preview start (lines 726–765)
+- Cloud Runner mutations (line 807)
+- Terminal template import and command preview (lines 821–822)
+- Infrastructure mutation dispatch (line 842)
+
+### Local Auth Proxy DELETE and OPTIONS
+
+Observed in `do_DELETE` (starting line 874):
+- Job preview stop and explicitly scoped infrastructure/Cloud Runner delete forwarding (lines 890–908)
+
+Observed in `do_OPTIONS` (starting line 911):
+- Explicit OPTIONS handler exists. Its response contract and CORS/header behavior still require dedicated positive and negative assertions.
+
+### WP-01A remaining verification work
+
+1. Convert each dispatch family above into a machine-readable route/method inventory with exact path matcher, identity role, CSRF requirement, body schema/size bound, idempotency behavior, and expected status.
+2. Exercise every allowed Proxy GET route and reject near-miss paths, query variants, traversal/encoded separators, and unbounded identifiers.
+3. Exercise every Proxy POST/DELETE route with missing, invalid, expired, and cross-session credentials; assert no Gateway side effect.
+4. Assert OPTIONS preflight headers and unsupported PUT/PATCH behavior at both Proxy and Gateway boundaries.
+5. Test Gateway direct access separately from Proxy-mediated access so Proxy controls are not mistaken for Gateway controls.
+6. Tie every inventory row to at least one positive test and one relevant negative test before marking the corresponding WP-01 requirement accepted.
+
+**Status: IN PROGRESS.** This source inventory does not close WP-01 and does not authorize merge, deployment, or production activation.
