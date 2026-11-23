@@ -191,3 +191,20 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - PR #119 remains OPEN / DRAFT / NOT MERGED; PR #118 remains OPEN / DRAFT / NOT MERGED; PR #117 and #116 remain OPEN / DRAFT / NOT MERGED. These are stacked dependencies; do not merge a child before its base.
 - WP-18D is PARTIAL pending the target Linux host run. WP-18B Windows native process isolation and LPAC remain BLOCKED pending implementation and host acceptance. Terminal templates remain disabled.
 - This checkpoint follows code/test head `a497117adfcdb68f9e6a52b385f28fbec21ec621`; re-check exact-head CI on the resulting checkpoint commit before treating it as current.
+
+
+---
+
+## 2026-11-23 — WP-00 live repository audit checkpoint
+
+- Canonical repository: `phakphum12345/development_control_platform`.
+- Canonical branch baseline: `main` at `eaa9ceb91088c39b90d9b11b3817dc793e40005a`.
+- Audit branch: `docs/wp00-live-audit-20261123`.
+- Live audit document: `docs/DCP-LIVE-REPOSITORY-AUDIT-2026-11-23.md`.
+- Live metadata: 5 open PRs (#149, #150, #151, #152, #138); 0 open issues; 162 branches (100 + 62, final cursor empty).
+- Same-repository PR heads and workflow evidence were refreshed. PR #149's hosted PSEC probe workflow is green only because the expected BLOCKED result is informational; the job log explicitly reports PSEC state BLOCKED and missing filesystem/network-ingress capabilities. Its optional Windows runner acceptance is SKIPPED.
+- PR #150's 2026-11-19 audit set is still a candidate PR, not current-main documentation. Its named baseline `985a78d5fba459c8a0cbcf47e5d00a858c6e6228` predates current main `eaa9ceb91088c39b90d9b11b3817dc793e40005a`.
+- PR #151 and #152 exact-head hosted workflows passed; optional Windows runner acceptance is SKIPPED. Static Dashboard mapping and passing CI are not full operational acceptance.
+- WP-00 live metadata refresh is recorded. Full recursive-tree inventory, current-main source/API/Dashboard/test traceability, review-thread audit and platform host acceptance remain IN_PROGRESS / UNKNOWN.
+- No main branch changes, merges, deployment, release, Terminal template enablement, cloud provisioning or destructive cleanup were performed.
+- Next exact action: complete current-main WP-00A recursive tree and file inventory, then reconcile WP-00B/00C/00D evidence on this branch. Keep PRs Draft/HOLD until review and required acceptance gates are satisfied.
