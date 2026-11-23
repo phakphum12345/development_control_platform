@@ -484,3 +484,18 @@ For exact head c51d46bcccfe78b46cb5f063f98dcf0a955c5d28, latest workflow runs ob
 - Local-first Minimal Emulator: run 45156051508, queued; Windows job 137629137327 and Linux job 137629137890 queued.
 
 No PASS is assigned to these queued runs. Previous SHA results do not transfer.
+
+
+## 21. WP-00D append-only document reconciliation — 2026-11-23
+
+Using the exact historical content and SHA from main, appended current-main reconciliation sections (without deleting or rewriting the 2026-11-14 baseline) to:
+
+| Document | Reconciliation commit | Result |
+|---|---|---|
+| docs/IMPLEMENTATION-STATUS.md | 301e8bab873e16476783c594db7530ebe91c3714 | Added current exact-main inventory and WP state |
+| docs/REQUIREMENTS-TRACEABILITY.md | 243b5fff5a34e70cc54d5eb9969facda5876052b | Preserved historical 86-file list; added current 117 test-path scope, targeted test/skip evidence and exact-SHA limitations |
+| docs/DCP-REMAINING-WORK-INVENTORY.md | dac150b188daef88bb545a3f5e68c445373989d5 | Preserved historical inventory; appended refreshed WP states and PR handling notes |
+
+docs/INDEX.md already links this live audit report. The append-only sections explicitly distinguish current 2026-11-23 main SHA eaa9ceb... from the historical 2026-11-14 baseline 62d72b... and distinguish the 21 Code Navigator mappings from the 22 declared Dashboard views recorded in the older status inventory.
+
+These updates are documentation reconciliation only. They do not close WP-00B/00C, do not certify any target host, and do not mark WP-01–17 individually PASS. The WP-01–17 atomic exit checklist is still outstanding.
