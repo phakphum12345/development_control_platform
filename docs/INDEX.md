@@ -87,3 +87,5 @@
 ## Maintenance rule
 
 Every Work Package must update the relevant implementation, requirements, test and acceptance documentation. Preserve historical audit records; append dated, exact-SHA checkpoints rather than rewriting old evidence. If a document conflicts with source code or a newer exact-SHA checkpoint, mark the older statement stale and reconcile it through a reviewed change.
+
+- [WP-01 API Security Acceptance](DCP-WP01-API-SECURITY-ACCEPTANCE.md) — atomic Gateway/Local Auth Proxy security requirements, inspected source/test anchors, known gaps and execution plan.
