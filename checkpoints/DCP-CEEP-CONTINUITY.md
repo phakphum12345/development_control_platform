@@ -236,3 +236,16 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Appended PR lineage clarification and exact-head workflow status to the live audit.
 - CI evidence recorded for then-current audit head c51d46b... was all queued at observation, except the optional self-hosted Windows runner acceptance job, which was skipped. This evidence is now stale because the audit document and this ledger create new commits; poll the exact latest head.
 - No source/runtime/workflow changes, no merge, deployment, release, Terminal enablement or destructive cleanup.
+
+
+## 2026-11-23 — WP-00D append-only reconciliation of operating documents
+
+- Preserved the 2026-11-14 historical baseline and appended current-main reconciliation sections on the audit branch:
+  - docs/IMPLEMENTATION-STATUS.md — commit 301e8bab873e16476783c594db7530ebe91c3714
+  - docs/REQUIREMENTS-TRACEABILITY.md — commit 243b5fff5a34e70cc54d5eb9969facda5876052b
+  - docs/DCP-REMAINING-WORK-INVENTORY.md — commit dac150b188daef88bb545a3f5e68c445373989d5
+- Added section 21 to docs/DCP-LIVE-REPOSITORY-AUDIT-2026-11-23.md (commit fd2e8c76c480f04611ca89a2a63bd5894fcc0c2d) to record those exact file updates.
+- docs/INDEX.md on the audit branch already links the live audit.
+- No old historical counts were deleted or relabelled. Current 340-file tree and 117 test-path count are tied to main SHA eaa9ceb... and their explicit counting rules.
+- WP-00D advances to PARTIAL: three operating docs now carry an append-only current-main reconciliation. Atomic WP-01–17 exit criteria and complete API/test/handler trace remain open.
+- Current audit branch head is fd2e8c76c480f04611ca89a2a63bd5894fcc0c2d before this ledger update. Recheck exact-head CI after the next commit.
