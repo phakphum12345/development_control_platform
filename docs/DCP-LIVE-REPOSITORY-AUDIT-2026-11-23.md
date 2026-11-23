@@ -1,0 +1,134 @@
+# DCP Live Repository Audit — 2026-11-23
+
+**Repository:** `phakphum12345/development_control_platform`  
+**Audit branch:** `docs/wp00-live-audit-20261123`  
+**Canonical branch:** `main`  
+**Exact main baseline:** `eaa9ceb91088c39b90d9b11b3817dc793e40005a`  
+**Protocol:** DCP-CEEP v1.0 — adopted  
+**Audit state:** IN_PROGRESS — live metadata and selected PR/CI evidence refreshed; source-to-test-to-requirement trace and full acceptance audit remain open.
+
+## 1. Baseline and repository metadata
+
+| Item | Observed value | Evidence boundary |
+|---|---:|---|
+| Visibility | Public | GitHub repository metadata |
+| Default branch | `main` | GitHub repository metadata |
+| Exact main SHA | `eaa9ceb91088c39b90d9b11b3817dc793e40005a` | Latest commit returned by GitHub on 2026-11-23 audit |
+| Linked account permissions | Admin / Maintain / Push | GitHub repository permissions response |
+| Open pull requests | 5 | Live GitHub open-PR search |
+| Open issues | 0 | Live GitHub open-issue search |
+| Branches | 162 | Branch search paginated: 100 + 62; final cursor empty |
+| Main combined status entries | 0 returned | No status entries were returned by the combined-status endpoint; this is not proof that every workflow is green |
+| Branch protection | NOT AUDITED in this pass | Do not assume required checks are enforced by branch protection |
+
+The audit baseline is the current main commit above, not the older `985a78d5fba459c8a0cbcf47e5d00a858c6e6228` baseline used by the 2026-11-19 audit documents on PR #150.
+
+## 2. Live pull-request register
+
+All four same-repository PRs below target `main` at base SHA `eaa9ceb91088c39b90d9b11b3817dc793e40005a`. Their current exact heads were fetched on 2026-11-23.
+
+| PR | State | Head branch | Exact head SHA | Changed files | Current finding |
+|---|---|---|---|---:|---|
+| [#149](https://github.com/phakphum12345/development_control_platform/pull/149) | OPEN / DRAFT | `work/psec-base-runtime-trust-validation` | `d1dd866e7244b8e3fb87654adf631acbb50599b8` | 10 | CI workflows completed successfully; optional Windows runner acceptance SKIPPED; hosted PSEC probe reports internal BLOCKED |
+| [#150](https://github.com/phakphum12345/development_control_platform/pull/150) | OPEN / DRAFT | `docs/wp00-full-repository-audit-20261119` | `aaa18c0674a1150d925fd8ee7ae22dccbc9d1e76` | 10 | Audit documentation candidate; its named baseline is older than current main and must not be presented as current-main inventory |
+| [#151](https://github.com/phakphum12345/development_control_platform/pull/151) | OPEN / DRAFT | `fix/dashboard-code-navigator-cover-all-views-20261119` | `d17d6f99e32dab416c23f53339a14454da83b175` | 4 | Dashboard Code Navigator mapping candidate; CI workflows completed successfully; optional Windows runner acceptance SKIPPED |
+| [#152](https://github.com/phakphum12345/development_control_platform/pull/152) | OPEN / DRAFT | `work/wp06-trusted-repository-bootstrap` | `b282acc9e7af7373261b64ae05cc748848652a7c` | 6 | Runner credential/allowlist hardening candidate; CI workflows completed successfully; security review and failure-injection audit remain |
+| [#138](https://github.com/phakphum12345/development_control_platform/pull/138) | OPEN / NOT DRAFT | Fork `phakphumwiri-boop/development_control_platform` branch `main` | `23ab6fa5f0602040262e0b5d0c96da6aa00f41de` | 140 | Base is feature branch `work/wp18b1-windows-psec-filesystem-authorization`; mergeable=false; do not merge wholesale |
+
+PR #140 is no longer open and its merge is represented by the current main baseline. No PR was merged or closed during this audit.
+
+## 3. Exact-head workflow evidence
+
+Workflow run metadata and job conclusions were fetched for the exact PR head SHAs in Section 2.
+
+### PR #149 — Windows PSEC trusted runtime
+
+Head: `d1dd866e7244b8e3fb87654adf631acbb50599b8`
+
+| Workflow / job | Run ID | Result | Interpretation |
+|---|---:|---|---|
+| Validate Control Plane / validate | 44594228921 | PASS | Hosted validation job |
+| Windows dynamic-port launcher integration | 44594228921 | PASS | Hosted Windows integration |
+| Windows runner acceptance | 44594228921 | SKIPPED | Not target-host acceptance |
+| Local-first Minimal Emulator / Linux | 44594228491 | PASS | Hosted Linux emulator |
+| Local-first Minimal Emulator / Windows | 44594228491 | PASS | Hosted Windows Auth Proxy + Gateway E2E |
+| Cross-platform Recovery / Ubuntu | 44594228460 | PASS | Hosted recovery tests |
+| Cross-platform Recovery / Windows | 44594228460 | PASS | Hosted recovery tests |
+| Windows PSEC API Availability Probe | 44594228695 | Workflow PASS; probe BLOCKED | Informational probe explicitly exits successfully for an expected blocked hosted image |
+
+The PSEC probe log records `available=false`, state `BLOCKED`, missing `filesystem_deny`, `filesystem_enumerate`, and `network_ingress_policy`, with reason `processmodel.dll is unavailable from the System32 search path`. The workflow itself warns that this is not an acceptance PASS. Therefore PR #149 does not establish target Windows PSEC acceptance.
+
+### PR #150 — WP-00 audit documentation
+
+Head: `aaa18c0674a1150d925fd8ee7ae22dccbc9d1e76`
+
+- Validate Control Plane: PASS (run 44590499134).
+- Local-first Minimal Emulator: Linux PASS and Windows PASS (run 44590499095).
+- Cross-platform Recovery: Ubuntu PASS and Windows PASS (run 44590499043).
+- These results are exact-head workflow results only. They do not establish that the PR's audit inventory is current for the newer main baseline.
+
+### PR #151 — Dashboard Code Navigator
+
+Head: `d17d6f99e32dab416c23f53339a14454da83b175`
+
+- Validate Control Plane: PASS (run 44585647307).
+- Local-first Minimal Emulator: Linux PASS and Windows PASS (run 44585647238).
+- Cross-platform Recovery: Ubuntu PASS and Windows PASS (run 44585647220).
+- Package Development Control Platform: PASS (run 44585647193).
+- Windows runner acceptance: SKIPPED (run 44585647307).
+- PR diff reports mapping coverage for 23 Dashboard views; this is static mapping-integrity evidence, not proof that all 23 user journeys work end-to-end.
+
+### PR #152 — Runner credential and allowlist hardening
+
+Head: `b282acc9e7af7373261b64ae05cc748848652a7c`
+
+- Validate Control Plane: PASS (run 44591565893).
+- Local-first Minimal Emulator: Linux PASS and Windows PASS (run 44591566010).
+- Cross-platform Recovery: Ubuntu PASS and Windows PASS (run 44591565963).
+- Windows runner acceptance: SKIPPED (run 44591565893).
+- The PR changes protected JSON persistence, credential/allowlist validation and bootstrap tests. Passing CI does not replace a focused review of atomic replacement semantics, parent-directory ACLs, partial-write recovery, and preservation of existing credentials/settings on every rejected or interrupted path.
+
+## 4. Current-main documentation discrepancy
+
+The current `main` branch contains the older operating documents and a continuity ledger captured on 2026-11-14. The files `docs/DCP-REPOSITORY-INVENTORY.md`, `docs/DCP-IMPLEMENTATION-STATUS.md`, `docs/DCP-REQUIREMENTS-TRACEABILITY.md`, and `docs/DCP-TEST-AND-ACCEPTANCE-MATRIX.md` from the 2026-11-19 audit set were not found on current main during this pass; they are additions in PR #150.
+
+Consequences:
+
+1. The 2026-11-19 inventory must remain identified as a historical/candidate baseline tied to its named SHA.
+2. Do not copy its file counts or PR register forward as current-main facts without a fresh tree and source audit.
+3. The 2026-11-14 continuity ledger is stale for current PR/main state and needs a dated append-only checkpoint.
+4. The full WP-00 audit remains IN_PROGRESS until current-main source, route handlers, Dashboard actions, test functions, fixtures/skips, workflow jobs and requirements are traced on a single exact SHA.
+
+## 5. Work-package status and safety gates
+
+The previously recorded WP-00 through WP-31 inventory remains a planning reference, not a freshly revalidated completion register. Current evidence still requires the following gates to remain open:
+
+- WP-00B / WP-00C / WP-00D: complete current-main source/API/Dashboard/workflow/test/documentation traceability.
+- WP-18A–18E: platform-specific OS isolation, adversarial acceptance and process cleanup; hosted CI is not target-host certification.
+- WP-19: actual supported Windows host and Dashboard → Auth Proxy → Gateway E2E.
+- WP-20–WP-30: source-backed feature completion and operational acceptance by each workstream.
+- WP-31: final exact-SHA regression, security, recovery, packaging and release audit.
+
+Safety constraints:
+
+- All seven built-in Terminal templates remain disabled until the relevant OS isolation backend is VERIFIED by actual-host acceptance.
+- Windows PSEC is not LPAC. Do not claim AppContainer/LPAC or PSEC acceptance from unit tests or a hosted informational probe.
+- Linux bubblewrap policy/CI does not substitute for target Linux host acceptance.
+- Preserve UNKNOWN, SKIPPED, active, lease-expired and mismatched workspaces unless an independently verified cleanup contract authorizes cleanup.
+- Cloud provisioning, VM creation, provider activation and deployment remain OFF absent a separate explicit authorization with scope and cost ceiling.
+- No merge, deployment, release, template enablement or destructive cleanup was performed by this audit.
+
+## 6. Audit limitations and next exact actions
+
+This pass refreshed GitHub metadata, open PR/issue state, branch count, selected PR diffs, exact-head workflow runs/jobs and the PR #149 probe log. It did not execute the test suite locally, enumerate the recursive main tree, inspect every source file, inspect all review threads, or perform Windows/Linux target-host acceptance.
+
+Next actions:
+
+1. Complete WP-00A recursive tree inventory on current main SHA `eaa9ceb91088c39b90d9b11b3817dc793e40005a`.
+2. Reconcile PR #150's 2026-11-19 audit documents against current main without rewriting historical evidence.
+3. Complete source-backed WP-00B route/API/Dashboard/workflow mapping and WP-00C test/fixture/skip/job mapping.
+4. Perform a focused security review of PR #152 before considering it ready for review.
+5. Continue PR #149 target-host acceptance planning without treating the informational hosted probe as PASS.
+6. Re-run exact-head checks after any changes; keep all PRs Draft/HOLD until review and acceptance gates are satisfied.
+
+**Audit result:** IN_PROGRESS. This document records the observed state and evidence boundaries; it is not a release or security certification.
