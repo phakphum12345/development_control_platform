@@ -314,3 +314,43 @@ No conclusion is assigned to workflows with active or queued jobs. The exact-hea
 - Full repository audit and release acceptance: **NOT COMPLETE**.
 
 Next: finish exact-head CI; complete GET/POST/DELETE and unsupported-method matrix; inspect Proxy/Gateway route parity with negative tests; complete skip and collected-test census in manageable batches; then reconcile each requirement and work-package acceptance criterion against actual source, test, workflow and host evidence.
+
+
+## 15. WP-00C targeted skip/fixture inspection — evidence examples
+
+A targeted source pass inspected ten high-risk suites at the exact main baseline. This is a representative sample, not the full 117-file census.
+
+| Test file | Evidence found | Acceptance interpretation |
+|---|---|---|
+| `tests/test_cloud_gateway_proxy_authorization.py` | Operator read-vs-mutation negative tests; temporary-directory setup/teardown | Useful role boundary tests; not a complete route matrix |
+| `tests/test_local_auth_proxy.py` | Explicit optional-browser skips for Chromium/Firefox/WebKit; symlink capability skips; auth, CSRF, unknown-route denial tests | Browser coverage depends on installed browser prerequisites; symlink tests can skip on host capability |
+| `tests/test_local_auth_proxy_project_routes.py` | Negative tests for unapproved paths/query strings and CSRF-protected mutations | Direct evidence for Proxy allowlist enforcement |
+| `tests/test_windows_psec_host_acceptance.py` | Non-Windows branch calls `skipTest` because native harness is Windows-only | Non-Windows result is not native Windows acceptance |
+| `tests/test_windows_psec_acl_real_host.py` | Native NTFS ACL test guarded by `skipUnless` | Must be run on an eligible Windows/NTFS host to establish that acceptance |
+| `tests/test_local_runner_pipeline_e2e.py` | POSIX fixture process tests skip on Windows; real `cmd.exe` acceptance test skips unless Windows | Test suite intentionally separates POSIX fixture simulation from native Windows process behavior |
+| `tests/test_terminal_isolation.py` | Explicit BLOCKED/readiness contract tests for missing bubblewrap/PSEC/signed macOS helper | Contract readiness is not evidence that an isolation boundary has been enforced on a real host |
+| `tests/test_dashboard_contract.py` | Structural contracts for all tool views, 21 Code Navigator mappings, accessibility/responsiveness and route validation | Static/source assertions; does not replace interactive E2E |
+| `tests/test_cloud_runner_e2e_acceptance.py` | Budgeted create/status/terminate/cleanup and OIDC replay rejection tests | Provider behavior is exercised in a controlled test harness, not proof of live production provisioning |
+| `tests/test_local_runner_bootstrap.ps1` | PowerShell bootstrap acceptance script | Requires a Windows PowerShell execution context; not part of Python unittest discovery by itself |
+
+### Fixture strategy observed
+
+No dedicated fixture directory was found under the earlier path-name convention, but tests do use generated fixtures. Examples include `tempfile.TemporaryDirectory()`, generated POSIX shell scripts and fake Flutter executables, generated Windows batch shims, in-memory job/runner stores, and synthetic evidence/artifact bytes. Therefore the correct finding is **fixtures are primarily inline/generated in the inspected suites**, not “there are no fixtures.”
+
+### Skip behavior that must remain visible in acceptance reports
+
+- Optional browser tests are skipped when the corresponding Playwright browser is unavailable.
+- Symlink-specific tests may skip when the host cannot create symlinks.
+- POSIX subprocess fixture tests skip on Windows; native Windows batch/cmd tests are separately gated to Windows.
+- Native Windows PSEC/NTFS acceptance is host- and capability-dependent.
+- Self-hosted Windows runner acceptance is a workflow-dispatch-only job and was skipped in the PR validation runs observed so far.
+
+The complete per-file skip census and actual collected test counts remain open; this sample must not be extrapolated into a repository-wide skip total.
+
+## 16. WP-00 progress after targeted tests
+
+- WP-00A: **PASS for complete path enumeration**.
+- WP-00B: **PARTIAL**, with source boundaries, Dashboard mappings, Proxy allowlist and representative route controls documented.
+- WP-00C: **PARTIAL**, with representative high-risk test suites, inline fixture patterns and skip conditions documented; full census still open.
+- WP-00D: **IN PROGRESS**, atomic requirements-to-acceptance trace remains open.
+- Overall WP-00 audit: **IN PROGRESS**; no release/host acceptance is implied.
