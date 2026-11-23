@@ -249,3 +249,11 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - No old historical counts were deleted or relabelled. Current 340-file tree and 117 test-path count are tied to main SHA eaa9ceb... and their explicit counting rules.
 - WP-00D advances to PARTIAL: three operating docs now carry an append-only current-main reconciliation. Atomic WP-01–17 exit criteria and complete API/test/handler trace remain open.
 - Current audit branch head is fd2e8c76c480f04611ca89a2a63bd5894fcc0c2d before this ledger update. Recheck exact-head CI after the next commit.
+
+
+## 2026-11-23 — branch protection visibility limitation
+
+- Live audit appended section 22 on branch protection visibility (audit commit 3083e8d94b8b264c51dfd85329edc667591529c9).
+- Repository rulesets API returned an empty list. Classic branch protection API returned HTTP 403 Resource not accessible by integration.
+- Branch protection and required-status-check enforcement therefore remain UNKNOWN / NOT VERIFIED. An authorized repository administrator must inspect repository Settings → Branches / Rulesets before any merge decision.
+- This check does not authorize merge; PR #153 remains Draft/HOLD.
