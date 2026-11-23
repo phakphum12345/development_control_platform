@@ -499,3 +499,11 @@ Using the exact historical content and SHA from main, appended current-main reco
 docs/INDEX.md already links this live audit report. The append-only sections explicitly distinguish current 2026-11-23 main SHA eaa9ceb... from the historical 2026-11-14 baseline 62d72b... and distinguish the 21 Code Navigator mappings from the 22 declared Dashboard views recorded in the older status inventory.
 
 These updates are documentation reconciliation only. They do not close WP-00B/00C, do not certify any target host, and do not mark WP-01–17 individually PASS. The WP-01–17 atomic exit checklist is still outstanding.
+
+
+## 22. Branch protection and ruleset visibility
+
+- Repository rulesets endpoint returned an empty list at the time of this audit.
+- The GitHub Branch Protection API request for main returned HTTP 403 Resource not accessible by integration.
+- Therefore branch protection and required-status-check enforcement remain **UNKNOWN / NOT VERIFIED**. An empty ruleset list is not proof that classic branch protection is absent, and the 403 response is not proof that no protection exists.
+- Before any merge decision, an authorized repository administrator should inspect Settings → Branches / Rulesets directly and confirm the required checks, dismissal rules, review requirements and bypass actors.
