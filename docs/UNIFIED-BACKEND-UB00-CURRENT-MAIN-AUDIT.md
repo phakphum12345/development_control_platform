@@ -483,3 +483,16 @@ For multi-account admission:
 - Existing Owner/Operator groups remain a separate privileged role-mapping path. A verified account with no privileged group must receive only the default Member capability and personal tenant if the account lifecycle policy admits it.
 
 No existing session schema is changed in this checkpoint.
+
+
+## 26. Repository-level product capability cross-check
+
+The current-main `README.md` explicitly describes:
+- Personal Edition as individual project tracking.
+- Organization Edition as **future** server-side roles, tenant isolation, membership controls and audit retention.
+- The Dashboard does not implement organization tenant isolation or production identity federation.
+- The local Owner Auth Proxy is the documented authenticated Dashboard-to-Gateway path; the static Dashboard is not itself an authorization boundary.
+
+A current-main GitHub code search for `tenant_id`, `principal_id`, `cross_tenant` and `tenant_memberships` returned no source/test matches. This search is corroborating evidence only (code search may not index every file); the direct schema and route inspections above remain the primary evidence.
+
+**Product conclusion:** multi-account Personal Edition and Organization Edition are not already implemented. This Unified Backend work is a new capability foundation, not a configuration toggle. The user's all-account authorization means any eligible verified account should be able to receive a least-privilege personal account; it does not mean every account can see every other account or become an Organization/DCP administrator.
