@@ -212,3 +212,31 @@ Non-Python test assets:
 WP-00C remains **PARTIAL**. The current source census establishes 116 test paths, 112 Python files, 110 Python test modules, 3 PowerShell scripts, 1 browser support asset, 1,034 syntactic `test_*` definitions and the nine-workflow/twelve-job map. It does not establish actual collected or passed test counts, complete fixture/skip semantics, requirement traceability or target-host acceptance.
 
 No runtime code, test behavior, credentials, roles, provider configuration, cloud resource or deployment was changed by this inventory.
+
+
+## 8. Actual CI collection evidence added after the source census
+
+A completed Validate Control Plane run provides the first observed runner-collection count:
+
+- Workflow: Validate Control Plane, run ID `45656155370`.
+- Exact tested commit: `0fa336347e8d6b2561e7c81cfa6195a5e1307ae9` (the PR #157 docs-only merge candidate; Python/test source blobs are unchanged from the resulting mainline).
+- Job: `validate`, job ID `139353263533`, conclusion `success`.
+- Step: `python -m unittest discover -s tests -v`.
+- Result: **Ran 1,054 tests in 89.995s; OK (skipped=34)**. Thus 1,020 were not skipped and the unittest command reported no failures.
+
+### Skip breakdown observed in this exact run
+
+| Reason | Count | Interpretation |
+|---|---:|---|
+| Real Windows `cmd.exe` batch-file launcher required | 25 | Host-specific tests skipped on the Linux Validate runner; Windows dynamic-port integration has a separate hosted job |
+| Optional Python Playwright/browser prerequisites unavailable | 5 | One generic Playwright, Chromium, Firefox, WebKit and two local-browser acceptance tests |
+| Real Windows NTFS handle-relative ACL acceptance opt-in | 1 | Target-host-only; not established by hosted Validate |
+| Real Win32 ACL dedicated-host opt-in | 1 | Target-host-only |
+| Real AppContainer effective-access acceptance opt-in | 1 | Target-host-only |
+| **Total** | **34** | Counts from the emitted unittest skip lines; categories are mutually exclusive for this run |
+
+The same Validate job subsequently ran four additional targeted browser tests, each reporting `Ran 1 test` and `OK`; those are separate invocations and are not added to the 1,054 discovery count. The general browser discovery step still recorded the five optional Playwright skips above.
+
+The same workflow run's Windows dynamic-port launcher integration job (job ID `139353264190`) completed SUCCESS and passed the real `cmd.exe` shim, Runner job-to-artifact pipeline, hardlink containment, Local Folder snapshot-to-build, legacy launcher, bootstrap parsing, protected credential setup and dynamic Dashboard launcher steps. The optional Windows runner acceptance job was SKIPPED; it is not a target-host PSEC acceptance result.
+
+**Interpretation:** this closes the gap between syntactic definitions and one actual collected-suite count for this exact workflow run. It does not prove every test was executed on every OS, and the 34 skips remain visible obligations or host-specific exclusions. Target-host NTFS/AppContainer/PSEC acceptance remains separate.
