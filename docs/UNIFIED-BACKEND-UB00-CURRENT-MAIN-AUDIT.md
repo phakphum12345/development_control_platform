@@ -278,3 +278,69 @@ These resources fall into two categories and must not be conflated:
 2. **Platform-global privileged controls:** infrastructure gates, provider provisioning, global templates and host-local enrollment. These should remain restricted to platform Owner/admin until a separate, reviewed delegated-administration model exists.
 
 A tenant role must never become a shortcut to platform provisioning, local filesystem access, Terminal execution, or global provider configuration.
+
+
+## 15. Complete test-path inventory and expanded identity/API test review
+
+The recursive Git tree for audited `main` SHA `57589873583c706d4af9756709596fdba7c22de9` contains **116 files under `tests/`**:
+- 112 Python test/support modules
+- 3 PowerShell test scripts
+- 1 JavaScript browser smoke test
+
+This is a complete path inventory for the audited tree, not a claim that all 116 files were read line-by-line or executed during this audit. The targeted identity, job, worker, artifact, preview, infrastructure and document-workflow test modules reviewed in detail include the following additional evidence:
+
+| Test module | Relevant tests / assertions | UB conclusion |
+|---|---|---|
+| `test_cloud_runner_user_api.py` | signed proxy identity; OIDC Owner group mapping; Viewer rejection; dashboard Job create/list/get/cancel role guards; worker-only identity; worker ownership/fencing; artifact upload/download | Current API has signed identity and role checks, but no personal tenant/member or cross-tenant assertions |
+| `test_cloud_runner_openapi.py` | bearer-auth lifecycle; three platform contract; owner-only local project API; installation membership/idempotency/billing/teardown contract wording | OpenAPI contract is not a tenant ownership implementation |
+| `test_cloud_runner_e2e_acceptance.py` | OIDC to budgeted create/status/terminate/cleanup; Orka independent budget; signed assertion replay rejection | Provider lifecycle security is tested; tenant ownership is not |
+| `test_cloud_gateway_oidc_ingress_contract.py` | signer private; DCP identity headers overwritten; same-origin/CSRF forwarding | Trusted ingress boundary is tested; it does not provision a member tenant |
+| `test_cloud_gateway_oidc_wsgi.py` | HTTPS login, browser binding, secure cookie, session identity/CSRF without tokens, same-origin logout, session rotation | Session mechanics tested; no tenant selection/membership context |
+| `test_cloud_gateway_oidc_deployment.py` | durable session DB required; trusted proxy allowlist; distinct explicit Owner/Operator groups; origin/TTL validation | Deployment intentionally requires explicit privileged groups; group-less member admission is not present |
+| `test_cloud_gateway_artifact_download.py` | Owner download bytes/hash; unauthenticated and Viewer denial; tamper rejection | Role/integrity gates exist; no parent-job tenant scoping test |
+| `test_authenticated_preview.py` | one preview per job; job binding; no runtime capability leakage; Owner approval; server-side capability; traversal rejection | Preview capability protection exists; no cross-tenant parent-job authorization test |
+| `test_cloud_gateway_infrastructure_api.py` | Owner create/list/start/stop/delete; Operator delete denial; gates default off; Owner confirmation/CSRF; unauthenticated denial; Terminal remains inert/Owner-reviewed | Platform infrastructure and Terminal controls must remain privileged, not exposed through general Member role |
+| `test_cloud_gateway_infrastructure_gates.py` | gates off by default; exact confirmation; independent switches; persistent audit; actor validation | Platform-global gate semantics should remain Owner-only |
+| `test_cloud_gateway_runner_terminal_grant.py` | job-bound grant; one-time consumption; wrong job/runner credential/lease rejection | Worker grant is job/worker-bound but not tenant-bound |
+| `test_document_workflow_gateway.py` | Owner grant required; exact directory scope; revocation; exact digest approval; traversal rejection; idempotency payload conflict | Good path/digest safety; project grants and idempotency still need tenant/project scope |
+| `test_local_auth_proxy_project_routes.py` | strict project/artifact/job read allowlist; session/CSRF on mutations; resume/cancel/infrastructure/Terminal route guards | Local Proxy is a separate Owner session boundary, not multi-account admission |
+
+No reviewed test module demonstrates a full **two-principal / two-tenant negative matrix** for DCP jobs, child resources, artifacts, previews, runner claims and idempotency. This is the central test gap that UB-02 must close.
+
+## 16. Exact-head CI interpretation for PR #155
+
+At the latest observed PR snapshot:
+- PR #155 head: `33a67e471361c419c2b9829f55672d080db8d7b3`
+- Base: `57589873583c706d4af9756709596fdba7c22de9`
+- Validate Control Plane workflow: **SUCCESS**
+  - `validate`: SUCCESS
+  - Windows dynamic-port launcher integration: SUCCESS
+  - Windows runner acceptance matrix: SKIPPED
+- Local-first Minimal Emulator: **SUCCESS**
+  - Linux Minimal Emulator: SUCCESS
+  - Windows 11 local Auth Proxy + Gateway end-to-end: SUCCESS
+- Cross-platform Recovery Acceptance: **SUCCESS**
+  - Ubuntu: SUCCESS
+  - Windows: SUCCESS
+
+The skipped Windows runner acceptance matrix is deliberately gated in `.github/workflows/validate-control-plane.yml`: it runs only on `workflow_dispatch` when input `run_self_hosted_windows_acceptance=true`; the default is false. It targets two specifically labelled self-hosted Windows runners. Therefore:
+- The PR did pass Windows-hosted GitHub Actions jobs (Windows launcher integration, Windows Local Auth Proxy/Gateway E2E, and Windows recovery).
+- It did **not** execute the separately gated self-hosted local-runner acceptance matrix.
+- Do not report the whole PR as having no Windows coverage; equally, do not report the self-hosted acceptance as passed.
+
+These CI results apply only to the exact PR head above. Any new commit invalidates this snapshot and requires fresh exact-head results.
+
+## 17. Revised UB-00 exit criteria
+
+- [x] Reconcile audited main baseline and current PR base/head.
+- [x] Inventory all 116 test/support paths under `tests/`.
+- [x] Inspect core OIDC/session, job, runner, artifact, preview, infrastructure, Terminal and Document Workflow test modules.
+- [x] Record current exact-head Linux and Windows-hosted CI outcomes and explain the intentionally skipped self-hosted runner matrix.
+- [x] Distinguish existing identity/role/worker security tests from missing tenant-isolation tests.
+- [ ] Complete Local Auth Proxy route/session flow mapping, including every route allowlist and mutation boundary.
+- [ ] Finish persistent-store schema inventory for all remaining stores and identify which are platform-global versus tenant-owned.
+- [ ] Complete test fixture/skip/workflow mapping for remaining modules relevant to shared API contracts and application integration.
+- [ ] Independently review the principal/tenant/resource ownership matrix and legacy record classification.
+- [ ] Refresh open PR/dependency state before UB-00 closure.
+
+**UB-00 remains IN_PROGRESS.** The 116-path inventory and expanded critical-suite review are complete, but the remaining route/store/dependency checks must be closed before UB-01 implementation. No runtime or database change is authorized by this audit.
