@@ -31,7 +31,7 @@ It does not replace the application domain APIs or consolidate all application d
 | Development Control Platform (DCP) | Shared Control Plane, identity boundary, job/runner orchestration | Local-first control plane; provider-neutral | DCP accounts, memberships, jobs, runners, control-plane audit |
 | Research OS (`phakphum12345/Drive-letter`) | Research application and AI orchestration | Hybrid: Local Ollama primary, Cloud Gemini fallback | Research OS domain store and research artifacts |
 | Virtual Cloud Control Center (`phakphum12345/VirtualCloud-ControlCenter`) | Cloud control client | Cloud | Its application settings and user workspace; DCP controls runner/job lifecycle |
-| phakphum-calendar (`phakphum12345/phakphum-calendar`) | Calendar and roster application | Cloud | Laravel calendar domain database remains authoritative for shifts and transactions |
+| phakphum-calendar (`phakphum12345/phakphum-calendar`) | Flutter roster/calendar client; cloud domain API not yet verified | Cloud (target) | Calendar domain API/database must be located or designed; DCP must not own shift transactions |
 | Apple/macOS worker | Optional execution provider for eligible macOS workloads | Optional / capability-gated | Job-scoped workspace and artifacts governed by DCP |
 
 The application systems use DCP through versioned, authenticated APIs and narrowly scoped service identities. DCP must not read or write another application's domain database directly. Current-source audit note: Research OS already has per-user owner-scoped CloudLocal storage; Virtual Cloud Control Center is currently a desktop/GitHub Actions client without a DCP adapter identified; phakphum-calendar's Cloud domain API/database is not yet verified. See `docs/UNIFIED-BACKEND-UB00-CURRENT-MAIN-AUDIT.md`.
@@ -150,7 +150,7 @@ Provider routing is server-side policy, not a user-supplied arbitrary URL or cre
 
 - Research OS: Local Ollama first. If local runtime is unavailable or the configured capacity policy is exceeded, surface the defined fallback decision and route to Gemini only when cloud fallback is enabled and the account/application grant permits it.
 - Virtual Cloud Control Center: Cloud control plane through DCP. Actual runner execution remains blocked unless provider readiness, budget, owner approval, repository allowlist, cleanup and live acceptance gates pass.
-- Calendar: Cloud application API; do not route calendar writes through arbitrary compute workers.
+- Calendar: Cloud is the selected target mode, not a verified current deployment; implement/locate a dedicated Calendar domain API first and do not route shift writes through arbitrary compute workers.
 - Apple/macOS: optional provider only on an eligible Apple-hosted worker with verified credentials, policy and acceptance. A macOS VM on non-Apple Windows hardware is not a production Apple backend.
 - Missing, stale, failed or unknown provider readiness/budget remains blocked. No implicit paid resource creation or cloud activation.
 
