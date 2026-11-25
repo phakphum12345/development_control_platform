@@ -114,7 +114,7 @@ This audit is documentation and metadata reconciliation only. It does not change
 
 ## 10. PR #150 unique-content preservation
 
-The detailed 2026-11-19 WP-00 artifacts from PR #150 were preserved as explicitly historical references under `docs/archive/` rather than merged wholesale or relabelled as current. The archived set includes:
+The detailed 2026-11-19 WP-00 artifacts from PR #150 were preserved as explicitly historical references under `archive/` rather than merged wholesale or relabelled as current. The archived set includes:
 - `DCP-REPOSITORY-INVENTORY-2026-11-19-HISTORICAL.md`
 - `DCP-ARCHITECTURE-AND-DEPENDENCY-MAP-2026-11-19-HISTORICAL.md`
 - `DCP-IMPLEMENTATION-STATUS-2026-11-19-HISTORICAL.md`
