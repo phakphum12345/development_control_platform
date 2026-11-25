@@ -122,3 +122,44 @@ Existing roadmap, backlog and continuity documents require reconciliation with m
 ## 9. Current limitations
 
 This inventory is source-driven but still IN_PROGRESS. It does not yet enumerate every atomic acceptance criterion for all 78 tool files and 86 test files. No total atomic task count is claimed until WP-00B/00C produce a traceable one-to-one register. No implementation completion, host acceptance or merge is claimed by this document.
+
+
+## 2026-11-23 current-main inventory reconciliation
+
+This is an append-only update. The 2026-11-14 baseline SHA 62d72bddd028399d0b96cd9c2f6e3b16a704b758 and its 289-tree-entry/265-blob counts remain historical and are not rewritten.
+
+### Current baseline
+
+- Canonical main SHA audited: eaa9ceb91088c39b90d9b11b3817dc793e40005a.
+- Recursive tree response complete (truncated=false): 340 blob/file paths.
+- 111 Python/PowerShell implementation paths under the audit's source-extension rule.
+- 117 test-path files under the audit's path/name rule; not a test-case or collected-test count.
+- 9 workflow files.
+- 73 docs/checkpoints/root README files under the audit's counting rule.
+- 21 current Code Navigator mappings; separate from the 22 declared Dashboard views listed in the older implementation status inventory.
+
+### Refreshed WP register
+
+| WP | 2026-11-23 state | Evidence boundary / next acceptance |
+|---|---|---|
+| WP-00A | PASS (path enumeration only) | Exact main recursive tree, 340 blobs, response not truncated |
+| WP-00B | PARTIAL | Gateway/Proxy families, primary source boundaries and 21 Code Navigator mappings inspected; full API/handler/schema parity open |
+| WP-00C | PARTIAL | 117 test-path inventory and ten high-risk suites sampled; full test collection/function/fixture/skip crosswalk open |
+| WP-00D | PARTIAL / IN_PROGRESS | Master Command RQ-to-WP crosswalk and append-only document reconciliation started; atomic WP-01–17 acceptance breakdown remains |
+| WP-18A | PARTIAL / IN PROGRESS | Linux bubblewrap implementation/host acceptance evidence remains separated; target-host acceptance required |
+| WP-18B | IN PROGRESS / BLOCKED | PSEC capability probe and launcher work do not establish filesystem/network enforcement or LPAC; target Windows acceptance remains required |
+| WP-18C | PARTIAL / IN PROGRESS | Cleanup/recovery code and hosted tests exist; independent Windows/user-host descendant and workspace cleanup evidence remains |
+| WP-18D | PARTIAL / IN PROGRESS | Adversarial suites and host harnesses exist; target-user host runs remain UNKNOWN |
+| WP-18E | IN PROGRESS | Exact-head CI and platform host evidence remain |
+| WP-19 | UNKNOWN | Supported Windows host Dashboard → Proxy → Gateway → Runner E2E |
+| WP-20–WP-30 | PARTIAL | Preserve each existing subsystem gap; revalidate against current source and exact-head tests |
+| WP-31 | NOT STARTED | Full final repository audit/release gate not complete |
+
+### Live PR handling notes
+
+- PR #138 remains OPEN and mergeable=false; it is a 140-file fork PR targeting a WP-18B.1 feature branch and must not be merged wholesale.
+- PR #144 is CLOSED/MERGED into the WP-18B.1 feature branch, not main.
+- PRs #149, #150, #151 and #152 remain OPEN/DRAFT at the observed audit refresh; #152 has four unresolved protected-file persistence review findings.
+- PR #153 is the current WP-00 audit delivery branch and remains Draft/HOLD pending exact-head CI and review.
+
+The detailed PR head SHAs, workflow run/job IDs and the 24-RQ crosswalk are maintained in docs/DCP-LIVE-REPOSITORY-AUDIT-2026-11-23.md. Re-fetch all live state before changing any status; these append-only notes are scoped to the stated observation.

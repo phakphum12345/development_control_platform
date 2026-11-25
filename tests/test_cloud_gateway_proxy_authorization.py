@@ -134,5 +134,21 @@ class ProxyMutationAuthorizationTests(unittest.TestCase):
             caught.exception.close()
 
 
+    def test_unsupported_http_methods_are_not_dispatched(self):
+        for method in ("OPTIONS", "PUT", "PATCH"):
+            request = Request(
+                self.base + "/healthz",
+                method=method,
+                headers=self.headers(method, "/healthz"),
+            )
+            with self.subTest(method=method):
+                with self.assertRaises(HTTPError) as caught:
+                    urlopen(request, timeout=5)
+                try:
+                    self.assertEqual(caught.exception.code, 501)
+                finally:
+                    caught.exception.close()
+
+
 if __name__ == "__main__":
     unittest.main()
