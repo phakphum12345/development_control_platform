@@ -254,3 +254,25 @@ These are source-level integration observations, not claims that any application
 - Virtual Cloud Control Center remains a desktop client; DCP becomes the job/runner authority after an explicit adapter is implemented.
 - Calendar requires its own verified cloud domain API/storage before Cloud mode can be called operational.
 - Do not consolidate these databases. Use versioned contracts, signed service assertions, correlation IDs and scoped service identities.
+
+
+## 14. Additional persistent-store schema review
+
+The following stores were inspected on the same DCP main baseline. Their current keys reinforce why a broad role change is unsafe.
+
+| Store | Current key/ownership shape | Required future boundary |
+|---|---|---|
+| `InfrastructureStore` (`infrastructure.py`) | `infrastructure_resources.id` primary key; global unique `idempotency_key`; audit by resource ID | Keep platform provisioning owner-approved. If tenant-funded resources are ever supported, add explicit tenant budget/approval ownership before any member access |
+| `InfrastructureGateStore` | Global `gate` primary key; audit records actor but no tenant | Platform-global gates remain Owner/platform-admin only; tenant admins cannot enable them |
+| `TerminalGrantStore` | Grant ID primary key; subject/session/project/workspace/template/job/worker fields; unique job ID; no tenant key | Preserve Owner approval and OS isolation. Bind grant to authorized tenant/project only after parent ownership is implemented |
+| `TerminalTemplateStore` | Template ID primary key; creator and audit actor; no tenant key | Keep imported template review platform-controlled unless a separate tenant template namespace is designed |
+| `DocumentWorkflowStore` | Grant/proposal IDs; project ID; actor; globally unique idempotency key; no tenant key | Scope project grant, proposal, approval and idempotency to the authorized tenant/project; retain exact path-prefix grants |
+| `LocalProjectRegistry` | Local JSON registry under per-user local application data; project IDs and enrolled roots, not a server tenant registry | Keep host paths local and owner-controlled; never let remote members submit arbitrary paths or inherit another local user's workspace |
+| `AuthenticatedPreviewManager` | In-memory runtime-token/job maps; operations accept runtime ID + parent job ID | Resolve and authorize the parent job in tenant scope before preview start/status/content/stop; runtime token never leaves Gateway |
+
+These resources fall into two categories and must not be conflated:
+
+1. **Tenant-owned application resources:** jobs, their events/logs/checkpoints/artifacts/previews, and explicitly granted projects. These need tenant/principal scoping.
+2. **Platform-global privileged controls:** infrastructure gates, provider provisioning, global templates and host-local enrollment. These should remain restricted to platform Owner/admin until a separate, reviewed delegated-administration model exists.
+
+A tenant role must never become a shortcut to platform provisioning, local filesystem access, Terminal execution, or global provider configuration.
