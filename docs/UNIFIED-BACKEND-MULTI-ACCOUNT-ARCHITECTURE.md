@@ -34,7 +34,7 @@ It does not replace the application domain APIs or consolidate all application d
 | phakphum-calendar (`phakphum12345/phakphum-calendar`) | Calendar and roster application | Cloud | Laravel calendar domain database remains authoritative for shifts and transactions |
 | Apple/macOS worker | Optional execution provider for eligible macOS workloads | Optional / capability-gated | Job-scoped workspace and artifacts governed by DCP |
 
-The application systems use DCP through versioned, authenticated APIs and narrowly scoped service identities. DCP must not read or write another application's domain database directly.
+The application systems use DCP through versioned, authenticated APIs and narrowly scoped service identities. DCP must not read or write another application's domain database directly. Current-source audit note: Research OS already has per-user owner-scoped CloudLocal storage; Virtual Cloud Control Center is currently a desktop/GitHub Actions client without a DCP adapter identified; phakphum-calendar's Cloud domain API/database is not yet verified. See `docs/UNIFIED-BACKEND-UB00-CURRENT-MAIN-AUDIT.md`.
 
 ## 3. Identity and account model
 
@@ -141,7 +141,7 @@ The browser must never receive DCP internal bearer tokens, HMAC signing secrets,
 Each application integrates through its own adapter:
 - Research OS adapter translates Research OS jobs/provider choices into DCP job contracts while keeping Ollama local and Gemini cloud fallback explicit.
 - Virtual Cloud Control Center adapter uses DCP control APIs; it does not duplicate runner authority.
-- Calendar adapter delegates only shared identity/job capabilities; calendar shifts, swaps, approvals and Google Calendar state remain in the calendar domain API/database.
+- Calendar adapter may delegate shared identity/job capabilities only after a dedicated cloud domain API and tenant-aware storage are verified or implemented; shifts, swaps, approvals and Google Calendar state remain Calendar-domain responsibilities.
 - Provider adapters expose capabilities/readiness and receive only scoped job claims.
 
 ## 6. Provider selection and fallback
