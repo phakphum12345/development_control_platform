@@ -455,3 +455,31 @@ The workflow source files were inspected on audited main SHA `57589873583c706d4a
 **Current PR #155 run interpretation (head `81faabade1f26328a6a67c0a75859a3d1d0d5879`):** a new CI run was triggered after the latest documentation commit. The previous head's successful results cannot be reused for this new head. Record this new run as PENDING until the run IDs report completion.
 
 The source mapping is now sufficient to identify where existing tests execute. The remaining suite-wide task is not to claim all tests were manually executed; it is to add the missing multi-tenant cases to the correct API/unit and cross-platform workflows when UB-02 implementation begins.
+
+
+## 24. DCP persistence topology — cloud multi-account deployment gate
+
+Further inspection of `GatewayService`, `RunnerStore`, `JobStore`, `RunnerRegistry` and `OIDCSessionStore` confirms:
+- The inspected Gateway stores are separate SQLite databases/files by default: `dcp-gateway.sqlite3`, `dcp-jobs.sqlite3`, `dcp-runners.sqlite3`, and the configured OIDC session database.
+- The current store implementations open SQLite directly; no shared SQLAlchemy/database interface or PostgreSQL implementation was identified in these inspected Gateway stores.
+- Job/runner idempotency and ownership state is local to each store file. The design currently relies on a single-writer/single-host style persistence boundary, not a verified horizontally scaled multi-instance control plane.
+- SQLite private-file permissions and connection handling are security hardening, not a substitute for shared cloud persistence, backup/restore, HA or tenant scoping.
+
+**Deployment consequence:** the Cloud control-plane topology must be decided before production multi-account activation. Supported design candidates require an explicit decision:
+1. A single Gateway instance with durable attached storage, explicit backup/restore, file locking and recovery acceptance; or
+2. A shared transactional database adapter (e.g. PostgreSQL) with schema migrations, concurrency semantics, connection pooling and tested recovery.
+
+Do not run multiple Gateway replicas against independent local SQLite files and do not assume a container filesystem is durable. Do not create or pay for a database/service as part of this audit. This is a production architecture gate, not a reason to silently replace existing local SQLite stores.
+
+## 25. OIDC principal-mapping detail
+
+The current `OIDCAuthService` validates the configured issuer through provider discovery and ID-token verification, then creates a session using only `claims['sub']` and a role mapped from configured Owner/Operator groups. The durable OIDC session row stores `subject`, `role`, CSRF, timestamps and revocation; it does not persist issuer, stable local principal ID, tenant, membership version or authentication assurance metadata.
+
+For multi-account admission:
+- Principal identity must be derived from the exact validated `iss + sub` pair, not email, display name, username or a client-supplied subject.
+- The issuer must be retained in the principal mapping so two identity providers issuing the same `sub` cannot collide.
+- Email changes must not create a new principal; unverified email must not be used to link identities.
+- The session should reference the stable local `principal_id`, and tenant selection must be revalidated against active membership on each request or a revocation-aware cache.
+- Existing Owner/Operator groups remain a separate privileged role-mapping path. A verified account with no privileged group must receive only the default Member capability and personal tenant if the account lifecycle policy admits it.
+
+No existing session schema is changed in this checkpoint.
