@@ -439,3 +439,19 @@ Still required before UB-00 closure:
 4. Obtain a second review of the all-account admission design: any verified OIDC account receives a least-privilege personal tenant by default; organization access requires explicit membership; no new account becomes platform Owner/Operator.
 
 **UB-00 remains IN_PROGRESS.** This audit does not authorize role changes, schema migrations, cloud provisioning or production deployment.
+
+
+## 23. CI workflow-to-test mapping
+
+The workflow source files were inspected on audited main SHA `57589873583c706d4af9756709596fdba7c22de9`:
+
+| Workflow | Trigger / runner | Test coverage relevant to UB | Limits |
+|---|---|---|---|
+| `validate-control-plane.yml` | PR and main push; Ubuntu validate + Windows hosted integration; separate manual self-hosted matrix | `python -m unittest discover -s tests -v`; Chromium/Firefox/WebKit browser tests; Windows cmd.exe launcher, runner pipeline, artifact containment and local bootstrap contracts | Broad suite is the strongest API/unit coverage. Manual self-hosted runner matrix defaults off and is not implied by PR success |
+| `local-first-emulator.yml` | PR and main push; Ubuntu + Windows hosted | Gateway safe-defaults/auth boundary; Local Auth Proxy + Gateway browser-to-service E2E on Windows | Emulator explicitly disables cloud provisioning and Owner approval; not live provider or real self-hosted runner acceptance |
+| `cross-platform-recovery.yml` | PR path-filter, main push path-filter, manual dispatch; Ubuntu + Windows hosted | JobStore recovery; authenticated Runner checkpoint/API; Local Runner pipeline interruption; hardlink containment; Local Auth Proxy; Windows/Linux executor policies; Linux sandbox and Terminal integration | Windows/Ubuntu hosted acceptance is not target-owner hardware acceptance; no two-tenant isolation test exists yet |
+| `windows-psec-host-acceptance.yml` | PR/push path-filter and manual; GitHub-hosted Windows | Native NTFS handle-relative ACL round-trip, AppContainer effective access and PSEC API availability probe | Workflow name explicitly says GitHub-hosted probe, not target acceptance; not a tenant-isolation test |
+
+**Current PR #155 run interpretation (head `81faabade1f26328a6a67c0a75859a3d1d0d5879`):** a new CI run was triggered after the latest documentation commit. The previous head's successful results cannot be reused for this new head. Record this new run as PENDING until the run IDs report completion.
+
+The source mapping is now sufficient to identify where existing tests execute. The remaining suite-wide task is not to claim all tests were manually executed; it is to add the missing multi-tenant cases to the correct API/unit and cross-platform workflows when UB-02 implementation begins.
