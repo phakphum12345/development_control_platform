@@ -58,7 +58,7 @@ Conceptual entities:
 - `sessions(session_id_hash, principal_id, expires_at, revoked_at, ...)`
 - `application_grants(tenant_id, principal_id, application_id, capabilities, status, ...)`
 
-These are logical entities, not a mandate to introduce a new database product. Select storage only after examining current DCP persistence, backup and transaction boundaries.
+These are logical entities, not a mandate to introduce a new database product. Current-source audit found DCP Gateway stores use separate local SQLite files with no PostgreSQL adapter identified. Before cloud multi-account production, explicitly choose a single-instance durable-volume topology or implement/test a shared transactional database adapter; never scale replicas with independent ephemeral SQLite files. Preserve current local SQLite behavior until a migration is designed and approved.
 
 A principal may belong to multiple tenants. Every tenant-scoped API request must resolve the selected tenant from a validated server-side session/context and verify active membership. A tenant ID supplied in a URL or body is only a selector; it is never proof of membership.
 
@@ -180,7 +180,7 @@ The older 2026-11-23 audit document is a historical inventory at its own baselin
 | UB-03 | Multi-account jobs and runner authorization | JobStore ownership, tenant/principal idempotency, worker tenant/capability claims, artifact/log isolation | Concurrency, replay, lease and cross-account E2E pass |
 | UB-04 | Application integrations | Research OS, Virtual Cloud Control Center and Calendar API adapters/contracts | Contract tests; domain stores remain separate |
 | UB-05 | Provider routing | Local Ollama/Gemini policy, Azure/Orka capability routing, optional Apple worker contract | Unknown/unready providers fail closed |
-| UB-06 | Production identity and operations | OIDC deployment, key rotation, revocation, backup/restore, monitoring and account lifecycle | Explicit deployment configuration and operational acceptance |
+| UB-06 | Production identity and operations | OIDC deployment, key rotation, revocation, cloud persistence topology, backup/restore, monitoring and account lifecycle | Explicit deployment configuration and operational acceptance |
 | UB-07 | Full regression and release audit | Exact-SHA CI, migration rollback, multi-tenant security test matrix, docs/evidence | No FAIL/UNKNOWN critical gate; separate merge approval |
 
 ## 9. Required acceptance matrix
@@ -216,4 +216,4 @@ The older 2026-11-23 audit document is a historical inventory at its own baselin
 - Design document is the first deliverable on this branch.
 - No application source, schema, account, role, credential, provider or production configuration has been changed.
 - No deployment or cloud resource has been created.
-- Draft PR #155 is open. UB-00 current-main source audit is recorded in `docs/UNIFIED-BACKEND-UB00-CURRENT-MAIN-AUDIT.md` at source baseline `57589873583c706d4af9756709596fdba7c22de9`. Next: complete Local Auth Proxy/session and remaining store/test trace, reconcile open PR dependencies, then freeze UB-00 before any UB-01 runtime/schema changes.
+- Draft PR #155 is open. UB-00 current-main source audit is recorded in `docs/UNIFIED-BACKEND-UB00-CURRENT-MAIN-AUDIT.md` at source baseline `57589873583c706d4af9756709596fdba7c22de9`. The audit now includes the full Local Auth Proxy route trace, 116 test-path inventory, targeted test/workflow map, auxiliary stores, OIDC principal mapping and cloud persistence gate. UB-00 remains in progress pending independent ownership-matrix review and final dependency refresh.
