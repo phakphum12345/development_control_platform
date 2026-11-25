@@ -110,3 +110,17 @@ The following are planning/evidence states, not newly certified completion claim
 ## 9. Scope and safety statement
 
 This audit is documentation and metadata reconciliation only. It does not change runtime code, schemas, credentials, account roles, branch protection, provider settings, cloud resources or deployments. No PR was merged, closed, force-pushed or deleted. No target-host acceptance is claimed.
+
+
+## 10. PR #150 unique-content preservation
+
+The detailed 2026-11-19 WP-00 artifacts from PR #150 were preserved as explicitly historical references under `docs/archive/` rather than merged wholesale or relabelled as current. The archived set includes:
+- `DCP-REPOSITORY-INVENTORY-2026-11-19-HISTORICAL.md`
+- `DCP-ARCHITECTURE-AND-DEPENDENCY-MAP-2026-11-19-HISTORICAL.md`
+- `DCP-IMPLEMENTATION-STATUS-2026-11-19-HISTORICAL.md`
+- `DCP-REQUIREMENTS-TRACEABILITY-2026-11-19-HISTORICAL.md`
+- `DCP-TEST-AND-ACCEPTANCE-MATRIX-2026-11-19-HISTORICAL.md`
+
+These files retain useful detailed source, route, test, workflow and architecture analysis. Each contains a historical-baseline notice pointing to this 2026-11-25 audit. Their old counts, PR heads and CI outcomes are not current facts. Current-main claims must be sourced from the exact SHA in this report or refreshed before reuse.
+
+This preservation step does not close WP-00B/C/D. It avoids losing prior work while keeping historical evidence separate from the current baseline.
