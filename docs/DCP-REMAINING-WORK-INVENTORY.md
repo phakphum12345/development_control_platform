@@ -163,3 +163,12 @@ This is an append-only update. The 2026-11-14 baseline SHA 62d72bddd028399d0b96c
 - PR #153 is the current WP-00 audit delivery branch and remains Draft/HOLD pending exact-head CI and review.
 
 The detailed PR head SHAs, workflow run/job IDs and the 24-RQ crosswalk are maintained in docs/DCP-LIVE-REPOSITORY-AUDIT-2026-11-23.md. Re-fetch all live state before changing any status; these append-only notes are scoped to the stated observation.
+
+
+## 2026-11-25 current-main reconciliation — SHA 57589873583c706d4af9756709596fdba7c22de9
+
+The historical 2026-11-14 inventory above remains tied to its original SHA and counts. The 2026-11-23 audit remains tied to `eaa9ceb91088c39b90d9b11b3817dc793e40005a`. Neither is relabelled as current.
+
+Current recursive tree: 371 entries / 343 blobs. Current path counts: 101 `tools/`, 116 `tests/`, 73 `docs/`, 9 GitHub workflows. Exact main CI and open-PR head evidence are recorded in [DCP Live Repository Audit 2026-11-25](DCP-LIVE-REPOSITORY-AUDIT-2026-11-25.md).
+
+WP-00A is PASS for path enumeration only. WP-00B/00C/00D remain PARTIAL; WP-00E is IN_PROGRESS. PR #150 contains useful unique audit artifacts but is based on a historical SHA and must be reconciled rather than merged wholesale. WP-06/#152, Dashboard/#151, PSEC/#149 and UB-00/#155 remain subject to their independently recorded gates.
