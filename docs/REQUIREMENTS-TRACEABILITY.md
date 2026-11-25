@@ -213,3 +213,12 @@ The current validate-control-plane workflow runs Python unittest discovery, brow
 The 24 RQ groups remain the canonical first-pass requirement identifiers. Their 2026-11-23 WP/source/test/acceptance navigation crosswalk is in docs/DCP-LIVE-REPOSITORY-AUDIT-2026-11-23.md. The mapping is not complete acceptance: exhaustive API contract parity, every test-function-to-RQ link, every Dashboard handler journey, non-code requirements, and target-host evidence remain open.
 
 Do not change any RQ or requirement status to PASS based only on source presence, test presence, stale SHA, queued/in-progress CI, skipped job or hosted CI where a local host is required.
+
+
+## 2026-11-25 baseline checkpoint — main SHA 57589873583c706d4af9756709596fdba7c22de9
+
+- Current repository path inventory and exact-head CI are recorded in [DCP Live Repository Audit 2026-11-25](DCP-LIVE-REPOSITORY-AUDIT-2026-11-25.md).
+- The recursive tree contains 343 blobs (371 total tree entries); `tests/` contains 116 paths. These counts do not establish collected test count or requirement coverage.
+- Existing 24 first-pass requirement groups remain in force. Their mapping is not yet exhaustive at the level of every source handler, Dashboard interaction, test function/fixture/skip, workflow job and target-host acceptance.
+- WP-00B, WP-00C and WP-00D remain PARTIAL. Do not mark any requirement PASS solely because source or a test file exists.
+- Current-main required CI is PASS on the exact SHA, but optional Windows runner acceptance is SKIPPED; target-host PSEC and OS-isolation claims remain separate.
