@@ -157,3 +157,15 @@ This is an append-only reconciliation. Sections above retain their original 2026
 - WP-31: NOT STARTED.
 
 The current inventory and exact-head evidence are maintained in docs/DCP-LIVE-REPOSITORY-AUDIT-2026-11-23.md. Do not infer full repository acceptance from this append-only status note.
+
+
+## 2026-11-25 current-main reconciliation — exact SHA 57589873583c706d4af9756709596fdba7c22de9
+
+This dated section supersedes no historical baseline above. It records the current exact-main inventory only.
+
+- Recursive tree: 371 entries = 343 blobs/files + 28 tree entries; response complete (`truncated=false`).
+- 343 blobs; 212 Python files repository-wide; 101 files under `tools/`; 116 paths under `tests/` (112 Python, 3 PowerShell, 1 JavaScript); 73 files under `docs/`; 9 workflow files.
+- Current main required checks on this SHA: `validate`, Linux Minimal Emulator, Windows dynamic-port launcher integration, and Windows 11 Auth Proxy + Gateway E2E all PASS. Optional Windows runner acceptance is SKIPPED and is not target-host PSEC acceptance.
+- Current open PR snapshot: #138, #149, #150, #151, #152 and #155. Exact heads and CI states are recorded in [Live Repository Audit 2026-11-25](DCP-LIVE-REPOSITORY-AUDIT-2026-11-25.md).
+- WP-00A is PASS for recursive path enumeration only. WP-00B, WP-00C and WP-00D remain PARTIAL; WP-00E remains IN_PROGRESS.
+- This is not a semantic completion or release-readiness claim. Full source/API/Dashboard/test-function/workflow/acceptance trace and target-host validation remain open.
