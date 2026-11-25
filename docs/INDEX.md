@@ -25,6 +25,14 @@
 - [Live Repository Audit 2026-11-25](DCP-LIVE-REPOSITORY-AUDIT-2026-11-25.md) — refreshed exact-main tree inventory, required CI, open PR heads and WP-00 reconciliation status.
 - [Acceptance Test Plan](DCP-ACCEPTANCE-TEST-PLAN.md)
 
+
+## Historical WP-00 reference material
+- [2026-11-19 Repository Inventory](archive/DCP-REPOSITORY-INVENTORY-2026-11-19-HISTORICAL.md) — detailed historical path and source inventory; counts are not current.
+- [2026-11-19 Architecture and Dependency Map](archive/DCP-ARCHITECTURE-AND-DEPENDENCY-MAP-2026-11-19-HISTORICAL.md) — preserved component and dependency analysis.
+- [2026-11-19 Implementation Status](archive/DCP-IMPLEMENTATION-STATUS-2026-11-19-HISTORICAL.md) — historical capability and blocker register.
+- [2026-11-19 Requirements Traceability](archive/DCP-REQUIREMENTS-TRACEABILITY-2026-11-19-HISTORICAL.md) — detailed historical source/API/test mapping.
+- [2026-11-19 Test and Acceptance Matrix](archive/DCP-TEST-AND-ACCEPTANCE-MATRIX-2026-11-19-HISTORICAL.md) — historical workflow and acceptance evidence.
+
 ## Architecture and platform
 - [DCP Architecture](DCP-ARCHITECTURE.md)
 - [Own Platform Architecture](dcp-own-platform-architecture.md)
