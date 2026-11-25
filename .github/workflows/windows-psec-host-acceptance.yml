@@ -52,6 +52,14 @@ jobs:
             throw "Trusted-runtime preparation script has PowerShell syntax errors."
           }
 
+          $source = Get-Content -LiteralPath $scriptPath -Raw
+          if ($source -notmatch '\$installerStageRoot\s*=\s*Join-Path\s+\$dcpRoot' -or
+              $source -notmatch '\$installerSignature\s*=\s*Assert-PythonSignature\s+-Path\s+\$stagedInstaller' -or
+              $source -notmatch 'Start-Process\s+-FilePath\s+\$stagedInstaller' -or
+              $source -match 'Start-Process\s+-FilePath\s+\$(downloadedInstaller|installer)\b') {
+            throw "Trusted Python installer must be staged under the verified Program Files DCP root, signature-checked there, and executed from that exact staged path."
+          }
+
       - name: Audit machine Program Files ACL without mutation
         shell: pwsh
         run: |
