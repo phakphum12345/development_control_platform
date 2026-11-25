@@ -439,7 +439,7 @@ class DashboardControlCenterV2Tests(unittest.TestCase):
 
     def test_code_navigator_covers_all_dashboard_views(self):
         expected = {
-            "home", "account", "contact", "code-navigator", "cloud-runners", "infrastructure", "terminal-studio",
+            "home", "account", "contact", "project-import", "document-generator", "code-navigator", "cloud-runners", "infrastructure", "terminal-studio",
             "dev-tools", "ui-routes", "ui-simulator", "route-colors", "github-api",
             "repo-selector", "repo", "pr", "user", "workspace", "evidence",
             "gates", "checkpoint", "audit",
@@ -448,6 +448,9 @@ class DashboardControlCenterV2Tests(unittest.TestCase):
         self.assertIsNotNone(match, "Code Navigator mapping registry must exist")
         mapped = set(re.findall(r'id:"([^"]+)"', match.group(1)))
         self.assertEqual(expected, mapped)
+        navigation = set(re.findall(r'<button[^>]*\bdata-tab="([^"]+)"', HTML))
+        self.assertEqual(expected, navigation, "Code Navigator must cover every actual navigation tab")
+        self.assertIn('id="dcp-nav-count">23 tools</strong>', HTML)
         for contract in (
             'id:"account",label:"Password Login"',
             'id:"code-navigator",label:"Code Navigator"',
@@ -464,6 +467,24 @@ class DashboardControlCenterV2Tests(unittest.TestCase):
                 self.assertIn(contract, HTML)
 
 
+
+
+    def test_code_navigator_mapping_test_references_resolve(self):
+        match = re.search(r"const CODE_NAV_MAPPINGS=\[(.*?)\n\];", HTML, re.DOTALL)
+        self.assertIsNotNone(match, "Code Navigator mapping registry must exist")
+        references = re.findall(r'"(tests/[^"]+)"', match.group(1))
+        self.assertTrue(references, "Each Code Navigator map should declare test evidence")
+        for reference in references:
+            with self.subTest(reference=reference):
+                path, separator, symbol = reference.partition("::")
+                test_path = ROOT / path
+                self.assertTrue(test_path.is_file(), f"Missing mapped test file: {path}")
+                if separator and symbol.startswith("test_"):
+                    source = test_path.read_text(encoding="utf-8")
+                    self.assertRegex(source, rf"(?m)^\s*(?:async\s+)?def {re.escape(symbol)}\s*\(", f"Missing mapped test function: {reference}")
+                elif separator:
+                    source = test_path.read_text(encoding="utf-8")
+                    self.assertRegex(source, rf"(?m)^\s*class {re.escape(symbol)}\b", f"Missing mapped test class: {reference}")
 
     def test_dashboard_build_job_gate_supports_verified_node_framework_targets(self):
         for contract in (
