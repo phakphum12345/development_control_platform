@@ -93,3 +93,4 @@ Every Work Package must update the relevant implementation, requirements, test a
 - [WP-01B Gateway/Proxy Route Crosswalk](DCP-WP01B-GATEWAY-PROXY-ROUTE-CROSSWALK.md) — source-derived method/path families, Proxy exposure differences, and prioritized positive/negative test matrix.
 
 - [WP-01–WP-17 Atomic Acceptance Map (2026-11-25)](DCP-WP-01-17-ATOMIC-ACCEPTANCE-MAP-2026-11-25.md) — decomposes the broad WP-01–17 range, identifies confirmed crosswalks and explicitly marks unassigned scopes for source verification.
+- [PR #150 Historical Content Reconciliation (2026-11-25)](DCP-PR150-HISTORICAL-CONTENT-RECONCILIATION-2026-11-25.md) — identifies reusable architecture/acceptance content and stale historical status that must not be merged wholesale.
