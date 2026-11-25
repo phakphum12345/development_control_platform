@@ -384,3 +384,58 @@ The full Local Auth Proxy route/session trace is now complete. The remaining UB-
 4. Obtain an independent review of the principal/tenant/resource matrix and the `legacy_unassigned` migration rule.
 
 UB-00 remains IN_PROGRESS; no application/runtime or database changes are being made in this checkpoint.
+
+
+## 20. Auxiliary store and adapter classification
+
+Additional source review on the audited main baseline:
+
+| Component | Persistence / trust model | Classification and multi-account decision |
+|---|---|---|
+| `OIDCSessionStore` | Durable SQLite; OIDC transactions keyed by state hash; sessions keyed by session hash with subject, role, CSRF, expiry and revocation | Authentication infrastructure; no issuer, principal ID, tenant ID or membership version in session row. Extend only after a stable principal mapping and migration plan are defined |
+| `RunnerScheduler` | No separate tenant store; reads global RunnerRegistry and calls `jobs.claim(worker_id, lease_seconds, allowed_targets)` | Platform scheduling service; must only claim a job after server-side worker grant and tenant-scoped eligibility are enforced |
+| `AzureBudgetReader` | Read-only subscription-level budget snapshot; denies unknown forecast/currency | Platform-global financial guard, not a tenant budget ledger; keep provisioning Owner-gated |
+| `KeyVaultSecretReader` | Read-only Azure Key Vault secret retrieval via Managed Identity; no app user identity | Platform secret boundary; never expose secrets or raw secret access to tenant members |
+| `ReconAPI` | Fixed public repository `phakphum12345/Drive-letter` allowlist; read-only routes and bounded JSON | Platform-specific public metadata adapter; not a general tenant GitHub integration |
+| `OrkaProvider` / bootstrap | Provider readiness requires protected bootstrap, reviewed RBAC/user-data exposure, network and budget readiness; no user tenant ownership in provider adapter | Platform provider adapter; keep disabled/Owner-approved until live acceptance and explicit provider-account isolation |
+| `SQLite security helpers` | Private file creation/permissions and SQLite safety; no identity model | Persistence hardening only; does not provide tenant isolation |
+
+The store/resource inventory now distinguishes:
+- **Tenant-owned candidates:** DCP Jobs, job events/logs/checkpoints, artifacts, previews and explicitly granted project records.
+- **Platform-global:** infrastructure resources/gates, provider configuration, Azure budgets, Key Vault access, global runner/provider administration, Recon fixed repository, Terminal catalogs/templates and deployment trust configuration.
+- **Host-local:** local Owner credential/session Proxy, local project roots/workspaces and enrolled local runner state.
+- **Ephemeral:** active preview runtime capabilities and process-local local Proxy sessions; their parent durable resource still requires authorization.
+
+## 21. Live open-PR dependency snapshot (2026-11-25)
+
+| PR | Base SHA | Current relation to audited main | State | Decision for Unified Backend |
+|---|---|---|---|---|
+| #149 trusted Python base runtime | `eaa9ceb...` | 2 commits behind; mergeable=false | OPEN / DRAFT | Separate Windows PSEC work; keep isolated and rebase through its owner workflow |
+| #150 2026-11-19 repository audit | `eaa9ceb...` | 2 commits behind; mergeable=false | OPEN / DRAFT | Historical audit; do not replace newer current-main audit evidence |
+| #151 Dashboard Code Navigator | `c17b2db...` | 1 commit behind; mergeable=true | OPEN / DRAFT | Independent UI/documentation mapping; no dependency for tenant admission |
+| #152 trusted repository bootstrap | `eaa9ceb...` | 2 commits behind; mergeable=false | OPEN / DRAFT | Separate runner credential hardening; coordinate only if Runner bootstrap contracts change |
+| #155 Unified Backend | `5758987...` | Exact audited main base; mergeable=true at last metadata refresh | OPEN / DRAFT | This architecture/source-audit checkpoint |
+
+The dependency decision is intentionally conservative:
+- No older PR is silently merged or rebased by this work.
+- #149/#152 concern host/runner security and may later constrain the UB worker-grant contract; they are not prerequisites for designing the principal/tenant data model.
+- #151 is independent.
+- Refresh all PR metadata and exact-head CI immediately before any merge or dependency action.
+
+## 22. Revised UB-00 status
+
+Completed:
+- Current main baseline reconciliation and complete 116-path test inventory.
+- Targeted identity, session, Gateway Job API, worker, artifact, preview, infrastructure, Terminal and Document Workflow test review.
+- Full Local Auth Proxy source/route/session trace.
+- Core and auxiliary store classification.
+- Research OS, Virtual Cloud Control Center and Calendar integration boundary review.
+- Open PR dependency snapshot.
+
+Still required before UB-00 closure:
+1. Complete test/workflow mapping for remaining relevant integration suites and record any environment-dependent skips.
+2. Independently review the principal/tenant/resource ownership matrix and legacy-record classification.
+3. Refresh PR dependency metadata after current documentation commits and confirm no new conflicting changes.
+4. Obtain a second review of the all-account admission design: any verified OIDC account receives a least-privilege personal tenant by default; organization access requires explicit membership; no new account becomes platform Owner/Operator.
+
+**UB-00 remains IN_PROGRESS.** This audit does not authorize role changes, schema migrations, cloud provisioning or production deployment.
