@@ -124,42 +124,30 @@ Existing roadmap, backlog and continuity documents require reconciliation with m
 This inventory is source-driven but still IN_PROGRESS. It does not yet enumerate every atomic acceptance criterion for all 78 tool files and 86 test files. No total atomic task count is claimed until WP-00B/00C produce a traceable one-to-one register. No implementation completion, host acceptance or merge is claimed by this document.
 
 
-## 2026-11-23 current-main inventory reconciliation
+---
 
-This is an append-only update. The 2026-11-14 baseline SHA 62d72bddd028399d0b96cd9c2f6e3b16a704b758 and its 289-tree-entry/265-blob counts remain historical and are not rewritten.
+## 2026-11-20 — WP-06 Runner Bootstrap dependency
 
-### Current baseline
+- Separate the trusted-repository settings producer from Windows PSEC. The mainline launcher and Auth Proxy already consume `gateway-local-settings.json`; the mainline setup script did not accept `-TrustedRepository` or persist the allowlist.
+- PR #152 (`work/wp06-trusted-repository-bootstrap`) implements the missing bootstrap contract on a main-based branch. It is Draft and exact-head CI is pending.
+- Required acceptance: native Windows PowerShell bootstrap test, dynamic-port integration, Validate Control Plane, Linux Minimal Emulator and Cross-platform Recovery on exact PR head. Optional Windows runner acceptance remains a separate host evidence gate.
+- After Owner-approved WP-06 integration, rebase/reconcile PR #140 and #149 against the new mainline contract; do not cherry-pick either PSEC branch wholesale.
+- WP-12 Windows PSEC remains independently BLOCKED pending actual target-host AppContainer/LPAC and Trusted Python runtime acceptance. Bootstrap PASS cannot be substituted for PSEC PASS.
 
-- Canonical main SHA audited: eaa9ceb91088c39b90d9b11b3817dc793e40005a.
-- Recursive tree response complete (truncated=false): 340 blob/file paths.
-- 111 Python/PowerShell implementation paths under the audit's source-extension rule.
-- 117 test-path files under the audit's path/name rule; not a test-case or collected-test count.
-- 9 workflow files.
-- 73 docs/checkpoints/root README files under the audit's counting rule.
-- 21 current Code Navigator mappings; separate from the 22 declared Dashboard views listed in the older implementation status inventory.
 
-### Refreshed WP register
+### 2026-11-20 — WP-06 bootstrap hardening result
 
-| WP | 2026-11-23 state | Evidence boundary / next acceptance |
-|---|---|---|
-| WP-00A | PASS (path enumeration only) | Exact main recursive tree, 340 blobs, response not truncated |
-| WP-00B | PARTIAL | Gateway/Proxy families, primary source boundaries and 21 Code Navigator mappings inspected; full API/handler/schema parity open |
-| WP-00C | PARTIAL | 117 test-path inventory and ten high-risk suites sampled; full test collection/function/fixture/skip crosswalk open |
-| WP-00D | PARTIAL / IN_PROGRESS | Master Command RQ-to-WP crosswalk and append-only document reconciliation started; atomic WP-01–17 acceptance breakdown remains |
-| WP-18A | PARTIAL / IN PROGRESS | Linux bubblewrap implementation/host acceptance evidence remains separated; target-host acceptance required |
-| WP-18B | IN PROGRESS / BLOCKED | PSEC capability probe and launcher work do not establish filesystem/network enforcement or LPAC; target Windows acceptance remains required |
-| WP-18C | PARTIAL / IN PROGRESS | Cleanup/recovery code and hosted tests exist; independent Windows/user-host descendant and workspace cleanup evidence remains |
-| WP-18D | PARTIAL / IN PROGRESS | Adversarial suites and host harnesses exist; target-user host runs remain UNKNOWN |
-| WP-18E | IN PROGRESS | Exact-head CI and platform host evidence remain |
-| WP-19 | UNKNOWN | Supported Windows host Dashboard → Proxy → Gateway → Runner E2E |
-| WP-20–WP-30 | PARTIAL | Preserve each existing subsystem gap; revalidate against current source and exact-head tests |
-| WP-31 | NOT STARTED | Full final repository audit/release gate not complete |
+- PR #152 hardens the now-mainline TrustedRepository producer with reparse-point, regular-file, file-size, worker-count, allowlist-count, duplicate-token/repository and restricted-ACL protections.
+- Exact head `4270c1379fd67649ecf17448cc0f334586d75724` passed Validate, Windows dynamic-port integration, Linux Minimal Emulator, Windows Auth Proxy + Gateway E2E, and Ubuntu/Windows Recovery.
+- The Windows bootstrap acceptance log confirms the test script completed successfully; the reparse-point test did not report a host-capability skip.
+- Optional Windows runner acceptance remains SKIPPED. PSEC target-host acceptance is tracked separately and remains BLOCKED.
+- PR #152 remains Draft; do not treat CI success as merge approval.
 
-### Live PR handling notes
 
-- PR #138 remains OPEN and mergeable=false; it is a 140-file fork PR targeting a WP-18B.1 feature branch and must not be merged wholesale.
-- PR #144 is CLOSED/MERGED into the WP-18B.1 feature branch, not main.
-- PRs #149, #150, #151 and #152 remain OPEN/DRAFT at the observed audit refresh; #152 has four unresolved protected-file persistence review findings.
-- PR #153 is the current WP-00 audit delivery branch and remains Draft/HOLD pending exact-head CI and review.
+### 2026-11-20 — WP-06 native Windows bootstrap acceptance
 
-The detailed PR head SHAs, workflow run/job IDs and the 24-RQ crosswalk are maintained in docs/DCP-LIVE-REPOSITORY-AUDIT-2026-11-23.md. Re-fetch all live state before changing any status; these append-only notes are scoped to the stated observation.
+- Native Windows PowerShell 5.1 run of `tests/test_local_runner_bootstrap.ps1` on source head `0cb2a4077bc250777cb02d51bd6442ef5ef6e97c` completed with exit code 0 and `Local Runner credential bootstrap tests passed.`
+- The run used an isolated temporary `RUNNER_TEMP` and temporary `LOCALAPPDATA`; it did not modify the user's real DCP profile. The reparse-point test ran without a capability-based skip.
+- The exact-head CI results on `0cb2a407...` are 6 PASS and 1 optional Windows runner acceptance SKIPPED. The skip is not PSEC evidence.
+- Security review remains OPEN: Windows atomic replacement semantics for `Move-Item -Force`, parent DCP directory ACL/race resistance, and partial-commit behavior across credential/settings writes still require explicit verification or hardening. Validation-rejection no-mutation is covered; I/O-failure transactionality is not.
+- WP-06 remains a bootstrap-only acceptance boundary. WP-12 Windows PSEC and all Terminal OS isolation gates remain independently BLOCKED/UNKNOWN as already recorded.

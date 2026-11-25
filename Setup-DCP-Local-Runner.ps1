@@ -1,3 +1,5 @@
+# Prepares local Runner credentials and the Gateway's explicit repository allowlist.
+# Persisting an allowlist does not enroll a live Runner or enable command execution.
 [CmdletBinding()]
 param(
     [ValidatePattern('^[a-z0-9_.:-]{1,100}$')]
@@ -10,26 +12,109 @@ if (-not $env:LOCALAPPDATA) {
     throw 'LOCALAPPDATA is not available for this Windows account.'
 }
 
+$repositoryPattern = '^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$'
+$workerPattern = '^[a-z0-9_.:-]{1,100}$'
+$maxCredentialBytes = 65536
+$maxSettingsBytes = 16384
+
+function Get-ExistingRegularFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][long]$MaximumBytes,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+    if ($null -eq $item) {
+        return $null
+    }
+    $isReparsePoint = (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)
+    if ($isReparsePoint -or $item.PSIsContainer) {
+        throw "$Label path is not a regular non-reparse file."
+    }
+    if ($item.Length -gt $MaximumBytes) {
+        throw "$Label file exceeds its size limit."
+    }
+    return $item
+}
+
 function Write-ProtectedJsonFile {
-    param([string]$Path, [object]$Value)
-    $temp = $Path + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][object]$Value,
+        [Parameter(Mandatory = $true)][string]$Identity,
+        [Parameter(Mandatory = $true)][long]$MaximumBytes
+    )
+
+    $temporary = $Path + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
+    $encoding = [Text.UTF8Encoding]::new($false)
+    $json = ConvertTo-Json -InputObject $Value -Compress -Depth 5
+    $aclArguments = @(
+        $temporary,
+        '/inheritance:r',
+        '/grant:r',
+        "$($Identity):(R,W)",
+        '*S-1-5-18:(F)',
+        '*S-1-5-32-544:(F)'
+    )
+
     try {
-        $json = ConvertTo-Json -InputObject $Value -Compress -Depth 5
-        $encoding = [Text.UTF8Encoding]::new($false)
-        [IO.File]::WriteAllText($temp, '', $encoding)
-        & icacls.exe $temp /inheritance:r /grant:r "$($script:identity):(R,W)" '*S-1-5-18:(F)' '*S-1-5-32-544:(F)' | Out-Null
+        # Create a new empty file first. Restrict its ACL before writing credential
+        # or allowlist content, and never follow a pre-existing temporary path.
+        $created = [IO.File]::Open(
+            $temporary,
+            [IO.FileMode]::CreateNew,
+            [IO.FileAccess]::Write,
+            [IO.FileShare]::None
+        )
+        $created.Dispose()
+
+        & icacls.exe @aclArguments | Out-Null
         if ($LASTEXITCODE -ne 0) {
-            throw 'Could not protect the temporary local DCP settings ACL.'
+            throw "Could not protect the temporary file ACL for '$Path'."
         }
-        [IO.File]::WriteAllText($temp, $json, $encoding)
-        Move-Item -LiteralPath $temp -Destination $Path -Force
-        & icacls.exe $Path /inheritance:r /grant:r "$($script:identity):(R,W)" '*S-1-5-18:(F)' '*S-1-5-32-544:(F)' | Out-Null
+
+        $bytes = $encoding.GetBytes($json)
+        $stream = [IO.File]::Open(
+            $temporary,
+            [IO.FileMode]::Open,
+            [IO.FileAccess]::Write,
+            [IO.FileShare]::None
+        )
+        try {
+            $stream.SetLength(0)
+            $stream.Write($bytes, 0, $bytes.Length)
+            $stream.Flush($true)
+        } finally {
+            $stream.Dispose()
+        }
+
+        Move-Item -LiteralPath $temporary -Destination $Path -Force
+
+        $destination = Get-ExistingRegularFile -Path $Path -MaximumBytes $MaximumBytes -Label 'Protected local DCP'
+        if ($null -eq $destination) {
+            throw "Protected file '$Path' was not created."
+        }
+        $destinationAclArguments = @(
+            $Path,
+            '/inheritance:r',
+            '/grant:r',
+            "$($Identity):(R,W)",
+            '*S-1-5-18:(F)',
+            '*S-1-5-32-544:(F)'
+        )
+        & icacls.exe @destinationAclArguments | Out-Null
         if ($LASTEXITCODE -ne 0) {
-            throw 'Could not verify the local DCP settings ACL.'
+            throw "Could not verify the protected file ACL for '$Path'."
+        }
+
+        $aclOutput = (& icacls.exe $Path) -join [Environment]::NewLine
+        if ($LASTEXITCODE -ne 0 -or $aclOutput -match 'Everyone|Authenticated Users|BUILTIN\\Users') {
+            throw "Protected file '$Path' has a broad or unverifiable ACL."
         }
     } finally {
-        if (Test-Path -LiteralPath $temp) {
-            Remove-Item -LiteralPath $temp -Force
+        if (Test-Path -LiteralPath $temporary) {
+            Remove-Item -LiteralPath $temporary -Force
         }
     }
 }
@@ -47,68 +132,68 @@ if ((($verifiedDataDir.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0
     -not $verifiedDataDir.PSIsContainer) {
     throw 'Local DCP data directory resolved to a reparse point or non-directory.'
 }
+
 $credentialFile = Join-Path $dataDir 'runner-tokens.json'
 $settingsFile = Join-Path $dataDir 'gateway-local-settings.json'
-$workerPattern = '^[a-z0-9_.:-]{1,100}$'
-$repositoryPattern = '^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$'
 $tokenMap = @{}
 $allowedRepositoryMap = @{}
 $settingsFileExists = $false
 
-$existingItem = Get-Item -LiteralPath $credentialFile -Force -ErrorAction SilentlyContinue
-if ($null -ne $existingItem) {
-    if ((($existingItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -or $existingItem.PSIsContainer) {
-        throw 'Existing Runner credential path is not a regular file.'
-    }
-    if ($existingItem.Length -gt 65536) {
-        throw 'Existing Runner credential file exceeds 64 KiB.'
-    }
+$existingCredentialItem = Get-ExistingRegularFile -Path $credentialFile -MaximumBytes $maxCredentialBytes -Label 'Existing Runner credential'
+if ($null -ne $existingCredentialItem) {
     try {
-        $existing = Get-Content -LiteralPath $credentialFile -Raw | ConvertFrom-Json
+        $existingTokens = Get-Content -LiteralPath $credentialFile -Raw | ConvertFrom-Json -ErrorAction Stop
     } catch {
         throw 'Existing Runner credential file is invalid JSON; it was not changed.'
     }
-    if ($null -eq $existing -or $existing -isnot [pscustomobject]) {
+    if ($null -eq $existingTokens -or $existingTokens -isnot [pscustomobject]) {
         throw 'Existing Runner credential file must be a JSON object.'
     }
     $seenTokens = New-Object 'System.Collections.Generic.HashSet[string]'
-    foreach ($property in $existing.PSObject.Properties) {
+    foreach ($property in $existingTokens.PSObject.Properties) {
         if ($property.Name -notmatch $workerPattern -or
             $property.Value -isnot [string] -or
             $property.Value.Length -lt 32 -or
             $property.Value.Length -gt 256) {
             throw 'Existing Runner credential file contains an invalid entry; it was not changed.'
         }
-        if ($tokenMap.ContainsKey($property.Name) -or -not $seenTokens.Add($property.Value)) {
-            throw 'Existing Runner credential file contains duplicate worker credentials.'
+        if ($tokenMap.ContainsKey($property.Name)) {
+            throw 'Existing Runner credential file contains a duplicate worker ID.'
+        }
+        if (-not $seenTokens.Add($property.Value)) {
+            throw 'Existing Runner credentials must be unique per worker.'
         }
         $tokenMap[$property.Name] = $property.Value
     }
+    if ($tokenMap.Count -gt 16) {
+        throw 'Existing Runner credential file exceeds the 16-worker limit.'
+    }
 }
 
-$existingSettingsItem = Get-Item -LiteralPath $settingsFile -Force -ErrorAction SilentlyContinue
+$existingSettingsItem = Get-ExistingRegularFile -Path $settingsFile -MaximumBytes $maxSettingsBytes -Label 'Existing local Gateway settings'
 if ($null -ne $existingSettingsItem) {
-    if ((($existingSettingsItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -or $existingSettingsItem.PSIsContainer) {
-        throw 'Existing local Gateway settings path is not a regular file.'
-    }
-    if ($existingSettingsItem.Length -gt 16384) {
-        throw 'Existing local Gateway settings file exceeds 16 KiB.'
-    }
     try {
-        $existingSettings = Get-Content -LiteralPath $settingsFile -Raw | ConvertFrom-Json
+        $existingSettings = Get-Content -LiteralPath $settingsFile -Raw | ConvertFrom-Json -ErrorAction Stop
     } catch {
         throw 'Existing local Gateway settings file is invalid JSON; it was not changed.'
     }
-    if ($null -eq $existingSettings -or $existingSettings -isnot [pscustomobject] -or
+    if ($null -eq $existingSettings -or
+        $existingSettings -isnot [pscustomobject] -or
         @($existingSettings.PSObject.Properties).Count -ne 1 -or
         $null -eq $existingSettings.PSObject.Properties['allowed_repositories'] -or
         $existingSettings.allowed_repositories -isnot [System.Array]) {
         throw 'Existing local Gateway settings file has an invalid schema.'
     }
+    if ($existingSettings.allowed_repositories.Count -gt 20) {
+        throw 'Existing local Gateway repository allowlist exceeds 20 entries.'
+    }
+
     $settingsFileExists = $true
     foreach ($repository in @($existingSettings.allowed_repositories)) {
-        if ($repository -isnot [string] -or $repository -notmatch $repositoryPattern -or
-            @($repository.Split('/')) -contains '.' -or @($repository.Split('/')) -contains '..') {
+        if ($repository -isnot [string] -or
+            $repository -notmatch $repositoryPattern -or
+            @($repository.Split('/')) -contains '.' -or
+            @($repository.Split('/')) -contains '..') {
             throw 'Existing local Gateway allowlist contains an invalid repository.'
         }
         if ($allowedRepositoryMap.ContainsKey($repository)) {
@@ -118,13 +203,22 @@ if ($null -ne $existingSettingsItem) {
     }
 }
 
+$requestedRepositories = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
 foreach ($repository in $TrustedRepository) {
     if ($repository -notmatch $repositoryPattern -or
-        @($repository.Split('/')) -contains '.' -or @($repository.Split('/')) -contains '..') {
+        @($repository.Split('/')) -contains '.' -or
+        @($repository.Split('/')) -contains '..') {
         throw "Invalid trusted repository name: $repository"
     }
-    $matchingKey = @($allowedRepositoryMap.Keys | Where-Object { $_ -ieq $repository })
-    if ($matchingKey.Count -gt 0 -and $matchingKey[0] -cne $repository) {
+    if (-not $requestedRepositories.Add($repository)) {
+        throw 'Trusted repository entries must be unique (case-insensitive).'
+    }
+
+    $matchingKeys = @($allowedRepositoryMap.Keys | Where-Object {
+        [string]::Equals($_, $repository, [StringComparison]::OrdinalIgnoreCase)
+    })
+    if ($matchingKeys.Count -gt 0 -and
+        -not [string]::Equals($matchingKeys[0], $repository, [StringComparison]::Ordinal)) {
         throw 'Trusted repository name casing must match the existing Gateway allowlist exactly.'
     }
     $allowedRepositoryMap[$repository] = $repository
@@ -143,21 +237,27 @@ if (-not $tokenMap.ContainsKey($WorkerId)) {
     $tokenMap[$WorkerId] = [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
 }
 
-$script:identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+$identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 $orderedTokens = [ordered]@{}
-foreach ($key in ($tokenMap.Keys | Sort-Object)) { $orderedTokens[$key] = $tokenMap[$key] }
-Write-ProtectedJsonFile -Path $credentialFile -Value $orderedTokens
+foreach ($key in ($tokenMap.Keys | Sort-Object)) {
+    $orderedTokens[$key] = $tokenMap[$key]
+}
+Write-ProtectedJsonFile -Path $credentialFile -Value $orderedTokens -Identity $identity -MaximumBytes $maxCredentialBytes
 
+# Do not create an empty allowlist for offline enrollment. Preserve and protect an
+# existing settings file, or persist the explicit repositories supplied by Owner.
 if ($settingsFileExists -or $allowedRepositoryMap.Count -gt 0) {
     $orderedRepositories = @($allowedRepositoryMap.Keys | Sort-Object)
-    $settings = [ordered]@{ allowed_repositories = $orderedRepositories }
-    Write-ProtectedJsonFile -Path $settingsFile -Value $settings
+    $settings = [ordered]@{
+        allowed_repositories = $orderedRepositories
+    }
+    Write-ProtectedJsonFile -Path $settingsFile -Value $settings -Identity $identity -MaximumBytes $maxSettingsBytes
 }
 
 Write-Host "Local Runner credential prepared for worker '$WorkerId'."
 Write-Host "Credential file: $credentialFile"
 Write-Host 'The token is stored with a restricted Windows ACL and was not displayed.'
 if ($allowedRepositoryMap.Count -gt 0) {
-    Write-Host ("Approved public repositories: " + (($allowedRepositoryMap.Keys | Sort-Object) -join ', '))
+    Write-Host ('Approved repositories: ' + (($allowedRepositoryMap.Keys | Sort-Object) -join ', '))
 }
 Write-Host 'Restart the DCP local stack so the Gateway loads the Runner credentials and repository allowlist.'
