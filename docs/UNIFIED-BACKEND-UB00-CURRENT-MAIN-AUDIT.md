@@ -52,6 +52,17 @@ Source evidence at the baseline:
 
 OIDC client/auth/session/WSGI components exist, but current documentation describes a trusted reverse-proxy/oauth2-proxy edge integration and deployment-specific secrets, groups, issuer, audience and callbacks. No evidence in this audit proves that a production identity provider is configured, that all-account group-less admission is active, or that the OIDC WSGI path is mounted into every supported host. Treat live login as UNKNOWN until a deployment-specific end-to-end test proves it.
 
+### 3.4 Local Auth Proxy is a separate single-owner path
+
+The current `tools/local_auth_proxy.py` is not the multi-account OIDC session service:
+- It loads one local Owner credential record from `owner-auth.json` (or the configured credential path).
+- Its in-memory session records are created for that configured Owner username; the signed Gateway assertion hardcodes role `owner`.
+- The local session map is process memory, not a durable multi-principal session database.
+- Its login/logout and Proxy allowlist protect the local Dashboard workflow, but do not create personal tenants, organization memberships or per-account application grants.
+- The OIDC WSGI app and edge signer are separate components. `oidc_deployment.py` builds a WSGI application from deployment configuration; a host must explicitly mount it. The local password Proxy does not itself establish that production OIDC mounting has occurred.
+
+**Disposition:** preserve the existing local Owner workflow as a compatibility/admin path while designing the separate all-account identity path. Do not convert the local Owner password into a shared account credential or let a member inherit local host access.
+
 ## 4. Resource ownership and isolation findings
 
 | Resource family | Current storage / key observed | Current isolation status | Required UB work |
