@@ -206,20 +206,46 @@ Assert-TrustedAcl -Path $dcpRoot
 $installerSignature = $null
 
 if (-not (Test-Path -LiteralPath $baseRuntime)) {
-   $downloadRoot = Join-Path $env:TEMP "dcp-psec-python312"
-   New-Item -ItemType Directory -Path $downloadRoot -Force | Out-Null
-   $installer = Join-Path $downloadRoot "python-3.12.10-amd64.exe"
+   # Download into the user-writable TEMP area, but never execute from there.
+   # Copy into a fresh child of the already ACL-verified Program Files DCP root,
+   # verify that exact staged copy, and execute only that protected path.
+   $downloadRoot = Join-Path $env:TEMP ("dcp-psec-python312-" + [Guid]::NewGuid().ToString("N"))
+   New-Item -ItemType Directory -Path $downloadRoot | Out-Null
+   $downloadedInstaller = Join-Path $downloadRoot "python-3.12.10-amd64.exe"
    $installerUrl = "https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe"
+   $installerStageRoot = Join-Path $dcpRoot ("installer-stage-" + [Guid]::NewGuid().ToString("N"))
+   $stagedInstaller = Join-Path $installerStageRoot "python-3.12.10-amd64.exe"
 
-   Invoke-WebRequest -Uri $installerUrl -OutFile $installer -UseBasicParsing
-   $installerSignature = Assert-PythonSignature -Path $installer
+   try {
+       Invoke-WebRequest -Uri $installerUrl -OutFile $downloadedInstaller -UseBasicParsing
 
-   $arguments = '/quiet InstallAllUsers=1 TargetDir="' + $baseRuntime +
-       '" Include_launcher=0 Include_test=0 Include_pip=1 Include_doc=0 ' +
-       'Include_tcltk=0 PrependPath=0 AppendPath=0 Shortcuts=0'
-   $install = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
-   if ($install.ExitCode -ne 0) {
-       throw "Python 3.12.10 installer failed with exit code $($install.ExitCode)"
+       New-Item -ItemType Directory -Path $installerStageRoot | Out-Null
+       Assert-NoReparsePath -Path $installerStageRoot
+       Assert-TrustedAcl -Path $installerStageRoot
+
+       Copy-Item -LiteralPath $downloadedInstaller -Destination $stagedInstaller
+       Assert-NoReparsePath -Path $stagedInstaller
+       Assert-TrustedAcl -Path $stagedInstaller
+
+       # Signature verification is deliberately performed after staging so
+       # the bytes checked are the same protected file passed to Start-Process.
+       $installerSignature = Assert-PythonSignature -Path $stagedInstaller
+
+       $arguments = '/quiet InstallAllUsers=1 TargetDir="' + $baseRuntime +
+           '" Include_launcher=0 Include_test=0 Include_pip=1 Include_doc=0 ' +
+           'Include_tcltk=0 PrependPath=0 AppendPath=0 Shortcuts=0'
+       $install = Start-Process -FilePath $stagedInstaller -ArgumentList $arguments -Wait -PassThru
+       if ($install.ExitCode -ne 0) {
+           throw "Python 3.12.10 installer failed with exit code $($install.ExitCode)"
+       }
+   }
+   finally {
+       if (Test-Path -LiteralPath $installerStageRoot) {
+           Remove-Item -LiteralPath $installerStageRoot -Recurse -Force
+       }
+       if (Test-Path -LiteralPath $downloadRoot) {
+           Remove-Item -LiteralPath $downloadRoot -Recurse -Force
+       }
    }
 }
 elseif (-not (Test-Path -LiteralPath $basePython -PathType Leaf)) {
