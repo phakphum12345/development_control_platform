@@ -129,3 +129,31 @@ These are historical exact-SHA CI results for the baseline, not current feature-
 ## 8. Completion rule
 
 Do not mark a Work Package PASS based only on source presence, test-file presence, skipped CI, stale SHA evidence, or GitHub-hosted CI where real-host acceptance is required. Keep missing or unverified evidence UNKNOWN. The Repository is not E2E Complete until the full WP register, requirement traceability, critical CI and required operational acceptance are closed.
+
+
+## 2026-11-23 live-main reconciliation — exact SHA eaa9ceb91088c39b90d9b11b3817dc793e40005a
+
+This is an append-only reconciliation. Sections above retain their original 2026-11-14 baseline (62d72bddd028399d0b96cd9c2f6e3b16a704b758) and historical counts; those values are not relabelled as current.
+
+### Current recursive inventory
+
+- Exact main SHA inspected: eaa9ceb91088c39b90d9b11b3817dc793e40005a.
+- GitHub recursive tree response: complete, truncated=false; 340 blob/file paths.
+- 111 Python/PowerShell implementation files under the audit's explicit source-extension rule, excluding test paths and workflow definitions.
+- 117 test-path files under the audit's explicit path/name rule. This is not a collected-test count and not a count of tests passed.
+- 9 GitHub Actions workflow files.
+- 73 documentation/checkpoint/root README files under the audit's explicit scope.
+- Dashboard Code Navigator mapping registry: 21 IDs, with exact-set contract assertion. The Dashboard itself has 22 declared views in this baseline's implementation-status inventory; these are different measures and must not be conflated.
+
+### Current WP state (2026-11-23 audit)
+
+- WP-00A: PASS for recursive path enumeration only.
+- WP-00B: PARTIAL — primary Gateway/Proxy source boundaries, route families and Code Navigator mapping inspected; exhaustive API method/path/schema/role/CSRF/idempotency mapping remains open.
+- WP-00C: PARTIAL — 117 test-path files counted and ten high-risk suites sampled for skip/fixture patterns; complete test collection/function/fixture/workflow trace remains open.
+- WP-00D: PARTIAL / IN_PROGRESS — Master Command crosswalk recorded; historical baseline docs require full exact-SHA reconciliation.
+- WP-18A–18E: retain PARTIAL/BLOCKED distinctions above; no target-host certification inferred.
+- WP-19: UNKNOWN.
+- WP-20–WP-30: PARTIAL as previously recorded; revalidate each exact source/test/host boundary before changing status.
+- WP-31: NOT STARTED.
+
+The current inventory and exact-head evidence are maintained in docs/DCP-LIVE-REPOSITORY-AUDIT-2026-11-23.md. Do not infer full repository acceptance from this append-only status note.
