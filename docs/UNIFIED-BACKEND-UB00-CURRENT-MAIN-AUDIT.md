@@ -200,3 +200,57 @@ This register is a point-in-time snapshot and must be refreshed before any merge
 - [ ] Independent review of the ownership matrix and migration classification.
 
 **UB-00 remains IN_PROGRESS.** UB-01 implementation must not begin until the remaining unchecked items are closed or explicitly deferred with a documented reason and owner decision.
+
+
+## 13. Application integration baseline (current source snapshots)
+
+These are source-level integration observations, not claims that any application is already connected to DCP.
+
+### 13.1 Research OS — existing per-user identity and owner-scoped jobs
+
+**Repository:** `phakphum12345/Drive-letter`  
+**Branch:** `main`  
+**Inspected head:** `06989393619e56b074dcb73a8806749ec62fd84c`
+
+- `GoogleIdentityBroker` verifies a Google subject and verified email before issuing a Research OS session. `auth_session.py` signs a short-lived session containing `user_id`, email, role and session ID; revocation markers are stored per user.
+- `identity_context.py` derives Friend/profile scope from the verified session, not client-provided scope headers.
+- `CloudLocalHTTP` derives the owner scope from the authenticated session's `user_id`; it does not accept the request body as authority for the principal.
+- `CloudLocalStore` is already owner-scoped: jobs use primary key `(owner_id, job_id)` and unique `(owner_id, idempotency_key)`; agents/evidence/checkpoints are also scoped by owner ID.
+- Cloud mode explicitly requires `RESEARCH_OS_DATABASE_URL` to point to PostgreSQL; ephemeral SQLite fallback is disabled in cloud mode. SQLite remains available for local development/tests.
+- Research OS has its own provider interface and should keep its Local Ollama → Cloud Gemini selection policy. DCP should orchestrate eligible execution jobs, not replace Research OS identity/session storage or research-domain records.
+
+**Integration gap:** Research OS currently identifies Google users by a provider subject/user ID, but the inspected session context does not carry a verified OIDC issuer claim for a DCP `iss + sub` principal mapping. A future adapter must obtain/verify a DCP-audience service assertion or use a shared verified identity exchange; never trust a browser-supplied `user_id`, `owner_id` or role header.
+
+### 13.2 Virtual Cloud Control Center — desktop client and GitHub Actions dispatch
+
+**Repository:** `phakphum12345/VirtualCloud-ControlCenter`  
+**Branch:** `feature/virtual-cloud-control-center`  
+**Inspected head:** `0a3915bbe51fe703c504c2c75734cb464862b7f2`
+
+- The README describes a Windows-first desktop Control Center that dispatches GitHub Actions workflows for Windows/macOS runners and separately synchronizes artifacts/logs/metadata to Google Drive.
+- `virtual-cloud-runners.yml` uses manual `workflow_dispatch`, supports Windows/macOS targets, optional source repository/ref and an explicit no-op smoke-test input. The build hook is required unless the no-op flag is explicitly enabled.
+- Google Drive OAuth credentials are held in the local application-data area; the desktop application also has an explicitly confirmed, narrowly scoped `MULTI_REPO_TOKEN` secret configuration action.
+- No DCP API/job adapter was identified in the inspected README, runner workflow or controller entrypoint. The current desktop client therefore remains a separate dispatch client, not a DCP-integrated tenant-aware control client.
+
+**Integration direction:** route eligible compute/build requests through DCP's authenticated Job API and provider capability policy; retain the Control Center UI, local Drive OAuth and checksum/receipt synchronization as separate client/storage responsibilities. Do not let a client-supplied repository/ref or GitHub token bypass DCP allowlists, owner approval or worker policy.
+
+### 13.3 phakphum-calendar — Flutter client; cloud domain API remains unverified
+
+**Repository:** `phakphum12345/phakphum-calendar`  
+**Branch:** `main`  
+**Inspected head:** `7ae6b3020c0cc331e2ab730591df44646b0ef530`
+
+- Current README describes a Flutter app for roster import/review and guarded Google Calendar synchronization.
+- `pubspec.yaml` declares Flutter/Dart dependencies including Google Sign-In and Google APIs.
+- `GoogleAuthService` currently requests read-only scopes for Sheets, Calendar events and Drive metadata/files. It is a client-side Google identity/API workflow, not proof of a DCP service identity or a multi-tenant server API.
+- At this baseline, root `composer.json` and `routes/api.php` are not present at the expected paths, and code search did not find Laravel route/controller/schema markers such as `Route::middleware`, `Schema::create`, `shift_transactions` or `artisan`. This is a bounded inspection, not proof that no backend exists in another repository or deployment.
+
+**Architecture correction:** do not claim an existing Laravel Calendar API/database as verified. The selected Cloud operating mode remains a target decision, but a dedicated Calendar domain API, identity binding, tenant-aware storage, migration and deployment must first be located or designed. Shift rosters, swaps, approvals and Google Calendar synchronization must remain Calendar-domain responsibilities; DCP may provide shared identity/job execution contracts but must not become the shift transaction database.
+
+### 13.4 Cross-application boundary decision
+
+- DCP owns shared principal mapping, tenant membership, capability authorization, jobs, runner leases and execution evidence.
+- Research OS retains its owner-scoped CloudLocal store and AI/provider domain.
+- Virtual Cloud Control Center remains a desktop client; DCP becomes the job/runner authority after an explicit adapter is implemented.
+- Calendar requires its own verified cloud domain API/storage before Cloud mode can be called operational.
+- Do not consolidate these databases. Use versioned contracts, signed service assertions, correlation IDs and scoped service identities.
