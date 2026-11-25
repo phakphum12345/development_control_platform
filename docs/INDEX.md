@@ -22,6 +22,7 @@
 - [Repository Audit 2026-11-11](DCP-REPOSITORY-AUDIT-2026-11-11.md)
 - [Repository Audit 2026-11-12](DCP-REPOSITORY-AUDIT-2026-11-12.md)
 - [Live Repository Audit 2026-11-23](DCP-LIVE-REPOSITORY-AUDIT-2026-11-23.md) — current main SHA, open PR register, exact-head CI evidence and audit limitations.
+- [Live Repository Audit 2026-11-25](DCP-LIVE-REPOSITORY-AUDIT-2026-11-25.md) — refreshed exact-main tree inventory, required CI, open PR heads and WP-00 reconciliation status.
 - [Acceptance Test Plan](DCP-ACCEPTANCE-TEST-PLAN.md)
 
 ## Architecture and platform
