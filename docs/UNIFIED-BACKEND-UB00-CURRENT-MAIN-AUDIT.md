@@ -154,3 +154,49 @@ The Local Auth Proxy has its own explicit allowlist and CSRF/session checks. A G
 - This document does not authorize merge, account role escalation, Terminal enablement, provider activation or deployment.
 - Existing data must be preserved. Unknown ownership is not assigned to the first user or to the current repository owner.
 - Hosted CI results are recorded only for the exact PR head; skipped/unknown checks are not PASS.
+
+
+## 10. Relevant automated-test map (source inventory, not execution results)
+
+The following test functions exist on the audited main baseline. Their presence does not prove the tests have passed on the current PR head, and none of these suites currently establishes tenant isolation.
+
+| Test module | Relevant observed tests | What is covered | UB gap |
+|---|---|---|---|
+| `tests/test_cloud_gateway_oidc_session_store.py` | transaction browser binding/one-time use; expiry; session lookup/CSRF/rotation/logout; connection close; expired session; rejection of unverified role/invalid subject | OIDC transaction/session mechanics and role allowlist | Add member admission, principal mapping, tenant membership, membership revocation and session-to-tenant context tests |
+| `tests/test_cloud_gateway_oidc_auth_service.py` | login callback + PKCE; browser-bound state; secure cookie/logout; session rotation | Provider-neutral OIDC callback and session lifecycle | Current service constructor requires Owner and Operator groups; no group-less member provisioning test |
+| `tests/test_cloud_gateway_proxy_authorization.py` | Operator can read session but cannot create Runner; Operator cannot terminate Runner; unsupported HTTP methods are not dispatched | Sample Owner/Operator privilege boundaries | No normal Member identity or cross-tenant resource tests |
+| `tests/test_cloud_gateway_job_control.py` | idempotent create/conflict; claims/lease fencing; cancellation; checkpoints; resume; concurrent workers; worker ownership | Durable job lifecycle and worker/lease invariants | No principal/tenant scoping, cross-account idempotency, or cross-tenant job/log/event tests |
+| `tests/test_cloud_gateway_runner_registry.py` | register/heartbeat/drain/enable; capabilities; stale/offline worker; invalid capabilities; capability-aware claims | Global worker registration and capability matching | No worker-to-tenant grants, tenant-bound claims or revocation tests |
+| `tests/test_cloud_gateway_artifacts.py` | immutable hash metadata; upload validation; truncated upload; invalid ID; tamper rejection | Artifact integrity and worker ownership/lease validation | No tenant-scoped artifact list/download or parent-job authorization test |
+| `tests/test_local_auth_proxy.py` | full local login/Gateway/logout; CSRF/origin; unknown route denial; Owner-only Recon; protected Runner credential file | Single local Owner Proxy flow and security controls | No multiple-account sessions; optional Chromium/Firefox/WebKit tests are guarded by environment availability |
+
+The browser tests in `test_local_auth_proxy.py` use `skipUnless` guards for Chromium, Firefox and WebKit prerequisites. A skipped browser test is not an acceptance pass. Target-host Windows PSEC acceptance remains separately blocked/unknown as recorded in the current implementation status.
+
+## 11. Open-PR dependency reconciliation (live metadata snapshot)
+
+| PR | Current branch/base relation | State | UB-00 disposition |
+|---|---|---|---|
+| #149 Windows PSEC trusted runtime | Base `eaa9ceb...`, 2 commits behind current main; `mergeable=false` | OPEN / DRAFT | Separate Terminal/host-acceptance work; do not use hosted probe as target-host PASS or merge into UB work |
+| #150 2026-11-19 repository audit | Base `eaa9ceb...`, 2 commits behind; `mergeable=false` | OPEN / DRAFT | Historical audit candidate; current main already has newer 2026-11-23 audit docs, so do not copy its old counts as current |
+| #151 Dashboard Code Navigator | Base `c17b2db...`, 1 commit behind current main; `mergeable=true` | OPEN / DRAFT | Independent Dashboard mapping change; no dependency for identity or tenant model |
+| #152 trusted repository bootstrap | Base `eaa9ceb...`, 2 commits behind; `mergeable=false` | OPEN / DRAFT | Separate Runner credential/allowlist hardening; review and rebase dependency must be resolved by its workstream owner |
+| #138 cross-fork PSEC comparison | Fork branch and feature-branch base; `mergeable=false` | OPEN | Do not merge wholesale; unrelated to Unified Backend foundation |
+| #155 Unified Backend | Base is exact current main `5758987...`; `mergeable=true` at last metadata refresh | OPEN / DRAFT | Current architecture/audit work; exact-head CI must be refreshed after every branch commit |
+
+This register is a point-in-time snapshot and must be refreshed before any merge or dependency decision. No PR was merged, closed or retargeted by this audit.
+
+## 12. UB-00 completion checklist
+
+- [x] Reconcile current main SHA against the 2026-11-23 audit baseline.
+- [x] Trace Gateway identity role admission and OIDC session role constraints.
+- [x] Trace the local Owner Auth Proxy and distinguish it from OIDC deployment components.
+- [x] Inspect JobStore, RunnerStore, RunnerRegistry, ArtifactStore and ProviderRouter ownership keys.
+- [x] Map current Gateway route families to the multi-account isolation requirements.
+- [x] Identify relevant existing OIDC/job/runner/artifact tests and optional browser skips.
+- [x] Refresh the open-PR dependency snapshot.
+- [ ] Complete every persistent store schema and all Local Auth Proxy route/session branches.
+- [ ] Complete all 117 test-path files' function/fixture/skip/workflow mapping; current table is targeted, not exhaustive.
+- [ ] Reconcile application-level DCP integrations and service identity contracts.
+- [ ] Independent review of the ownership matrix and migration classification.
+
+**UB-00 remains IN_PROGRESS.** UB-01 implementation must not begin until the remaining unchecked items are closed or explicitly deferred with a documented reason and owner decision.
