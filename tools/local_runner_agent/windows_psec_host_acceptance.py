@@ -270,12 +270,38 @@ def _environment() -> dict[str, str]:
 
 def _read_only_network_payload() -> str:
     return r'''
-import json, os, pathlib, socket, subprocess, sys
+import json, os, pathlib, socket, subprocess, sys, sysconfig
 workspace = pathlib.Path(sys.argv[1])
 scratch = pathlib.Path(sys.argv[2])
 canary = pathlib.Path(sys.argv[3])
 port = int(sys.argv[4])
+base_home = pathlib.Path(sys.base_prefix)
+venv_root = pathlib.Path(sys.prefix)
+stdlib = pathlib.Path(sysconfig.get_path("stdlib"))
 result = {}
+
+def _read_probe(paths):
+    for path in paths:
+        with path.open("rb") as stream:
+            stream.read(1)
+    return "PASS"
+
+def _write_probe(directory, label):
+    probe = directory / f".dcp-psec-{label}-{os.getpid()}-{id(result)}.probe"
+    try:
+        with probe.open("xb") as stream:
+            stream.write(b"must-not-write")
+    except OSError:
+        return "DENIED"
+    try:
+        probe.unlink()
+    except OSError as exc:
+        result[label + "_write_cleanup"] = "FAIL"
+        result[label + "_write_cleanup_error"] = {
+            "type": type(exc).__name__,
+            "message": str(exc),
+        }
+    return "UNEXPECTED_WRITE"
 
 # Query the token from inside this exact PSEC-launched process without
 # importing ctypes/_ctypes, whose extension initialization may itself be
@@ -315,6 +341,59 @@ except Exception as exc:
         "winerror": getattr(exc, "winerror", None),
     }
 result["child_token"] = child_token
+
+try:
+    base_executable = pathlib.Path(getattr(sys, "_base_executable", sys.executable))
+    result["base_runtime_read"] = _read_probe((
+        base_executable,
+        base_home / "python312.dll",
+    ))
+except Exception as exc:
+    result["base_runtime_read"] = "FAIL"
+    result["base_runtime_read_error"] = {
+        "type": type(exc).__name__,
+        "message": str(exc),
+    }
+
+try:
+    result["standard_library_read"] = _read_probe((
+        stdlib / "os.py",
+        stdlib / "encodings" / "__init__.py",
+    ))
+except Exception as exc:
+    result["standard_library_read"] = "FAIL"
+    result["standard_library_read_error"] = {
+        "type": type(exc).__name__,
+        "message": str(exc),
+    }
+
+try:
+    result["venv_runtime_read"] = _read_probe((
+        venv_root / "pyvenv.cfg",
+        pathlib.Path(sys.executable),
+    ))
+except Exception as exc:
+    result["venv_runtime_read"] = "FAIL"
+    result["venv_runtime_read_error"] = {
+        "type": type(exc).__name__,
+        "message": str(exc),
+    }
+
+result["base_runtime_write_probe"] = _write_probe(base_home, "base-runtime")
+result["standard_library_write_probe"] = _write_probe(stdlib, "standard-library")
+result["venv_runtime_write_probe"] = _write_probe(venv_root, "venv-runtime")
+result["base_runtime_read_only"] = (
+    "PASS" if result["base_runtime_read"] == "PASS"
+    and result["base_runtime_write_probe"] == "DENIED" else "FAIL"
+)
+result["standard_library_read_only"] = (
+    "PASS" if result["standard_library_read"] == "PASS"
+    and result["standard_library_write_probe"] == "DENIED" else "FAIL"
+)
+result["venv_runtime_read_only"] = (
+    "PASS" if result["venv_runtime_read"] == "PASS"
+    and result["venv_runtime_write_probe"] == "DENIED" else "FAIL"
+)
 
 try:
     workspace_value = (workspace / "read.txt").read_text(encoding="utf-8")
@@ -370,6 +449,24 @@ finally:
 
 print(json.dumps(result, sort_keys=True))
 '''
+
+
+_EXPECTED_WRITE_DENIALS = frozenset({
+    "workspace_write_probe",
+    "base_runtime_write_probe",
+    "standard_library_write_probe",
+    "venv_runtime_write_probe",
+})
+
+
+def _acceptance_failures(results: dict) -> list[str]:
+    """Treat explicit denied-write probes as success; all other checks must PASS."""
+    return [
+        name for name, state in results.items()
+        if state != "PASS" and not (
+            name in _EXPECTED_WRITE_DENIALS and state == "DENIED"
+        )
+    ]
 
 
 def _parse_policy_payload_output(return_code: int, output: bytes) -> dict:
@@ -637,7 +734,7 @@ def main() -> int:
                 }
             ),
         }
-        failures = [name for name, state in results.items() if state != "PASS"]
+        failures = _acceptance_failures(results)
         output = {
             "state": "PASS" if not failures else "FAIL",
             "host": {
@@ -649,6 +746,7 @@ def main() -> int:
             "psec_api": api.to_dict(),
             "psec_spec": {"state": "PASS", "reason": spec_reason},
             "checks": results,
+            "expected_denial_checks": sorted(_EXPECTED_WRITE_DENIALS),
             "diagnostics": diagnostics,
             "failures": failures,
             "note": "This host acceptance result does not automatically set terminal isolation to VERIFIED.",
