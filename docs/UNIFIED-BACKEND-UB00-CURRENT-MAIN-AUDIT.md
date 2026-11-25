@@ -344,3 +344,43 @@ These CI results apply only to the exact PR head above. Any new commit invalidat
 - [ ] Refresh open PR/dependency state before UB-00 closure.
 
 **UB-00 remains IN_PROGRESS.** The 116-path inventory and expanded critical-suite review are complete, but the remaining route/store/dependency checks must be closed before UB-01 implementation. No runtime or database change is authorized by this audit.
+
+
+## 18. Local Auth Proxy route/session boundary — completed source trace
+
+Inspected `tools/local_auth_proxy.py` in full (971 lines) at the audited main baseline. The route families are:
+
+| Method / route family | Current local Proxy behavior | Multi-account disposition |
+|---|---|---|
+| `GET /healthz` | Public loopback health; provisioning reports false | Keep health non-sensitive; no identity |
+| `GET /api/auth/session` | Creates/returns in-memory pre-auth or Owner session; returns CSRF and role `owner` | Replace only through a separate all-account identity/session path; retain local Owner compatibility |
+| `POST /api/auth/login`, `POST /api/auth/logout` | One configured Owner username/password; pre-auth CSRF, same-origin, five failed attempts per IP per 15 minutes, session rotation/revocation | Do not make the local Owner credential the shared multi-account credential |
+| `GET /api/jobs`, job detail/logs/events/artifacts | Authenticated session, strict UUID/path/query allowlist, Gateway request signed as role Owner | Gateway must scope by principal/tenant; Proxy authentication alone is not resource ownership |
+| `POST /api/jobs`, resume/cancel | Authenticated Owner session, same-origin and CSRF; bounded body; job create forwards idempotency key | Add tenant/principal from verified server context, not request JSON |
+| Preview list/start/status/content/stop | Job/runtime UUID route shapes; authenticated Owner or job/runtime-bound preview cookie; server-side runtime capability; bounded content response | Every operation must authorize parent job within tenant before runtime lookup; preview cookie is not tenant authority |
+| Artifact download | Authenticated Owner session; UUID route; bounded binary size, octet-stream, SHA-256 ETag validation and private/no-store | Authorize artifact through tenant-scoped parent job before streaming |
+| GitHub repository refs/commit/project metadata | Exact owner/repo and immutable SHA path allowlist; refs query restricted to branches/tags | Repository installation membership/tenant grant must be checked by Gateway, not inferred from local Owner Proxy |
+| Cloud Runner create/delete | Exact collection/item paths; Owner session, same-origin/CSRF; create forwards idempotency key | Keep provider provisioning privileged; tenant-funded compute requires separate budget and approval model |
+| Runner drain/enable | Exact runner ID and action; Owner session, same-origin/CSRF, empty body | Platform/host operations remain platform-admin only |
+| Infrastructure inventory/create/start/stop/restart/delete and gates | Exact UUID paths, bounded query, Owner session, CSRF, empty lifecycle payloads and idempotency on create | Platform-global and paid-resource operations remain Owner/platform-admin only |
+| Terminal template import/review/command preview/events | Exact custom-template paths, Owner session, CSRF; execution remains independently gated | No blanket member access; retain explicit Owner review and OS isolation |
+| Static dashboard assets | Path traversal containment under dashboard root | Static serving is not a tenant resource boundary |
+
+Additional implementation facts:
+- The Proxy stores session and preview-session maps in process memory; session TTL is 12 hours. This is a local single-process session model, not durable multi-user session storage.
+- The local credential record is one configured Owner credential file; login does not issue a distinct principal or tenant.
+- `sign_gateway` signs every local authenticated request with the hard-coded Gateway role `owner`. This is a local trust bridge, not an acceptable way to map all external accounts to platform Owner.
+- Mutating routes require same-origin and CSRF checks. GET routes use strict path/query allowlists; unknown routes and unsupported methods fail closed.
+- Logout revokes the session and all preview cookies associated with that session.
+
+**Conclusion:** local Auth Proxy is a tightly scoped Owner/admin control surface. General account login must be a distinct OIDC-backed path with server-derived principal, personal tenant, explicit organization membership and per-resource authorization. Never widen the local Owner credential/session into a universal account identity.
+
+## 19. Remaining UB-00 work after route trace
+
+The full Local Auth Proxy route/session trace is now complete. The remaining UB-00 work is narrowed to:
+1. Finish schema inventory for less central auxiliary stores and confirm every one is classified as tenant-owned, platform-global, host-local or ephemeral.
+2. Map the remaining shared-API and application integration tests to the workflows that execute them; distinguish source existence from actual CI execution.
+3. Refresh the open PR dependency state and determine whether any older branch conflicts with the UB principal/tenant design.
+4. Obtain an independent review of the principal/tenant/resource matrix and the `legacy_unassigned` migration rule.
+
+UB-00 remains IN_PROGRESS; no application/runtime or database changes are being made in this checkpoint.
