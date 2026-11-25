@@ -98,3 +98,22 @@ No acceptance row may point only to a test file without a test function or to a 
 ## 8. Audit statement
 
 This document is a decomposition and traceability work product, not an implementation completion report. At creation, WP-00B/C remain partial, WP-00D remains in progress, and WP-31 remains not started. No package is upgraded to PASS by this document.
+
+
+## 9. WP-01 source/test delta verified against current main (2026-11-25)
+
+A targeted re-read of exact main SHA `57589873583c706d4af9756709596fdba7c22de9` confirms that the two source files referenced by the existing WP-01 crosswalk retain these blob identities:
+
+- `tools/cloud_gateway/server.py`: `9a55bccf216cff1b934bebd643e68364305449aa` (1,894 lines).
+- `tools/local_auth_proxy.py`: `2d8708216f85c28e70f358c0672152353c6b59bc` (971 lines).
+
+The source still exposes Gateway `do_GET`, `do_POST`, `do_DELETE` and Local Auth Proxy `do_GET`, `do_POST`, `do_DELETE`, `do_OPTIONS`; Gateway helper anchors include `ProxyIdentityVerifier`, `runner_identity`, `proxy_identity`, `csrf_valid`, `same_origin` and bounded `body` parsing. This confirms the old source blob anchors remain applicable, but does not itself prove runtime behavior.
+
+The current test files have these exact blob identities and test functions:
+
+- `tests/test_cloud_gateway_proxy_authorization.py`: `10a54b6daf32d4ce4e7c593655c547171850b169`; includes `ProxyMutationAuthorizationTests.test_operator_can_read_session_but_cannot_create_runner`, `test_operator_cannot_terminate_runner`, and `test_unsupported_http_methods_are_not_dispatched`.
+- `tests/test_local_auth_proxy_project_routes.py`: `2d1c1c2de3318e755c1a399e5f707e152cd4107b`; includes `test_options_and_unsupported_methods_have_explicit_boundary`, `test_rejects_encoded_path_separators_and_duplicate_query_keys`, exact project/read allowlist tests, artifact/authentication tests, CSRF-protected runner/Terminal/Infrastructure mutation tests, idempotency forwarding, job resume/cancel and authenticated-session tests.
+
+**Traceability correction:** the older WP-01 acceptance document's rows WP01-API-009/010 describe unsupported-method behavior as a test gap. The current test source now contains explicit test anchors for unsupported methods at both the Gateway and Proxy test suites. Reclassify those rows as **IMPLEMENTED / TEST-ANCHORED**, not PASS, pending execution on the candidate SHA and inspection of the asserted status/header/no-side-effect behavior. Similarly, encoded separators and duplicate query keys now have an explicit Proxy test anchor; other query/path normalization cases remain open unless separately enumerated.
+
+This delta closes only a source/test-anchor freshness discrepancy. It does not close WP-01 or WP-00B/C: test execution, full route-to-test mapping, fixtures/parameterization, workflow/job mapping, and the remaining route/schema/role matrix still require verification.
