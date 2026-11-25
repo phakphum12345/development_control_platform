@@ -139,7 +139,7 @@ Introduce shared, versioned DCP contracts for:
 The browser must never receive DCP internal bearer tokens, HMAC signing secrets, provider credentials, OIDC refresh tokens or worker tokens. Keep the same-origin trusted ingress and CSRF/Origin/replay controls.
 
 Each application integrates through its own adapter:
-- Research OS adapter translates Research OS jobs/provider choices into DCP job contracts while keeping Ollama local and Gemini cloud fallback explicit.
+- Research OS adapter delegates only eligible compute/build/test jobs to DCP. Research OS Friend remains the authority for AI provider selection, Ollama/Gemini readiness, usage/cost and AI policy; DCP must not bypass or duplicate that boundary.
 - Virtual Cloud Control Center adapter uses DCP control APIs; it does not duplicate runner authority.
 - Calendar adapter may delegate shared identity/job capabilities only after a dedicated cloud domain API and tenant-aware storage are verified or implemented; shifts, swaps, approvals and Google Calendar state remain Calendar-domain responsibilities.
 - Provider adapters expose capabilities/readiness and receive only scoped job claims.
