@@ -287,3 +287,20 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Added ten prioritized positive/negative test groups covering unsupported verbs, OPTIONS/CORS, Origin/CSRF, allowlists, direct Gateway access, Runner identity, idempotency, parser bounds and response contracts.
 - This is static source analysis only. WP-01 remains IN_PROGRESS; no runtime source/tests changed and no acceptance, merge, deployment, Terminal activation or cloud provisioning is claimed.
 - Re-poll all CI against the resulting exact branch head before making any status claim.
+
+
+## 2026-11-25 — WP-00 current-main baseline reconciliation checkpoint
+
+- Repository: `phakphum12345/development_control_platform`.
+- Main baseline: `57589873583c706d4af9756709596fdba7c22de9`.
+- Audit branch: `docs/wp00-baseline-reconciliation-20261125`.
+- Current audit report: `docs/DCP-LIVE-REPOSITORY-AUDIT-2026-11-25.md`.
+- Current tree: 371 entries / 343 blobs; 212 Python files; 101 `tools/`; 116 `tests/` paths; 73 `docs/`; 9 workflows.
+- Exact-main required CI: validate PASS; Linux Minimal Emulator PASS; Windows dynamic-port launcher integration PASS; Windows 11 Auth Proxy + Gateway E2E PASS. Optional Windows runner acceptance SKIPPED.
+- Open PR snapshot: #138, #149, #150, #151, #152, #155. Exact heads and current check states are recorded in the audit report.
+- WP-00A: PASS for path enumeration only. WP-00B: PARTIAL. WP-00C: PARTIAL. WP-00D: PARTIAL. WP-00E: IN_PROGRESS.
+- PR #150 is 48 commits ahead / 0 behind main in the current comparison; retain its useful unique material but reconcile all historical baselines and counts before disposition.
+- PR #155 is a documentation-only UB-00 architecture/source audit on the current main SHA; independent review of ownership and tenant authorization remains open.
+- No runtime source, schema, credentials, roles, provider configuration, cloud resources or deployments changed in this checkpoint.
+- No PR was merged, closed, force-pushed or deleted.
+- Next action: finish WP-00B/00C/00D traceability and reconcile PR #150 unique documents; then proceed to WP-06/#152 when the baseline checkpoint is complete.
