@@ -216,4 +216,4 @@ The older 2026-11-23 audit document is a historical inventory at its own baselin
 - Design document is the first deliverable on this branch.
 - No application source, schema, account, role, credential, provider or production configuration has been changed.
 - No deployment or cloud resource has been created.
-- Next exact action: open a Draft PR for this architecture baseline, then continue UB-00 by reconciling the live main/PR state and expanding the route/resource ownership matrix before implementing UB-01.
+- Draft PR #155 is open. UB-00 current-main source audit is recorded in `docs/UNIFIED-BACKEND-UB00-CURRENT-MAIN-AUDIT.md` at source baseline `57589873583c706d4af9756709596fdba7c22de9`. Next: complete Local Auth Proxy/session and remaining store/test trace, reconcile open PR dependencies, then freeze UB-00 before any UB-01 runtime/schema changes.
