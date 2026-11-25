@@ -133,157 +133,152 @@ Never infer PASS from missing, skipped, stale or different-SHA evidence. Re-chec
 - Next exact action: trigger all required workflows for documentation/checkpoint changes, then verify every check on the final head SHA. If checks pass, continue the executor integration as a separate WP-18A implementation slice; do not merge until reviewed and approved.
 
 
-## 2026-11-14 — WP-18A executor integration and WP-18C recovery continuation
+---
 
-- Repository: `phakphum12345/development_control_platform`; protocol: DCP-CEEP v1.0.
-- PR #116 remains OPEN / DRAFT / NOT MERGED; exact head `c811f0fee91f5ad43850359f4adfae506c3a502a`; its three exact-head workflows passed.
-- PR #117 — Linux bubblewrap executor integration — remains OPEN / DRAFT / NOT MERGED, stacked on PR #116's branch. Exact head `45b1650e740b4f4667ca21c793fab0d670c84a73`.
-- PR #117 exact-head checks: Cross-platform Recovery Acceptance #167 PASS; Validate Control Plane #745 PASS; Local-first Minimal Emulator #531 PASS. Windows runner acceptance matrix SKIPPED because no eligible self-hosted acceptance Runner was available; SKIPPED is not PASS.
-- PR #117 integrates the Linux bubblewrap launcher into TerminalScriptExecutor, passes the seccomp FD, pins bubblewrap/workload executables to /usr/bin, performs Git filter discovery inside the sandbox, and retains the VERIFIED gate. All seven built-in templates remain disabled. No user-host acceptance is claimed.
-- Started stacked branch `work/wp18c-terminal-recovery` from PR #117 head `45b1650e740b4f4667ca21c793fab0d670c84a73`.
-- WP-18C implementation in progress: runner-authenticated cleanup status endpoint; conservative reconciliation only for old terminal_script workspaces with matching ownership and Gateway `cleanup_safe=true`; UNKNOWN, lease-expired, active, mismatched, recent, unavailable and preview-retained workspaces are preserved.
-- Added Linux-only detached-child timeout test using bubblewrap parent-death/PID-namespace containment. Exact-head CI for this WP-18C branch has not yet run.
-- Current WP-18C branch head: `3fb72e498d7b3b1decda44a16f054532e04ce50f`.
-- No merge, deployment, template enablement or deletion is authorized. Continue with tests, exact-head CI, Draft PR and evidence reconciliation; do not merge without separate explicit approval.
+## 2026-11-19 — WP-00 full repository audit checkpoint
 
-
-## 2026-11-14 — WP-18C exact-head CI completion
-
-- PR #118: [feat(terminal): add conservative WP-18C recovery and descendant cleanup](https://github.com/phakphum12345/development_control_platform/pull/118), OPEN / DRAFT / NOT MERGED.
-- PR #118 is stacked on PR #117's branch `work/wp18a-linux-executor-integration`; base SHA `45b1650e740b4f4667ca21c793fab0d670c84a73`.
-- Code/test head before this ledger-only update: `a8a79cdf4f0a82b9dc55419f79fc0d8386de8554`.
-- Exact-head CI on `a8a79cdf4f0a82b9dc55419f79fc0d8386de8554`:
-  - Cross-platform Recovery Acceptance #168: PASS (Ubuntu and Windows jobs).
-  - Validate Control Plane #746: PASS.
-  - Local-first Minimal Emulator #532: PASS.
-  - Windows runner acceptance matrix: SKIPPED; no eligible self-hosted host acceptance Runner. SKIPPED is not PASS.
-- Linux executor suite: 23 tests PASS, including actual bubblewrap executor launch with seccomp FD inheritance and a forked child that calls `setsid()`; the child did not survive launcher termination.
-- Linux sandbox suite: 5 tests PASS, including actual bubblewrap filesystem/network/scratch boundary test.
-- Pipeline E2E verifies Gateway cleanup status is available only to the owning Runner. Workspace reconciliation tests verify that UNKNOWN, recent, mismatched, unavailable and preview-retained workspaces are preserved.
-- WP-18C remains PARTIAL: automatic cleanup is limited to Gateway-attested terminal Terminal jobs. UNKNOWN and LEASE_EXPIRED workspaces are intentionally preserved; this is not a universal orphan cleaner. Windows AppContainer/LPAC and macOS helper remain BLOCKED.
-- PR #117 remains OPEN / DRAFT / NOT MERGED; PR #116 remains its base dependency. No branch has been merged to main.
-- No user-host acceptance, deployment, template enablement or deletion was performed or authorized. After this ledger-only update, re-check exact-head CI on the new branch SHA before treating it as current evidence.
+- Repository: `phakphum12345/development_control_platform`
+- Main baseline inspected: `985a78d5fba459c8a0cbcf47e5d00a858c6e6228`
+- Audit branch: `docs/wp00-full-repository-audit-20261119`
+- Branch created from the exact main baseline above; main was not modified.
+- Recursive Git tree: 309 entries / 283 files (81 tools, 91 tests, 63 docs, 8 workflows).
+- Branch inventory: 158 branches; no open issues; three open PRs (#140, #149, #138).
+- Added current inventory, implementation status, requirements traceability, test/acceptance matrix and architecture/dependency map. Reconciled the remaining-work inventory and documentation index.
+- Exact PR evidence: #140 head `8bf0b74859c3749070eafbd7906d9c7df6d0822b` has five completed-success workflows; internal PSEC probe BLOCKED due missing `processmodel.dll`, optional self-hosted Windows acceptance SKIPPED. #149 head `44ec9f4b95601071b172a9b541387399591745b7` has four completed-success workflows; same PSEC probe BLOCKED and optional self-hosted acceptance SKIPPED.
+- PR #149 and #140 have overlapping launcher/test scope and divergent history; PR #138 remains a cross-fork comparison branch. No reconciliation or merge performed.
+- WP-00A: PASS. WP-00B/00C/00D: IN_PROGRESS because per-endpoint auth/CSRF mapping, per-view handler tracing, per-test-function mapping and exact-head audit CI remain.
+- No local tests, deployment, cloud provisioning, VM creation, force-push, branch deletion or merge performed.
+- Next exact action: complete Gateway/Auth Proxy dispatch map, Dashboard view/action map and test-function/workflow mapping; then run documentation validation and required CI on this branch head.
 
 
-## 2026-11-14 — WP-18D exact-head CI completion
+### 2026-11-19 — WP-00B API and Dashboard dispatch refinement
 
-- PR #119: [test(terminal): add Linux adversarial sandbox acceptance](https://github.com/phakphum12345/development_control_platform/pull/119), OPEN / DRAFT / NOT MERGED.
-- PR #119 code/test head with completed CI: `57399f94d8ece4c706eb373ec74f9c3bcda3e61f`.
-- Exact-head workflows on that code/test head:
-  - Cross-platform Recovery Acceptance #170: PASS (Ubuntu and Windows jobs).
-  - Local-first Minimal Emulator #534: PASS (Linux and Windows jobs).
-  - Validate Control Plane #748: PASS.
-  - Windows runner acceptance matrix: SKIPPED; no eligible self-hosted host acceptance Runner. SKIPPED is not PASS.
-- Ubuntu host-acceptance harness: PASS on the ephemeral GitHub-hosted runner, 5/5 tests, 0 skipped, 0 failures, 0 errors. Evidence: Bubblewrap 0.11.1; Linux 7.0.0-1016-aws; x86_64; UID/GID 1001. This is CI-host evidence only.
-- WP-18D remains PARTIAL until the harness is run on the actual target Linux host. Windows AppContainer/LPAC remains BLOCKED and user-host acceptance remains UNKNOWN.
-- This checkpoint is followed by a small evidence-schema refinement that records both the harness interpreter version and the exact /usr/bin Python runtime versions; re-check CI against the resulting new head.
-- PR #116, #117 and #118 remain OPEN / DRAFT / NOT MERGED. No merge to main, deployment or Terminal template enablement is authorized.
+- Latest branch head before this ledger update: `629cab1aea86dbdf2066619b22583f58bf8903d5`.
+- Inspected Gateway `do_GET`, `do_POST`, `do_DELETE` dispatch and Local Auth Proxy equivalents.
+- Added route-family and role/CSRF boundary tables to `docs/DCP-REPOSITORY-INVENTORY.md` and `docs/DCP-REQUIREMENTS-TRACEABILITY.md`.
+- Source-derived Dashboard count is 23 distinct `data-tab` values; the in-page Code Navigator has 21 declared mappings and therefore does not yet cover every tab. The older 21-view statement is stale.
+- 334 DOM element IDs are not view count.
+- WP-00B remains IN_PROGRESS: route families are mapped, but exact query/body schemas, every status/error branch and Gateway-to-Proxy forwarding equivalence are not fully enumerated.
+- WP-00C remains IN_PROGRESS: all 91 test file paths are captured, but individual test methods/fixtures/skips and requirement coverage are not yet enumerated.
+- Next action: complete endpoint contract/forwarding matrix and Dashboard view → handler → API → service → test trace; then re-run exact-head CI after final docs updates.
 
 
-## 2026-11-14 — WP-18D exact-head evidence refinement accepted
+### 2026-11-19 — Dashboard count wording correction
 
-- PR #119 code/test head `a497117adfcdb68f9e6a52b385f28fbec21ec621`: all exact-head workflows PASS.
-- Cross-platform Recovery Acceptance #171: PASS (Ubuntu and Windows).
-- Local-first Minimal Emulator #535: PASS (Linux and Windows).
-- Validate Control Plane #749: PASS.
-- Linux host acceptance harness on the ephemeral Ubuntu CI host: PASS, 5/5, 0 skipped, 0 failures, 0 errors. Exact evidence: Bubblewrap 0.11.1; Linux 7.0.0-1016-aws; x86_64; UID/GID 1001; harness Python 3.12.16; Terminal runtime Python 3.14.4; sandbox test Python 3.14.4.
-- Windows runner acceptance matrix: SKIPPED; no eligible self-hosted host acceptance Runner. No target Windows or Linux host acceptance is claimed.
-- PR #119 remains OPEN / DRAFT / NOT MERGED; PR #118 remains OPEN / DRAFT / NOT MERGED; PR #117 and #116 remain OPEN / DRAFT / NOT MERGED. These are stacked dependencies; do not merge a child before its base.
-- WP-18D is PARTIAL pending the target Linux host run. WP-18B Windows native process isolation and LPAC remain BLOCKED pending implementation and host acceptance. Terminal templates remain disabled.
-- This checkpoint follows code/test head `a497117adfcdb68f9e6a52b385f28fbec21ec621`; re-check exact-head CI on the resulting checkpoint commit before treating it as current.
+- The 21-view figure came from the older remaining-work inventory, not a verified README count.
+- Current source contains 23 distinct navigation tabs and 21 declared Code Navigator mappings.
+- Corrected the provenance wording in the repository inventory and requirements traceability documents.
+- Branch head before this ledger update: `04c4c7a4d02aadb1de3489a811e2f37229d8b355`.
+
+
+### 2026-11-19 — WP-00B HTTP route-shape checkpoint
+- Latest branch head before this ledger update: `b5fb610dab3c90ea8633da6552dfd7d4c8349e98`.
+- Added exact Gateway GET/POST/DELETE route families, Runner credential endpoints and Auth Proxy query/CSRF constraints to the requirements traceability artifact.
+- Confirmed Gateway and Auth Proxy custom handlers implement GET, POST and DELETE; no PUT/PATCH handler was found in these files.
+- Remaining: every JSON schema, response/error branch, full proxy allowlist equivalence, Dashboard event-handler/API/service trace and test-function map.
+
+
+### 2026-11-19 — Mainline test-path audit correction
+- Corrected the traceability matrix to reference only test files present in the current main baseline.
+- PR-only Windows PSEC test patterns remain explicitly labeled as branch-only, not mainline evidence.
+- Branch head before this ledger update: `0ecd1597160f4ea91fc1533cb8974aa8d66cbd07`.
+- Full test-function enumeration remains open; no count inferred from GitHub code-search excerpts.
+
+
+### 2026-11-19 — Dashboard Code Navigator coverage checkpoint
+- Latest branch head before this ledger update: `7a6ce1edce9cef50225664c5646e4bf55128a46e`.
+- Confirmed 23 navigation tabs and 21 declared Code Navigator mappings.
+- Missing mapping IDs: `project-import`, `document-generator`.
+- All 48 declared test references resolve to mainline test file paths.
+- Mapping existence is not execution evidence; test-function enumeration and handler/service validation remain open.
+
+
+### 2026-11-19 — Documentation drift correction
+- Inspected the Dashboard document generator, Gateway Document Workflow Store, local writer, and lifecycle contract tests.
+- Corrected README's stale statement that the authenticated Dashboard-to-Gateway local document write workflow was not exposed.
+- Corrected the Document Generator operations status from "feature branch" to "present in current mainline source"; exact-head CI, browser integration, host filesystem and deployment acceptance remain separate.
+- Clarified that local document writes do not commit/push to GitHub and PR lifecycle tools are read-only.
+- Branch head before this ledger update: `b1dc863ac7174dc83382ffe58db33eef8f82e0a9`.
 
 
 ---
 
-## 2026-11-23 — WP-00 live repository audit checkpoint
+## 2026-11-19 — Exact-head CI failure and runner-bootstrap dependency checkpoint
 
-- Canonical repository: `phakphum12345/development_control_platform`.
-- Canonical branch baseline: `main` at `eaa9ceb91088c39b90d9b11b3817dc793e40005a`.
-- Audit branch: `docs/wp00-live-audit-20261123`.
-- Live audit document: `docs/DCP-LIVE-REPOSITORY-AUDIT-2026-11-23.md`.
-- Live metadata snapshot before opening this audit's delivery PR: 5 open PRs (#149, #150, #151, #152, #138); 0 open issues; 162 branches (100 + 62, final cursor empty). After opening PR #153, the live open-PR count is 6.
-- Same-repository PR heads and workflow evidence were refreshed. PR #149's hosted PSEC probe workflow is green only because the expected BLOCKED result is informational; the job log explicitly reports PSEC state BLOCKED and missing filesystem/network-ingress capabilities. Its optional Windows runner acceptance is SKIPPED.
-- PR #150's 2026-11-19 audit set is still a candidate PR, not current-main documentation. Its named baseline `985a78d5fba459c8a0cbcf47e5d00a858c6e6228` predates current main `eaa9ceb91088c39b90d9b11b3817dc793e40005a`.
-- PR #151 and #152 exact-head hosted workflows passed; optional Windows runner acceptance is SKIPPED. Static Dashboard mapping and passing CI are not full operational acceptance.
-- WP-00 live metadata refresh is recorded. Full recursive-tree inventory, current-main source/API/Dashboard/test traceability, review-thread audit and platform host acceptance remain IN_PROGRESS / UNKNOWN.
-- No main branch changes, merges, deployment, release, Terminal template enablement, cloud provisioning or destructive cleanup were performed.
-- Next exact action: complete current-main WP-00A recursive tree and file inventory, then reconcile WP-00B/00C/00D evidence on this branch. Keep PRs Draft/HOLD until review and required acceptance gates are satisfied.
-
-
-## 2026-11-23 — Master Command crosswalk and WP-00D checkpoint
-
-- Canonical repository: phakphum12345/development_control_platform; canonical branch: main.
-- Exact main audit baseline: eaa9ceb91088c39b90d9b11b3817dc793e40005a.
-- Audit PR: #153, branch docs/wp00-live-audit-20261123, Draft/HOLD.
-- Latest audit commit: fa853c2340ef13aa7044a69d699766f74c0ab947.
-- Re-read the user's complete Master Engineering Command. Required lifecycle remains READ → ANALYZE → MODIFY → TEST → AUDIT → MERGE → VERIFY → FOLLOW-UP. This authorization does not include merge, deployment, Terminal enablement or release.
-- Appended a 24-requirement-to-WP/source/test/acceptance crosswalk and dependency sequence to docs/DCP-LIVE-REPOSITORY-AUDIT-2026-11-23.md.
-- Clarified that WP-01–17 are not yet atomically decomposed into independently verified exit criteria in the existing inventory; do not infer PASS for individual WPs from grouped subsystem evidence.
-- Reconciled stale audit baseline labels: docs/IMPLEMENTATION-STATUS.md, docs/REQUIREMENTS-TRACEABILITY.md and docs/DCP-REMAINING-WORK-INVENTORY.md still identify 62d72bddd028399d0b96cd9c2f6e3b16a704b758 / 2026-11-14. Their counts remain historical and must not be silently relabelled as current-main.
-- PR #153 exact-head CI before the latest documentation update (head 22c34056cf65fcc7db670deac3a8a5a576bb9ec5): Recovery Ubuntu PASS; Validate Control Plane validate and Windows dynamic-port jobs IN PROGRESS; Recovery Windows and both Emulator jobs QUEUED; self-hosted Windows acceptance SKIPPED. This evidence is stale for the new head fa853c2340ef13aa7044a69d699766f74c0ab947; recheck exact-head workflows.
-- WP-00 state: 00A PASS for recursive path enumeration; 00B PARTIAL; 00C PARTIAL; 00D PARTIAL/IN PROGRESS; WP-31 NOT STARTED.
-- No source code, runtime configuration, workflow, branch settings or production resources changed. No PR was merged, no deployment/release occurred, and all seven Terminal templates remain disabled.
-- Next: poll CI for exact head fa853c...; continue atomic WP-01–17 decomposition and full route/test/workflow trace; then address documented high-risk PR review findings in isolated PR scope only after full READ/ANALYZE.
+- Audit branch: `docs/wp00-full-repository-audit-20261119`.
+- Branch head before this ledger update: `c0ffc97c3c2cd084500150cbb6860197ebeb2a75`.
+- Main baseline remains `985a78d5fba459c8a0cbcf47e5d00a858c6e6228`; main was not modified.
+- Current open PRs: #150, #151, #140, #149 and #138. Open issue search returned zero issue records. Main branch protection is not enabled/reported (`protected=false`, required status checks absent).
+- PR #150 exact-head Validate Control Plane failed on Windows dynamic-port launcher integration (run `44568803009`, job `135717852997`); PR #151 exact-head Validate Control Plane failed on the same integration (run `44569675117`, job `135720966046`). Both exact logs report that `Setup-DCP-Local-Runner.ps1` has no `-TrustedRepository` parameter.
+- Root cause: mainline `Setup-DCP-Local-Runner.ps1` creates only the Runner token map, while `tests/test_local_runner_bootstrap.ps1` expects explicit trusted repository allowlist persistence in `gateway-local-settings.json`. Mainline `Start-DCP-Gateway-Runner.ps1` requires that settings file before enabling trusted repository execution. This is a real bootstrap contract mismatch on main, not a WP-00 or Code Navigator source regression.
+- The setup-script implementation on PR #140 and PR #149 is byte-identical (blob SHA `42b3403ddcb3d4fd6f3a67b8beb54cae9ebbb935`) and implements the missing allowlist persistence with validation, bounded entries, reparse-point checks and protected ACL writes. Do not duplicate/cherry-pick it into another PR without resolving the branch dependency and reviewing scope.
+- PR #140 current head CI completed successfully, but its optional Windows runner acceptance is SKIPPED and PSEC API probe evidence is BLOCKED (hosted image lacks `processmodel.dll`). PR #149 is based on a stale #140 head and currently diverges from #140 (71 commits ahead / 7 behind); launcher, host acceptance, tests and workflow files differ. Reconcile before any merge consideration.
+- PR #138 remains a cross-fork comparison from `phakphumwiri-boop/development_control_platform`; do not merge wholesale.
+- WP-00A remains PASS for the exact main tree/path inventory. WP-00B/00C/00D remain IN_PROGRESS. Exact route schemas, complete handler/service trace, per-test-function mapping and documentation reconciliation remain outstanding.
+- Next action: keep all PRs Draft/open; do not merge or rewrite history. Resolve the existing #140/#149 runner-bootstrap dependency through an Owner-reviewed sequencing decision, then re-run required CI on the exact affected heads. Continue WP-00 traceability and independent work only where it does not depend on this blocked prerequisite.
 
 
-## 2026-11-23 — PR lineage and exact-head refresh
+---
 
-- Audit branch latest source commit before this ledger update: bba5b2ff5254fc1441f5d72e3f1c0e51e00224c9.
-- PR #153 remains OPEN / DRAFT / HOLD, base main at eaa9ceb91088c39b90d9b11b3817dc793e40005a.
-- Refreshed live metadata for PRs #138, #144, #149, #150, #151, #152 and #153.
-- PR #144 is CLOSED/MERGED into feature base work/wp18b1-windows-psec-filesystem-authorization, not main. PR #138 remains OPEN and mergeable=false with a 140-file diff; do not merge wholesale.
-- PRs #149–#152 remain OPEN/DRAFT. PR #152 remains HOLD for parent-directory DACL, two-file transaction/recovery, atomic replacement proof and failure-injection test gaps.
-- Appended PR lineage clarification and exact-head workflow status to the live audit.
-- CI evidence recorded for then-current audit head c51d46b... was all queued at observation, except the optional self-hosted Windows runner acceptance job, which was skipped. This evidence is now stale because the audit document and this ledger create new commits; poll the exact latest head.
-- No source/runtime/workflow changes, no merge, deployment, release, Terminal enablement or destructive cleanup.
+## 2026-11-20 — WP-00B / WP-00C source trace continuation
 
-
-## 2026-11-23 — WP-00D append-only reconciliation of operating documents
-
-- Preserved the 2026-11-14 historical baseline and appended current-main reconciliation sections on the audit branch:
-  - docs/IMPLEMENTATION-STATUS.md — commit 301e8bab873e16476783c594db7530ebe91c3714
-  - docs/REQUIREMENTS-TRACEABILITY.md — commit 243b5fff5a34e70cc54d5eb9969facda5876052b
-  - docs/DCP-REMAINING-WORK-INVENTORY.md — commit dac150b188daef88bb545a3f5e68c445373989d5
-- Added section 21 to docs/DCP-LIVE-REPOSITORY-AUDIT-2026-11-23.md (commit fd2e8c76c480f04611ca89a2a63bd5894fcc0c2d) to record those exact file updates.
-- docs/INDEX.md on the audit branch already links the live audit.
-- No old historical counts were deleted or relabelled. Current 340-file tree and 117 test-path count are tied to main SHA eaa9ceb... and their explicit counting rules.
-- WP-00D advances to PARTIAL: three operating docs now carry an append-only current-main reconciliation. Atomic WP-01–17 exit criteria and complete API/test/handler trace remain open.
-- Current audit branch head is fd2e8c76c480f04611ca89a2a63bd5894fcc0c2d before this ledger update. Recheck exact-head CI after the next commit.
+- Baseline main remains `985a78d5fba459c8a0cbcf47e5d00a858c6e6228`; no mainline changes were made.
+- PR #150 head before this checkpoint was `b4769a69115cefa39a8ac5770b65e5379917142d`. Its exact-head jobs: Validate PASS; Local-first Minimal Emulator Linux PASS and Windows Auth Proxy + Gateway E2E PASS; Cross-platform Recovery Ubuntu PASS and Windows PASS; Windows dynamic-port launcher integration FAIL (job `135733550078`); optional Windows runner acceptance SKIPPED (job `135733552694`).
+- Exact failure: `tests/test_local_runner_bootstrap.ps1:28` passes `-TrustedRepository` to mainline `Setup-DCP-Local-Runner.ps1`; PowerShell rejects the unknown parameter. This remains a Runner Bootstrap contract/dependency issue, not a WP-00 documentation change.
+- PR #151 head `87b2c4dd48c6ad21fdeb8fa9cd79173f4409de92`: Validate, package, Linux Minimal Emulator, Windows Auth Proxy + Gateway E2E, and Ubuntu/Windows Recovery passed; Windows dynamic-port launcher integration failed (job `135720966046`); optional Windows runner acceptance skipped (job `135720969555`).
+- Main Dashboard source has 23 `data-tab` navigation IDs but only 21 `CODE_NAV_MAPPINGS`. PR #151 adds the two missing `project-import` and `document-generator` entries; candidate branch contains 23 mapping records and reference-resolution checks. Do not count it as mainline completion before merge.
+- Gateway and Auth Proxy dispatch were inspected at exact main blobs: `server.py@583eb48f4d37281e2485fc3331a893996c75f2ef`, `local_auth_proxy.py@22e2a27ce9bcd630c17d665215322fd4ffcdca8b`. Requirements Traceability now contains route-family/method/role/CSRF/response/status mapping and explicit remaining schema gaps.
+- WP-00C exact test tree count: 91 files under `tests/` = 88 `test_*` paths + three support assets. Method/setup/skip mapping was added for eight high-risk test modules; full remaining test-function and workflow/job map remains open.
+- Updated on the audit branch: Requirements Traceability, Test and Acceptance Matrix, Implementation Status, Remaining Work Inventory. WP-00B/00C remain IN_PROGRESS.
+- No application source, security control, workflow, provisioning behavior or PR state was changed. No PR merged; no cloud resource provisioned.
+- Next: finish remaining test-function/workflow map and Dashboard event/API/service traces; then run exact-head validation for the latest WP-00 branch head. Continue independent security foundation analysis without crossing the blocked Runner Bootstrap/PSEC dependency.
 
 
-## 2026-11-23 — branch protection visibility limitation
+---
 
-- Live audit appended section 22 on branch protection visibility (audit commit 3083e8d94b8b264c51dfd85329edc667591529c9).
-- Repository rulesets API returned an empty list. Classic branch protection API returned HTTP 403 Resource not accessible by integration.
-- Branch protection and required-status-check enforcement therefore remain UNKNOWN / NOT VERIFIED. An authorized repository administrator must inspect repository Settings → Branches / Rulesets before any merge decision.
-- This check does not authorize merge; PR #153 remains Draft/HOLD.
+## 2026-11-20 — WP-00B strict schema and WP-00C expanded test mapping
 
-
-## 2026-11-23 — WP-01 API security acceptance decomposition
-
-- Created docs/DCP-WP01-API-SECURITY-ACCEPTANCE.md (commit 9415dde8fcb560d526c3c09775b6f475ce86441b).
-- Added an index entry to docs/INDEX.md (commit 0d216dcd50d4f7ecec0e4048f75e7922951308af).
-- Decomposed WP-01 into 16 atomic API security acceptance items covering signed Proxy identity, CSRF/same-origin, body parsing, role checks, Proxy GET/POST/DELETE allowlists, unsupported verbs, idempotency, response headers, Gateway/Proxy parity, query/path canonicalization and Runner credentials.
-- Inspected Gateway source and Local Auth Proxy source at main SHA eaa9ceb91088c39b90d9b11b3817dc793e40005a, plus three representative authorization/route test files.
-- Explicit gaps recorded: exhaustive method/path/query/body/role/CSRF/idempotency matrix; unsupported PUT/PATCH/OPTIONS semantics; encoded path and duplicate-query edge cases; full response status/header matrix; runner credential replay/rotation coverage.
-- No runtime source or test code changed. WP-01 remains IN_PROGRESS; this is a source/test trace and test plan, not acceptance.
-- Exact-head CI must be refreshed after these commits. Previous CI observations on c0bcf213... are not transferable.
-
-## 2026-11-23 — WP-01A source dispatch inventory
-
-- Added `WP-01A` to `docs/DCP-WP01-API-SECURITY-ACCEPTANCE.md` in commit `15298ffc67648050a9ee217f22468c713f823ac7`.
-- Static source review pinned the main-branch Gateway and Proxy source blobs and enumerated explicit HTTP handler methods and dispatch families.
-- Gateway explicitly implements GET/POST/DELETE; Proxy explicitly implements GET/POST/DELETE/OPTIONS. Absence of custom PUT/PATCH handlers is not treated as proof of externally observed status behavior.
-- WP-01 remains IN PROGRESS: route/method matrix, authorization/CSRF/body/idempotency contracts, negative tests, and direct-vs-proxy boundary tests remain open.
-- Exact previous-head CI observation: Validate Control Plane completed SUCCESS (validate and Windows dynamic-port launcher integration PASS; optional self-hosted Windows runner acceptance SKIPPED); Windows Local Auth Proxy + Gateway E2E PASS; Ubuntu Recovery Acceptance PASS. Windows Recovery Acceptance and Linux Minimal Emulator were still running at observation time.
-- The documentation update changes the PR head; all CI evidence must be re-polled for the new exact head before any acceptance decision. No merge, deploy, or runtime activation authorized.
+- Additional exact Gateway source inspection captured strict request key sets for Document Workflow grants/revokes/proposals/approvals, Terminal template review, Local Folder job creation, UNKNOWN-job resume, cancellation, previews and Runner drain/enable.
+- Recorded the exact mainline Auth Proxy `ALLOWED_GET` tuple plus its separately admitted regex route families and query-string constraints.
+- Flagged one specific schema gap: the infrastructure gate HTTP handler reads `enabled` and `confirmation` but does not itself reject unknown JSON keys; gate-store validation and tests must be inspected before claiming exact schema enforcement.
+- Expanded WP-00C function-level mapping to 13 selected security/control-plane test modules. Additional mappings include Local Auth Proxy route allowlist/mutations (19 methods), Terminal catalog (7), Infrastructure API (16), Local Auth Proxy main (22), and Gateway core (8).
+- Main test directory count confirmed: 91 files total = 88 `test_*` paths plus three support assets. This corrects ambiguity in previous test inventory counts.
+- Latest WP-00 docs branch now includes updated Requirements Traceability and Test/Acceptance Matrix. WP-00B/00C remain IN_PROGRESS; all remaining JSON schemas, route error branches, Dashboard event-to-service edges and test-function/workflow mappings are not complete.
+- Previous exact-head CI on WP-00 head `f9c15b17c9e8a34384242d3f67be6d9a48481c31`: Validate PASS; Linux emulator PASS; Windows Auth Proxy E2E PASS; Ubuntu/Windows Recovery PASS; Windows dynamic-port launcher integration FAIL (job `135764554935`); Windows runner acceptance SKIPPED (job `135764558334`). Failure remains the missing `-TrustedRepository` setup parameter on mainline.
+- No source code or runtime security behavior was changed. No PR merged, no force-push, no cloud provisioning.
+- Next: re-run exact-head checks for the latest docs branch head, continue route schema/service and test trace, then choose the next independent code package only after its file overlap/dependency audit.
 
 
-## 2026-11-23 — WP-01B Gateway/Proxy route-surface crosswalk
+---
 
-- Added `docs/DCP-WP01B-GATEWAY-PROXY-ROUTE-CROSSWALK.md` in commit `4848ff640df29b55577a1b8c3659911fe8913b1b`.
-- Crosswalk records Gateway GET/POST/DELETE dispatch families and Local Auth Proxy GET/POST/DELETE/OPTIONS families against source blobs `9a55bccf216cff1b934bebd643e68364305449aa` and `2d8708216f85c28e70f358c0672152353c6b59bc` from main baseline `eaa9ceb91088c39b90d9b11b3817dc793e40005a`.
-- Explicitly distinguishes the narrower Proxy allowlist from Gateway route families; route differences must be classified as intentionally not proxied or required/missing, not blindly widened.
-- Added ten prioritized positive/negative test groups covering unsupported verbs, OPTIONS/CORS, Origin/CSRF, allowlists, direct Gateway access, Runner identity, idempotency, parser bounds and response contracts.
-- This is static source analysis only. WP-01 remains IN_PROGRESS; no runtime source/tests changed and no acceptance, merge, deployment, Terminal activation or cloud provisioning is claimed.
-- Re-poll all CI against the resulting exact branch head before making any status claim.
+## 2026-11-20 — WP-00C all-test-file requirement-family assignment
+
+- Enumerated all 88 `tests/test_*` paths from the exact main recursive tree and assigned every path to one primary requirement family. The Test and Acceptance Matrix now lists each path and its category.
+- Test directory count remains 91 total files: 88 test-prefixed modules/scripts plus `browser_smoke.mjs`, `emit_runner_bootstrap_scripts.py`, and `live_gateway_preflight.py`.
+- Thirteen selected security/control-plane modules now have method-level mapping. The remaining 75 modules still need function/class/fixture/skip enumeration and precise workflow/job/path-filter mapping.
+- The five cross-cutting test modules are explicitly flagged for manual requirement ownership rather than silently forced into a category.
+- Full Python unittest discovery is part of the Validate Control Plane job; PowerShell scripts are run only by named Windows steps; Cross-platform Recovery executes a narrower explicit subset.
+- WP-00C remains IN_PROGRESS. File-family classification is not method-level coverage or execution proof.
+
+
+---
+
+## 2026-11-20 — WP-00B 23-view Dashboard candidate mapping
+
+- Inspected PR #151 candidate Dashboard blob `1a72ca2096cb5aa377746cb9c5c8a686dab445fb`.
+- Recorded all 23 candidate view IDs with route group, declared DOM ID count, handler count and test-reference count in `docs/DCP-REQUIREMENTS-TRACEABILITY.md`.
+- Candidate map totals: 23 mappings / 23 navigation IDs; 57 declared test references across 14 files; 0 missing file/function/class references in the PR #151 contract check.
+- The trace explicitly distinguishes browser-local/static views, public GitHub metadata, authenticated Local Auth Proxy views, Owner-scoped Document Workflow, Infrastructure/Cloud Runner gates and inert Terminal catalog/preview.
+- This is structural candidate traceability, not runtime call graph or test execution proof. Main remains at 21 mappings until PR #151 is Owner-approved and merged.
+
+
+---
+
+## 2026-11-20 — WP-00B Terminal/Gate/Runner v1 schema trace
+
+- Added source-derived Terminal preview contract: exact template_id/parameters envelope, template-specific bounded integer/full-SHA parameters, seven fixed inert templates.
+- Inspected InfrastructureGateStore: only cloud_provisioning/vm_creation; both OFF by default; enabled must be bool; exact Owner confirmation and capability readiness required; all changes audited. HTTP handler currently ignores unknown JSON keys; record as WP-01 hardening, not strict schema PASS.
+- Added Runner v1 endpoint contract table: register/enroll, ping, claim, terminal-grant, binary artifact upload, heartbeat, checkpoint, logs, finish. Captured consumed fields, bounds, lease ownership and HTTP outcomes.
+- Runner v1 schema limitation recorded: several outer request objects do not reject unknown keys even though nested checkpoint schema is strict. Track exact-key validation as WP-01.
+- Source blobs: terminal_catalog.py@43c7a9b958012911a7ccd3e686841598c7b9c43d; infrastructure_gates.py@c6759ed1cac5fbbf45b3fabf62d94424a84d1181; runner_registry.py@f388a6244112f9c2192ab0ec53633b874b6df161; job_control.py@4295b3adbc1137b7bd706c1c79eb9324f538af7c5.
+- WP-00B remains IN_PROGRESS pending remaining route schemas, handler/service error mapping and Dashboard event/service edges.

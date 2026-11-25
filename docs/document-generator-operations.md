@@ -1,6 +1,6 @@
 # Document Generator and Owner-Approved Local Write Workflow
 
-**Status:** Dashboard-to-Gateway local document write API implemented on this feature branch; CI and deployment verification are pending. GitHub repository writes remain out of scope.
+**Status:** Dashboard generator and owner-approved Dashboard-to-Gateway local document write API are present in the current mainline source. Exact-head CI, browser integration, Windows/Linux filesystem validation, and deployment acceptance remain separate release gates. GitHub repository writes remain out of scope.
 
 ## Dashboard generator
 
